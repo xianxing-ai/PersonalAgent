@@ -1,0 +1,2290 @@
+{
+  "schemaVersion": "1.0.0",
+  "disclaimer": "仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干",
+  "generatedAt": "2026-11-07T12:46:04+08:00",
+  "source": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans",
+  "manifestReference": [
+    {
+      "pr": 594,
+      "branch": "zemeng/mod19-sqlite-smoke-plan",
+      "head": "e0262f710ea7afc2b7924c21eacb94f9b5bbd79a",
+      "originalPath": "docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+      "sha256": "c23430b1fb3465afa2ea07f1269c4937356849d7a9a4764de7d1a0c129462409",
+      "bytes": 7730,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 594,
+      "branch": "zemeng/mod19-sqlite-smoke-plan",
+      "head": "e0262f710ea7afc2b7924c21eacb94f9b5bbd79a",
+      "originalPath": "scripts/release/packaged-sqlite-smoke.plan.mjs",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+      "sha256": "a480fb15265afc4a889698f6cc92fddefcb7b015a51d50a7fa393fd28c89c04b",
+      "bytes": 12256,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 596,
+      "branch": "zemeng/mod29-deployment-readback-plan",
+      "head": "e05e66d13f91740500a0161167f48c0d54aaef74",
+      "originalPath": "docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+      "sha256": "c6640922863ec2930fc9e72186b879721105e0d6d9f8a03ec635f69a67a470f4",
+      "bytes": 11419,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 596,
+      "branch": "zemeng/mod29-deployment-readback-plan",
+      "head": "e05e66d13f91740500a0161167f48c0d54aaef74",
+      "originalPath": "packages/agentarts/src/deployment-readback-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+      "sha256": "e074bc9e9d469a369cc9c71f19047b983f15190a57aa4aa77eb668bd71d57111",
+      "bytes": 17439,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 598,
+      "branch": "zemeng/mod19-release-acceptance-plans",
+      "head": "b1104cec71e2ce2a3e2b24004f0ffa0ade776464",
+      "originalPath": "docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+      "sha256": "316df03901a627f350d442e934e22d4828c3b257c7e5161d20e164cba234d8e7",
+      "bytes": 12788,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 598,
+      "branch": "zemeng/mod19-release-acceptance-plans",
+      "head": "b1104cec71e2ce2a3e2b24004f0ffa0ade776464",
+      "originalPath": "scripts/release/release-install-upgrade-uninstall.plan.mjs",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+      "sha256": "01c4399732e22e126c9d6a89b454796c6e551c1fcb1d617a3fa433c5aa42da3e",
+      "bytes": 19924,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 599,
+      "branch": "zemeng/mod16-live-acceptance-plan",
+      "head": "45e8ffe731c6ee79732a445d6625ab0801edbda4",
+      "originalPath": "docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "35b793d5a58b835e03bc68577aa12eb1623c268ecfc077a222308806c40f0686",
+      "bytes": 11402,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 599,
+      "branch": "zemeng/mod16-live-acceptance-plan",
+      "head": "45e8ffe731c6ee79732a445d6625ab0801edbda4",
+      "originalPath": "packages/windows-client/src/notepad-live-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+      "sha256": "25ade84781fc53816bfa90b854a25f38aa9daea190e137f28ece6385b0addf8b",
+      "bytes": 14956,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 602,
+      "branch": "zemeng/mod27-privacy-deletion-plan",
+      "head": "748ec730e326cec3d5c903376be294b43207dc68",
+      "originalPath": "docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+      "sha256": "8581bcb18249f6966ee3f86d62bab83ac6ae67ece90dd949cb2aec2478b42655",
+      "bytes": 12032,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 602,
+      "branch": "zemeng/mod27-privacy-deletion-plan",
+      "head": "748ec730e326cec3d5c903376be294b43207dc68",
+      "originalPath": "packages/goals/src/privacy-deletion-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+      "sha256": "4987ddceeac9323a358c7eb4ece9f813c921941f2313e0919ff7e03065411fc1",
+      "bytes": 19660,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 604,
+      "branch": "zemeng/mod18-windows-sandbox-acceptance-plan",
+      "head": "c20e2298ed074dca56a881e20ad6ea29df5f2a94",
+      "originalPath": "docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "f5fc2fa423a10bb0a89e180f64da5ca5b5e5ff813f404edc0975f056839887bf",
+      "bytes": 14399,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 604,
+      "branch": "zemeng/mod18-windows-sandbox-acceptance-plan",
+      "head": "c20e2298ed074dca56a881e20ad6ea29df5f2a94",
+      "originalPath": "packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+      "sha256": "8ea3b0836d5364714fc0a2c11877d662d4556c25a93687c79e5aacc71e0afcfd",
+      "bytes": 23233,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 605,
+      "branch": "zemeng/f09-cloud-prefix-acceptance-plan",
+      "head": "f9d575e4b2abba06345b3e13afc9165df9994c7d",
+      "originalPath": "docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "05c5c098bc953761c5fa2eb9084f5f2db4b458a4f71e12b3902aae458109bb48",
+      "bytes": 13334,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 605,
+      "branch": "zemeng/f09-cloud-prefix-acceptance-plan",
+      "head": "f9d575e4b2abba06345b3e13afc9165df9994c7d",
+      "originalPath": "packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+      "sha256": "8e67889f9470f7840478239adbfae5aaaa9352d14d2078cc7772d533f6808648",
+      "bytes": 20931,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 606,
+      "branch": "zemeng/cloudpersist-acceptance-plan",
+      "head": "9883fb941318616990a682552e16d37c86a6165a",
+      "originalPath": "docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "d94a2b08495039dba616b76a6d18ac1d7256026bbe531e194395e67a2cb4888d",
+      "bytes": 14990,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 606,
+      "branch": "zemeng/cloudpersist-acceptance-plan",
+      "head": "9883fb941318616990a682552e16d37c86a6165a",
+      "originalPath": "packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+      "sha256": "301d358c0f8e19a2487ef20c682539db41b5bb3fe0b69a1a5d88466a7b30a0f6",
+      "bytes": 25121,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 607,
+      "branch": "zemeng/mod04b-agentarts-acceptance-plan",
+      "head": "e2081ce21e13c17892bbfe975114a60ae5981208",
+      "originalPath": "docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "5a271f983329492f9e6a09761e4d44c623489b7a3f6d9ac3979b1d0b4279c6ec",
+      "bytes": 15206,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    },
+    {
+      "pr": 607,
+      "branch": "zemeng/mod04b-agentarts-acceptance-plan",
+      "head": "e2081ce21e13c17892bbfe975114a60ae5981208",
+      "originalPath": "packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+      "sha256": "7b546bf0693160dd8ef7b2c3c3ac756e1ca8a788e48bfcb289bee66edfb85486",
+      "bytes": 35395,
+      "snapshotAt": "2026-11-07T12:42:59+08:00",
+      "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
+    }
+  ],
+  "summary": {
+    "totalFilesScanned": 18,
+    "validPlans": 18,
+    "errorsCount": 0,
+    "skippedCount": 0,
+    "byEnvironment": {
+      "windows_real_machine": 10,
+      "huawei_cloud": 8,
+      "real_account": 4,
+      "rights_holder_or_human": 4,
+      "other": 0
+    }
+  },
+  "records": [
+    {
+      "id": "sqlite-packaged-electron-smoke",
+      "title": "MOD-19 打包后 Electron SQLite 烟测规划与占位",
+      "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "**模块加载**：在打包后的 Electron 主进程环境中安全加载内置 `node:sqlite` 模块，无符号缺失或加载异常；",
+        "**Schema 建库与迁移**：在隔离的 `userData` 路径下创建 SQLite 数据库文件，执行完整 schema 建库；",
+        "**WAL 模式配置**：显式执行 `PRAGMA journal_mode=WAL` 与 `PRAGMA busy_timeout=5000` 并验证返回值生效；",
+        "**读写事务闭环**：执行 Task 表与 Runtime 状态写入并执行事务读回，校验数据完整性；",
+        "**正常关闭连接**：正常关闭数据库连接，确保存储 WAL 日志落盘与 checkpoint 正常；",
+        "**重启读回验证**：重新启动打包后的 Electron 主进程实例，对前序写入的数据执行独立读回校验，验证数据跨进程重启持久性。"
+      ],
+      "evidenceRequirements": [
+        "`tests/manual/release/windows-electron-sqlite.json` 验收占位文件（pending/unverified）保持无篡改；",
+        "真实 Windows 环境下打包后 Electron 主进程运行 SQLite 建库、WAL 模式、读写事务与重启读回的完整审计回执。"
+      ],
+      "reason": "待真机环境执行打包后 Electron SQLite 烟测",
+      "pendingItems": [
+        "`packaged_sqlite_smoke_real_machine`：待真机环境执行打包后 Electron SQLite 烟测（当前无真实环境验收证据，离线规划声明 closedLoop: false / status: unavailable）。"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "MOD-19 打包后 Electron SQLite 烟测规划与占位",
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "sqlite-packaged-electron-smoke",
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 7,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "**模块加载**：在打包后的 Electron 主进程环境中安全加载内置 `node:sqlite` 模块，无符号缺失或加载异常；",
+            "**Schema 建库与迁移**：在隔离的 `userData` 路径下创建 SQLite 数据库文件，执行完整 schema 建库；",
+            "**WAL 模式配置**：显式执行 `PRAGMA journal_mode=WAL` 与 `PRAGMA busy_timeout=5000` 并验证返回值生效；",
+            "**读写事务闭环**：执行 Task 表与 Runtime 状态写入并执行事务读回，校验数据完整性；",
+            "**正常关闭连接**：正常关闭数据库连接，确保存储 WAL 日志落盘与 checkpoint 正常；",
+            "**重启读回验证**：重新启动打包后的 Electron 主进程实例，对前序写入的数据执行独立读回校验，验证数据跨进程重启持久性。"
+          ],
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 44,
+          "lineEnd": 53,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤（Checklist）"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "`tests/manual/release/windows-electron-sqlite.json` 验收占位文件（pending/unverified）保持无篡改；",
+            "真实 Windows 环境下打包后 Electron 主进程运行 SQLite 建库、WAL 模式、读写事务与重启读回的完整审计回执。"
+          ],
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 55,
+          "lineEnd": 58,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`packaged_sqlite_smoke_real_machine`：待真机环境执行打包后 Electron SQLite 烟测（当前无真实环境验收证据，离线规划声明 closedLoop: false / status: unavailable）。"
+          ],
+          "sourcePath": "from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "lineStart": 60,
+          "lineEnd": 62,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "sqlite-packaged-electron-smoke",
+      "title": "MOD-19 打包后 Electron SQLite 烟测规划与占位",
+      "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "在打包后的 Electron 主进程环境中加载内置 node:sqlite 模块",
+        "在隔离 userData 目录下创建 SQLite 数据库并执行 schema 建库与迁移",
+        "配置并验证 WAL 模式（PRAGMA journal_mode=WAL）与忙超时（PRAGMA busy_timeout）生效",
+        "执行基础数据写入与事务读写验证（Task/State 表写入与查询）",
+        "正常关闭数据库连接以确保 WAL 检查点与文件落盘",
+        "重启打包后的应用主进程实例，执行重启读回与数据一致性验证"
+      ],
+      "evidenceRequirements": [
+        "tests/manual/release/windows-electron-sqlite.json 验收占位文件保持 pending/unverified 无篡改",
+        "打包后 Electron 主进程 SQLite 建库、WAL 模式、读写事务与重启读回独立回执"
+      ],
+      "reason": "待真机环境执行打包后 Electron SQLite 烟测",
+      "pendingItems": [],
+      "provenance": {
+        "id": {
+          "value": "sqlite-packaged-electron-smoke",
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "lineStart": 6,
+          "lineEnd": 6,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'sqlite-packaged-electron-smoke';"
+        },
+        "title": {
+          "value": "MOD-19 打包后 Electron SQLite 烟测规划与占位",
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "lineStart": 7,
+          "lineEnd": 7,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'MOD-19 打包后 Electron SQLite 烟测规划与占位';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "lineStart": 160,
+          "lineEnd": 160,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "lineStart": 159,
+          "lineEnd": 159,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真机环境执行打包后 Electron SQLite 烟测",
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "lineStart": 26,
+          "lineEnd": 26,
+          "source": "ts_code_literal",
+          "raw": "export const PENDING_REASON = '待真机环境执行打包后 Electron SQLite 烟测';"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "lineStart": 13,
+          "lineEnd": 13,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['windows_real_machine'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "在打包后的 Electron 主进程环境中加载内置 node:sqlite 模块",
+            "在隔离 userData 目录下创建 SQLite 数据库并执行 schema 建库与迁移",
+            "配置并验证 WAL 模式（PRAGMA journal_mode=WAL）与忙超时（PRAGMA busy_timeout）生效",
+            "执行基础数据写入与事务读写验证（Task/State 表写入与查询）",
+            "正常关闭数据库连接以确保 WAL 检查点与文件落盘",
+            "重启打包后的应用主进程实例，执行重启读回与数据一致性验证"
+          ],
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 6
+        },
+        "evidenceRequirements": {
+          "value": [
+            "tests/manual/release/windows-electron-sqlite.json 验收占位文件保持 pending/unverified 无篡改",
+            "打包后 Electron 主进程 SQLite 建库、WAL 模式、读写事务与重启读回独立回执"
+          ],
+          "sourcePath": "from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 2
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "deployment-readback-plan",
+      "title": "MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划",
+      "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud",
+        "real_account"
+      ],
+      "acceptanceSteps": [
+        "华为云账号凭据认证与受信端点绑定读回（huawei_cloud_credentials_readback）",
+        "当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回（runtime_head_deployment_verified）",
+        "8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回（owned_bindings_invocation_readback）",
+        "AgentArts 云端多智能体角色路由与模型推理真实回执（multi_agent_routing_and_inference）",
+        "平台独立 TraceId 关联与 Token/计费读回（platform_independent_trace_and_cost）",
+        "本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环（local_policy_evidence_closed_loop）"
+      ],
+      "evidenceRequirements": [
+        "DeploymentReadbackReceipt 合规回执（Profile 为 huawei_ict_agentarts、HTTPS origin、HEAD commit 对齐、ARM64 deploymentVersion）",
+        "华为云平台独立 TraceId 关联与 Token/计费在线读回回执（非本地应用日志）",
+        "本地 Policy/ToolGateway 授权与真实目标读回 Evidence 审计记录"
+      ],
+      "reason": "待真云验收",
+      "pendingItems": [
+        "`huawei_cloud_credentials_readback`: 华为云账号凭据认证与受信端点绑定读回",
+        "`runtime_head_deployment_verified`: 当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回",
+        "`owned_bindings_invocation_readback`: 8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回",
+        "`multi_agent_routing_and_inference`: AgentArts 云端多智能体角色路由与模型推理真实回执",
+        "`platform_independent_trace_and_cost`: 平台独立 TraceId 关联与 Token/计费读回",
+        "`local_policy_evidence_closed_loop`: 本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划",
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "deployment-readback-plan",
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud",
+            "real_account"
+          ],
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 8,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "华为云账号凭据认证与受信端点绑定读回（huawei_cloud_credentials_readback）",
+            "当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回（runtime_head_deployment_verified）",
+            "8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回（owned_bindings_invocation_readback）",
+            "AgentArts 云端多智能体角色路由与模型推理真实回执（multi_agent_routing_and_inference）",
+            "平台独立 TraceId 关联与 Token/计费读回（platform_independent_trace_and_cost）",
+            "本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环（local_policy_evidence_closed_loop）"
+          ],
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 60,
+          "lineEnd": 67,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "DeploymentReadbackReceipt 合规回执（Profile 为 huawei_ict_agentarts、HTTPS origin、HEAD commit 对齐、ARM64 deploymentVersion）",
+            "华为云平台独立 TraceId 关联与 Token/计费在线读回回执（非本地应用日志）",
+            "本地 Policy/ToolGateway 授权与真实目标读回 Evidence 审计记录"
+          ],
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 69,
+          "lineEnd": 73,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`huawei_cloud_credentials_readback`: 华为云账号凭据认证与受信端点绑定读回",
+            "`runtime_head_deployment_verified`: 当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回",
+            "`owned_bindings_invocation_readback`: 8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回",
+            "`multi_agent_routing_and_inference`: AgentArts 云端多智能体角色路由与模型推理真实回执",
+            "`platform_independent_trace_and_cost`: 平台独立 TraceId 关联与 Token/计费读回",
+            "`local_policy_evidence_closed_loop`: 本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环"
+          ],
+          "sourcePath": "from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "lineStart": 75,
+          "lineEnd": 82,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "deployment-readback-plan",
+      "title": "AgentArts 部署当前 HEAD 端到端读回离线规划",
+      "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud",
+        "real_account"
+      ],
+      "acceptanceSteps": [
+        "华为云账号凭据认证与受信端点绑定读回（huawei_cloud_credentials_readback）",
+        "当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回（runtime_head_deployment_verified）",
+        "8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回（owned_bindings_invocation_readback）",
+        "AgentArts 云端多智能体角色路由与模型推理真实回执（multi_agent_routing_and_inference）",
+        "平台独立 TraceId 关联与 Token/计费读回（platform_independent_trace_and_cost）",
+        "本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环（local_policy_evidence_closed_loop）"
+      ],
+      "evidenceRequirements": [
+        "DeploymentReadbackReceipt 合规回执（Profile 为 huawei_ict_agentarts、HTTPS origin、HEAD commit 对齐、ARM64 deploymentVersion）",
+        "华为云平台独立 TraceId 关联与 Token/计费回执（非本地应用日志）",
+        "本地 Policy/ToolGateway 授权与真实目标读回 Evidence 审计记录"
+      ],
+      "reason": "待真云验收",
+      "pendingItems": [
+        "huawei_cloud_credentials_readback",
+        "runtime_head_deployment_verified",
+        "owned_bindings_invocation_readback",
+        "multi_agent_routing_and_inference",
+        "platform_independent_trace_and_cost",
+        "local_policy_evidence_closed_loop"
+      ],
+      "provenance": {
+        "id": {
+          "value": "deployment-readback-plan",
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'deployment-readback-plan';"
+        },
+        "title": {
+          "value": "AgentArts 部署当前 HEAD 端到端读回离线规划",
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'AgentArts 部署当前 HEAD 端到端读回离线规划';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "lineStart": 392,
+          "lineEnd": 392,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "lineStart": 391,
+          "lineEnd": 391,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真云验收",
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "lineStart": 6,
+          "lineEnd": 6,
+          "source": "ts_code_literal",
+          "raw": "export const DEPLOYMENT_ACCEPTANCE_PENDING_REASON = '待真云验收' as const;"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud",
+            "real_account"
+          ],
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "lineStart": 11,
+          "lineEnd": 11,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['huawei_cloud', 'real_account'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "华为云账号凭据认证与受信端点绑定读回（huawei_cloud_credentials_readback）",
+            "当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回（runtime_head_deployment_verified）",
+            "8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回（owned_bindings_invocation_readback）",
+            "AgentArts 云端多智能体角色路由与模型推理真实回执（multi_agent_routing_and_inference）",
+            "平台独立 TraceId 关联与 Token/计费读回（platform_independent_trace_and_cost）",
+            "本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环（local_policy_evidence_closed_loop）"
+          ],
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 6
+        },
+        "evidenceRequirements": {
+          "value": [
+            "DeploymentReadbackReceipt 合规回执（Profile 为 huawei_ict_agentarts、HTTPS origin、HEAD commit 对齐、ARM64 deploymentVersion）",
+            "华为云平台独立 TraceId 关联与 Token/计费回执（非本地应用日志）",
+            "本地 Policy/ToolGateway 授权与真实目标读回 Evidence 审计记录"
+          ],
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 3
+        },
+        "pendingItems": {
+          "value": [
+            "huawei_cloud_credentials_readback",
+            "runtime_head_deployment_verified",
+            "owned_bindings_invocation_readback",
+            "multi_agent_routing_and_inference",
+            "platform_independent_trace_and_cost",
+            "local_policy_evidence_closed_loop"
+          ],
+          "sourcePath": "from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "source": "ts_code_pending_literal",
+          "itemCount": 6
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "release-install-upgrade-uninstall",
+      "title": "MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划",
+      "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "全新安装与启动（`release-install-start`）：运行独立安装包，验证无需管理员提权即可在当前用户空间安装，桌面及开始菜单快捷方式正确生成，首次启动主进程正确初始化 `userData` 目录",
+        "覆盖升级与数据保留（`release-upgrade-data`）：预先写入测试版本 `userData` 后运行新版本安装包覆盖安装，启动新版本验证 SQLite 任务与会话数据完好保留且表结构未重建",
+        "安全卸载（`release-uninstall`）：通过系统设置或快捷方式触发卸载，验证安装目录及快捷方式被彻底清理且用户数据（`userData`）按默认策略完整保留",
+        "真实证据读回：真实人工验收完成后，将具体操作环境信息、执行人、日志与时间戳记录至三份 json 占位文件"
+      ],
+      "evidenceRequirements": [
+        "`tests/manual/release/windows-install-start.json` 人工验收占位文件（pending/unverified）及真实启动日志",
+        "`tests/manual/release/windows-upgrade-data-retention.json` 人工验收占位文件及覆盖读回日志",
+        "`tests/manual/release/windows-uninstall.json` 人工验收占位文件及卸载残留检测日志"
+      ],
+      "reason": "待 Windows 真实环境人工执行安装、覆盖升级与卸载验收",
+      "pendingItems": [
+        "`release_install_start_real_machine`：全新安装与启动待 Windows 真实机人工执行验收",
+        "`release_upgrade_data_retention_real_machine`：覆盖升级与数据保留待 Windows 真实机人工执行验收",
+        "`release_uninstall_real_machine`：安全卸载与数据保留待 Windows 真实机人工执行验收"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划",
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "release-install-upgrade-uninstall",
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 7,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "全新安装与启动（`release-install-start`）：运行独立安装包，验证无需管理员提权即可在当前用户空间安装，桌面及开始菜单快捷方式正确生成，首次启动主进程正确初始化 `userData` 目录",
+            "覆盖升级与数据保留（`release-upgrade-data`）：预先写入测试版本 `userData` 后运行新版本安装包覆盖安装，启动新版本验证 SQLite 任务与会话数据完好保留且表结构未重建",
+            "安全卸载（`release-uninstall`）：通过系统设置或快捷方式触发卸载，验证安装目录及快捷方式被彻底清理且用户数据（`userData`）按默认策略完整保留",
+            "真实证据读回：真实人工验收完成后，将具体操作环境信息、执行人、日志与时间戳记录至三份 json 占位文件"
+          ],
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 127,
+          "lineEnd": 132,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "`tests/manual/release/windows-install-start.json` 人工验收占位文件（pending/unverified）及真实启动日志",
+            "`tests/manual/release/windows-upgrade-data-retention.json` 人工验收占位文件及覆盖读回日志",
+            "`tests/manual/release/windows-uninstall.json` 人工验收占位文件及卸载残留检测日志"
+          ],
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 134,
+          "lineEnd": 138,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`release_install_start_real_machine`：全新安装与启动待 Windows 真实机人工执行验收",
+            "`release_upgrade_data_retention_real_machine`：覆盖升级与数据保留待 Windows 真实机人工执行验收",
+            "`release_uninstall_real_machine`：安全卸载与数据保留待 Windows 真实机人工执行验收"
+          ],
+          "sourcePath": "from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "lineStart": 140,
+          "lineEnd": 144,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "release-install-upgrade-uninstall",
+      "title": "MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划",
+      "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "全新安装与启动（release-install-start）：运行独立安装包，验证无需管理员提权即可在当前用户空间安装，快捷方式生成且 userData 正常初始化",
+        "覆盖升级与数据保留（release-upgrade-data）：运行新版本安装包覆盖安装，启动新版本验证 userData 与 SQLite 任务/会话记录完好保留且表未重建",
+        "安全卸载（release-uninstall）：通过系统设置触发卸载，验证程序文件与快捷方式清理且用户数据默认保留",
+        "真实证据读回：真实 Windows 机器人工验收完成后将操作环境、执行人、日志与时间戳记录至三份 json 占位文件"
+      ],
+      "evidenceRequirements": [
+        "tests/manual/release/windows-install-start.json 人工验收占位文件及真实操作启动日志",
+        "tests/manual/release/windows-upgrade-data-retention.json 人工验收占位文件及覆盖读回日志",
+        "tests/manual/release/windows-uninstall.json 人工验收占位文件及卸载残留检测日志"
+      ],
+      "reason": "待 Windows 真实环境人工执行安装、覆盖升级与卸载验收",
+      "pendingItems": [],
+      "provenance": {
+        "id": {
+          "value": "release-install-upgrade-uninstall",
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "lineStart": 6,
+          "lineEnd": 6,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'release-install-upgrade-uninstall';"
+        },
+        "title": {
+          "value": "MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划",
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "lineStart": 7,
+          "lineEnd": 7,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "lineStart": 255,
+          "lineEnd": 255,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "lineStart": 254,
+          "lineEnd": 254,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待 Windows 真实环境人工执行安装、覆盖升级与卸载验收",
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "lineStart": 36,
+          "lineEnd": 36,
+          "source": "ts_code_literal",
+          "raw": "export const PENDING_REASON = '待 Windows 真实环境人工执行安装、覆盖升级与卸载验收';"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "lineStart": 12,
+          "lineEnd": 12,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['windows_real_machine'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "全新安装与启动（release-install-start）：运行独立安装包，验证无需管理员提权即可在当前用户空间安装，快捷方式生成且 userData 正常初始化",
+            "覆盖升级与数据保留（release-upgrade-data）：运行新版本安装包覆盖安装，启动新版本验证 userData 与 SQLite 任务/会话记录完好保留且表未重建",
+            "安全卸载（release-uninstall）：通过系统设置触发卸载，验证程序文件与快捷方式清理且用户数据默认保留",
+            "真实证据读回：真实 Windows 机器人工验收完成后将操作环境、执行人、日志与时间戳记录至三份 json 占位文件"
+          ],
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 4
+        },
+        "evidenceRequirements": {
+          "value": [
+            "tests/manual/release/windows-install-start.json 人工验收占位文件及真实操作启动日志",
+            "tests/manual/release/windows-upgrade-data-retention.json 人工验收占位文件及覆盖读回日志",
+            "tests/manual/release/windows-uninstall.json 人工验收占位文件及卸载残留检测日志"
+          ],
+          "sourcePath": "from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 3
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "notepad-live-acceptance",
+      "title": "MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验",
+      "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine",
+        "rights_holder_or_human"
+      ],
+      "acceptanceSteps": [
+        "f9_confirmation_gate：确认物理 F9 按键或受信操作者现场确认生效",
+        "uia_write：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换",
+        "independent_readback：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致",
+        "policy_authorization：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）",
+        "windows_host_pipe：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）"
+      ],
+      "evidenceRequirements": [
+        "win32 平台原生记事本写入证据（含 capability、confirmationGate、targetRef 与 runId）",
+        "独立 UIA 读回 SHA-256 摘要（readbackDigest）与 isolatedJournalReadback 审计日志"
+      ],
+      "reason": "待真机验收",
+      "pendingItems": [
+        "`f9_confirmation_gate`: 确认物理 F9 按键或受信操作者现场确认生效",
+        "`uia_write`: 由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换",
+        "`independent_readback`: 具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致",
+        "`policy_authorization`: 精确凭据/策略授权校验放行",
+        "`windows_host_pipe`: 受信管道通信与隔离日志读回"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验",
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "notepad-live-acceptance",
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine",
+            "rights_holder_or_human"
+          ],
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 8,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "f9_confirmation_gate：确认物理 F9 按键或受信操作者现场确认生效",
+            "uia_write：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换",
+            "independent_readback：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致",
+            "policy_authorization：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）",
+            "windows_host_pipe：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）"
+          ],
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 85,
+          "lineEnd": 91,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "win32 平台原生记事本写入证据（含 capability、confirmationGate、targetRef 与 runId）",
+            "独立 UIA 读回 SHA-256 摘要（readbackDigest）与 isolatedJournalReadback 审计日志"
+          ],
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 93,
+          "lineEnd": 96,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`f9_confirmation_gate`: 确认物理 F9 按键或受信操作者现场确认生效",
+            "`uia_write`: 由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换",
+            "`independent_readback`: 具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致",
+            "`policy_authorization`: 精确凭据/策略授权校验放行",
+            "`windows_host_pipe`: 受信管道通信与隔离日志读回"
+          ],
+          "sourcePath": "from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 98,
+          "lineEnd": 104,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "notepad-live-acceptance",
+      "title": "Windows 记事本真机验收离线规划与契约校验",
+      "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine",
+        "rights_holder_or_human"
+      ],
+      "acceptanceSteps": [
+        "f9_confirmation_gate：确认物理 F9 按键或受信操作者现场确认生效",
+        "uia_write：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换",
+        "independent_readback：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致",
+        "policy_authorization：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）",
+        "windows_host_pipe：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）"
+      ],
+      "evidenceRequirements": [
+        "win32 平台原生记事本写入证据（含 capability、confirmationGate、targetRef 与 runId）",
+        "独立 UIA 读回 SHA-256 摘要（readbackDigest）与 isolatedJournalReadback 审计日志"
+      ],
+      "reason": "待真机验收",
+      "pendingItems": [
+        "f9_confirmation_gate",
+        "uia_write",
+        "independent_readback",
+        "policy_authorization",
+        "windows_host_pipe"
+      ],
+      "provenance": {
+        "id": {
+          "value": "notepad-live-acceptance",
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'notepad-live-acceptance';"
+        },
+        "title": {
+          "value": "Windows 记事本真机验收离线规划与契约校验",
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'Windows 记事本真机验收离线规划与契约校验';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "lineStart": 345,
+          "lineEnd": 345,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "lineStart": 344,
+          "lineEnd": 344,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真机验收",
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "lineStart": 7,
+          "lineEnd": 7,
+          "source": "ts_code_literal",
+          "raw": "export const NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine",
+            "rights_holder_or_human"
+          ],
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "lineStart": 13,
+          "lineEnd": 13,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['windows_real_machine', 'rights_holder_or_human'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "f9_confirmation_gate：确认物理 F9 按键或受信操作者现场确认生效",
+            "uia_write：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换",
+            "independent_readback：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致",
+            "policy_authorization：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）",
+            "windows_host_pipe：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）"
+          ],
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 5
+        },
+        "evidenceRequirements": {
+          "value": [
+            "win32 平台原生记事本写入证据（含 capability、confirmationGate、targetRef 与 runId）",
+            "独立 UIA 读回 SHA-256 摘要（readbackDigest）与 isolatedJournalReadback 审计日志"
+          ],
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 2
+        },
+        "pendingItems": {
+          "value": [
+            "f9_confirmation_gate",
+            "uia_write",
+            "independent_readback",
+            "policy_authorization",
+            "windows_host_pipe"
+          ],
+          "sourcePath": "from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "source": "ts_code_pending_literal",
+          "itemCount": 5
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "privacy-deletion-acceptance-plan",
+      "title": "MOD-27：隐私删除与私人数据授权离线验收规划",
+      "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "rights_holder_or_human",
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "human_user_privacy_authorization：真人用户隐私授权与敏感范围审查（现场明确授权访问与删除范围，严禁模型代签或自动放行）",
+        "on_site_deletion_readback：删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）",
+        "graph_dependency_erasure_integrity：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）",
+        "durable_storage_restart_verification：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）",
+        "cloud_boundary_and_leak_prevention：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）"
+      ],
+      "evidenceRequirements": [
+        "PrivacyDeletionReceipt 合规物理删除回执（包含 receiptId、namespace、targetId、action='privacy_deletion'、physicalErasure=true、有序 erasedGraphRevisions）",
+        "真人用户现场授权凭证（realUserAuthorization）与持久化存储物理擦除现场读回回执（realDeletionReadback）"
+      ],
+      "reason": "待真人/真机验收",
+      "pendingItems": [
+        "`human_user_privacy_authorization`: 真人用户隐私授权与敏感范围审查",
+        "`on_site_deletion_readback`: 删除现场物理读回与存储清零验证",
+        "`graph_dependency_erasure_integrity`: 图谱依赖级联处理与断链校验",
+        "`durable_storage_restart_verification`: 持久化存储进程重启后现场读回",
+        "`cloud_boundary_and_leak_prevention`: 云端与跨进程边界防泄露核验"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "MOD-27：隐私删除与私人数据授权离线验收规划",
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "privacy-deletion-acceptance-plan",
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "rights_holder_or_human",
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 8,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "human_user_privacy_authorization：真人用户隐私授权与敏感范围审查（现场明确授权访问与删除范围，严禁模型代签或自动放行）",
+            "on_site_deletion_readback：删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）",
+            "graph_dependency_erasure_integrity：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）",
+            "durable_storage_restart_verification：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）",
+            "cloud_boundary_and_leak_prevention：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）"
+          ],
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 60,
+          "lineEnd": 66,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "PrivacyDeletionReceipt 合规物理删除回执（包含 receiptId、namespace、targetId、action='privacy_deletion'、physicalErasure=true、有序 erasedGraphRevisions）",
+            "真人用户现场授权凭证（realUserAuthorization）与持久化存储物理擦除现场读回回执（realDeletionReadback）"
+          ],
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 68,
+          "lineEnd": 71,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`human_user_privacy_authorization`: 真人用户隐私授权与敏感范围审查",
+            "`on_site_deletion_readback`: 删除现场物理读回与存储清零验证",
+            "`graph_dependency_erasure_integrity`: 图谱依赖级联处理与断链校验",
+            "`durable_storage_restart_verification`: 持久化存储进程重启后现场读回",
+            "`cloud_boundary_and_leak_prevention`: 云端与跨进程边界防泄露核验"
+          ],
+          "sourcePath": "from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "lineStart": 73,
+          "lineEnd": 79,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "privacy-deletion-acceptance-plan",
+      "title": "MOD-27：隐私删除与私人数据授权离线验收规划",
+      "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "rights_holder_or_human",
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "human_user_privacy_authorization：真人用户隐私授权与敏感范围审查（现场明确授权访问与删除范围，严禁模型代签或自动放行）",
+        "on_site_deletion_readback：删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）",
+        "graph_dependency_erasure_integrity：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）",
+        "durable_storage_restart_verification：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）",
+        "cloud_boundary_and_leak_prevention：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）"
+      ],
+      "evidenceRequirements": [
+        "PrivacyDeletionReceipt 合规物理删除回执（包含 receiptId、namespace、targetId、action=\\'privacy_deletion\\'、physicalErasure=true、有序 erasedGraphRevisions）",
+        "真人用户现场授权凭证（realUserAuthorization）与持久化存储物理擦除现场读回回执（realDeletionReadback）"
+      ],
+      "reason": "待真人/真机验收",
+      "pendingItems": [
+        "human_user_privacy_authorization",
+        "on_site_deletion_readback",
+        "graph_dependency_erasure_integrity",
+        "durable_storage_restart_verification",
+        "cloud_boundary_and_leak_prevention"
+      ],
+      "provenance": {
+        "id": {
+          "value": "privacy-deletion-acceptance-plan",
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'privacy-deletion-acceptance-plan';"
+        },
+        "title": {
+          "value": "MOD-27：隐私删除与私人数据授权离线验收规划",
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'MOD-27：隐私删除与私人数据授权离线验收规划';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "lineStart": 423,
+          "lineEnd": 423,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "lineStart": 424,
+          "lineEnd": 424,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真人/真机验收",
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "ts_code_literal",
+          "raw": "export const PRIVACY_ACCEPTANCE_PENDING_REASON = '待真人/真机验收' as const;"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "rights_holder_or_human",
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "lineStart": 11,
+          "lineEnd": 11,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['rights_holder_or_human', 'windows_real_machine'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "human_user_privacy_authorization：真人用户隐私授权与敏感范围审查（现场明确授权访问与删除范围，严禁模型代签或自动放行）",
+            "on_site_deletion_readback：删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）",
+            "graph_dependency_erasure_integrity：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）",
+            "durable_storage_restart_verification：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）",
+            "cloud_boundary_and_leak_prevention：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）"
+          ],
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 5
+        },
+        "evidenceRequirements": {
+          "value": [
+            "PrivacyDeletionReceipt 合规物理删除回执（包含 receiptId、namespace、targetId、action=\\'privacy_deletion\\'、physicalErasure=true、有序 erasedGraphRevisions）",
+            "真人用户现场授权凭证（realUserAuthorization）与持久化存储物理擦除现场读回回执（realDeletionReadback）"
+          ],
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 2
+        },
+        "pendingItems": {
+          "value": [
+            "human_user_privacy_authorization",
+            "on_site_deletion_readback",
+            "graph_dependency_erasure_integrity",
+            "durable_storage_restart_verification",
+            "cloud_boundary_and_leak_prevention"
+          ],
+          "sourcePath": "from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "source": "ts_code_pending_literal",
+          "itemCount": 5
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "windows-sandbox-acceptance-plan",
+      "title": "MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
+      "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过",
+        "psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true",
+        "job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）",
+        "filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻",
+        "network_deny_guard：网络连接在沙箱内部被内核拦截拒绝",
+        "policy_binding：参数绑定、任务引用及单次授权已被确实验证"
+      ],
+      "evidenceRequirements": [
+        "win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）",
+        "辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据"
+      ],
+      "reason": "待真机验收",
+      "pendingItems": [
+        "`helper_attestation`: 辅助进程可信身份与文件 SHA-256 Pin 核验通过",
+        "`psec_appcontainer_boundary`: AppContainer 隔离生效且 enforced === true",
+        "`job_object_containment`: JobObject 容器锁定且子孙进程均随 helper 终止",
+        "`filesystem_isolation`: 读写根受限、副作用可控且符号链接逃逸受阻",
+        "`network_deny_guard`: 网络连接在沙箱内部被内核拦截拒绝",
+        "`policy_binding`: 参数绑定、任务引用及单次授权已被确实验证"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "windows-sandbox-acceptance-plan",
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 7,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过",
+            "psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true",
+            "job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）",
+            "filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻",
+            "network_deny_guard：网络连接在沙箱内部被内核拦截拒绝",
+            "policy_binding：参数绑定、任务引用及单次授权已被确实验证"
+          ],
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 95,
+          "lineEnd": 102,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）",
+            "辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据"
+          ],
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 104,
+          "lineEnd": 107,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`helper_attestation`: 辅助进程可信身份与文件 SHA-256 Pin 核验通过",
+            "`psec_appcontainer_boundary`: AppContainer 隔离生效且 enforced === true",
+            "`job_object_containment`: JobObject 容器锁定且子孙进程均随 helper 终止",
+            "`filesystem_isolation`: 读写根受限、副作用可控且符号链接逃逸受阻",
+            "`network_deny_guard`: 网络连接在沙箱内部被内核拦截拒绝",
+            "`policy_binding`: 参数绑定、任务引用及单次授权已被确实验证"
+          ],
+          "sourcePath": "from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 109,
+          "lineEnd": 116,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "windows-sandbox-acceptance-plan",
+      "title": "Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
+      "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "windows_real_machine"
+      ],
+      "acceptanceSteps": [
+        "helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过",
+        "psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true",
+        "job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）",
+        "filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻",
+        "network_deny_guard：网络连接在沙箱内部被内核拦截拒绝",
+        "policy_binding：参数绑定、任务引用及单次授权已被确实验证"
+      ],
+      "evidenceRequirements": [
+        "win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）",
+        "辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据"
+      ],
+      "reason": "待真机验收",
+      "pendingItems": [
+        "helper_attestation",
+        "psec_appcontainer_boundary",
+        "job_object_containment",
+        "filesystem_isolation",
+        "network_deny_guard",
+        "policy_binding"
+      ],
+      "provenance": {
+        "id": {
+          "value": "windows-sandbox-acceptance-plan",
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'windows-sandbox-acceptance-plan';"
+        },
+        "title": {
+          "value": "Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "lineStart": 512,
+          "lineEnd": 512,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "lineStart": 511,
+          "lineEnd": 511,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真机验收",
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "lineStart": 8,
+          "lineEnd": 8,
+          "source": "ts_code_literal",
+          "raw": "export const WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "windows_real_machine"
+          ],
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "lineStart": 14,
+          "lineEnd": 14,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['windows_real_machine'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过",
+            "psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true",
+            "job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）",
+            "filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻",
+            "network_deny_guard：网络连接在沙箱内部被内核拦截拒绝",
+            "policy_binding：参数绑定、任务引用及单次授权已被确实验证"
+          ],
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 6
+        },
+        "evidenceRequirements": {
+          "value": [
+            "win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）",
+            "辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据"
+          ],
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 2
+        },
+        "pendingItems": {
+          "value": [
+            "helper_attestation",
+            "psec_appcontainer_boundary",
+            "job_object_containment",
+            "filesystem_isolation",
+            "network_deny_guard",
+            "policy_binding"
+          ],
+          "sourcePath": "from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "source": "ts_code_pending_literal",
+          "itemCount": 6
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "f09-cloud-prefix-plan",
+      "title": "F09：订阅云前缀与会话授权端到端读回离线规划",
+      "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud",
+        "real_account"
+      ],
+      "acceptanceSteps": [
+        "华为云 AgentArts 托管运行时前缀路由（/invocations/*）公网端点实际映射与读回",
+        "华为云端到端会话授权与 feed-source-grant: 租约凭据在线读回（非本地 mock）",
+        "真实 feeds 连接器多源订阅流拉取、增量 cursor 与去重校验",
+        "AgentArts 代理决策模型（DeepSeek/Laya）对动态信号的语义相关性与价值判别在线推理",
+        "F09_N04 到 F10 深度研究队列的跨工作流真实任务投递与回执确认",
+        "AgentArts 平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）"
+      ],
+      "evidenceRequirements": [
+        "F09CloudPrefixReceipt 合规云前缀回执（含 gatewayUrl HTTPS origin、cloudPrefix 路径、runtimeName、prefixVerified=true 与 sessionAuth 租约）",
+        "AgentArts 平台独立 TraceId 关联、Token/计费在线读回与真实 feeds 数据落盘审计"
+      ],
+      "reason": "待真云验收",
+      "pendingItems": [
+        "`huawei_cloud_prefix_route_readback`: 华为云 AgentArts 托管运行时前缀路由公网端点实际映射与读回",
+        "`cloud_session_auth_and_source_grant`: 华为云端到端会话授权与 feed-source-grant 租约凭据在线读回",
+        "`real_feeds_provider_binding`: 真实 feeds 连接器多源订阅流拉取、增量 cursor 与去重校验",
+        "`agentarts_decision_model_inference`: AgentArts 代理决策模型在线推理",
+        "`enqueue_research_cross_workflow_handoff`: F09 到 F10 深度研究队列跨工作流任务投递与回执",
+        "`platform_independent_trace_and_cost`: AgentArts 平台独立 TraceId 关联与 Token/计费读回"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "F09：订阅云前缀与会话授权端到端读回离线规划",
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "f09-cloud-prefix-plan",
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud",
+            "real_account"
+          ],
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 8,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "华为云 AgentArts 托管运行时前缀路由（/invocations/*）公网端点实际映射与读回",
+            "华为云端到端会话授权与 feed-source-grant: 租约凭据在线读回（非本地 mock）",
+            "真实 feeds 连接器多源订阅流拉取、增量 cursor 与去重校验",
+            "AgentArts 代理决策模型（DeepSeek/Laya）对动态信号的语义相关性与价值判别在线推理",
+            "F09_N04 到 F10 深度研究队列的跨工作流真实任务投递与回执确认",
+            "AgentArts 平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）"
+          ],
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 69,
+          "lineEnd": 76,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "F09CloudPrefixReceipt 合规云前缀回执（含 gatewayUrl HTTPS origin、cloudPrefix 路径、runtimeName、prefixVerified=true 与 sessionAuth 租约）",
+            "AgentArts 平台独立 TraceId 关联、Token/计费在线读回与真实 feeds 数据落盘审计"
+          ],
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 78,
+          "lineEnd": 81,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`huawei_cloud_prefix_route_readback`: 华为云 AgentArts 托管运行时前缀路由公网端点实际映射与读回",
+            "`cloud_session_auth_and_source_grant`: 华为云端到端会话授权与 feed-source-grant 租约凭据在线读回",
+            "`real_feeds_provider_binding`: 真实 feeds 连接器多源订阅流拉取、增量 cursor 与去重校验",
+            "`agentarts_decision_model_inference`: AgentArts 代理决策模型在线推理",
+            "`enqueue_research_cross_workflow_handoff`: F09 到 F10 深度研究队列跨工作流任务投递与回执",
+            "`platform_independent_trace_and_cost`: AgentArts 平台独立 TraceId 关联与 Token/计费读回"
+          ],
+          "sourcePath": "from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 83,
+          "lineEnd": 90,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "f09-cloud-prefix-plan",
+      "title": "F09：订阅云前缀与会话授权端到端读回离线规划",
+      "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud",
+        "real_account"
+      ],
+      "acceptanceSteps": [
+        "华为云 AgentArts 托管运行时前缀路由（/invocations/*）公网端点实际映射与读回",
+        "华为云端到端会话授权与 feed-source-grant: 租约凭据在线读回（非本地 mock）",
+        "真实 feeds 连接器多源订阅流拉取、增量 cursor 与去重校验",
+        "AgentArts 代理决策模型（DeepSeek/Laya）对动态信号的语义相关性与价值判别在线推理",
+        "F09_N04 到 F10 深度研究队列的跨工作流真实任务投递与回执确认",
+        "AgentArts 平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）"
+      ],
+      "evidenceRequirements": [
+        "F09CloudPrefixReceipt 合规云前缀回执（含 gatewayUrl HTTPS origin、cloudPrefix 路径、runtimeName、prefixVerified=true 与 sessionAuth 租约）",
+        "AgentArts 平台独立 TraceId 关联、Token/计费在线读回与真实 feeds 数据落盘审计"
+      ],
+      "reason": "待真云验收",
+      "pendingItems": [
+        "huawei_cloud_prefix_route_readback",
+        "cloud_session_auth_and_source_grant",
+        "real_feeds_provider_binding",
+        "agentarts_decision_model_inference",
+        "enqueue_research_cross_workflow_handoff",
+        "platform_independent_trace_and_cost"
+      ],
+      "provenance": {
+        "id": {
+          "value": "f09-cloud-prefix-plan",
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'f09-cloud-prefix-plan';"
+        },
+        "title": {
+          "value": "F09：订阅云前缀与会话授权端到端读回离线规划",
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'F09：订阅云前缀与会话授权端到端读回离线规划';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "lineStart": 481,
+          "lineEnd": 481,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "lineStart": 480,
+          "lineEnd": 480,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真云验收",
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "ts_code_literal",
+          "raw": "export const F09_ACCEPTANCE_PENDING_REASON = '待真云验收' as const;"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud",
+            "real_account"
+          ],
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "lineStart": 11,
+          "lineEnd": 11,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['huawei_cloud', 'real_account'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "华为云 AgentArts 托管运行时前缀路由（/invocations/*）公网端点实际映射与读回",
+            "华为云端到端会话授权与 feed-source-grant: 租约凭据在线读回（非本地 mock）",
+            "真实 feeds 连接器多源订阅流拉取、增量 cursor 与去重校验",
+            "AgentArts 代理决策模型（DeepSeek/Laya）对动态信号的语义相关性与价值判别在线推理",
+            "F09_N04 到 F10 深度研究队列的跨工作流真实任务投递与回执确认",
+            "AgentArts 平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）"
+          ],
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 6
+        },
+        "evidenceRequirements": {
+          "value": [
+            "F09CloudPrefixReceipt 合规云前缀回执（含 gatewayUrl HTTPS origin、cloudPrefix 路径、runtimeName、prefixVerified=true 与 sessionAuth 租约）",
+            "AgentArts 平台独立 TraceId 关联、Token/计费在线读回与真实 feeds 数据落盘审计"
+          ],
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 2
+        },
+        "pendingItems": {
+          "value": [
+            "huawei_cloud_prefix_route_readback",
+            "cloud_session_auth_and_source_grant",
+            "real_feeds_provider_binding",
+            "agentarts_decision_model_inference",
+            "enqueue_research_cross_workflow_handoff",
+            "platform_independent_trace_and_cost"
+          ],
+          "sourcePath": "from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "source": "ts_code_pending_literal",
+          "itemCount": 6
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "cloud-persistent-acceptance-plan",
+      "title": "cloudPersistent：关机后云持续离线契约与验收规划",
+      "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud"
+      ],
+      "acceptanceSteps": [
+        "device_shutdown_detection：本机桌面系统关机/休眠/离线事件捕获与状态读回（localDevice=false）",
+        "cloud_persistent_host_handover：向 AgentArts 云端常驻宿主（cloudPersistentHost）原子交接执行会话与检查点恢复",
+        "unattended_cloud_autonomous_dispatch：关机脱机期间云端自主调度器（Scheduler）唤醒与工具执行（非本机轮询驱动）",
+        "cloud_checkpoint_persistence：关机持续运行期间任务状态、阶段时间线与回执在华为云端的原子持久化读回",
+        "device_reconnect_reconciliation：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回",
+        "platform_independent_trace_and_cost：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）"
+      ],
+      "evidenceRequirements": [
+        "CloudPersistentEvidence 合规回执（含 cloudPersistentHost HTTPS/WSS URL、严格时序因果 cloudExecutionStartedAt >= deviceShutdownAt 与 cloudTraceId）",
+        "AgentArts 平台独立 TraceId 关联、双向对账回执与华为云持久化检查点读回记录"
+      ],
+      "reason": "待真云关机验收",
+      "pendingItems": [
+        "`device_shutdown_detection`: 本机桌面系统关机/休眠/离线事件捕获与状态读回",
+        "`cloud_persistent_host_handover`: 向 AgentArts 云端常驻宿主原子交接执行会话与检查点恢复",
+        "`unattended_cloud_autonomous_dispatch`: 关机脱机期间云端自主调度器唤醒与工具执行",
+        "`cloud_checkpoint_persistence`: 关机持续运行期间任务状态与回执在华为云端的原子持久化读回",
+        "`device_reconnect_reconciliation`: 宿主机开机重新连接后云端执行结果与本地对账读回",
+        "`platform_independent_trace_and_cost`: 华为云 AgentArts 平台独立 TraceId 与计费读回"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "cloudPersistent：关机后云持续离线契约与验收规划",
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "cloud-persistent-acceptance-plan",
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud"
+          ],
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 7,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "device_shutdown_detection：本机桌面系统关机/休眠/离线事件捕获与状态读回（localDevice=false）",
+            "cloud_persistent_host_handover：向 AgentArts 云端常驻宿主（cloudPersistentHost）原子交接执行会话与检查点恢复",
+            "unattended_cloud_autonomous_dispatch：关机脱机期间云端自主调度器（Scheduler）唤醒与工具执行（非本机轮询驱动）",
+            "cloud_checkpoint_persistence：关机持续运行期间任务状态、阶段时间线与回执在华为云端的原子持久化读回",
+            "device_reconnect_reconciliation：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回",
+            "platform_independent_trace_and_cost：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）"
+          ],
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 88,
+          "lineEnd": 95,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "CloudPersistentEvidence 合规回执（含 cloudPersistentHost HTTPS/WSS URL、严格时序因果 cloudExecutionStartedAt >= deviceShutdownAt 与 cloudTraceId）",
+            "AgentArts 平台独立 TraceId 关联、双向对账回执与华为云持久化检查点读回记录"
+          ],
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 97,
+          "lineEnd": 100,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "`device_shutdown_detection`: 本机桌面系统关机/休眠/离线事件捕获与状态读回",
+            "`cloud_persistent_host_handover`: 向 AgentArts 云端常驻宿主原子交接执行会话与检查点恢复",
+            "`unattended_cloud_autonomous_dispatch`: 关机脱机期间云端自主调度器唤醒与工具执行",
+            "`cloud_checkpoint_persistence`: 关机持续运行期间任务状态与回执在华为云端的原子持久化读回",
+            "`device_reconnect_reconciliation`: 宿主机开机重新连接后云端执行结果与本地对账读回",
+            "`platform_independent_trace_and_cost`: 华为云 AgentArts 平台独立 TraceId 与计费读回"
+          ],
+          "sourcePath": "from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 102,
+          "lineEnd": 109,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "cloud-persistent-acceptance-plan",
+      "title": "cloudPersistent：关机后云持续离线契约与验收规划",
+      "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud"
+      ],
+      "acceptanceSteps": [
+        "device_shutdown_detection：本机桌面系统关机/休眠/离线事件捕获与状态读回（localDevice=false）",
+        "cloud_persistent_host_handover：向 AgentArts 云端常驻宿主（cloudPersistentHost）原子交接执行会话与检查点恢复",
+        "unattended_cloud_autonomous_dispatch：关机脱机期间云端自主调度器（Scheduler）唤醒与工具执行（非本机轮询驱动）",
+        "cloud_checkpoint_persistence：关机持续运行期间任务状态、阶段时间线与回执在华为云端的原子持久化读回",
+        "device_reconnect_reconciliation：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回",
+        "platform_independent_trace_and_cost：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）"
+      ],
+      "evidenceRequirements": [
+        "CloudPersistentEvidence 合规回执（含 cloudPersistentHost HTTPS/WSS URL、严格时序因果 cloudExecutionStartedAt >= deviceShutdownAt 与 cloudTraceId）",
+        "AgentArts 平台独立 TraceId 关联、双向对账回执与华为云持久化检查点读回记录"
+      ],
+      "reason": "待真云关机验收",
+      "pendingItems": [
+        "device_shutdown_detection",
+        "cloud_persistent_host_handover",
+        "unattended_cloud_autonomous_dispatch",
+        "cloud_checkpoint_persistence",
+        "device_reconnect_reconciliation",
+        "platform_independent_trace_and_cost"
+      ],
+      "provenance": {
+        "id": {
+          "value": "cloud-persistent-acceptance-plan",
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'cloud-persistent-acceptance-plan';"
+        },
+        "title": {
+          "value": "cloudPersistent：关机后云持续离线契约与验收规划",
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'cloudPersistent：关机后云持续离线契约与验收规划';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "lineStart": 565,
+          "lineEnd": 565,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "lineStart": 564,
+          "lineEnd": 564,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真云关机验收",
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "ts_code_literal",
+          "raw": "export const CLOUD_PERSISTENT_PENDING_REASON = '待真云关机验收' as const;"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud"
+          ],
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "lineStart": 12,
+          "lineEnd": 12,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['huawei_cloud'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "device_shutdown_detection：本机桌面系统关机/休眠/离线事件捕获与状态读回（localDevice=false）",
+            "cloud_persistent_host_handover：向 AgentArts 云端常驻宿主（cloudPersistentHost）原子交接执行会话与检查点恢复",
+            "unattended_cloud_autonomous_dispatch：关机脱机期间云端自主调度器（Scheduler）唤醒与工具执行（非本机轮询驱动）",
+            "cloud_checkpoint_persistence：关机持续运行期间任务状态、阶段时间线与回执在华为云端的原子持久化读回",
+            "device_reconnect_reconciliation：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回",
+            "platform_independent_trace_and_cost：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）"
+          ],
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 6
+        },
+        "evidenceRequirements": {
+          "value": [
+            "CloudPersistentEvidence 合规回执（含 cloudPersistentHost HTTPS/WSS URL、严格时序因果 cloudExecutionStartedAt >= deviceShutdownAt 与 cloudTraceId）",
+            "AgentArts 平台独立 TraceId 关联、双向对账回执与华为云持久化检查点读回记录"
+          ],
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 2
+        },
+        "pendingItems": {
+          "value": [
+            "device_shutdown_detection",
+            "cloud_persistent_host_handover",
+            "unattended_cloud_autonomous_dispatch",
+            "cloud_checkpoint_persistence",
+            "device_reconnect_reconciliation",
+            "platform_independent_trace_and_cost"
+          ],
+          "sourcePath": "from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "source": "ts_code_pending_literal",
+          "itemCount": 6
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "mod04b-agentarts-acceptance-plan",
+      "title": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划",
+      "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+      "planType": "markdown_plan",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud"
+      ],
+      "acceptanceSteps": [
+        "步骤 1：`agentarts_real_cloud_endpoint`：华为云 AgentArts 真实端点（HTTPS/WSS）与有效凭据（Authorization）端到端连通读回（非本地 Fake）",
+        "步骤 2：`agentarts_multi_agent_routing`：AgentArts 云端多智能体协作网络（主协调器与专业子 Agent）角色路由与分派结果真实读回",
+        "步骤 3：`agentarts_continuation_roundtrip`：基于真实提案 proposalId 的受限 continuation 工具结果回传与多轮续答闭环读回",
+        "步骤 4：`agentarts_tool_proposal_verification`：云端生成 ToolProposal 到本地 Policy/ToolGateway 授权审批与结果核实的双向读回",
+        "步骤 5：`platform_independent_trace_and_cost`：华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）",
+        "步骤 6：`local_cancellation_and_deadline_settlement`：真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回"
+      ],
+      "evidenceRequirements": [
+        "凭证 1：`Mod04bAgentArtsEvidence` 合规回执（含 gatewayUrl HTTPS/WSS、CloudTraceId、时序因果 completedAt >= invokedAt、至少 2 位不同非 Mock Agent 与/或 confirmed 状态 continuation）",
+        "凭证 2：华为云 AgentArts 平台独立 TraceId 关联、Token/计费在线读回与双向授权审计凭据"
+      ],
+      "reason": "待真云验收",
+      "pendingItems": [
+        "挂起项 1：`agentarts_real_cloud_endpoint`（status: unavailable, reason: 待真云验收）",
+        "挂起项 2：`agentarts_multi_agent_routing`（status: unavailable, reason: 待真云验收）",
+        "挂起项 3：`agentarts_continuation_roundtrip`（status: unavailable, reason: 待真云验收）",
+        "挂起项 4：`agentarts_tool_proposal_verification`（status: unavailable, reason: 待真云验收）",
+        "挂起项 5：`platform_independent_trace_and_cost`（status: unavailable, reason: 待真云验收）",
+        "挂起项 6：`local_cancellation_and_deadline_settlement`（status: unavailable, reason: 待真云验收）"
+      ],
+      "hasVerifiedEvidence": false,
+      "claimVerified": false,
+      "provenance": {
+        "title": {
+          "value": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划",
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "markdown_frontmatter"
+        },
+        "id": {
+          "value": "mod04b-agentarts-acceptance-plan",
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 2,
+          "lineEnd": 2,
+          "source": "markdown_frontmatter"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 5,
+          "lineEnd": 5,
+          "source": "markdown_frontmatter"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "markdown_frontmatter"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud"
+          ],
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 6,
+          "lineEnd": 7,
+          "source": "markdown_frontmatter"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "步骤 1：`agentarts_real_cloud_endpoint`：华为云 AgentArts 真实端点（HTTPS/WSS）与有效凭据（Authorization）端到端连通读回（非本地 Fake）",
+            "步骤 2：`agentarts_multi_agent_routing`：AgentArts 云端多智能体协作网络（主协调器与专业子 Agent）角色路由与分派结果真实读回",
+            "步骤 3：`agentarts_continuation_roundtrip`：基于真实提案 proposalId 的受限 continuation 工具结果回传与多轮续答闭环读回",
+            "步骤 4：`agentarts_tool_proposal_verification`：云端生成 ToolProposal 到本地 Policy/ToolGateway 授权审批与结果核实的双向读回",
+            "步骤 5：`platform_independent_trace_and_cost`：华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）",
+            "步骤 6：`local_cancellation_and_deadline_settlement`：真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回"
+          ],
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 139,
+          "lineEnd": 146,
+          "source": "markdown_section_list",
+          "sectionHeading": "验收步骤"
+        },
+        "evidenceRequirements": {
+          "value": [
+            "凭证 1：`Mod04bAgentArtsEvidence` 合规回执（含 gatewayUrl HTTPS/WSS、CloudTraceId、时序因果 completedAt >= invokedAt、至少 2 位不同非 Mock Agent 与/或 confirmed 状态 continuation）",
+            "凭证 2：华为云 AgentArts 平台独立 TraceId 关联、Token/计费在线读回与双向授权审计凭据"
+          ],
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 150,
+          "lineEnd": 153,
+          "source": "markdown_section_list",
+          "sectionHeading": "证据要求"
+        },
+        "pendingItems": {
+          "value": [
+            "挂起项 1：`agentarts_real_cloud_endpoint`（status: unavailable, reason: 待真云验收）",
+            "挂起项 2：`agentarts_multi_agent_routing`（status: unavailable, reason: 待真云验收）",
+            "挂起项 3：`agentarts_continuation_roundtrip`（status: unavailable, reason: 待真云验收）",
+            "挂起项 4：`agentarts_tool_proposal_verification`（status: unavailable, reason: 待真云验收）",
+            "挂起项 5：`platform_independent_trace_and_cost`（status: unavailable, reason: 待真云验收）",
+            "挂起项 6：`local_cancellation_and_deadline_settlement`（status: unavailable, reason: 待真云验收）"
+          ],
+          "sourcePath": "from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "lineStart": 157,
+          "lineEnd": 164,
+          "source": "markdown_section_list"
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    },
+    {
+      "id": "mod04b-agentarts-acceptance-plan",
+      "title": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划",
+      "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+      "planType": "code_plan_static",
+      "closedLoop": false,
+      "status": "unavailable",
+      "requiredEnvironments": [
+        "huawei_cloud"
+      ],
+      "acceptanceSteps": [
+        "agentarts_real_cloud_endpoint：华为云 AgentArts 真实端点（HTTPS/WSS）与有效凭据（Authorization）端到端连通读回（非本地 Fake）",
+        "agentarts_multi_agent_routing：AgentArts 云端多智能体协作网络（主协调器与专业子 Agent）角色路由与分派结果真实读回",
+        "agentarts_continuation_roundtrip：基于真实提案 proposalId 的受限 continuation 工具结果回传与多轮续答闭环读回",
+        "agentarts_tool_proposal_verification：云端生成 ToolProposal 到本地 Policy/ToolGateway 授权审批与结果核实的双向读回",
+        "platform_independent_trace_and_cost：华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）",
+        "local_cancellation_and_deadline_settlement：真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回"
+      ],
+      "evidenceRequirements": [
+        "Mod04bAgentArtsEvidence 合规回执（含 gatewayUrl HTTPS/WSS、CloudTraceId、时序因果 completedAt >= invokedAt、至少 2 位不同非 Mock Agent 与/或 confirmed 状态 continuation）",
+        "华为云 AgentArts 平台独立 TraceId 关联、Token/计费在线读回与双向授权审计凭据"
+      ],
+      "reason": "待真云验收",
+      "pendingItems": [
+        "agentarts_real_cloud_endpoint",
+        "agentarts_multi_agent_routing",
+        "agentarts_continuation_roundtrip",
+        "agentarts_tool_proposal_verification",
+        "platform_independent_trace_and_cost",
+        "local_cancellation_and_deadline_settlement"
+      ],
+      "provenance": {
+        "id": {
+          "value": "mod04b-agentarts-acceptance-plan",
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "lineStart": 3,
+          "lineEnd": 3,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_ID = 'mod04b-agentarts-acceptance-plan';"
+        },
+        "title": {
+          "value": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划",
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "lineStart": 4,
+          "lineEnd": 4,
+          "source": "ts_code_literal",
+          "raw": "export const PLAN_TITLE = 'MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划';"
+        },
+        "closedLoop": {
+          "value": false,
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "lineStart": 817,
+          "lineEnd": 817,
+          "source": "ts_code_literal",
+          "raw": "closedLoop: false,"
+        },
+        "status": {
+          "value": "unavailable",
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "lineStart": 816,
+          "lineEnd": 816,
+          "source": "ts_code_literal",
+          "raw": "status: 'unavailable',"
+        },
+        "reason": {
+          "value": "待真云验收",
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "lineStart": 7,
+          "lineEnd": 7,
+          "source": "ts_code_literal",
+          "raw": "export const MOD04B_AGENTARTS_PENDING_REASON = '待真云验收' as const;"
+        },
+        "requiredEnvironments": {
+          "value": [
+            "huawei_cloud"
+          ],
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "lineStart": 13,
+          "lineEnd": 13,
+          "source": "ts_code_literal",
+          "raw": "export const REQUIRED_ENVIRONMENTS = ['huawei_cloud'];"
+        },
+        "acceptanceSteps": {
+          "value": [
+            "agentarts_real_cloud_endpoint：华为云 AgentArts 真实端点（HTTPS/WSS）与有效凭据（Authorization）端到端连通读回（非本地 Fake）",
+            "agentarts_multi_agent_routing：AgentArts 云端多智能体协作网络（主协调器与专业子 Agent）角色路由与分派结果真实读回",
+            "agentarts_continuation_roundtrip：基于真实提案 proposalId 的受限 continuation 工具结果回传与多轮续答闭环读回",
+            "agentarts_tool_proposal_verification：云端生成 ToolProposal 到本地 Policy/ToolGateway 授权审批与结果核实的双向读回",
+            "platform_independent_trace_and_cost：华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）",
+            "local_cancellation_and_deadline_settlement：真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回"
+          ],
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "source": "ts_code_checklist_literal",
+          "itemCount": 6
+        },
+        "evidenceRequirements": {
+          "value": [
+            "Mod04bAgentArtsEvidence 合规回执（含 gatewayUrl HTTPS/WSS、CloudTraceId、时序因果 completedAt >= invokedAt、至少 2 位不同非 Mock Agent 与/或 confirmed 状态 continuation）",
+            "华为云 AgentArts 平台独立 TraceId 关联、Token/计费在线读回与双向授权审计凭据"
+          ],
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "source": "ts_code_evidence_literal",
+          "itemCount": 2
+        },
+        "pendingItems": {
+          "value": [
+            "agentarts_real_cloud_endpoint",
+            "agentarts_multi_agent_routing",
+            "agentarts_continuation_roundtrip",
+            "agentarts_tool_proposal_verification",
+            "platform_independent_trace_and_cost",
+            "local_cancellation_and_deadline_settlement"
+          ],
+          "sourcePath": "from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "source": "ts_code_pending_literal",
+          "itemCount": 6
+        }
+      },
+      "cannotConfirm": {},
+      "warnings": []
+    }
+  ],
+  "errors": []
+}

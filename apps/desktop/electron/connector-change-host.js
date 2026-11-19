@@ -413,7 +413,8 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
     }
     currentEvent(item);
     const outcome=await notifications.deliverBatch({batchId,scope:{kind:'connector',connectorId},
-      expiresAt:new Date(now()+60_000).toISOString(),title:'PersonalAgent · 变化提醒',body,source:connectorId});
+      expiresAt:new Date(now()+60_000).toISOString(),title:'PersonalAgent · 变化提醒',body,source:connectorId,
+      navigation:{kind:'task',taskId:task.taskId}});
     // The notification host owns exact round recovery and never sends an unknown attempt twice.
     if(outcome?.attempts?.banner?.state==='delivered')update(value=>{value.events[item.id].state='delivered';});
   }

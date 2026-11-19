@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "acceptanceId": "release-upgrade-data",
+  "status": "pending",
+  "executed": false,
+  "verified": false,
+  "evidenceLevel": "unverified",
+  "target": "Windows 11 x64 NSIS upgrade across versions",
+  "requiredEnvironment": "Isolated Windows 11 machine with pre-existing userData (SQLite DB & conversation history)",
+  "notes": "占位文件：尚未在 Windows 真机执行覆盖升级与数据保留验证。本文件仅作为验收脚手架占位，明确未验收（MANUAL_EVIDENCE_NOT_EXECUTED），不作为任何发布证据。升级必须确保 userData 不被清空或覆盖。",
+  "checklist": [
+    "预先写入测试版本 userData（含 SQLite 任务表与会话记录）",
+    "运行新版本安装程序覆盖安装",
+    "启动新版本应用，检查 userData 数据库完好保留",
+    "会话历史可正常读回，无数据丢失或表重建"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "valid-json-plan",
+  "title": "合法 JSON 离线验收规划",
+  "isPlan": true,
+  "closedLoop": false,
+  "status": "unavailable",
+  "requiredEnvironments": [
+    "rights_holder_or_human",
+    "real_account"
+  ],
+  "acceptanceSteps": [
+    "人工复核凭据权限范围",
+    "核查审计日志与授权期限"
+  ],
+  "evidenceRequirements": [
+    "人工审批签字记录",
+    "只读凭据脱敏回执"
+  ],
+  "reason": "待权利人与真实凭据核验",
+  "pendingItems": [
+    "human_review_signoff"
+  ]
+}

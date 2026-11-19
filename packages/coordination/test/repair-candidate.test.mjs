@@ -36,6 +36,54 @@ test('candidate rejects duplicate targets/dependencies, self refs and bad revisi
   }
 });
 
+test('candidate requires an exact-shape object at every level', () => {
+  for (const input of [undefined, null, 'repair_candidate', 7, [], [valid()],
+    {...valid(), kind: 'result'}, {...valid(), extra: 'field'},
+    (() => {const input = valid(); delete input.verification; return input;})(),
+    (() => {const input = valid(); input.candidate = 'shape'; return input;})(),
+    (() => {const input = valid(); input.candidate.extra = 'field'; return input;})(),
+    (() => {const input = valid(); input.candidate.changes[0] = 'shape'; return input;})(),
+    (() => {const input = valid(); input.candidate.changes[0].extra = 'field'; return input;})(),
+    (() => {const input = valid(); input.candidate.changes[0].node.extra = 'field'; return input;})(),
+    (() => {const input = valid(); input.candidate.changes[0].dependencies[0].extra = 'field'; return input;})()]) {
+    assert.throws(() => parseCoordinationRepairCandidate(input), error => error.code === 'INVALID_ARGUMENT');
+  }
+});
+
+test('candidate text fields, revisions and collection sizes enforce their bounds', () => {
+  for (const mutate of [v => {v.candidate.changes[0].summary = 'x'.repeat(1025);},
+    v => {v.candidate.changes[0].reason = 'x'.repeat(1025);},
+    v => {v.candidate.changes[0].summary = 'boundary\u007f';},
+    v => {v.candidate.changes[0].summary = 'multi\nline';},
+    v => {v.candidate.changes[0].summary = '   ';},
+    v => {v.candidate.changes[0].node.id = 'x'.repeat(129);},
+    v => {v.candidate.changes[0].node.revision = 1.5;},
+    v => {v.candidate.changes[0].node.revision = '1';},
+    v => {v.candidate.expectedGraphRevision = 1.5;},
+    v => {v.candidate.changes = 'not-an-array';},
+    v => {v.candidate.changes[0].dependencies = 'not-an-array';},
+    v => {v.candidate.changes[0].dependencies = Array.from({length: 17}, (_, index) => ({id: `dependency-${index}`, revision: 1}));},
+    v => {v.candidate.changes = Array.from({length: 17}, (_, index) => ({...v.candidate.changes[0],
+      node: {id: `node-${index}`, revision: 1}}));}]) {
+    const input = valid(); mutate(input);
+    assert.throws(() => parseCoordinationRepairCandidate(input), error => error.code === 'INVALID_ARGUMENT');
+  }
+  const full = valid();
+  full.candidate.changes[0].summary = 'x'.repeat(1024);
+  full.candidate.changes[0].reason = 'x'.repeat(1024);
+  assert.equal(parseCoordinationRepairCandidate(full).candidate.changes[0].summary.length, 1024);
+});
+
+test('the 8KiB budget counts UTF-8 bytes, not characters', () => {
+  const input = valid();
+  input.candidate.changes = Array.from({length: 8}, (_, index) => ({...valid().candidate.changes[0],
+    node: {id: `node-${index}`, revision: 1}, summary: '边界'.repeat(600)}));
+  assert.throws(() => parseCoordinationRepairCandidate(input), error => error.code === 'INVALID_ARGUMENT');
+  const within = valid();
+  within.candidate.changes[0].summary = '边界'.repeat(512);
+  assert.equal(parseCoordinationRepairCandidate(within).candidate.changes[0].summary.length, 1024);
+});
+
 test('candidate never invokes getters and enforces its entire 8KiB budget', () => {
   let reads = 0;
   const input = valid();

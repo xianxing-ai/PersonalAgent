@@ -1,5 +1,8 @@
 # PersonalAgent Desktop
 
+2026-11-07 MOD-19 打包与安装脚手架（review）：
+声明生产打包配置 `electron-builder.yml` 与 `package.json` 的 `build` 字段，配置保守 NSIS（普通用户权限 `asInvoker`、自选安装路径、卸载保留用户数据）；增加 `package:win` 脚本；通过 `scripts/release/packaging-scaffold.check.mjs` 静态校验配置完整性与敏感文件（`.env`、`credentials`、`*.pem` 等）排除。运行命令：`npm run check:packaging-scaffold`。本片仅为脚手架声明，真机安装与打包后内置 SQLite 仍未验收，不可发布。详见 [MOD-19-PACKAGING-SCAFFOLD-20261107](../../docs/modules/MOD-19-PACKAGING-SCAFFOLD-20261107.md)。
+
 2026-10-27～28：普通设置入口、Solid Glass 材质、Windows 窗口圆角、简化配置默认值、默认工作文件夹与工作区星云重绘优化，见[实现与验证边界](docs/SOLID_GLASS_SETTINGS_20261027.md)。
 
 2026-10-27 / Issue #523：在 PR #522 上改用原 Runtime 检查点索引读取持续工作流，后台维护按宿主独立节流和防重入；事件与待办仍走原 120ms 入口。修复前后测量、Windows GUI 与验证边界见[修复记录](docs/DESKTOP_IDLE_POLLING_ISSUE523_20261027.md)。
@@ -173,9 +176,9 @@ Node 24.15.0 下根树固定源码 `9cd32d8` 的完整 Desktop 测试为799项�
 
 ## 语音设备释放与配置编辑
 
-### PR #302 的未合并唤醒增量（2026-10-08）
+### PR #302 的唤醒增量（2026-10-08；2026-11-10 已在 main）
 
-上表保留 `main@4b5ec614` 的基线含义；该main没有Desktop Wake宿主。现有PR #302的工作树已由 `initializeSisVoice()` 装配 [Wake宿主](electron/wake-voice-host.js)、共享授权PCM及限定词检测器，并提供可信面板的显式 `voice.wake.enable/disable`。单次许可最多10分钟，隐藏面板、撤销、停止或释放未确认仍按原生命周期处理，唤醒后的听写只填输入框。新增源码未合并，不记为main已发布；中文识别器、真实命中/误触/回声和Windows设备释放仍需现场验收。
+上表保留 `main@4b5ec614` 的基线含义；该提交没有 Desktop Wake 宿主。PR #302 已以 `cc64ebdf` 进入当前 main：`initializeSisVoice()` 装配 [Wake宿主](electron/wake-voice-host.js)、共享授权 PCM 及限定词检测器，并提供可信面板的显式 `voice.wake.enable/disable`。单次许可最多 10 分钟，隐藏面板、撤销、停止或释放未确认仍按原生命周期处理，唤醒后的听写只填输入框。中文识别器、真实命中/误触/回声和 Windows 设备释放仍需现场验收。
 
 本轮补充了活动任务拒绝退出前的资源保护，以及SIS配置保存失败时保留可显式重新启用的旧Wake宿主。原启动、晚到任务和未知释放守卫保留，不自动续退或复活许可；保存后资源释放未知不回滚已保存配置。原公开消费者及合成端口检查分记于[本轮集成交接](../../docs/modules/MOD-27-28-INTEGRATION-HANDOFF.md)，不能当作真实设备或云验收。
 

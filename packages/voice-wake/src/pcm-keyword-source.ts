@@ -39,8 +39,12 @@ export interface WakeKeywordDetectorPort {
   start(options: {
     readonly signal: AbortSignal;
     readonly deadline: string;
-    readonly onDetected: () => void;
+    readonly onDetected: (detail?: {readonly phrase?: string}) => void;
   }): WakeKeywordDetectorSession;
+}
+
+export interface WakePcmKeywordSourceOptions {
+  readonly evaluateHit?: (detail?: {readonly phrase?: string}) => {readonly hit: boolean};
 }
 
 export interface WakePcmKeywordSubscription extends WakeSubscription {
@@ -75,6 +79,7 @@ function validFrame(value: unknown, expectedSequence: number): value is WakePcmF
 export function createPcmKeywordWakeSignalSource(
   pcm: WakePcmFrameSourcePort,
   detector: WakeKeywordDetectorPort,
+  options?: WakePcmKeywordSourceOptions,
 ): WakeSignalSource {
   if (typeof pcm?.subscribe !== 'function' || typeof detector?.start !== 'function') {
     throw new TypeError('Wake PCM source and keyword detector are required');
@@ -180,8 +185,19 @@ export function createPcmKeywordWakeSignalSource(
 
       try {
         if (!ensureActive()) throw new Error('Wake subscription stopped');
-        session = detector.start({signal: context.signal, deadline, onDetected: () => {
-          if (ensureActive() && listening) listener({kind: 'wake'});
+        session = detector.start({signal: context.signal, deadline, onDetected: (detail?: {readonly phrase?: string}) => {
+          if (!ensureActive() || !listening) return;
+          if (options?.evaluateHit) {
+            let evalResult: {readonly hit: boolean};
+            try {
+              evalResult = options.evaluateHit(detail);
+            } catch {
+              fail('error');
+              return;
+            }
+            if (!evalResult?.hit) return;
+          }
+          listener({kind: 'wake'});
         }});
         if (!session || !isPromise(session.ready) || !isPromise(session.closed)
           || typeof session.accept !== 'function' || typeof session.stop !== 'function') {

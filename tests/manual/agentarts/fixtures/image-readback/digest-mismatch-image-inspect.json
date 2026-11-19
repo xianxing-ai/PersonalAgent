@@ -1,0 +1,17 @@
+[
+  {
+    "Id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "RepoDigests": [
+      "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ],
+    "Os": "linux",
+    "Architecture": "arm64",
+    "Config": {
+      "User": "node",
+      "WorkingDir": "/opt/personal-agent",
+      "Labels": {
+        "org.opencontainers.image.revision": "a93734c195ceaff56d3e7a5654e320f3007b35f3"
+      }
+    }
+  }
+]

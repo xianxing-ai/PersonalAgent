@@ -119,3 +119,17 @@ test('rejects stale or forged Goal pairs and unrelated repair targets', () => {
       reason: 'must stay outside scope', dependencies: [ref('other-fact', 2)]}]}),
   {code: 'NOT_APPLICABLE'});
 });
+
+test('repair preview requires a readable store and revision scopes validate their integers', () => {
+  const snapshot = fixture().read();
+  assert.throws(() => previewGoalRevisionRepair(null, at, {...scope(snapshot.revision), changes: [change()]}),
+    {code: 'NOT_APPLICABLE'});
+  assert.throws(() => previewGoalRevisionRepair({}, at, {...scope(snapshot.revision), changes: [change()]}),
+    {code: 'NOT_APPLICABLE'});
+  assert.throws(() => selectGoalRevisionImpact(snapshot, at,
+    {...scope(snapshot.revision), expectedGraphRevision: -1}), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => selectGoalRevisionImpact(snapshot, at,
+    {...scope(snapshot.revision), previousGoal: ref('goal', 0)}), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => selectGoalAncestorImpact(snapshot, at,
+    {expectedGraphRevision: snapshot.revision, currentGoal: ref('goal', -1)}), {code: 'INVALID_ARGUMENT'});
+});

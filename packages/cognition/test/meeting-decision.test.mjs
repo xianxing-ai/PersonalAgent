@@ -1189,3 +1189,94 @@ test('MeetingRescheduleCoordinator: crash recovery does not match node with diff
   // Must NOT be already_processed because source and summary did not match!
   assert.notEqual(receipt.status, 'already_processed');
 });
+
+test('coordinator construction and event submission are gated before any model, receipt or graph access', async () => {
+  const {store} = createMeetingFixture();
+  assert.throws(() => new MeetingRescheduleCoordinator({store}), {code: 'INVALID_ARGUMENT'},
+    'neither inference nor chooser is an unusable coordinator');
+  assert.throws(() => new MeetingRescheduleCoordinator({inference: createMockLaya()}), {code: 'INVALID_ARGUMENT'},
+    'a coordinator without a graph store is unusable');
+  assert.throws(() => new MeetingRescheduleCoordinator({store: {...store, read: undefined},
+    inference: createMockLaya()}), {code: 'INVALID_ARGUMENT'});
+  const coordinator = new MeetingRescheduleCoordinator({store, inference: createMockLaya()});
+  const before = store.read(), aborted = new AbortController();
+  aborted.abort();
+  for (const [name, extra] of [
+    ['blank event id', {eventId: '   '}],
+    ['blank original summary', {originalSummary: ''}],
+    ['unreadable detection time', {detectedAt: 'not-a-date'}],
+    ['non-signal', {signal: 'abort-me'}],
+    ['pre-aborted signal', {signal: aborted.signal}],
+    ['already expired deadline', {deadline: new Date(Date.now() - 1000).toISOString()}],
+  ]) await assert.rejects(coordinator.processEvent(guardedEvent(extra)), {code: 'INVALID_ARGUMENT'}, name);
+  assert.deepEqual(store.read(), before, 'rejected events never touch the graph');
+});
+
+test('applyApprovedProposal refuses records it cannot legally execute and persists a failed commit as requires_review', async () => {
+  const {store} = createMeetingFixture(), receipts = new InMemoryMeetingDecisionReceiptStore();
+  let executions = 0;
+  const port = {executeBatch: async request => {executions++; return createStoreExecutionPort(store).executeBatch(request);}};
+  const coordinator = new MeetingRescheduleCoordinator({store, inference: createMockLaya(), receiptStore: receipts});
+  const event = guardedEvent(), graphBefore = store.read();
+  assert.equal((await coordinator.processEvent(event)).status, 'proposal');
+  await assert.rejects(coordinator.applyApprovedProposal({eventId: 'missing-event', source: event.source}),
+    {code: 'NOT_APPLICABLE'}, 'an unknown record cannot be applied');
+  await assert.rejects(coordinator.applyApprovedProposal({eventId: event.eventId, source: event.source}),
+    {code: 'NOT_APPLICABLE'}, 'a proposal without an execution port cannot be applied');
+  const failed = await coordinator.applyApprovedProposal({eventId: event.eventId, source: event.source},
+    {executionPort: {executeBatch: async () => ({applied: false, error: 'synthetic commit rejected'})}});
+  assert.equal(failed.status, 'requires_review');
+  assert.match(failed.reason, /synthetic commit rejected/);
+  assert.deepEqual(store.read(), graphBefore, 'a failed commit never mutates the graph');
+  assert.equal(receipts.listReceipts()[0].status, 'requires_review', 'the failure is durably recorded');
+  assert.equal(executions, 0, 'the unused real port was never invoked');
+
+  const deferStore = createMeetingFixture(), deferReceipts = new InMemoryMeetingDecisionReceiptStore();
+  const deferCoordinator = new MeetingRescheduleCoordinator({store: deferStore.store, receiptStore: deferReceipts,
+    chooser: {choose: async () => ({state: 'selected', eligibleForRuntime: true, selected: {id: 'cand-defer-verify', revision: 1},
+      reason: 'selected', calibrated: false, scores: [], answerConfidence: 0.9,
+      receipt: {id: 'defer-receipt', promptVersion: 'action-choice-v1', contextDigest: 'defer', candidates: []}})}});
+  assert.equal((await deferCoordinator.processEvent(guardedEvent())).status, 'deferred');
+  await assert.rejects(deferCoordinator.applyApprovedProposal({eventId: event.eventId, source: event.source}),
+    {code: 'NOT_APPLICABLE'}, 'a deferred receipt is not an approvable proposal');
+
+  const reviewStore = createMeetingFixture(), reviewReceipts = new InMemoryMeetingDecisionReceiptStore();
+  const base = new LayaActionChoiceService(createMockLaya());
+  const reviewCoordinator = new MeetingRescheduleCoordinator({store: reviewStore.store, receiptStore: reviewReceipts,
+    chooser: {choose: async request => ({...await base.choose(request), eligibleForRuntime: false})}});
+  const review = await reviewCoordinator.processEvent(guardedEvent());
+  assert.equal(review.status, 'requires_review');
+  assert.equal(review.proposedModifications, undefined);
+  await assert.rejects(reviewCoordinator.applyApprovedProposal({eventId: event.eventId, source: event.source},
+    {executionPort: port}), {code: 'NOT_APPLICABLE'}, 'a review without proposed modifications has nothing to execute');
+  assert.equal(executions, 0);
+});
+
+test('post-execution verification downgrades to requires_review when the committed graph still needs recheck', async () => {
+  const {store} = createMeetingFixture();
+  const coordinator = new MeetingRescheduleCoordinator({store, inference: createMockLaya(),
+    executionPort: {async executeBatch(request) {
+      const result = await createStoreExecutionPort(store).executeBatch(request);
+      // A divergent concurrent writer re-stales one repaired node after the batch commit:
+      // the coordinator must verify the final graph instead of trusting its own submission.
+      if (result.applied) {
+        const goal = store.read().history.findLast(node => node.id === 'goal-attend-sync');
+        const {revision, graphRevision, ...input} = goal;
+        store.append(store.read().revision, {...input, dependencies: [{id: 'meeting-sync-1', revision: 1}]});
+      }
+      return result;
+    }}});
+  const event = guardedEvent();
+  const receipt = await coordinator.processEvent(event);
+  assert.equal(receipt.status, 'requires_review');
+  assert.match(receipt.reason, /需进一步复核/);
+  assert.ok(receipt.appliedNodeRevisions?.length, 'the applied revisions are still reported for reconciliation');
+  assert.deepEqual(new Set(receipt.appliedNodeRevisions.map(item => item.id)),
+    new Set(['meeting-sync-1', 'goal-attend-sync', 'decide-depart-sync', 'plan-remind-sync']));
+  assert.equal(receipt.executionVerified, undefined);
+  assert.ok(receipt.selection, 'the Laya selection is preserved on the mixed outcome');
+  assert.equal(receipt.selection.answerConfidence, 0.95);
+  const finalGoal = store.read().history.findLast(node => node.id === 'goal-attend-sync');
+  assert.equal(finalGoal.dependencies[0].revision, 1, 'the divergent write is visible in the final graph');
+  assert.notEqual(receipt.graphRevisionAfter, receipt.graphRevisionBefore, 'the batch itself did commit');
+});

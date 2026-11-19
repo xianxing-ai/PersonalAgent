@@ -380,3 +380,158 @@ test('meeting options retain full 101-item recheck scope without exceeding the o
     assert.throws(() => buildMeetingRepairOptions(before, at, stale, ref('meeting', 2)), {code: 'REVISION_CONFLICT'});
   }
 });
+
+test('projection reader and consumer factories reject incomplete ports before any event is accepted', () => {
+  const f = fixture();
+  const complete = {namespace: f.namespace, store: f.store, facts: {listImpactReceipts: () => []},
+    readSourceRevision: async () => undefined};
+  for (const [name, options] of [
+    ['blank namespace', {...complete, namespace: '   '}],
+    ['store without read', {...complete, store: {}}],
+    ['facts without receipts', {...complete, facts: {}}],
+    ['missing source reader', {...complete, readSourceRevision: 'nope'}],
+  ]) assert.throws(() => createCommittedMeetingProjectionReader(options), {code: 'INVALID_ARGUMENT'}, name);
+  const consumerOptions = {store: f.store, receiptStore: f.receipts, namespace: f.namespace};
+  for (const [name, options] of [
+    ['blank namespace', {...consumerOptions, namespace: ''}],
+    ['store without read', {...consumerOptions, store: {}}],
+    ['receipt store without load', {...consumerOptions, receiptStore: {saveReceipt: f.receipts.saveReceipt}}],
+    ['receipt store without save', {...consumerOptions, receiptStore: {loadReceipt: f.receipts.loadReceipt}}],
+  ]) assert.throws(() => new ReviewedMeetingFactConsumer(options), {code: 'INVALID_ARGUMENT'}, name);
+});
+
+test('consumer events are validated before any storage write, host call or graph access', async () => {
+  const f = fixture(), before = f.store.read();
+  const consumer = new ReviewedMeetingFactConsumer({store: f.store, receiptStore: f.receipts, namespace: f.namespace});
+  const aborted = new AbortController(); aborted.abort();
+  for (const [name, extra] of [
+    ['blank original summary', {originalSummary: '   '}],
+    ['blank source revision', {sourceRevision: ''}],
+    ['unreadable detection time', {detectedAt: 'not-a-date'}],
+    ['unreadable deadline', {deadline: 'whenever'}],
+    ['non-signal', {signal: 'abort-me'}],
+    ['pre-aborted signal', {signal: aborted.signal}],
+  ]) await assert.rejects(consumer.processEvent({...f.event, ...extra}), {code: 'INVALID_ARGUMENT'}, name);
+  assert.equal(f.receipts.listReceipts().length, 0, 'rejected events persist nothing');
+  assert.deepEqual(f.store.read(), before);
+});
+
+test('committed projection reader refuses unverifiable source, snapshot and impact scope bindings', async () => {
+  const f = fixture(), before = f.store.read();
+  const completed = {batchToken: f.input.projection.batchToken, report: analyzeImpact(before, at)};
+  const source = () => ({source: f.event.source, sourceRevision: f.event.sourceRevision, meetingFact: ref('meeting', 2)});
+  const open = overrides => createCommittedMeetingProjectionReader({namespace: f.namespace, store: f.store,
+    facts: {listImpactReceipts: () => [{projection: f.input.projection, completed}]},
+    readSourceRevision: async () => source(), ...overrides});
+  const bound = await open()(f.event, f.event);
+  assert.deepEqual(bound, {sourceRevision: '2', meetingFact: ref('meeting', 2), input: f.input},
+    'the positive control passes with a fully verifiable projection');
+  for (const [name, attempt] of [
+    ['unknown source', async () => open({readSourceRevision: async () => undefined})(f.event, f.event)],
+    ['foreign source', async () => open({readSourceRevision: async () => ({...source(), source: 'calendar:other'})})(f.event, f.event)],
+    ['stale source revision', async () => open({readSourceRevision: async () => ({...source(), sourceRevision: '1'})})(f.event, f.event)],
+    ['unbound fact id', async () => open({readSourceRevision: async () => ({...source(), meetingFact: ref('other', 1)})})(f.event, f.event)],
+    ['stale fact reference', async () => open({readSourceRevision: async () => ({...source(), meetingFact: ref('meeting', 1)})})(f.event, f.event)],
+    ['foreign namespace snapshot', async () => open({namespace: 'another-namespace'})(f.event, f.event)],
+    ['event text disagrees with the committed summary', async () => open()({...f.event, newSummary: '17:00'}, f.event)],
+    ['fact identity without a fact kind', async () => {
+      const event = {...f.event, source: 'user:goal', meetingFactId: 'goal'};
+      const wrongKind = createCommittedMeetingProjectionReader({namespace: f.namespace, store: f.store,
+        facts: {listImpactReceipts: () => [{projection: f.input.projection, completed}]},
+        readSourceRevision: async () => ({source: event.source, sourceRevision: event.sourceRevision, meetingFact: ref('goal', 1)})});
+      return wrongKind(event, event);
+    }],
+    ['no impact receipt', async () => open({facts: {listImpactReceipts: () => []}})(f.event, f.event)],
+    ['unfinished impact receipt', async () => open({facts: {listImpactReceipts: () => [{projection: f.input.projection}]}})(f.event, f.event)],
+    ['impact receipt behind the committed fact', async () => open({facts: {listImpactReceipts: () => [
+      {projection: {...f.input.projection, graphRevision: before.revision - 1}, completed}]}})(f.event, f.event)],
+    ['impact scope without the meeting fact', async () => open({facts: {listImpactReceipts: () => [
+      {projection: {...f.input.projection, links: [{eventId: 'other', fact: ref('memory-other', 2), node: ref('other', 2)}]}, completed}]}})(f.event, f.event)],
+  ]) assert.equal(await attempt(), undefined, name);
+  assert.deepEqual(f.store.read(), before);
+});
+
+test('KEEP verdicts persist as kept, unprepared REVISE cannot enter repair and legacy receipts never retry', async () => {
+  for (const mode of ['kept', 'unprepared_revise']) {
+    const f = fixture(), before = f.store.read();
+    const scope = selectMeetingRepairScope(before, at, f.input, ref('meeting', 2));
+    const review = {taskId: mode === 'kept' ? 'keep-review' : 'unprepared-revise', graphNamespace: f.namespace,
+      graphRevision: before.revision, bindingVersion: 'existing-host', evaluatedAt: at, affected: scope.items,
+      options: buildMeetingRepairOptions(before, at, f.input), action: mode === 'kept' ? 'KEEP' : 'REVISE',
+      ...(mode === 'unprepared_revise' ? {selection: {state: 'review', reason: 'uncertain', eligibleForRuntime: false, answerConfidence: 0.4}} : {})};
+    const result = {task: {taskId: review.taskId, state: 'succeeded'}, review};
+    let applied = 0;
+    const reviewedRepair = {readCommittedProjection: async () => ({sourceRevision: '2', meetingFact: ref('meeting', 2), input: f.input}),
+      reviewCommittedFact: async () => result, readReview: () => result,
+      applyDecision: async () => {applied++; return {status: 'waiting_reconciliation', taskId: 'original-task'};}};
+    const open = () => new ReviewedMeetingFactConsumer({store: f.store, receiptStore: f.receipts, namespace: f.namespace, reviewedRepair});
+    if (mode === 'kept') {
+      const first = await open().processEvent(f.event);
+      assert.equal(first.status, 'kept');
+      assert.equal(first.decisionAction, 'KEEP');
+      assert.equal(first.reviewTaskId, 'keep-review');
+      assert.equal(Object.hasOwn(first, 'retryableInference'), false);
+      const reopened = await open().processEvent(f.event);
+      assert.equal(reopened.status, 'kept', 'a kept receipt never reopens its review');
+      assert.equal(applied, 0, 'KEEP must not reach the runtime handoff');
+    } else {
+      await assert.rejects(open().processEvent(f.event), {code: 'NOT_APPLICABLE'},
+        'a REVISE verdict without a prepared binding cannot start repair');
+      assert.equal(applied, 0);
+      const saved = f.receipts.listReceipts()[0];
+      assert.equal(saved.status, 'requires_review', 'only the pre-handoff checkpoint exists');
+      assert.equal(Object.hasOwn(saved.receipt, 'reviewTaskId'), false);
+    }
+    assert.deepEqual(f.store.read(), before);
+  }
+  const g = fixture(), gBefore = g.store.read(), host = {readCommittedProjection: async () => {throw Error('legacy must not restart work');},
+    reviewCommittedFact: async () => {throw Error('legacy must not restart work');},
+    readReview: () => {throw Error('legacy must not restart work');},
+    applyDecision: async () => {throw Error('legacy must not restart work');}};
+  await new ReviewedMeetingFactConsumer({store: g.store, receiptStore: g.receipts, namespace: g.namespace}).processEvent(g.event);
+  const legacy = JSON.parse(JSON.stringify(g.receipts.listReceipts()[0]));
+  delete legacy.receipt.retryableInference;
+  g.receipts.saveReceipt(legacy);
+  const untouched = await new ReviewedMeetingFactConsumer({store: g.store, receiptStore: g.receipts,
+    namespace: g.namespace, reviewedRepair: host}).processEvent(g.event);
+  assert.deepEqual(untouched, legacy.receipt, 'a legacy receipt is returned exactly as stored');
+  assert.deepEqual(g.receipts.listReceipts()[0].updatedAt, legacy.updatedAt, 'the legacy receipt is not rewritten');
+  assert.deepEqual(g.store.read(), gBefore);
+});
+
+test('applyApprovedProposal gates its query and partial execution evidence never counts as applied', async () => {
+  const f = fixture(), before = f.store.read();
+  const scope = selectMeetingRepairScope(before, at, f.input, ref('meeting', 2));
+  const review = {taskId: 'evidence-review', graphNamespace: f.namespace, graphRevision: before.revision,
+    bindingVersion: 'existing-host', evaluatedAt: at, action: 'RECHECK', affected: scope.items,
+    options: buildMeetingRepairOptions(before, at, f.input)};
+  for (const [name, feedback] of [
+    ['applied without evidence refs', {status: 'applied', taskId: 'partial-evidence', executionVerified: true,
+      graphUpdateVerified: true, graphRevision: before.revision, updatedNodes: [ref('goal', 2)], evidenceRefs: []}],
+    ['unknown host status', {status: 'failed', taskId: 'unknown-status'}],
+    ['updated node missing from the graph', {status: 'applied', taskId: 'phantom-node', executionVerified: true,
+      graphUpdateVerified: true, graphRevision: before.revision, updatedNodes: [ref('goal', 99)],
+      evidenceRefs: ['trusted-runtime-evidence']}],
+  ]) {
+    const g = fixture();
+    const result = {task: {taskId: review.taskId, state: 'succeeded'}, review};
+    const consumer = new ReviewedMeetingFactConsumer({store: g.store, receiptStore: g.receipts, namespace: g.namespace,
+      reviewedRepair: {readCommittedProjection: async () => ({sourceRevision: '2', meetingFact: ref('meeting', 2), input: f.input}),
+        reviewCommittedFact: async () => result, readReview: () => result, applyDecision: async () => feedback}});
+    const receipt = await consumer.processEvent(g.event);
+    assert.equal(receipt.status, 'requires_review', name);
+    assert.equal(receipt.executionVerified, false, name);
+    assert.equal(receipt.graphUpdateVerified, false, name);
+    assert.equal(Object.hasOwn(receipt, 'evidenceRefs'), false, name);
+    assert.equal(Object.hasOwn(receipt, 'appliedNodeRevisions'), false, name);
+    assert.deepEqual(g.store.read(), before, name);
+  }
+  const h = fixture();
+  const context = {deadline: h.event.deadline, signal: h.event.signal};
+  const plain = new ReviewedMeetingFactConsumer({store: h.store, receiptStore: h.receipts, namespace: h.namespace});
+  await assert.rejects(plain.applyApprovedProposal({eventId: h.event.eventId, source: h.event.source, namespace: 'foreign'},
+    context), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(plain.applyApprovedProposal({eventId: 'missing-event', source: h.event.source}, context),
+    {code: 'NOT_APPLICABLE'});
+  assert.equal(h.receipts.listReceipts().length, 0, 'refused queries leave no records');
+});

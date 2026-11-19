@@ -274,6 +274,81 @@ test('a fresh adoption failure stays FAILED and cannot inherit a selected parent
   await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
 });
 
+test('trial rejects duplicate candidate paths and self-referencing composition before isolation',async t=>{
+  const f=await trialFixture(t),c=context('child-a');
+  const duplicate=f.input('candidate-a');duplicate.patches.push({...duplicate.patches[0],createText:'second'});
+  await assert.rejects(f.tool.execute(duplicate,c),{code:'INVALID_ARGUMENT'});
+  const self=createHarnessCandidateTrialTool({...f.options,readParentArtifactDigests:async()=>{throw Error('Explicit Fake: must not be read');}});
+  await assert.rejects(self.execute({...f.input('candidate-a'),parentTrialRunIds:[c.runId,'other-run']},c),{code:'INVALID_ARGUMENT'});
+  assert.equal(f.stored.size,0);assert.equal(f.commandRoots.length,0);
+  assert.deepEqual(await readdir(f.sessions).catch(()=>[]),[],'no isolated session directory is created for rejected input');
+});
+
+test('trial refuses an inconsistent trusted binding before starting an isolated session',async t=>{
+  const f=await trialFixture(t);
+  for(const mutate of [
+    value=>{value.binding.baselineSnapshotId='a'.repeat(64);},
+    value=>{value.binding.recipeFingerprint='b'.repeat(64);},
+  ]) {
+    const drifted=structuredClone(f.expected);mutate(drifted);
+    const tool=createHarnessCandidateTrialTool({...f.options,readBinding:async()=>structuredClone(drifted)});
+    await assert.rejects(tool.execute(f.input('candidate-a'),context('child-a')),{code:/REVISION_CONFLICT|INVALID_ARGUMENT/});
+  }
+  assert.equal(f.stored.size,0);assert.equal(f.commandRoots.length,0);
+});
+
+test('trial recovery requires read scope and the original saved session',async t=>{
+  const f=await trialFixture(t),c=context('child-a');await f.invoke(f.input('candidate-a'),c);
+  const recovery=createHarnessCandidateRecoveryTool({host:f.host,readOriginalSession:async(ctx,runId)=>f.stored.get(JSON.stringify([ctx.taskId,runId]))});
+  await assert.rejects(recovery.execute({trialRunId:c.runId},context('child-a',{scopes:[]})),{code:'SCOPE_DENIED'});
+  await assert.rejects(recovery.execute({trialRunId:'never-started'},context('child-a',{scopes:['workspace:read']})),{code:'UNAUTHORIZED'});
+  const read=await recovery.execute({trialRunId:c.runId},context('child-a',{scopes:['workspace:read']}));
+  assert.equal(read.state,'clear');assert.equal(read.checkReadback.verification[0].status,'VALID');
+  assert.equal(f.commandRoots.length,1,'readback never re-runs the original verification');
+});
+
+test('adoption refuses tampered selected trial receipts before any main-session work',async t=>{
+  const f=await adoptionFixture(t),c=context('owner-task');
+  const tamper=[
+    s=>{s.trial.session.mode='main';},
+    s=>{s.trial.binding.executionKind='simulated';},
+    s=>{s.trial.checkReadback.verification[0].evidenceRefs=['other-run'];},
+    s=>{s.trial.binding.artifactDigest='c'.repeat(64);s.comparison.recommendation.artifactDigest='c'.repeat(64);},
+    s=>{s.comparison.state='abstain';},
+    s=>{s.trial.binding.taskId='foreign-owner';},
+  ];
+  for(const mutate of tamper) {
+    const forged=structuredClone(f.selection);mutate(forged);
+    const tool=createHarnessCandidateAdoptionTool({...f.options,readSelection:async()=>structuredClone(forged)});
+    await assert.rejects(tool.execute({trialRunId:f.trialContext.runId},c),{code:/UNAUTHORIZED|INVALID_ARGUMENT/});
+  }
+  assert.equal(f.commandRoots.length,1,'only the original trial command ran');
+  assert.equal(f.stored.size,1,'no adoption session was checkpointed');
+  await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
+});
+
+test('adoption refuses configuration drift since the trial and never replays a restored adoption',async t=>{
+  const f=await adoptionFixture(t),c=context('owner-task');
+  const drifted=structuredClone(f.expected);drifted.binding.configurationDigest='4'.repeat(64);
+  const changed=createHarnessCandidateAdoptionTool({...f.options,readBinding:async()=>structuredClone(drifted)});
+  await assert.rejects(changed.execute({trialRunId:f.trialContext.runId},c),{code:'REVISION_CONFLICT'});
+  assert.equal(f.commandRoots.length,1);assert.equal(f.stored.size,1);
+  await approved(f.adopt,{trialRunId:f.trialContext.runId},c);assert.equal(f.commandRoots.length,2);
+  await assert.rejects(createHarnessCandidateAdoptionTool(f.options).execute({trialRunId:f.trialContext.runId},c),{code:'RESULT_UNKNOWN'});
+  assert.equal(f.commandRoots.length,2,'restored adoption reads back instead of re-running');
+  await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
+});
+
+test('adoption refuses a selection that changes during fresh main-session verification',async t=>{
+  const f=await adoptionFixture(t);let reads=0;
+  const tool=createHarnessCandidateAdoptionTool({...f.options,readSelection:async()=>{const value=structuredClone(f.selection);
+    if(++reads===2)value.comparison.reason='explicit-fake-later-reselection';return value;}});
+  const c=context('owner-task');
+  await assert.rejects(tool.execute({trialRunId:f.trialContext.runId},c),{code:'REVISION_CONFLICT'});
+  assert.equal(reads,2);
+  await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'},'isolated and prepared sessions never publish the main directory');
+});
+
 test('source drift rejects a later candidate before creating another trial directory',async t=>{
   const f=await fixture(t);await f.host.start({mode:'isolated'},context('candidate-a'));
   const existing=await readdir(f.sessions);

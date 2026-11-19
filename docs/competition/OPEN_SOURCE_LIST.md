@@ -11,6 +11,7 @@
 | Node.js | 24.15.x（engines 约定） | MIT 等混合 | 运行时 | 全仓 |
 | typescript | 5.9.3 | Apache-2.0 | 类型检查/编译 | 根 devDependencies、packages/agentarts |
 | electron | 44.2.0 | MIT | Windows 桌面宿主 | apps/desktop |
+| electron-builder | 24.13.3 | MIT | 构建 Windows NSIS 安装包 | apps/desktop devDependencies |
 | playwright | 1.63.0 | Apache-2.0 | 受控浏览器自动化（受限工作区） | apps/desktop |
 
 ## 2. 协议与校验

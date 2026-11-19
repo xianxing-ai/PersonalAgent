@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Cross-platform on purpose: the host's target-selection, lease, deadline,
+         dedup and JSONL framing logic is pure BCL, so it runs on any OS without
+         Windows UIA/Win32. Windows-only behavior stays out of scope and needs a
+         real machine (see host/README.md and the PR checklist). -->
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- HostSecurity.cs is compiled verbatim and legitimately uses Windows-only
+         identity APIs (annotated CA1416). The portable tests never execute those
+         call sites (the shim and precondition guards fail loudly if a tested path
+         reaches one), so the platform warning is suppressed for this assembly only. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The production sources are compiled verbatim into this test assembly, so
+         the tests always exercise the real implementations. They stay excluded
+         from WindowsHost.HostFixture via the Compile Remove in that project file. -->
+    <Compile Include="../../NotepadTargets.cs" Link="NotepadTargets.cs" />
+    <Compile Include="../../HostService.cs" Link="HostService.cs" />
+    <Compile Include="../../HostWire.cs" Link="HostWire.cs" />
+    <Compile Include="../../RunJournal.cs" Link="RunJournal.cs" />
+    <Compile Include="../../HostSecurity.cs" Link="HostSecurity.cs" />
+    <Compile Include="../../LocalJournalDirectory.cs" Link="LocalJournalDirectory.cs" />
+  </ItemGroup>
+</Project>

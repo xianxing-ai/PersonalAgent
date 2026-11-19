@@ -78,6 +78,34 @@ test('injected trusted final receipt completes; partial echo empty and digest mi
   }
 });
 
+test('F02 voice node fails closed when physical device evidence is unavailable (deviceEvidenceReady: false)', async () => {
+  const port = {
+    async readFinal() {
+      return {state: 'completed', receipt: receipt('同意', {deviceEvidenceReady: false})};
+    },
+  };
+  const adapter = createVoiceFinalTranscriptAdapter(
+    createVoiceFinalTranscriptService({port, requiredScopes: scopes}));
+  const result = await adapter.execute({}, context());
+  assert.equal(result.state, 'unavailable');
+  assert.equal(result.nodeId, 'F02_N03');
+  assert.equal(result.capability, 'voice.final_transcript');
+  assert.equal(result.reason, 'voice_device_evidence_unavailable');
+  assert.equal(result.text, undefined);
+
+  // When deviceEvidenceReady is explicitly true, it completes normally
+  const readyPort = {
+    async readFinal() {
+      return {state: 'completed', receipt: receipt('同意', {deviceEvidenceReady: true})};
+    },
+  };
+  const readyAdapter = createVoiceFinalTranscriptAdapter(
+    createVoiceFinalTranscriptService({port: readyPort, requiredScopes: scopes}));
+  const readyResult = await readyAdapter.execute({}, context());
+  assert.equal(readyResult.state, 'completed');
+  assert.equal(readyResult.deviceEvidenceReady, true);
+});
+
 test('F02 engine without published F02_N03 adapter cannot settle as Fake success', async () => {
   const engine = new OwnedWorkflowEngine({
     checkpointSecret: 'synthetic-voice-final-checkpoint-key-32b',

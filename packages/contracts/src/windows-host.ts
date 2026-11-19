@@ -143,3 +143,68 @@ export function validateWindowsHostRecoveredResult(original: WindowsHostExecute,
     invalid('Windows Host recovered run identity mismatch');
   }
 }
+
+export type NotepadConfirmationGateInput = {
+  confirmed: boolean;
+  source?: string | undefined;
+  confirmedAt?: string | undefined;
+  targetRef?: string | undefined;
+};
+
+export type NotepadConfirmationGateResult =
+  | { state: 'confirmed'; allowed: true; source: string; confirmedAt: string; targetRef?: string | undefined }
+  | { state: 'refused'; allowed: false; errorCode: 'UNAUTHORIZED'; reason: string; targetRef?: string | undefined };
+
+/**
+ * Asserts the F9 / manual confirmation gate for restricted Notepad actions.
+ * In production, F9 receipt / confirmation is captured in Desktop/Runtime before execution.
+ * At the contract level, this pure function codifies that without confirmed: true,
+ * execution must be refused with state: 'refused' and errorCode: 'UNAUTHORIZED'.
+ *
+ * NOTE: Real physical F9 keypress on Windows remains pending field acceptance (待真机验收).
+ */
+export function assertNotepadConfirmationGate(input: NotepadConfirmationGateInput): NotepadConfirmationGateResult {
+  if (!input || !input.confirmed) {
+    return {
+      state: 'refused',
+      allowed: false,
+      errorCode: 'UNAUTHORIZED',
+      reason: 'F9 or explicit manual confirmation is required before Notepad execution',
+      targetRef: input?.targetRef,
+    };
+  }
+  if (input.confirmedAt && !isUtc(input.confirmedAt)) {
+    return {
+      state: 'refused',
+      allowed: false,
+      errorCode: 'UNAUTHORIZED',
+      reason: 'Confirmation timestamp must be a valid UTC ISO string',
+      targetRef: input.targetRef,
+    };
+  }
+  return {
+    state: 'confirmed',
+    allowed: true,
+    source: input.source ?? 'f9_hotkey',
+    confirmedAt: input.confirmedAt ?? new Date().toISOString(),
+    targetRef: input.targetRef,
+  };
+}
+
+/**
+ * Validates that an execute frame is paired with verified user confirmation.
+ * Rejects unconfirmed requests, stale confirmation, or mismatched targetRef.
+ */
+export function validateWindowsHostExecuteConfirmation(
+  execute: WindowsHostExecute,
+  confirmation: NotepadConfirmationGateInput,
+): void {
+  parseWindowsHostFrame(execute);
+  const verdict = assertNotepadConfirmationGate(confirmation);
+  if (!verdict.allowed) {
+    invalid(verdict.reason);
+  }
+  if (confirmation.targetRef && confirmation.targetRef !== execute.targetRef) {
+    invalid('Confirmation targetRef does not match execute frame');
+  }
+}

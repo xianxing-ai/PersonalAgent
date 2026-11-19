@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {Worker} from 'node:worker_threads';
 import {
   MailTriagePipeline,
@@ -1005,4 +1006,149 @@ test('MailTriagePipeline processPagedStream stops immediately on cancellation wi
   assert.equal(summary.stoppedReason, 'cancelled');
   // First page was processed and saved
   assert.equal(Object.keys(storage).length, 2);
+});
+
+test('pipeline entry validation rejects malformed envelopes before checkpoint or inference', async () => {
+  const inference = createMockInference();
+  assert.throws(() => new MailTriagePipeline({}), error => error.code === 'INVALID_ARGUMENT');
+  assert.throws(() => new MailTriagePipeline({inference: undefined, classifier: undefined}),
+    error => error.code === 'INVALID_ARGUMENT');
+  const pipeline = new MailTriagePipeline({inference});
+  const message = {source: 'mail', messageId: 'entry', sourceRevision: 'r1', text: 'Work update'};
+  const context = (signal = new AbortController().signal) => ({messages: [message], signal,
+    deadline: new Date(Date.now() + 60_000).toISOString()});
+  await assert.rejects(pipeline.processBatch({...context(), messages: 'not-an-array'}),
+    error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processBatch({...context(), signal: 'not-a-signal'}),
+    error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processBatch({...context(), deadline: 'not-a-date'}),
+    error => error.code === 'INVALID_ARGUMENT');
+  const aborted = new AbortController();
+  aborted.abort();
+  await assert.rejects(pipeline.processBatch(context(aborted.signal)), error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processBatch({...context(), deadline: new Date(Date.now() - 1).toISOString()}),
+    error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processBatch({...context(), messages: [null]}), error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processBatch({...context(), messages: [{...message, text: 5}]}),
+    error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processBatch({...context(), messages: [{...message, sourceRevision: null}]}),
+    error => error.code === 'INVALID_ARGUMENT');
+  const page = (overrides = {}) => ({fetchPage: async () => ({messages: [message], hasMore: false}),
+    signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString(), ...overrides});
+  await assert.rejects(pipeline.processPagedStream({...page(), fetchPage: 'not-a-function'}),
+    error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processPagedStream(page({signal: aborted.signal})),
+    error => error.code === 'INVALID_ARGUMENT');
+  await assert.rejects(pipeline.processPagedStream({...page(), deadline: new Date(Date.now() - 1).toISOString()}),
+    error => error.code === 'INVALID_ARGUMENT');
+  assert.equal(inference.calls.length, 0);
+});
+
+test('paged stream enforces page contracts, max pages, deadline stops and empty page acknowledgement', async t => {
+  const inference = createMockInference();
+  const message = index => ({source: 'mail', messageId: `paged-${index}`, sourceRevision: 'r1', text: `Work ${index}`});
+  const context = fetchPage => ({fetchPage, signal: new AbortController().signal,
+    deadline: new Date(Date.now() + 60_000).toISOString()});
+
+  await t.test('malformed pages reject the stream before acknowledgement', async () => {
+    const pipeline = new MailTriagePipeline({inference});
+    await assert.rejects(pipeline.processPagedStream(context(async () => null)), error => error.code === 'INVALID_ARGUMENT');
+    await assert.rejects(pipeline.processPagedStream(context(async () => ({messages: 'nope', hasMore: false}))),
+      error => error.code === 'INVALID_ARGUMENT');
+    await assert.rejects(pipeline.processPagedStream(context(async () => ({messages: [message(0)], hasMore: 'yes'}))),
+      error => error.code === 'INVALID_ARGUMENT');
+    await assert.rejects(pipeline.processPagedStream(context(async () => ({messages: [message(0)], hasMore: true}))),
+      error => error.code === 'INVALID_ARGUMENT');
+    await assert.rejects(pipeline.processPagedStream({...context(async () => ({messages: [message(0)], hasMore: true,
+      nextCursor: {uidValidity: 1, lastUid: 0}})), initialCursor: {uidValidity: 1, lastUid: 0}}),
+      error => error.code === 'INVALID_ARGUMENT');
+  });
+
+  await t.test('empty pages acknowledge their advancing cursor and max pages stops with it', async () => {
+    const pipeline = new MailTriagePipeline({inference});
+    let acks = 0, pages = 0;
+    const result = await pipeline.processPagedStream({...context(async () => {
+      pages++;
+      return {messages: [], nextCursor: {uidValidity: 7, lastUid: 100 + pages}, hasMore: true};
+    }), onPageCompleted: () => {acks++;}, maxPages: 2});
+    assert.equal(result.stoppedReason, 'max_pages');
+    assert.equal(result.pagesProcessed, 2);
+    assert.equal(result.total, 0);
+    assert.equal(result.hasMore, true);
+    assert.deepEqual(result.lastCursor, {uidValidity: 7, lastUid: 102});
+    assert.equal(acks, 2);
+    assert.equal(inference.calls.length, 0);
+  });
+
+  await t.test('paged deadline stop keeps completed page results and reports the deadline', async () => {
+    let clock = Date.now();
+    const pipeline = new MailTriagePipeline({inference, now: () => clock});
+    let fetches = 0;
+    const deadline = new Date(clock + 60_000).toISOString();
+    const result = await pipeline.processPagedStream({fetchPage: async () => {
+      fetches++;
+      return {messages: [message(fetches)], nextCursor: {uidValidity: 1, lastUid: fetches}, hasMore: true};
+    }, onPageCompleted: () => {clock = Date.parse(deadline);}, deadline, signal: new AbortController().signal});
+    assert.equal(fetches, 1);
+    assert.equal(result.stoppedReason, 'deadline');
+    assert.equal(result.pagesProcessed, 1);
+    assert.equal(result.total, 1);
+    assert.equal(result.results[0].reason, 'classified');
+    assert.deepEqual(result.categoryCounts, {work: 1});
+    assert.equal(result.hasMore, true);
+    assert.deepEqual(result.lastCursor, {uidValidity: 1, lastUid: 1});
+  });
+});
+
+test('foreign transient checkpoint rows are dropped on load instead of being served as cache', async () => {
+  const inference = createMockInference();
+  let saved = {};
+  const checkpoint = {load: () => saved, save: value => {saved = structuredClone(value);}};
+  const labels = {work: 'Synthetic work', news: 'Synthetic news'};
+  const message = {source: 'mail', messageId: 'poison', sourceRevision: 'r1', text: 'Work update'};
+  const context = () => ({messages: [message], signal: new AbortController().signal,
+    deadline: new Date(Date.now() + 60_000).toISOString()});
+  await new MailTriagePipeline({inference, labels, checkpoint}).processBatch(context());
+  const key = Object.keys(saved)[0];
+  const durable = structuredClone(saved[key]);
+  saved = {[key]: {...structuredClone(durable), reason: 'unavailable'}};
+  const result = await new MailTriagePipeline({inference, labels, checkpoint}).processBatch(context());
+  assert.equal(result.cachedCount, 0, 'transient rows must not be served from cache');
+  assert.equal(result.newlyClassifiedCount, 1);
+  assert.deepEqual(result.results[0], durable);
+  assert.deepEqual(saved[key], durable);
+  let cachedProgress;
+  const replay = await new MailTriagePipeline({inference, labels, checkpoint})
+    .processBatch({...context(), onProgress: value => {cachedProgress = value;}});
+  assert.equal(replay.cachedCount, 1);
+  assert.equal(replay.newlyClassifiedCount, 0);
+  assert.deepEqual(cachedProgress, {processedCount: 1, totalCount: 1, cachedCount: 1, newlyClassifiedCount: 0,
+    classifiedCount: 1, needsReviewCount: 0, highImpactCount: 0, uncertainCount: 0, abstainedCount: 0,
+    highImpactNotices: []});
+  assert.equal(inference.calls.length, 2);
+});
+
+test('pipeline clamps chunkSize into the supported bounded range for classifier batching', async () => {
+  // Inference-based construction inherits the inner triage service bound.
+  assert.throws(() => new MailTriagePipeline({inference: createMockInference(), chunkSize: 5}),
+    /Invalid local triage request/);
+  const chunkSizes = [];
+  const classifier = {classify: async request => {
+    chunkSizes.push(request.messages.length);
+    return request.messages.map(message => ({source: message.source, messageId: message.messageId,
+      sourceRevision: message.sourceRevision, label: null, candidateLabel: null,
+      route: message.highImpact ? 'main_agent' : 'review', abstained: true, reason: 'uncertain',
+      calibrated: false, batching: 'multi_question',
+      receipt: {id: 'synthetic', promptVersion: 'mail-triage-v1', model: 'multilingual',
+        candidateLabels: Object.keys(request.labels), criteriaDigest: 'synthetic',
+        contextDigest: createHash('sha256').update(message.text).digest('hex')}}));
+  }};
+  const messages = Array.from({length: 3}, (_, i) => ({source: 'mail', messageId: `clamp-${i}`,
+    sourceRevision: 'r1', text: `Work update ${i}`}));
+  const context = () => ({messages, signal: new AbortController().signal,
+    deadline: new Date(Date.now() + 60_000).toISOString()});
+  await new MailTriagePipeline({classifier, chunkSize: 0}).processBatch(context());
+  assert.deepEqual(chunkSizes, [1, 1, 1]);
+  await new MailTriagePipeline({classifier, chunkSize: 100}).processBatch(context());
+  assert.deepEqual(chunkSizes.slice(3), [3]);
 });

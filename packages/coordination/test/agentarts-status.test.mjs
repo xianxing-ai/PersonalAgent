@@ -105,3 +105,10 @@ test('receipt is snapshotted before credentials; invalid receipt and handshake c
     } finally {bad.port.close();}
   }
 });
+
+test('a closed port refuses further status lookups without constructing a socket',async()=>{
+  const h=harness({});
+  h.port.close();
+  await assert.rejects(h.port.queryStatus(saved(),control()),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(h.sockets.length,0);
+});

@@ -1,0 +1,49 @@
+{
+  "$comment": "F01–F28 能力状态快照（2026-11-05）。依据 docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md、docs/ROADMAP.md、docs/interfaces/CURRENT_INTERFACE_CATALOG.md 归纳；图编号以 docs/competition/workflow-wiring.json 为准（历史文档中 F 编号存在差异，见 README）。status 取值：production-gap=生产口缺口；wiring-in-pr=修复/接线在途 PR；needs-real-environment=需真机/真云验收。",
+  "snapshotDate": "2026-11-05",
+  "mainHead": "855a90c4",
+  "global": {
+    "workflowsConfigured": 0,
+    "workflowsTotal": 28,
+    "hostGuardChecklistTotal": 152,
+    "hostGuardChecklistDone": 0,
+    "rule": "缺受信口保持 unavailable，禁止 Fake/静默回退 Local；勾选须具备生产注册+真实宿主+约定证据。"
+  },
+  "capabilities": [
+    { "id": "F01", "owners": ["goo122"], "status": "production-gap", "summary": "责任生命周期与出机许可生产提供者缺口；控制闸门修复在途 PR。", "openGaps": ["出机许可生产提供者", "责任生命周期生产口"], "inFlightPrs": [535], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F02", "owners": ["zemeng5208"], "status": "needs-real-environment", "summary": "原生语音能力待真机：声学防回声、final 回执、设备证据；SIS 平台当前不可用。UI 接线归 lab。", "openGaps": ["声学防回声", "final 回执", "设备证据"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md", "docs/ROADMAP.md#MOD-14"] },
+    { "id": "F03", "owners": ["goo122"], "status": "production-gap", "summary": "MemoryQuery 受信 Gateway invoke、版本冲突口未写。", "openGaps": ["MemoryQuery 受信 Gateway invoke", "版本冲突处理口"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F04", "owners": ["goo122"], "status": "production-gap", "summary": "knowledge.search 受信 Gateway invoke 与引用验真口未写。", "openGaps": ["knowledge.search 受信 invoke", "引用验真"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F05", "owners": ["goo122"], "status": "production-gap", "summary": "Memory Gateway invoke 受信口未写，来源回答依赖 F04/F05 同组接线。", "openGaps": ["Memory Gateway invoke"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F06", "owners": ["Potatos498", "goo122"], "status": "production-gap", "summary": "生产 invokeTodoCreate 与 N05 真实投递回执未写；云提醒接线在途 PR。", "openGaps": ["invokeTodoCreate 生产实现", "N05 真实投递回执"], "inFlightPrs": [574], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F07", "owners": ["Potatos498"], "status": "production-gap", "summary": "日历版本口、账户配置、写入外部读回未写；需真实日历账号验收。", "openGaps": ["日历版本口", "账户配置", "写入外部读回"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md", "docs/ROADMAP.md#MOD-20"] },
+    { "id": "F08", "owners": ["Potatos498"], "status": "production-gap", "summary": "Gateway 真归档、真 SMTP 发送、N12 Sent 对账未写。", "openGaps": ["真实归档", "真 SMTP 发送", "N12 Sent 对账"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F09", "owners": ["Potatos498", "zemeng5208"], "status": "production-gap", "summary": "真实 feeds 提供者与会话授权缺口；云前缀验收待华为云联跑。", "openGaps": ["真实 feeds 提供者", "会话授权", "云前缀验收"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F10", "owners": ["goo122"], "status": "production-gap", "summary": "原来源读回与独立审核绑定缺口；F10 enqueue 未注入。", "openGaps": ["原来源读回", "独立审核绑定", "enqueue 注入"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F11", "owners": ["Potatos498"], "status": "production-gap", "summary": "calendar.update 生产工具链与真实读回未写。", "openGaps": ["calendar.update 生产工具链", "真实读回"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F12", "owners": ["Potatos498", "goo122"], "status": "wiring-in-pr", "summary": "N04 真实渠道投递读回端口；通知接线在途 PR。", "openGaps": ["N04 真实渠道投递读回"], "inFlightPrs": [574], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F13", "owners": ["zemeng5208"], "status": "needs-real-environment", "summary": "系统观测 Policy/AgentArts/Desktop 实机闭环未验收。", "openGaps": ["实机闭环验收"], "inFlightPrs": [], "sources": ["docs/ROADMAP.md#MOD-17"] },
+    { "id": "F14", "owners": ["zemeng5208"], "status": "production-gap", "summary": "原生 browser.observe、输入锁、会话绑定缺口（UI 归 lab）。", "openGaps": ["browser.observe 原生实现", "输入锁", "会话绑定"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F15", "owners": ["zemeng5208"], "status": "needs-real-environment", "summary": "真人独立审核签名与实机 WinForms 目视验收未做；配置 UI 归 lab。", "openGaps": ["真人独立审核签名", "实机 WinForms 目视"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F16", "owners": ["Potatos498", "goo122"], "status": "production-gap", "summary": "CI 修复真实自动写入与设备场景待验收；失败解析生产口只有工厂导出。", "openGaps": ["真实 resolveFailure", "readCurrentHead 生产口", "真实写入验收"], "inFlightPrs": [], "sources": ["docs/ROADMAP.md#MOD-34", "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F17", "owners": ["Potatos498", "goo122"], "status": "production-gap", "summary": "失败报告 checkpoint 与真实定位消费验收缺口。", "openGaps": ["失败报告 checkpoint", "真实定位验收"], "inFlightPrs": [], "sources": ["docs/ROADMAP.md#MOD-35", "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F18", "owners": ["zemeng5208"], "status": "production-gap", "summary": "PR 图路径与平台/授权读回缺口。", "openGaps": ["PR 图路径", "平台授权读回"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F19", "owners": ["zemeng5208"], "status": "production-gap", "summary": "Issue 图路径与平台/授权读回缺口。", "openGaps": ["Issue 图路径", "平台授权读回"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F20", "owners": ["goo122"], "status": "production-gap", "summary": "API 文档自动维护（MOD-37）未开工。注：协作待办中的 F20 worker 信任闭环为历史编号，对应本仓库 ownedWorkflowWorker 信任链，不等于本图 F20。", "openGaps": ["API 文档自动维护"], "inFlightPrs": [], "sources": ["docs/ROADMAP.md#MOD-37"] },
+    { "id": "F21", "owners": ["goo122"], "status": "production-gap", "summary": "Skills/MCP 安装隔离与启用许可后端口缺口。", "openGaps": ["安装隔离", "启用许可后端口"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F22", "owners": ["zemeng5208"], "status": "wiring-in-pr", "summary": "工作流调试/影子实验门控与部署读回，修复在途 PR。", "openGaps": ["部署读回"], "inFlightPrs": [571], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F23", "owners": ["goo122"], "status": "production-gap", "summary": "现行配置消费者、可信测量与 Evidence 生产者缺口；齐前禁 shadow release。", "openGaps": ["配置消费者", "可信测量", "Evidence 生产者"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F24", "owners": ["goo122"], "status": "production-gap", "summary": "知识对账身份、出站凭据、Model 能力 guard 缺口。", "openGaps": ["知识对账身份", "出站凭据", "Model 能力 guard"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F25", "owners": ["goo122"], "status": "production-gap", "summary": "出站凭据与账户配置消费缺口（与 F24 同组）。", "openGaps": ["出站凭据"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F26", "owners": ["zemeng5208"], "status": "needs-real-environment", "summary": "镜像/部署/比赛验收读回，修复在途 PR；真实云证据缺口，需华为云账号。", "openGaps": ["真实云证据", "部署读回"], "inFlightPrs": [571], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F27", "owners": ["goo122"], "status": "production-gap", "summary": "上下文预算 Model 能力 guard 与恢复映射缺口。", "openGaps": ["Model 能力 guard", "恢复映射"], "inFlightPrs": [], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] },
+    { "id": "F28", "owners": ["zemeng5208"], "status": "wiring-in-pr", "summary": "多厂商模型门控修复在途 PR（与 F22/F26 同批）。", "openGaps": ["门控接线"], "inFlightPrs": [571], "sources": ["docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"] }
+  ],
+  "highlights": [
+    { "title": "IMAGE28 整图接线", "pr": 531, "state": "draft", "note": "28 图 configured 0/28；#531 为草稿，完整验收前勿合并，整条堆叠压在其上。" },
+    { "title": "cloudPersistent 关机后云持续宿主", "pr": 543, "state": "approved-not-merged", "note": "需真实云证据（关机后云持续）才允许启用；Desktop 组合由 lab 在口齐后接线。" },
+    { "title": "F06/F12 云提醒与通知投递", "pr": 574, "state": "approved-not-merged", "note": "真实渠道投递读回待验收。" },
+    { "title": "F22/F26/F28 门控修复", "pr": 571, "state": "open", "note": "门控与部署读回修复在途。" },
+    { "title": "packages/crew 子智能体链", "pr": 554, "state": "open-stacked", "note": "#554→#559→#565→#569/#570/#573 堆叠未合并，未实机验收。" }
+  ]
+}

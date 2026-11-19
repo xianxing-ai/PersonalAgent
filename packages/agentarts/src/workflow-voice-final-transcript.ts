@@ -18,6 +18,7 @@ export interface VoiceFinalTranscriptReceipt {
   readonly startedAt:string;
   readonly completedAt:string;
   readonly expiresAt:string;
+  readonly deviceEvidenceReady?:boolean;
 }
 
 export interface VoiceFinalTranscriptReadRequest {
@@ -73,7 +74,8 @@ function trustedReceipt(value:unknown):value is VoiceFinalTranscriptReceipt {
     &&Number.isFinite(Date.parse(String(receipt.startedAt)))
     &&Number.isFinite(Date.parse(String(receipt.completedAt)))
     &&Number.isFinite(Date.parse(String(receipt.expiresAt)))
-    &&Date.parse(String(receipt.completedAt))>=Date.parse(String(receipt.startedAt));
+    &&Date.parse(String(receipt.completedAt))>=Date.parse(String(receipt.startedAt))
+    &&receipt.deviceEvidenceReady!==false;
 }
 
 export function createVoiceFinalTranscriptService(options:{
@@ -111,6 +113,9 @@ export function createVoiceFinalTranscriptService(options:{
         return {state:observation.state,reason:observation.reason,capability:'voice.final_transcript',nodeId:'F02_N03'};
       }
       const receipt=observation.receipt;
+      if(receipt && receipt.deviceEvidenceReady===false) {
+        return {state:'unavailable',reason:'voice_device_evidence_unavailable',capability:'voice.final_transcript',nodeId:'F02_N03'};
+      }
       if(!trustedReceipt(receipt)) {
         return {state:'unavailable',reason:'untrusted_or_partial_voice_receipt_rejected',
           capability:'voice.final_transcript',nodeId:'F02_N03'};
@@ -141,6 +146,7 @@ export function createVoiceFinalTranscriptService(options:{
         echo:false,
         origin:'user',
         source:'live_input_audio',
+        ...(receipt.deviceEvidenceReady!==undefined?{deviceEvidenceReady:receipt.deviceEvidenceReady}:{}),
       };
     },
   };
@@ -176,6 +182,7 @@ export function createVoiceFinalTranscriptAdapter(service:VoiceFinalTranscriptSe
       echo:{type:'boolean'},
       origin:{type:'string',enum:['user']},
       source:{type:'string',enum:['live_input_audio']},
+      deviceEvidenceReady:{type:'boolean'},
     }},
     execute:(input,context)=>service.read((input&&typeof input==='object'&&!Array.isArray(input)
       ?input:{}) as Record<string,unknown>,context),

@@ -56,6 +56,7 @@
 .window-button {display:grid;place-items:center;width:44px;height:38px;border:0;background:transparent;color:var(--fg-2)}.window-button:hover {background:var(--accent-soft)}.window-close:hover {background:#b42c36;color:white}.window-button svg,.workspace .icon-btn svg {width:16px;height:16px}
 .workspace-sidebar {display:flex;flex-direction:column;min-height:0;padding:0 10px;border-right:1px solid var(--glass-hairline)}
 .workspace-brand {height:54px;display:flex;align-items:center;gap:8px;padding:0 8px}.workspace-brand strong {font-size:18px;letter-spacing:-.6px}
+.dashboard-page {display:grid;gap:14px;max-width:880px}.dashboard-period {display:flex;align-items:center;gap:10px;font-size:13px}.dashboard-period select {min-width:128px}.dashboard-cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.dashboard-bars {display:flex;align-items:flex-end;gap:4px;height:46px;margin-top:10px}.dashboard-bars i {flex:1;background:var(--accent);border-radius:3px 3px 0 0;opacity:.85}
 .workspace-nav {display:grid;gap:1px;margin-bottom:22px}.workspace-nav button,.workspace-project {display:flex;align-items:center;gap:9px;padding:8px 9px;border:0;background:none;border-radius:8px;text-align:left;color:var(--fg-2);font-size:14px}.workspace-nav button svg,.workspace-project svg {width:17px;height:17px;flex-shrink:0}.workspace-nav button:hover {background:var(--accent-soft);color:var(--fg)}
 .workspace-projects {min-height:0;overflow:auto;flex:1;scrollbar-width:thin}.workspace-projects h2 {font-size:13px;color:var(--muted);font-weight:500;margin:0 8px 8px}.workspace-project {width:100%;background:var(--accent-soft);color:var(--fg)}
 .workspace-task {display:flex;align-items:center;gap:8px;width:100%;padding:9px 8px 9px 32px;background:transparent;border:0;border-radius:7px;color:var(--fg-2);font-size:13px;text-align:left}.workspace-task>span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.workspace-task-state {font-size:10px;color:var(--muted)}.workspace-task:hover,.workspace-task[aria-current="page"] {background:var(--accent-soft)}.workspace-empty-list {font-size:12px;color:var(--muted);padding:13px 10px 13px 32px}
@@ -286,6 +287,10 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .task-progress[data-state="failed"] strong::before {background:var(--danger)}
 .task-progress:is([data-state="waiting_approval"],[data-state="waiting_reconciliation"]) strong::before {background:var(--warn)}
 .panel .task-progress[hidden],.workspace .task-progress[hidden] {display:none}
+.failure-repair {flex-direction:column}
+.failure-repair ol {margin:4px 0 6px;padding-left:1.1em}
+.failure-repair button {margin:0 8px 0 0}
+.failure-repair button:disabled {opacity:.6}
 @media(max-width:540px){.panel .task-progress,.workspace .task-progress {flex-direction:column;gap:4px}}
 .admin .task-record-title {display:block;max-width:28ch;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
 .admin .task-record-id {display:block;margin-top:4px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
@@ -602,3 +607,44 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .connector-card footer {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .connector-inline-action {margin-left:auto;height:24px;padding:0 10px;border-radius:8px;border:1px solid var(--glass-hairline);background:transparent;color:inherit;font-size:11px;cursor:pointer;opacity:.8}
 .connector-inline-action:hover {opacity:1}
+
+.activity-timeline {display:grid;gap:12px}
+.activity-item {display:grid;gap:6px;padding:14px 16px}
+.activity-meta,.activity-why {margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.activity-summary {margin:0;font-size:14px}
+.activity-actions {display:flex;gap:8px}
+
+/* Desktop Pets (ORB-01..08 & 6-state interactive control panel) */
+.admin .main[data-section="pets"] .feature-page .pets-hero-card {
+  display:flex;flex-direction:row;align-items:center;gap:20px;margin:0 0 16px;padding:18px 20px;border-radius:16px;
+}
+.admin .pets-preview-box {
+  position:relative;flex:0 0 112px;width:112px;height:112px;padding:0;border-radius:24px;
+  border:1px solid var(--glass-border);
+  background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.08),rgba(8,10,14,.94));
+  display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;
+}
+.admin .pets-preview-box canvas {
+  display:block;width:96px;height:96px;pointer-events:none;
+  --orb-particle:#fff;--orb-core-1:#05070a;--orb-core-2:#10151c;
+}
+.admin .pets-hero-copy {flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.admin .pets-hero-title {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.admin .pets-hero-title strong {font-size:15px;font-weight:620}
+.admin .pets-hero-copy p {margin:0;font-size:12.5px;line-height:1.5}
+.admin .pets-hero-actions {display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+.admin .settings-list .setting-row.pets-setting-block {
+  flex-direction:column;align-items:stretch;gap:12px;padding:16px 18px;
+}
+.admin .pets-option-grid {
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:8px;width:100%;
+}
+.admin .main .btn.pets-option-btn {
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
+  gap:3px;min-height:56px;padding:9px 12px;text-align:left;
+}
+.admin .main .btn.pets-option-btn .pets-option-name {font-weight:600;font-size:12.5px;line-height:1.3}
+.admin .main .btn.pets-option-btn .pets-option-note {opacity:.78;font-size:11px;font-weight:400;line-height:1.35}
+@media(max-width:640px) {
+  .admin .main[data-section="pets"] .feature-page .pets-hero-card {flex-direction:column;align-items:flex-start}
+}

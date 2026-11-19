@@ -117,3 +117,41 @@ test('invalid, unaffected and extra-field requests remain rejected before append
   assert.equal(reads, 0);
   assert.equal(store.read().revision, revision);
 });
+
+test('request fields are validated before the bound store is read', () => {
+  const {store} = fixture();
+  const revision = store.read().revision;
+  let reads = 0;
+  const counting = {read: () => { reads++; return store.read(); },
+    append: (expected, input) => store.append(expected, input)};
+  for (const invalid of [{...request(revision), expectedGraphRevision: 1.5},
+    {...request(revision), expectedGraphRevision: -1},
+    {...request(revision), summary: '   '},
+    {...request(revision), reason: ''},
+    {...request(revision), plan: {id: 'plan', revision: 0}},
+    {...request(revision), plan: {id: 'plan', revision: 1.5}},
+    {...request(revision), plan: {id: ' ', revision: 1}},
+    {...request(revision), dependencies: [{id: 'decision', revision: 0}]}]) {
+    assert.throws(() => commitStoredPlanRevision(counting, at, invalid), {code: 'INVALID_ARGUMENT'});
+  }
+  assert.equal(reads, 0, 'validation must not touch the bound store');
+  assert.equal(store.read().revision, revision);
+});
+
+test('the appended Plan version keeps the requested dependencies and reviewed reason', () => {
+  const {store} = fixture();
+  const before = store.read();
+  const result = commitStoredPlanRevision(store, at, {...request(before.revision),
+    dependencies: [{id: 'decision', revision: 1}, {id: 'goal', revision: 1}]});
+  assert.equal(result.kind, 'applied');
+  const appended = result.snapshot.history.at(-1);
+  assert.deepEqual(appended.dependencies, [{id: 'decision', revision: 1}, {id: 'goal', revision: 1}]);
+  assert.equal(appended.reason, 'explicit reviewed candidate');
+  assert.equal(appended.sourceRef, before.history.find(n => n.id === 'plan').sourceRef,
+    'the appended version stays the same Plan node');
+  assert.deepEqual(result.proposal.plan, {id: 'plan', revision: 1});
+  assert.equal(result.proposal.evaluatedAt, at);
+  assert.deepEqual(result.proposal.changes,
+    [{field: 'summary', before: 'plan', after: 'Remind at 16:15'}]);
+  assert.equal(result.proposal.reason, 'explicit reviewed candidate');
+});

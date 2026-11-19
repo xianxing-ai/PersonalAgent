@@ -50,6 +50,8 @@ export {
   UnavailableTranscriptConsumerPort,
   UnavailableSpeechKeywordDetectorPort,
 } from './unavailable.js';
+export {createVoiceEchoGuard, buildFinalTranscriptReceipt, verifyFinalTranscriptReceipt, buildVoiceDeviceEvidence} from './echo-guard.js';
+export type {VoiceEchoGuard, VoiceEchoWindow, VoiceEchoDecision, FinalTranscriptReceipt, FinalTranscriptVerdict, VoiceDeviceEvidence} from './echo-guard.js';
 export {bindVoiceWake} from './wake-binding.js';
 export type {VoiceWakeBinding, VoiceWakeBindingOptions} from './wake-binding.js';
 export {WakeLifecycleController, createPcmKeywordWakeSignalSource} from '@personal-agent/voice-wake';
@@ -86,3 +88,14 @@ export type {
   VoiceSessionState,
   VoiceSessionTerminalReason,
 } from './voice-session.js';
+export {
+  assertVoiceSessionContext,
+  planHuaweiSisAvailability,
+} from './voice-session-boundary.js';
+export type {
+  VoiceSessionContext,
+  ValidatedVoiceSessionContext,
+  AssertVoiceSessionContextOptions,
+  HuaweiSisAvailabilityInput,
+  HuaweiSisAvailabilityPlan,
+} from './voice-session-boundary.js';

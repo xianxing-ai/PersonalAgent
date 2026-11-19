@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "acceptanceId": "release-uninstall",
+  "status": "pending",
+  "executed": false,
+  "verified": false,
+  "evidenceLevel": "unverified",
+  "target": "Windows 11 x64 NSIS uninstaller",
+  "requiredEnvironment": "Isolated Windows 11 machine with installed application and userData",
+  "notes": "占位文件：尚未在 Windows 真机执行卸载验证。本文件仅作为验收脚手架占位，明确未验收（MANUAL_EVIDENCE_NOT_EXECUTED），不作为任何发布证据。卸载应遵循安全默认，保留用户数据（deleteAppDataOnUninstall=false）。",
+  "checklist": [
+    "通过控制面板/Windows设置或卸载快捷方式触发卸载",
+    "安装目录及程序二进制文件被干净移除",
+    "桌面及开始菜单快捷方式被干净移除",
+    "用户数据（userData，含 SQLite 与凭据）按策略默认保留，不被意外清除"
+  ]
+}
