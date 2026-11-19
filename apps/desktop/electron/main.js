@@ -9,7 +9,6 @@ import {createConversationDelivery} from './conversation-delivery.js';
 import {readReconciliationStatus} from './reconciliation-status.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
-import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {createFailureRepairHost} from './failure-repair-host.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
@@ -819,6 +818,7 @@ function projectWindowSnapshot(surface,topics=['all']) {
 }
 function snapshot(surface) {
   const cloudSettings=agentArtsSnapshot();
+  const modelSettings=agentArtsModels?.snapshot();
   return {
     ...conversationProjection(surface),
     connection: connectionLabel,
@@ -852,13 +852,13 @@ function snapshot(surface) {
     voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: (()=>{const value=structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model);return value.status==='error'?{...value,reason:errorDisplayText(value.reason,'configuration')}:value;})(),
-    agentArtsModels:agentArtsModels?.snapshot(),
+    agentArtsModels:modelSettings,
     modelApi: surface ? undefined : readDesktopModelApiState(),
     harnessContext:surface?undefined:harnessContextHost?.snapshot()??{state:harnessContextFailure?'unavailable':'disabled',
       enabled:false,reason:harnessContextFailure,verification:'not_run'},
     startupRecovery:surface?undefined:startupRecoveryStatus,
     harnessEvents:surface?undefined:harnessEventsHost?.snapshot(),
-    modelChoices: featuredModelChoices(agentArtsModels?.snapshot().catalog?.models,{selectedId:conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking)?.modelId??''}),
+    modelChoices:modelSettings?.catalog?.models??[],
     conversationPreference: conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking),
     thinking: {...thinking,...(conversations?.preference(conversations?.activeConversationId(surface==='workspace'?'workspace':'panel'),thinking) ?? {}),
       reason:'本对话的步骤预算在提交时固定；AgentArts 负责主编排，辅助任务使用当前对话的模型选择。原生思考能力以模型设置和实际参数回执为准。'},
@@ -2868,7 +2868,10 @@ async function initializeRuntime() {
           const routed=costRoute?.apply(preference, executionModel, conversationId)??{preference, executionModel};
           const routedId=routed.preference.modelId || undefined;
           const routedSelected=models?.models.find(item=>item.id===routedId)??selected;
-          const finalModel=usageBudgetProduct&&routed.executionModel?usageBudgetProduct.degradeSelection(routed.executionModel,selection=>agentArtsModels.resolveExecutionModel(selection)):routed.executionModel;
+          const explicit=Boolean(preference.modelId||preference.executionModel||preference.modelSelection==='default');
+          const finalModel=!explicit&&usageBudgetProduct&&routed.executionModel
+            ?usageBudgetProduct.degradeSelection(routed.executionModel,selection=>agentArtsModels.resolveExecutionModel(selection))
+            :routed.executionModel;
           return {...routed.preference,modelId:routedId,...(finalModel!==undefined?{executionModel:finalModel}:{}),configurationRef:routedSelected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
@@ -5278,7 +5281,9 @@ app.whenReady().then(async () => {
       config:remoteMcpConfig,host:remoteMcpHost,services:remoteMcpServices,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
       namespace:desktopHost.userNamespace,onUpdate:publish});
   }
-  agentArtsModels=createAgentArtsModelSettings({configuration:agentArtsConfig,readCatalog:async({deadline,signal})=>{
+  agentArtsModels=createAgentArtsModelSettings({
+    configuration:agentArtsConfig,allowUnverified:process.env.PA_AGENTARTS_MODEL_ACCEPTANCE==='1',
+    readCatalog:async({deadline,signal})=>{
     const binding=agentArtsConfig.binding();
     const transport=createAgentArtsTransportConfig({binding,environment:{PA_AGENTARTS_TRANSPORT:'https'},configurationProvider:{read:()=>agentArtsConfig.readTransportOptions(binding)}});
     const response=await transport.fetchImpl(binding.gatewayUrl+'/runtimes/'+encodeURIComponent(binding.runtimeName)+'/invocations',{method:'POST',redirect:'error',signal,headers:{Authorization:agentArtsConfig.readAuthorization(binding),'Content-Type':'application/json','X-Request-Id':randomUUID(),'x-hw-agentarts-session-id':randomUUID(),'X-Invoke-Mode':'published','x-pa-deadline':deadline},body:JSON.stringify({query:JSON.stringify({modelCatalogVersion:'1.0',action:'list'})})});

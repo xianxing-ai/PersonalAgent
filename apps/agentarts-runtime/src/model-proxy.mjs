@@ -1,13 +1,18 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {createStageTimeline} from './stage-timeline.mjs';
 import {randomUUID} from 'node:crypto';
+
+export const HUAWEI_MAAS_MODEL_ENDPOINT = 'https://api.modelarts-maas.com/openai/v1';
+
 const bad=()=>{throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted AgentArts model proxy configuration');};
 const deniedHeaders=new Set(['host','content-length','connection','cookie','proxy-authorization','transfer-encoding']);
 /** Reuses the existing text Provider/ModelGateway. Inbound gateway auth replaces backend Bearer auth. */
 export function createAgentArtsModelFetch({endpoint,model,authentication,requestProfile='standard',fetch:request=globalThis.fetch,onRecord,route='agentarts-proxy'}={}) {
   let base;try{base=new URL(endpoint);}catch{bad();}
-  const validEndpoint=route==='agentarts-proxy'?base.pathname.replace(/\/$/u,'')==='/inference/v1'
-    :route==='runtime-bailian'&&/^[a-zA-Z0-9-]+\.cn-beijing\.maas\.aliyuncs\.com$/u.test(base.hostname)&&base.pathname.replace(/\/$/u,'')==='/compatible-mode/v1';
+  const path=base.pathname.replace(/\/$/u,'');
+  const validEndpoint=route==='agentarts-proxy'&&path==='/inference/v1'
+    ||route==='runtime-huawei-maas'&&base.origin+path===HUAWEI_MAAS_MODEL_ENDPOINT
+    ||route==='runtime-bailian'&&/^[a-zA-Z0-9-]+\.cn-beijing\.maas\.aliyuncs\.com$/u.test(base.hostname)&&path==='/compatible-mode/v1';
   if(base.protocol!=='https:'||base.port||base.username||base.password||base.search||base.hash||!validEndpoint
     ||typeof model!=='string'||!model.trim()||!['standard','deepseek-native-v1','bailian-deepseek-v1','huawei-openai-v1'].includes(requestProfile))bad();
   if(!authentication||!['api_key','iam'].includes(authentication.kind))bad();
@@ -22,7 +27,7 @@ export function createAgentArtsModelFetch({endpoint,model,authentication,request
     init.signal.throwIfAborted();const payload=JSON.parse(init.body);
     if(payload.model!==model||payload.stream!==false)bad();
     if(requestProfile==='huawei-openai-v1'&&payload.reasoning_effort!==undefined) {
-      // Platform StandardOpenAI backend protocol, not the separate native /v2 protocol.
+      // Huawei's OpenAI-compatible thinking parameters.
       if(!['none','low','high','max'].includes(payload.reasoning_effort))throw new ProtocolError('UNSUPPORTED_CAPABILITY','This backend reasoning depth is unavailable');
       const thinking=payload.reasoning_effort!=='none';
       if(!thinking)delete payload.reasoning_effort;
@@ -56,7 +61,8 @@ export function createAgentArtsModelFetch({endpoint,model,authentication,request
       if(!headers.has('authorization'))throw new ProtocolError('UNAUTHORIZED','IAM request signature unavailable');
     }
     init.signal.throwIfAborted();const timeline=createStageTimeline({onRecord});
-    return timeline.run('model.agentarts_proxy',async()=>{
+    const stage=route==='runtime-huawei-maas'?'model.huawei_maas':'model.agentarts_proxy';
+    return timeline.run(stage,async()=>{
       // No fallback origin, no redirect, no retry of an unknown paid request.
       const response=await request(target,{...init,headers,body:encoded,redirect:'error'});
       if(bindings.has(response))bad();

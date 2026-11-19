@@ -52,6 +52,8 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
   const file=path.join(userData,'agentarts-config.json');
   let saved,failure='';
   const defaults={gatewayUrl:environment.PA_AGENTARTS_GATEWAY_URL??'',runtimeName:environment.PA_AGENTARTS_RUNTIME_NAME??''};
+  let environmentBinding;
+  try {environmentBinding=validateBinding(defaults);} catch {/* Optional startup binding. */}
   try {
     if (existsSync(file)) {
       const data=JSON.parse(readFileSync(file,'utf8'));
@@ -67,7 +69,9 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
   const readTransportOptions=binding=>{
     const current=runtimeBinding();
     if (!current || binding.gatewayUrl!==current.gatewayUrl || binding.runtimeName!==current.runtimeName) throw Error('AgentArts 配置已改变，请重启应用重新绑定');
-    return {...(saved?.appToken===undefined?{}:{appToken:saved.appToken}),
+    const appToken=saved?.appToken??(saved?.transport===undefined&&binding.gatewayUrl===environmentBinding?.gatewayUrl
+      &&binding.runtimeName===environmentBinding?.runtimeName?environment.PA_AGENTARTS_APP_TOKEN:undefined);
+    return {...(appToken===undefined?{}:{appToken}),
       ...(saved?.deploymentVersion===undefined?{}:{deploymentVersion:saved.deploymentVersion})};
   };
   const currentTransport=()=>createAgentArtsTransportConfig({binding:runtimeBinding(),environment:effectiveEnvironment(),
@@ -78,13 +82,16 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       || (options && !isTransportCurrent(options))) throw Error('AgentArts 配置已改变或撤销，请重启应用重新绑定');
   }
   const snapshot=()=>{
-    let transport,transportFailure='';
-    try {if(runtimeBinding())transport=publicTransport(currentTransport());}
+    let transport,transportFailure='',appTokenConfigured=false;
+    try {
+      const binding=runtimeBinding();
+      if(binding){appTokenConfigured=Boolean(readTransportOptions(binding).appToken);transport=publicTransport(currentTransport());}
+    }
     catch {transportFailure='AgentArts 实时连接配置不完整，请核对 WSS 地址与独立镜像凭据';}
     const preferences=readTransportPreferences();
     return {configured:Boolean(saved)&&!transportFailure,runtimeReady:Boolean(runtimeBinding()),
       gatewayUrl:saved?.gatewayUrl??defaults.gatewayUrl,runtimeName:saved?.runtimeName??defaults.runtimeName,
-      appTokenConfigured:Boolean(saved?.appToken||environment.PA_AGENTARTS_APP_TOKEN),deploymentVersion:saved?.deploymentVersion??'',
+      appTokenConfigured,deploymentVersion:saved?.deploymentVersion??'',
       deploymentSelection:saved?.deploymentVersion===undefined?'latest':'pinned',canRestoreDefaultConnection:Boolean(saved),
       ...(transport??{transport:preferences.transport}),
       websocketUrl:transport?.transport==='https'?'':transport?.websocketUrl??saved?.websocketUrl??environment.PA_AGENTARTS_WSS_URL??'',

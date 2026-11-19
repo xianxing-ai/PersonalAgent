@@ -1,3 +1,5 @@
+import {isCurrentModelSelection,textModels} from '../../../shared/thinking-selection.js';
+
 const effortLabels={none:'关闭',minimal:'最低',low:'低',medium:'平衡',high:'高',xhigh:'更高',max:'最高'};
 const effortOrder=Object.keys(effortLabels);
 const labelFor=effort=>effortLabels[effort]??effort;
@@ -6,16 +8,17 @@ const labelFor=effort=>effortLabels[effort]??effort;
 export function nativeReasoningState(snapshot){
   const catalog=snapshot?.agentArtsModels?.catalog,preference=snapshot?.conversationPreference;
   const defaults=snapshot?.agentArtsModels?.preferences;
-  const useDefaults=Boolean(catalog)&&defaults!=null&&!preference?.executionModel&&!preference?.modelId&&defaults.catalogRevision===catalog.revision;
+  const useDefaults=Boolean(catalog)&&defaults!=null&&!preference?.executionModel&&!preference?.modelId;
   const modelId=preference?.executionModel?.modelId??(preference?.modelId||undefined)??(useDefaults?defaults?.defaultModelId:catalog?.defaultModelId);
-  const model=catalog?.models.find(m=>m.id===modelId&&m.type==='text'&&m.availability!=='unavailable'&&m.available!==false);
+  const model=textModels(catalog).find(m=>m.id===modelId);
   const effort=preference?.executionModel?.reasoningEffort??(useDefaults?defaults?.reasoningEffort:undefined);
   const publishedEfforts=new Set(model?.reasoningEfforts??[]);
   const efforts=effortOrder.filter(effort=>publishedEfforts.has(effort));
-  const stale=Boolean(preference?.executionModel&&preference.executionModel.catalogRevision!==catalog?.revision);
+  const stale=Boolean(preference?.executionModel
+    &&!isCurrentModelSelection(catalog,snapshot.agentArtsModels?.previousSelection,preference.executionModel));
   const available=Boolean(model)&&!stale&&(effort===undefined||efforts.includes(effort));
   return {catalogRevision:catalog?.revision,modelId,efforts,reasoningEffort:effort,available,
-    reason:stale?'模型目录已改变，请重新选择主思考模型':!model?'当前目录尚无此模型的文本能力':!available?'目录不再支持已保存的强度，请重新选择模型':!efforts.length?'此模型未公布可调强度，使用供应商默认':'仅发送当前目录声明的原生强度；执行步骤预算单独设置'};
+    reason:!model?'所选模型不可用，请重新选择当前部署已发布的模型':stale?'模型目录已改变，请重新选择模型':!available?'目录不再支持已保存的强度，请重新选择模型':!efforts.length?'此模型未公布可调强度，使用供应商默认':'仅发送当前目录声明的原生强度；执行步骤预算单独设置'};
 }
 
 /** One writer for model + effort. Intermediate drag positions are coalesced. */

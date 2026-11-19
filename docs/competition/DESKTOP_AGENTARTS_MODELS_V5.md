@@ -42,15 +42,17 @@ Live 音频发送异常保留安全错误码与帧格式元数据，区分帧无
 
 ## 模型目录与子任务
 
-镜像可通过 `PA_AGENT_MODEL_CATALOG_FILE` 读取受信 JSON 文件；它与内联 `PA_AGENT_MODEL_CATALOG` 互斥。默认文件为 `apps/agentarts-runtime/src/default-model-catalog.json`。2026-10-16 的目录来自账号实际返回的 176 个百炼条目，加上既有 AgentArts DeepSeek 条目去重，共 177 项；可见性与文本类别只用于发现，不证明全部模型已授权、协议兼容或推理通过，默认均标为 `unverified`。
+镜像通过 `PA_AGENT_MODEL_CATALOG_FILE` 或内联 `PA_AGENT_MODEL_CATALOG` 读取受信目录，两者互斥。镜像中的 `apps/agentarts-runtime/src/default-model-catalog.json` 是验收候选清单。正式目录按来源和厂商保留已实测通过的最新旗舰与 Flash 档，每个来源、厂商、档位各保留一款。AgentArts 保持默认来源，华为 MaaS 使用独立的直连凭据。同一型号可在两个来源中各有一个独立入口。百炼仅在正式目录明确配置并验证专用型号后显示。
 
-模型条目不携带 URL、密钥或请求头。元数据查询经已有鉴权 `/invocations`，query 为 `{modelCatalogVersion:"1.0",action:"list"}`，不触发推理。规范化内容的 SHA256 revision 绑定 `executionModel:{catalogRevision,modelId,reasoningEffort?}`。非文本或 unavailable 条目不能作为思考模型；未知模型、旧 revision、未公布强度明确拒绝。
+目录通过原有鉴权 `/invocations` 读取，query 为 `{modelCatalogVersion:"1.0",action:"list"}`。目录的 SHA256 revision 与 `executionModel:{catalogRevision,modelId,reasoningEffort?}` 绑定。`id` 用于应用选择和会话记录，`providerModelId` 用于上游推理请求。小窗、工作区、模型设置、自动路由与子任务候选使用同一目录的 `available` 文本条目。已保存的旧选择失效时，用户可以在当前目录重新选择。
 
 主模型可看到目录元数据，并通过原 `subagent.dispatch` 提出子任务、模型与可选 `reasoningEffort`。新增字段兼容旧输入；缺省时旧摘要不变。Runtime 校验并将最终选择写入原任务 checkpoint，恢复使用原选择。`thinkingDepth` 继续表示预算，不代替原生 effort。工作区从 `readSubagentTasks()` 展示真实父子任务、模型、状态和 Evidence 引用，不另建调度器。
 
 ## 部署与验收
 
 镜像保持 ARM64、8080、`/ping`、`/invocations` 和 `/ws`。语音的受信 `PA_AGENT_REALTIME_WORKSPACE_ID`、`PA_AGENT_REALTIME_API_KEY` 由部署宿主提供；不得放入镜像、Git、模型提示或公开日志。目录文件可设置为 `/opt/personal-agent/apps/agentarts-runtime/src/default-model-catalog.json`。
+
+在隔离的固定版本上注入 AgentArts 模型代理凭据与华为 MaaS 的 `PA_AGENT_MAAS_KEY_FILE` 或 `PA_AGENT_MAAS_API_KEY`。验收桌面以 `PA_AGENTARTS_MODEL_ACCEPTANCE=1` 启动并绑定该固定版本，逐条选择候选并发送一条简短公开消息。成功要求软件得到正常回答，且同次云端日志的来源、上游模型和关联 ID 对应。正式目录只纳入通过的条目并标为 `available`，发布时读回正式目录。盘古 2.0 Flash 须在 2026-11-30 贵阳一下线前移出正式目录。 [华为云下线公告](https://support.huaweicloud.com/bulletin-maas/bulletin-maas-0002.html)
 
 真实语音 runner 位于 `tests/manual/agentarts/agentarts-realtime-probe.mjs`，只发送公开合成音频，不录音、不播放。它分别记录 session ready、输入转写、首段音频、输出转写、轮次完成及关闭时间；全部观测齐备才通过。此项不能代替实体麦克风、扬声器、唤醒或用户听感验收。
 

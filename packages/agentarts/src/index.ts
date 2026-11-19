@@ -474,11 +474,11 @@ export class OwnedAgentOrchestrator {
         const input=record(data);
         if(Array.isArray(input.availableTools) && input.availableTools.some(tool=>tool && typeof tool==='object' && (tool as {name?:unknown}).name==='subagent.dispatch')) {
           const catalog=this.options.executionModels.catalog();
-          // A missing implicit catalog hint does not replace an explicit model selection.
-          if (catalog && Array.isArray(catalog.models) && catalog.defaultModelId) {
-            modelData={...input,executionModelCatalog:{revision:catalog.revision,defaultModelId:catalog.defaultModelId,
-              models:catalog.models.filter(model=>model.type==='text' && model.availability!=='unavailable')
-                .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
+          const accepted = catalog?.models.filter(model => model.type === 'text' && model.availability === 'available') ?? [];
+          if (accepted.length) {
+            const defaultModelId = accepted.find(model => model.id === catalog.defaultModelId)?.id ?? accepted[0]!.id;
+            modelData = {...input, executionModelCatalog: {revision: catalog.revision, defaultModelId,
+              models: accepted.map(model => ({id: model.id, reasoningEfforts: model.reasoningEfforts}))}};
           }
         }
       }

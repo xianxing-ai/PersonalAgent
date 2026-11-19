@@ -33,7 +33,7 @@ test('default presets select only the configured pair and published native effor
     const selected=defaultThinkingSelection(data,depth),model=data.catalog.models.find(item=>item.id===selected.modelId);
     assert.equal(selected.modelId,depth<2?'b':'a');assert.ok(model.reasoningEfforts.includes(selected.reasoningEffort));
   }
-  const updated=structuredClone(data);updated.preferences.defaultModelId='custom-model';
+  const updated=structuredClone(data);updated.preferences.defaultModelId='custom-model';delete updated.preferences.reasoningEffort;
   assert.equal(Object.hasOwn(defaultThinkingSelection(updated,5),'reasoningEffort'),false);
   updated.preferences.defaultModelId='blocked';assert.throws(()=>defaultThinkingSelection(updated,5),/不可用/);
   for(const depth of [-1,6,1.5,NaN])assert.throws(()=>defaultThinkingSelection(data,depth));
