@@ -470,3 +470,68 @@ test('playback opens and closes the echo guard even when speech fails', async ()
   await assert.rejects(f.input.playReply(5), /超时/);
   assert.deepEqual(events, [['begin', 'reply-1'], ['end', 'reply-1']]);
 });
+
+test('speakText plays completed reply through speech output with echo guard and supports interrupt via stopSpeaking (L-07)', async () => {
+  const {readFileSync} = await import('node:fs');
+  const events = [];
+  const spoken = [];
+  let stopCalls = 0;
+  let releasePending;
+  const echoGuard = {
+    beginSpeechOutput(replyId) {events.push(['begin', replyId]); return {replyId};},
+    endSpeechOutput(replyId) {events.push(['end', replyId]); return true;},
+    inspect() {return {deliverable: true, echoSuspected: false, guardRemainingMs: 0, reason: 'no_active_output'};},
+  };
+  const input = createDesktopVoiceInputCore({
+    source: {subscribe() { return {closed: Promise.resolve(), unsubscribe() {}}; }, dispose: async () => {}},
+    microphoneHost: {authorize() {}, snapshot: () => ({authorized: false, subscriberCount: 0}), revoke: async () => {}},
+    client: {call() { assert.fail('speakText cannot submit Runtime tasks'); }},
+    createConsumer: () => ({consume() { assert.fail('speakText cannot consume transcripts'); }}),
+    createBuffer: createVoicePcmBuffer,
+    VoiceSessionManager,
+    createSpeechPorts: () => ({
+      recognition: {recognize() { assert.fail('speakText must not recognize'); }},
+      output: {
+        speak(request) {
+          spoken.push(request);
+          if (request.text === '长播报') {
+            return {
+              result: new Promise(resolve => { releasePending = resolve; }),
+              async stop() { stopCalls++; releasePending?.(); },
+            };
+          }
+          return {result: Promise.resolve(), async stop() { stopCalls++; }};
+        },
+      },
+      dispose: async () => {},
+    }),
+    enabled: true,
+    inputMode: 'dictation',
+    echoGuard,
+  });
+
+  const done = await input.speakText(11, '你好，这是需要播报的回答。');
+  assert.equal(done.completed, true);
+  assert.equal(done.interrupted, false);
+  assert.equal(spoken.length, 1);
+  assert.equal(spoken[0].locale, 'zh-CN');
+  assert.equal(events.length, 2);
+  assert.equal(events[0][0], 'begin');
+  assert.equal(events[1][0], 'end');
+  assert.equal(input.hasActive(), false);
+
+  const inFlight = input.speakText(11, '长播报');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(input.snapshot().status, 'speaking');
+  const stopped = await input.stopSpeaking(11);
+  assert.equal(stopped.stopped, true);
+  const interrupted = await inFlight;
+  assert.equal(interrupted.interrupted, true);
+  assert.equal(stopCalls >= 1, true);
+  assert.equal(input.hasActive(), false);
+  await input.dispose();
+
+  const renderer = readFileSync(new URL('../src/app/renderer.js', import.meta.url), 'utf8');
+  assert.match(renderer, /invoke\('voice\.play',\s*target\)/);
+  assert.match(renderer, /data-ui-action="speak"/);
+});

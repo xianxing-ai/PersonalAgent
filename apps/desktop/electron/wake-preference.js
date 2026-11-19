@@ -2,15 +2,21 @@ import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'no
 import path from 'node:path';
 
 export const WAKE_DURATIONS = ['minutes30', 'hours2', 'untilQuit'];
-const LEASE_MS = {minutes30: 30 * 60_000, hours2: 2 * 60 * 60_000, untilQuit: 8 * 60 * 60_000};
+/** Matches microphone-capture-host.js 120-minute single-lease authorization ceiling. */
+export const MAX_WAKE_MICROPHONE_LEASE_MS = 120 * 60_000;
+const LEASE_MS = {
+  minutes30: 30 * 60_000,
+  hours2: MAX_WAKE_MICROPHONE_LEASE_MS,
+  untilQuit: MAX_WAKE_MICROPHONE_LEASE_MS,
+};
 
 export function normalizeWakePreference(value) {
-  const duration = WAKE_DURATIONS.includes(value?.duration) ? value.duration : 'untilQuit';
+  const duration = WAKE_DURATIONS.includes(value?.duration) ? value.duration : 'hours2';
   return {enabled: value?.enabled === true, duration};
 }
 
 export function wakeLeaseMs(preference) {
-  return LEASE_MS[normalizeWakePreference(preference).duration];
+  return Math.min(LEASE_MS[normalizeWakePreference(preference).duration], MAX_WAKE_MICROPHONE_LEASE_MS);
 }
 
 export function readWakePreference(file) {

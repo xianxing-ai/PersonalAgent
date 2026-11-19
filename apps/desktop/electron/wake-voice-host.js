@@ -1,5 +1,6 @@
 import {WakeLifecycleController, createPcmKeywordWakeSignalSource,
   createVoicePcmFrameSourcePort, createWindowsSystemSpeechKeywordDetector} from '@personal-agent/voice';
+import {MAX_WAKE_MICROPHONE_LEASE_MS} from './wake-preference.js';
 
 const LEASE_MS = 10 * 60_000;
 const RELEASE_MS = 5000;
@@ -78,7 +79,9 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
     if (releaseUnknown) throw Error(reason);
     if (active || isBusy() || voiceInput.hasActive()) throw Error('请先结束当前语音或唤醒操作');
     const lease = Number(leaseMs());
-    const record = {senderId, controller: new AbortController(), expiresAtMs: now() + (Number.isFinite(lease) && lease >= 60_000 ? lease : LEASE_MS)};
+    const boundedLease = Number.isFinite(lease) && lease >= 60_000
+      ? Math.min(lease, MAX_WAKE_MICROPHONE_LEASE_MS) : LEASE_MS;
+    const record = {senderId, controller: new AbortController(), expiresAtMs: now() + boundedLease};
     active = record; phase = 'enabling'; reason = '正在检查唤醒检测器和麦克风'; publish();
     try {
       const grant = await microphoneHost.authorize({deadline: new Date(record.expiresAtMs).toISOString(),purpose:'wake',signal:record.controller.signal});
