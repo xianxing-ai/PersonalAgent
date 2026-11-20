@@ -137,6 +137,7 @@ test('maps each status to the code a polling host can act on', async () => {
     // repair. On a public feed a 403 is almost always bot filtering, which retrying will not fix.
     [403, 'EXTERNAL_FAILURE', false, undefined],
     [401, 'EXTERNAL_FAILURE', false, undefined],
+    [408, 'TIMEOUT', true, undefined],
     [500, 'EXTERNAL_FAILURE', true, undefined],
     [503, 'EXTERNAL_FAILURE', true, undefined],
     [418, 'EXTERNAL_FAILURE', false, undefined],

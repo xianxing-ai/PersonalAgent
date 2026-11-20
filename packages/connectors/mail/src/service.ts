@@ -146,6 +146,31 @@ export class MailService {
     };
   }
 
+  async archiveMessage(
+    accountRef: string,
+    input: {folder?: string; uid?: number; messageId?: string; targetFolder?: string; idempotencyKey: string},
+    context?: MailOperationContext,
+  ): Promise<{archived: boolean; messageId: string; folder: string; actionId: string; evidenceRefs: string[]}> {
+    const execution = {...context, now: this.options.now};
+    guardMailWrite(execution);
+    if (!this.provider.archiveMessage) {
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Mail archive is unavailable for this provider');
+    }
+    if (typeof input.idempotencyKey !== 'string' || input.idempotencyKey.length === 0) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
+    }
+    if ((input.uid === undefined || !Number.isSafeInteger(input.uid) || input.uid < 1)
+      && (typeof input.messageId !== 'string' || !input.messageId.trim())) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Either uid or messageId is required to archive mail');
+    }
+    const result = await this.provider.archiveMessage(accountRef, input, execution);
+    return {
+      ...result,
+      actionId: `mail-archive:${input.idempotencyKey}`,
+      evidenceRefs: [`mail:${result.folder}:archive:${result.messageId}`],
+    };
+  }
+
   async saveDraft(accountRef: string, input: {to: string; subject: string; text: string; idempotencyKey: string}, context?: MailOperationContext): Promise<ConnectorAction> {
     const execution = {...context, now: this.options.now};
     guardMailWrite(execution);

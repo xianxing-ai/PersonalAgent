@@ -100,6 +100,7 @@ import {createDesktopOperatorBrake, operatorBrakeTrayLabel} from './operator-bra
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createDesktopBusinessSourceAdapters} from './business-source-adapters.js';
 import {createProactiveSourceHost} from './proactive-source-host.js';
 import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
@@ -157,6 +158,7 @@ import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
 import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
+import {createDesktopBusinessWorkflowHosts} from './business-workflow-hosts.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
 import {createPersonalDashboardHost} from './personal-dashboard-host.js';
@@ -397,7 +399,7 @@ let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication, riskAutonomyHost, desktopNotificationPort;
 let conversationToolAccess, proactiveConversationTools;
-let proactiveRuntimePump,proactiveSourceRouter;
+let proactiveRuntimePump,proactiveSourceRouter,businessSourceAdapters,businessWorkflowHosts;
 let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
@@ -1948,6 +1950,7 @@ function initializeHarnessEventPorts(runtimeModule) {
     // Production controller consumer; absent cloudPersistentHost stays unavailable (no invented port).
     controller:createDesktopProactiveControllerHost({getRuntime:()=>runtimeApplication?.runtime}),
     bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+    ...(typeof businessSourceAdapters!=='undefined'&&businessSourceAdapters?{sourceAdapters:businessSourceAdapters}:{}),
     context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
       readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
       readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
@@ -2651,11 +2654,19 @@ async function initializeRuntime() {
         return readDesktopConversationContext({taskId,conversationId:task.conversationId,
           deadline:runtimeApplication.runtime.loadCheckpoint(taskId,'application-deadline'),signal:signal??new AbortController().signal});
       }});
+      if (!businessWorkflowHosts) businessWorkflowHosts = createDesktopBusinessWorkflowHosts({
+        getApplication: () => runtimeApplication,
+        getTodoHost: () => todoHost,
+        getCalendarConfig: () => calendarConfig,
+        getMailConfig: () => mailConfig,
+        getNotificationHost: () => notificationApplicationHost,
+        getDeveloperDeployment: () => developerDeployment,
+      });
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
-        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
+        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(feedsHost?.workflowHostTools??[]),...(businessWorkflowHosts?.workflowHostTools??[]),...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
@@ -3087,6 +3098,12 @@ async function initializeRuntime() {
       calendarMeetingHost?.bindApplication(runtimeApplication);
       goalCloudHost?.bindApplication(runtimeApplication);
       notepadHost?.bind(runtimeApplication);
+      if (!businessSourceAdapters) businessSourceAdapters = createDesktopBusinessSourceAdapters({
+        getApplication: () => runtimeApplication,
+        getCalendarConfig: () => calendarConfig,
+        getMailConfig: () => mailConfig,
+        getFeedsHost: () => feedsHost,
+      });
       // Startup guards read the same native policy host; the Client is attached after registration.
       notificationApplicationHost?.bindApplication(runtimeApplication);
       initializeHarnessEventPorts(runtimeModule);
@@ -3449,9 +3466,16 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
+  if (!businessSourceAdapters) businessSourceAdapters = createDesktopBusinessSourceAdapters({
+    getApplication: () => runtimeApplication,
+    getCalendarConfig: () => calendarConfig,
+    getMailConfig: () => mailConfig,
+    getFeedsHost: () => feedsHost,
+  });
   if (!proactiveSourceHost) proactiveSourceHost = createProactiveSourceHost({
     getApplication: () => runtimeApplication,
     getTools: () => connectorConversationTools?.tools ?? [],
+    sourceAdapters: businessSourceAdapters,
     submitTask: async input => {
       const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
       const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});

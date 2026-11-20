@@ -11,6 +11,8 @@ const mask = user => user ? `${user.slice(0, 1)}***@qq.com` : '';
 export function createMailConfig({userData, safeStorage, namespace, question, now=Date.now, onRevoke = async () => {}, onCloudRevoke = async () => {}}) {
   const target = path.join(userData, 'mail-config.json');
   let saved, sessionAllowed = false, boundRevision, failure = '';
+  let dashboardSessionAllowed = false, dashboardBoundRevision;
+  let proactiveSessionAllowed = false, proactiveBoundRevision;
   let cloudGeneration;
   const batches=new Map(),hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const resource=()=>saved?hash({namespace,kind:'mail-local-batch',user:saved.user,revision:saved.revision}):undefined;
@@ -74,6 +76,10 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
       : '读取许可不会跨应用重启恢复')});
   const release = async (revokeCloud) => {
     sessionAllowed = false;
+    dashboardSessionAllowed = false;
+    dashboardBoundRevision = undefined;
+    proactiveSessionAllowed = false;
+    proactiveBoundRevision = undefined;
     cloudGeneration = undefined;
     for(const entry of batches.values())entry.active=false;
     const resources=new Set([...batches.values()].map(entry=>entry.resource));
@@ -111,9 +117,41 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
     canRequestReadAuthorization:revision=>Boolean(question?.prepare&&saved&&saved.revision===revision&&boundRevision===revision),
     isSessionAllowed(revision,scope) {
       if(saved?.revision!==revision||boundRevision!==revision)return false;
+      if(dashboardSessionAllowed&&dashboardBoundRevision===revision&&(!scope||scope.scope==='personal-dashboard'))return true;
+      if(proactiveSessionAllowed&&proactiveBoundRevision===revision&&scope?.scope==='proactive-source')return true;
       if(!question)return sessionAllowed;
       if(!scope)return false;
-      try{return question.currentRequirement(scope,'mail-local-batch')===true;}catch{return false;}
+      try{return question.currentRequirement(scope,scope.requirementId??'mail-local-batch')===true;}catch{return false;}
+    },
+    enableDashboardSession(input) {
+      if (!saved || boundRevision !== saved.revision || !input || typeof input !== 'object' || Array.isArray(input)
+        || Object.keys(input).some(key => !['readConsent', 'scope'].includes(key))
+        || input.readConsent !== true) {
+        throw Error('请先绑定当前邮箱配置并确认看板只读汇总范围');
+      }
+      dashboardSessionAllowed = true;
+      dashboardBoundRevision = saved.revision;
+      return snapshot();
+    },
+    revokeDashboardSession() {
+      dashboardSessionAllowed = false;
+      dashboardBoundRevision = undefined;
+      return snapshot();
+    },
+    enableProactiveSession(input) {
+      if (!saved || boundRevision !== saved.revision || !input || typeof input !== 'object' || Array.isArray(input)
+        || Object.keys(input).some(key => !['readConsent', 'scope'].includes(key))
+        || input.readConsent !== true) {
+        throw Error('请先绑定当前邮箱配置并确认主动来源只读信头范围');
+      }
+      proactiveSessionAllowed = true;
+      proactiveBoundRevision = saved.revision;
+      return snapshot();
+    },
+    revokeProactiveSession() {
+      proactiveSessionAllowed = false;
+      proactiveBoundRevision = undefined;
+      return snapshot();
     },
     markBound(revision) {
       if (!saved || revision !== saved.revision) throw Error('邮箱装配版本不匹配');

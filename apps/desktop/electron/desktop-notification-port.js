@@ -84,7 +84,7 @@ export function createDesktopNotificationPort(options = {}) {
     const bounded = [...next];
     while (bounded.length > maxRecords) {
       const oldestTerminal = bounded.findIndex(record =>
-        ['delivered', 'acknowledged', 'failed'].includes(record.state));
+        ['delivered', 'acknowledged', 'failed', 'withdrawn'].includes(record.state));
       if (oldestTerminal < 0) throw Error('unresolved notifications fill the store');
       bounded.splice(oldestTerminal, 1);
     }
@@ -111,6 +111,12 @@ export function createDesktopNotificationPort(options = {}) {
   function readDeliveryOutcome(id) {
     const record = records.find(item => item.id === id);
     if (!record) return undefined;
+    if (record.state === 'withdrawn') {
+      return {id, deliveryState: 'withdrawn', withdrawnAt: record.withdrawnAt,
+        ...(record.withdrawReason ? {withdrawReason: record.withdrawReason} : {}),
+        userRead: false, evidenceRefs: [`desktop-notification:${id}:withdrawn`],
+        ...(record.roundId ? {roundId: record.roundId} : {})};
+    }
     const delivered = ['delivered', 'acknowledged'].includes(record.state);
     return {id, deliveryState: delivered ? 'delivered' : record.state === 'failed' ? 'failed' : 'unknown',
       deliveredAt: record.deliveredAt, userRead: record.state === 'acknowledged',
@@ -230,7 +236,7 @@ export function createDesktopNotificationPort(options = {}) {
     acknowledge(id) {
       if (disposed) return {acknowledged: false};
       const record = records.find(item => item.id === id);
-      if (record === undefined || record.state === 'failed' || record.state === 'persisted') {
+      if (record === undefined || record.state === 'failed' || record.state === 'persisted' || record.state === 'withdrawn') {
         return {acknowledged: false};
       }
       persistState(id, {state: 'acknowledged', acknowledgedAt: new Date(now()).toISOString()});
@@ -238,6 +244,31 @@ export function createDesktopNotificationPort(options = {}) {
       openHandles.get(id)?.close();
       openHandles.delete(id);
       return {acknowledged: true};
+    },
+
+    /** 撤回待决/已展示且未确认已读的通知，关闭本地窗口并记录审计时间。 */
+    withdraw(id, reason = 'withdrawn') {
+      if (disposed) return {withdrawn: false, reason: 'disposed'};
+      const record = records.find(item => item.id === id);
+      if (record === undefined) return {withdrawn: false, reason: 'not_found'};
+      if (record.state === 'acknowledged') {
+        return {withdrawn: false, state: 'acknowledged', reason: 'already_acknowledged'};
+      }
+      if (record.state === 'withdrawn') {
+        return {withdrawn: true, state: 'withdrawn', withdrawnAt: record.withdrawnAt};
+      }
+      const withdrawnAt = new Date(now()).toISOString();
+      persistState(id, {state: 'withdrawn', withdrawnAt, withdrawReason: String(reason || 'withdrawn').slice(0, 200)});
+      publishOutcome(id);
+      openHandles.get(id)?.close();
+      openHandles.delete(id);
+      return {withdrawn: true, state: 'withdrawn', withdrawnAt};
+    },
+
+    listWithdrawReceipts() {
+      return records.flatMap(record => record.state === 'withdrawn'
+        ? [{id: record.id, ...(record.roundId ? {roundId: record.roundId} : {}), withdrawnAt: record.withdrawnAt, withdrawReason: record.withdrawReason}]
+        : []);
     },
 
     /** 只有受信宿主可核实中断投递的真实结果；unknown 不重发，核实后才收敛。 */

@@ -30,7 +30,15 @@ function issue(raw: unknown): GitHubIssue {
 }
 function pull(raw: unknown): GitHubPullRequest {
   const r = object(raw), base = object(r.base), head = object(r.head);
-  return {number: number(r.number), title: string(r.title), body: r.body === null ? '' : string(r.body), state: string(r.state), base: string(base.ref), baseSha: string(base.sha), head: string(head.ref), headSha: string(head.sha), url: string(r.html_url), draft: bool(r.draft)};
+  return {
+    number: number(r.number), title: string(r.title), body: r.body === null ? '' : string(r.body),
+    state: string(r.state), base: string(base.ref), baseSha: string(base.sha),
+    head: string(head.ref), headSha: string(head.sha), url: string(r.html_url), draft: bool(r.draft),
+    ...(typeof r.merged === 'boolean' ? {merged: r.merged} : {}),
+    ...(r.merged_at === null || typeof r.merged_at === 'string' ? {mergedAt: r.merged_at} : {}),
+    ...(r.mergeable === null || typeof r.mergeable === 'boolean' ? {mergeable: r.mergeable} : {}),
+    ...(typeof r.mergeable_state === 'string' ? {mergeStateStatus: r.mergeable_state} : {}),
+  };
 }
 function paginate<T>(items: T[], input: {page?: number; perPage?: number}, remoteCount = items.length): GitHubPage<T> {
   const page = input.page ?? 1, hasMore = remoteCount === (input.perPage ?? 30);
@@ -132,6 +140,25 @@ export class GhCliProvider implements GitHubProvider {
           if (current.pull_request) throw new ProtocolError('INVALID_ARGUMENT', 'Requested issue is a pull request');
           if (string(current.updated_at) !== r.expectedUpdatedAt) throw new ProtocolError('REVISION_CONFLICT', 'Issue changed; refresh classification');
           await api(`${root}/issues/${r.number}/labels`, 'POST', {labels: r.labels}); return {state: 'confirmed', externalId: String(r.number), evidenceRefs: []};
+        }
+        case 'issue.close': {
+          const r = input as GitHubInputs['issue.close'];
+          const current = object(await api(`${root}/issues/${r.number}`));
+          if (current.pull_request) throw new ProtocolError('INVALID_ARGUMENT', 'Requested issue is a pull request');
+          if (r.expectedUpdatedAt !== undefined && string(current.updated_at) !== r.expectedUpdatedAt) {
+            throw new ProtocolError('REVISION_CONFLICT', 'Issue changed; refresh snapshot before closing');
+          }
+          if (r.comment !== undefined) {
+            await api(`${root}/issues/${r.number}/comments`, 'POST', {body: r.comment});
+          }
+          const closed = object(await api(`${root}/issues/${r.number}`, 'PATCH', {
+            state: 'closed',
+            state_reason: r.stateReason ?? 'completed',
+          }));
+          const externalId = String(number(closed.number));
+          const url = string(closed.html_url);
+          if (string(closed.state) !== 'closed') return {state: 'unknown', externalId, url, evidenceRefs: []};
+          return {state: 'confirmed', externalId, url, evidenceRefs: []};
         }
         case 'pr.create': {
           const r = input as GitHubInputs['pr.create'];

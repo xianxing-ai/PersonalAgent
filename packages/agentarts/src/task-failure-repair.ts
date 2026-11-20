@@ -31,6 +31,7 @@ export interface RuntimeTaskFailureNotice {
   readonly taskId: string;
   readonly errorCode?: string;
   readonly httpStatus?: number;
+  readonly retryable?: boolean;
   readonly effect: TaskFailureEffect;
   readonly outcome: 'failed' | 'unknown';
   readonly risk?: 'ordinary' | 'high';
@@ -130,6 +131,7 @@ export function planRuntimeTaskFailure(notice: RuntimeTaskFailureNotice, prior?:
     signal: {
       ...(notice.errorCode ? {code: notice.errorCode} : {}),
       ...(notice.httpStatus === undefined ? {} : {httpStatus: notice.httpStatus}),
+      ...(notice.retryable === undefined ? {} : {retryable: notice.retryable}),
     },
     ...(notice.effect === 'write' ? {write: {
       ...(notice.idempotent === undefined ? {} : {idempotent: notice.idempotent}),

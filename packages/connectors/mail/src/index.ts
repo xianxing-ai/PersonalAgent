@@ -15,8 +15,8 @@ export { MailAccountRegistry, RegistryMailProvider } from './registry.js';
 export type { BoundMailAccount } from './registry.js';
 export { decodeMailCursor, encodeMailCursor } from './provider.js';
 export type {
-  MailCursor, MailFetchInput, MailFolder, MailMarkSeenInput, MailMessage, MailOperationContext, MailPage,
-  MailProvider, MailSendInput, MailSendResult,
+  MailArchiveInput, MailArchiveResult, MailCursor, MailFetchInput, MailFolder, MailMarkSeenInput, MailMessage,
+  MailOperationContext, MailPage, MailProvider, MailSendInput, MailSendResult,
 } from './provider.js';
 
 const PROTOCOL_ID = 'https://personalagent.local/protocol/1.0.0';

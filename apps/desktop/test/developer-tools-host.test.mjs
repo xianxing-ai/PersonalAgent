@@ -41,7 +41,7 @@ test('provider registration keeps write presence and dynamic revocation; export 
 
 test('registered public parser recognizes actual Node syntax diagnostics without reading source',async()=>{
   const root=mkdtempSync(path.join(os.tmpdir(),'developer-node-check-'));
-  const source=path.join(root,'private-broken.cjs');writeFileSync(source,'// PRIVATE SOURCE\nfunction broken( {\n');
+  const source=path.join(root,'private-broken.cjs');writeFileSync(source,'// PRIVATE SOURCE\nconst broken = ;;\n');
   const host=createDesktopDeveloperToolsHost({testLocate:{cacheRootPath:root,available:()=>true}});
   try{
     const output=spawnSync(process.execPath,['--check',source],{encoding:'utf8'});
@@ -49,7 +49,9 @@ test('registered public parser recognizes actual Node syntax diagnostics without
     const tool=host.tools.find(item=>item.descriptor.name==='workspace.locate_test_failures');
     const report=await tool.execute({output:output.stderr},context());
     assert.equal(report.totalFailures,1);assert.equal(report.failures[0].reporter,'node-check');
-    assert.ok(report.failures[0].frames.length);assert.ok(report.failures[0].frames.every(frame=>!('snippet' in frame)));
+    assert.equal(report.failures[0].frames[0].line,2);
+    assert.equal(report.failures[0].frames[0].column,16);
+    assert.ok(report.failures[0].frames.every(frame=>!('snippet' in frame)));
     assert.equal(JSON.stringify(report).includes('PRIVATE SOURCE'),false);
   }finally{host.close();rmSync(root,{recursive:true,force:true});}
 });

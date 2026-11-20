@@ -1,0 +1,33 @@
+{
+  "package": "P-05",
+  "verifiedAt": "2026-11-20T06:09:49.407Z",
+  "items": {
+    "issue649": {
+      "caretFrame": {
+        "file": "C:/Users/34687/AppData/Local/Temp/pa-p05-accept-FMcnwR/sample-caret.mjs",
+        "line": 3,
+        "column": 15,
+        "confidence": 1
+      },
+      "eofColumnOmitted": true,
+      "snippetStripped": true
+    },
+    "issue19And666": {
+      "transientTaskClassification": "transient",
+      "transientCanRetryRead": true,
+      "retryFollowUpTaskId": "40085bdc-1807-4c75-a885-6f03f1825d43",
+      "retrySucceededSummary": "大致晴朗",
+      "nonRetryableCertClassification": "unrecoverable",
+      "nonRetryableCertCanRetryRead": false,
+      "weatherCardSafeTimeoutReason": "天气服务响应超时，请重试"
+    },
+    "liveOpenMeteoQingdao": {
+      "reachable": true,
+      "location": "青岛",
+      "date": "2026-11-20",
+      "summary": "大致晴朗",
+      "temperatureMin": 3,
+      "temperatureMax": 8.8
+    }
+  }
+}

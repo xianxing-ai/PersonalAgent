@@ -188,13 +188,15 @@ function readCurrent(value: unknown): ForecastCurrent | undefined {
   const temperature = asFiniteNumber(block.temperature_2m);
   const observedAt = typeof block.time === 'string' ? block.time : undefined;
   if (temperature === undefined || observedAt === undefined) return undefined;
+  const relativeHumidity = asFiniteNumber(block.relative_humidity_2m);
+  const windSpeed = asFiniteNumber(block.wind_speed_10m);
   const windDirection = asFiniteNumber(block.wind_direction_10m);
   return {
     observedAt,
     temperature,
     apparentTemperature: asFiniteNumber(block.apparent_temperature) ?? null,
-    relativeHumidity: asFiniteNumber(block.relative_humidity_2m) ?? null,
-    windSpeed: asFiniteNumber(block.wind_speed_10m) ?? null,
+    relativeHumidity: relativeHumidity !== undefined && relativeHumidity >= 0 && relativeHumidity <= 100 ? relativeHumidity : null,
+    windSpeed: windSpeed !== undefined && windSpeed >= 0 ? windSpeed : null,
     // Open-Meteo reports 0–360°; anything outside that is an upstream fault, not a direction.
     windDirection: windDirection !== undefined && windDirection >= 0 && windDirection <= 360 ? windDirection : null,
     weatherCode: asFiniteNumber(block.weather_code) ?? null,
@@ -215,11 +217,12 @@ function readHourly(value: unknown, date: string): ForecastHourlyPoint[] {
     const temperature = temperatures?.[index];
     if (typeof time !== 'string' || !time.startsWith(date) || temperature === null || temperature === undefined) continue;
     const chance = precipitation?.[index];
+    const roundedChance = chance === null || chance === undefined ? null : Math.round(chance);
     const code = codes?.[index];
     points.push({
       time,
       temperature,
-      precipitationProbability: chance === null || chance === undefined ? null : Math.round(chance),
+      precipitationProbability: roundedChance !== null && roundedChance >= 0 && roundedChance <= 100 ? roundedChance : null,
       weatherCode: code === null || code === undefined ? null : code,
     });
   }
@@ -258,7 +261,35 @@ function zonedDayStartUtc(date: string, timeZone: string): number {
 
 const nextCalendarDate = (date: string): string => new Date(Date.parse(`${date}T00:00:00.000Z`) + MS_PER_DAY).toISOString().slice(0, 10);
 
-const describeError = (error: unknown): string => error instanceof Error ? error.message : String(error);
+const TIMEOUT_CODES = new Set([
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'ETIMEDOUT', 'ECONNABORTED',
+]);
+
+const CERTIFICATE_CODES = new Set([
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID', 'ERR_CERT_AUTHORITY_INVALID',
+]);
+
+function errorCode(error: unknown): string | null {
+  for (const candidate of [error, error instanceof Error ? error.cause : undefined]) {
+    if (candidate !== null && typeof candidate === 'object') {
+      const code = (candidate as {code?: unknown}).code;
+      if (typeof code === 'string' && code !== '') return code;
+    }
+  }
+  return null;
+}
+
+const isTimeoutFailure = (error: unknown, code: string | null): boolean =>
+  (code !== null && TIMEOUT_CODES.has(code)) || (error instanceof Error && error.name === 'TimeoutError');
+
+const describeError = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : '';
+  const raw = [message, cause].filter(Boolean).join(': ').replace(/https?:\/\/\S+/gu, '[redacted-url]');
+  const code = errorCode(error);
+  return code === null ? raw : `${code}: ${raw}`;
+};
 
 export class OpenMeteoProvider implements WeatherProvider {
   readonly source = 'open-meteo';
@@ -524,8 +555,17 @@ export class OpenMeteoProvider implements WeatherProvider {
       response = await this.fetchImpl(url, {signal, headers: {'user-agent': USER_AGENT, accept: 'application/json'}});
     } catch (error) {
       if (signal.aborted) throw new ProtocolError('CANCELLED', 'Weather request cancelled', false);
-      throw new ProtocolError('EXTERNAL_FAILURE', `Open-Meteo request failed: ${describeError(error)}`, true);
+      const code = errorCode(error);
+      const detail = describeError(error);
+      if (isTimeoutFailure(error, code)) {
+        throw new ProtocolError('TIMEOUT', `Open-Meteo request timed out: ${detail}`, true);
+      }
+      if (code !== null && CERTIFICATE_CODES.has(code)) {
+        throw new ProtocolError('EXTERNAL_FAILURE', `Open-Meteo TLS certificate was rejected: ${detail}`, false);
+      }
+      throw new ProtocolError('EXTERNAL_FAILURE', `Open-Meteo request failed: ${detail}`, true);
     }
+    if (response.status === 408) throw new ProtocolError('TIMEOUT', 'Open-Meteo request timed out (HTTP 408)', true);
     if (response.status === 429) throw new ProtocolError('RATE_LIMITED', 'Open-Meteo rate limit reached', true, 60_000);
     if (response.status === 404) throw new ProtocolError('NOT_FOUND', 'Open-Meteo has no data for this request', false);
 
@@ -534,6 +574,10 @@ export class OpenMeteoProvider implements WeatherProvider {
       payload = await response.json();
     } catch (error) {
       if (!response.ok) throw new ProtocolError('EXTERNAL_FAILURE', `Open-Meteo returned HTTP ${response.status}`, response.status >= 500);
+      const code = errorCode(error);
+      if (isTimeoutFailure(error, code)) {
+        throw new ProtocolError('TIMEOUT', `Open-Meteo response timed out: ${describeError(error)}`, true);
+      }
       throw new ProtocolError('EXTERNAL_FAILURE', `Open-Meteo returned malformed JSON: ${describeError(error)}`, true);
     }
     const body = asRecord(payload);
@@ -551,6 +595,7 @@ function providerFailure(status: number, reason: string | undefined): ProtocolEr
   if (reason && /out of allowed range/i.test(reason)) {
     return new ProtocolError('NOT_FOUND', `Open-Meteo has no forecast for the requested date (${reason})`, false);
   }
+  if (status === 408) return new ProtocolError('TIMEOUT', `Open-Meteo request timed out (HTTP 408${reason ? `: ${reason}` : ''})`, true);
   if (status === 400) return new ProtocolError('INVALID_ARGUMENT', `Open-Meteo rejected the request: ${reason ?? 'unspecified reason'}`, false);
   return new ProtocolError('EXTERNAL_FAILURE', `Open-Meteo returned HTTP ${status}${reason ? `: ${reason}` : ''}`, status >= 500);
 }

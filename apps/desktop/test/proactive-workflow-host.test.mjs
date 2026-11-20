@@ -5,6 +5,7 @@ import {mkdtemp,mkdir,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createDesktopProactiveWorkflowApplication} from '../electron/proactive-workflow-host.js';
+import {createDesktopBusinessSourceAdapters} from '../electron/business-source-adapters.js';
 import {createProactiveWorkflowController} from '@personal-agent/agentarts-runtime/proactive-controller';
 
 test('missing trusted proactive configuration remains unavailable without creating a task or network request',async()=>{
@@ -12,8 +13,22 @@ test('missing trusted proactive configuration remains unavailable without creati
   const host=createDesktopProactiveWorkflowApplication({application:{runtime:{getTask:()=>({goal:'public',conversationId:'fixture'}),loadCheckpoint:()=>undefined}},
     readConfiguration:()=>undefined,localDeviceAvailable:()=>true,createAdapter:()=>{calls++;assert.fail('no Fake adapter');}});
   assert.equal(host.snapshot().state,'unavailable');
+  assert.ok(host.snapshot().missing.includes('business_source_adapters'));
   await assert.rejects(host.start({sourceTaskId:'source',commandId:'start',taskDeadline:new Date(Date.now()+60000).toISOString()}),/签名配置/);
   assert.equal(calls,0);
+
+  const adapters=createDesktopBusinessSourceAdapters();
+  assert.deepEqual(adapters.list().map(item=>item.kind),['calendar','mail','feeds']);
+  const wired=createDesktopProactiveWorkflowApplication({
+    application:{runtime:{getTask:()=>({goal:'public',conversationId:'fixture'}),loadCheckpoint:()=>undefined}},
+    readConfiguration:()=>({contractRef:'c1',adapter:{endpoint:'http://127.0.0.1:9/invocations',receiptSecret:'x'.repeat(32)}}),
+    bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+    sourceAdapters:adapters,
+    localDeviceAvailable:()=>true,
+    createAdapter:()=>{calls++;assert.fail('no Fake adapter');},
+  });
+  assert.equal(wired.snapshot().state,'configured_not_verified');
+  assert.deepEqual(wired.snapshot().missing,[]);
 });
 
 test('Desktop starts original Runtime worker through authenticated signed image HTTP; missing model/source ports stay explicit',async()=>{
