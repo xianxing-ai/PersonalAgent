@@ -3214,6 +3214,7 @@ async function initializeRuntime() {
         getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
         knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
         prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport}):undefined;
+      const systemObserveTool=productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe');
       const f13Workflow=agentArtsPinned?createF13WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         systemObserveTool,authorizeExport:authorizeWorkflowExport}):undefined;
       f14Workflow=agentArtsPinned?createF14WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
@@ -3301,7 +3302,7 @@ async function initializeRuntime() {
       workflowGraphComposition?.close?.();
       workflowGraphComposition=syntheticMvp?undefined:createDesktopWorkflowGraphComposition({
         runtimeModule,getApplication:()=>runtimeApplication,feedsHost,todoHost,mailHost,notificationApplicationHost,
-        systemObserveTool:productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe'),
+        systemObserveTool,
         codingWorkspace,workflowEntries,
       });
       const genericWorkflowTools=(workflowGraphComposition?.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
