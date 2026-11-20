@@ -7,7 +7,7 @@ import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
-import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTINUATION_TOOL_PROMPT, WORKFLOW_CONTINUATION_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, PLAN_GUIDANCE_PROMPT, BOUND_PLAN_DRAFT_PROMPT, REVIEW_PROMPT, BOUND_REVIEW_DECISION_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTINUATION_TOOL_PROMPT, TOOL_DISCOVERY_PROMPT, WORKFLOW_CONTINUATION_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, PLAN_GUIDANCE_PROMPT, BOUND_PLAN_DRAFT_PROMPT, REVIEW_PROMPT, BOUND_REVIEW_DECISION_PROMPT, PROMPT_VERSION} from './prompts.js';
 import {ownedBinding} from './bindings.js';
 import {worldGuidance, planGuidance} from './world-guidance.js';
 import {bindLiteralGoalRepair, boundPlanSlots, bindPlanDraft, bindReviewDecision} from './repair-role-binding.js';
@@ -274,7 +274,7 @@ export class OwnedAgentOrchestrator {
       if (deterministic) return deterministic;
       raw = await this.call('fast', input.kind === 'goal_analysis'
         ? FAST_PROMPT + '\n仅分析宿主 RECHECK 数据；只返回 text，不提出工具或修复候选。没有执行授权，尚未执行或修改计划。'
-        : FAST_PROMPT + CONTEXT_INTEGRITY_PROMPT + HISTORY_LOOKUP_PROMPT + (input.kind==='continuation'
+        : FAST_PROMPT + CONTEXT_INTEGRITY_PROMPT + HISTORY_LOOKUP_PROMPT + TOOL_DISCOVERY_PROMPT + (input.kind==='continuation'
           ?(input.availableTools===undefined?CONTINUATION_REPLY_PROMPT:CONTINUATION_TOOL_PROMPT)+CONTINUATION_CONTEXT_PROMPT+WORKFLOW_CONTINUATION_PROMPT
           :DISPATCH_PROMPT), input, request);
     }

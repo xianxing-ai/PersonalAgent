@@ -1,3 +1,5 @@
+import {currentTask} from './state.js';
+
 const labels = {
   transient: '瞬时', correctable: '可修正', unrecoverable: '不可恢复',
   backoff_retry: '退避后重试', change_arguments: '更换参数', change_tool: '更换工具',
@@ -7,9 +9,9 @@ const labels = {
 
 /** 失败卡片只保留分类、时间线和当前真正能做的操作。 */
 export function failureRepairModel(tasks) {
-  const task = [...(Array.isArray(tasks) ? tasks : [])].reverse().find(item => item?.state === 'failed' && item.repair);
-  const repair = task?.repair;
-  if (!repair) return undefined;
+  const task = currentTask(Array.isArray(tasks) ? tasks : []);
+  if (task?.state !== 'failed' || !task.repair) return undefined;
+  const repair = task.repair;
   const buttons = [];
   if (repair.canRetryRead) buttons.push({action: 'retry', label: '重试'});
   if (repair.canReplan) buttons.push({action: 'replan', label: '交给父 agent'});

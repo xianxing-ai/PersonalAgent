@@ -7,6 +7,7 @@ import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
+import {TOOL_DISCOVERY_NAME} from './tool-discovery.js';
 import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
 
@@ -506,13 +507,18 @@ export async function runCoordinationWorker(
           });
         }
       }
+      const discovery = receipts.find(item => item.proposal.proposalId === continuation?.proposalId);
+      const discoveryArguments = discovery?.proposal.arguments;
       let streamedAnswer = false;
       const onActivity = (event: {kind: 'reasoning' | 'answer_delta' | 'status'; label: string; text?: string}) => {
         if (event.kind === 'status') {
           context.reportProgress({stepId: `competition-node-${step}`, label: event.label, completedUnits: step - 1, totalUnits: maxSteps});
           return;
         }
-        if (event.kind === 'answer_delta') streamedAnswer = true;
+        if (event.kind === 'answer_delta') {
+          if (executionDiscovery) return;
+          streamedAnswer = true;
+        }
         context.noteActivity?.({kind: event.kind === 'reasoning' ? 'reasoning' : 'answer_delta', stepId: `competition-${step}`, ...(event.text === undefined ? {} : {text: event.text}), label: event.label});
       };
       context.reportProgress({
@@ -533,6 +539,10 @@ export async function runCoordinationWorker(
       if (availableTools && availableTools.length === 0) {
         throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'No Competition tools are available for this task');
       }
+      const executionDiscovery = discovery?.proposal.toolName === TOOL_DISCOVERY_NAME
+        && discovery.proposal.verification !== 'mock' && discoveryArguments?.purpose !== 'inspect'
+        && availableTools?.some(tool => tool.name !== TOOL_DISCOVERY_NAME
+          && (discoveryArguments?.purpose === 'execute' || discoveryArguments?.query === tool.name));
       let proposalRevision = runtime.getTask(taskId).revision;
       // A fresh read with the same input may supersede a receipt exported under an older policy.
       // Never carry the older, wider projection into the new continuation or supersede a write.
@@ -576,6 +586,13 @@ export async function runCoordinationWorker(
         continuation?priorReceipts.map(item=>item.continuation):undefined, onActivity);
       runtime.assertExecutionEpoch(taskId,executionEpoch);
       if (result.kind === 'text') {
+        if (executionDiscovery) {
+          context.saveCheckpoint('competition-completion-conflict',{version:1,executionEpoch,
+            cloudResultDigest:createHash('sha256').update(JSON.stringify(result)).digest('hex'),
+            localVerdict:'discovered_action_not_executed'});
+          consumeCompetitionCloudReceipt(runtime,taskId);
+          throw new ProtocolError('EXTERNAL_FAILURE','云端只查到了工具，尚未执行用户要求的操作');
+        }
         if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: result.text, label: '回答'});
         let completion:unknown;
         try {completion=options.assertCompletion?.();}

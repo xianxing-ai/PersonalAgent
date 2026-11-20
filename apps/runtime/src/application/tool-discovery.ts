@@ -4,7 +4,7 @@ import type {RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 
 export const TOOL_DISCOVERY_NAME = 'capability.search';
 export const TOOL_DISCOVERY_VERSION = '1.0.0';
-export const TOOL_DISCOVERY_DESCRIPTION = 'Search the original task tool directory by a name, namespace or keyword. Use query "" for groups, or "workspace", "browser", "computer" for actions. Returned selected tools become available on the next turn; use cursor for more. Discovery never grants execution permission.';
+export const TOOL_DISCOVERY_DESCRIPTION = 'Find tools in the original task directory. Use query "" for groups, or a tool name, namespace or keyword. Selected tools become available on the next turn. This searches the directory only. It neither runs the selected tools nor grants permission to run them.';
 
 const identity = {type:'object',properties:{name:{type:'string',maxLength:128},version:{type:'string',maxLength:64}},
   required:['name','version'],additionalProperties:false};
@@ -14,6 +14,7 @@ export const TOOL_DISCOVERY_DESCRIPTOR:ToolDescriptor = {
   inputSchema:{type:'object',properties:{
     query:{type:'string',maxLength:256,description:'Tool name, namespace or keywords; empty returns an overview and a bounded first page.'},
     cursor:{type:'string',minLength:1,maxLength:1024,description:'Exact nextCursor returned for the same original task and query.'},
+    purpose:{type:'string',enum:['inspect','execute'],description:'Use execute when the user requested an action and its inputs are known. Use inspect when the user only asked which capabilities are available.'},
   },required:['query'],additionalProperties:false},
   outputSchema:{type:'object',properties:{
     catalogRef:{type:'string',minLength:64,maxLength:64},query:{type:'string',maxLength:256},

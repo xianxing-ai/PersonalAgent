@@ -74,7 +74,7 @@ export function createConversationEnvironmentContext({now = () => new Date(),
     if (typeof inputRef === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(inputRef)) {
       capabilityGuidance.push({capability:'api_documentation_check',state:'check_task_catalog',callable:false,
         workflowId:'F20',inputRef,
-        guidance:'用户需要核对 API 文档与源码、契约或示例的一致性时，使用 workflow.image.execute。当前页只有 capability.search 时，按完整工具名 workflow.image.execute 查询。工具公布后使用这里的 workflowId 和 inputRef，无需向用户要案例编号。保留用户明确指定的其他目标，检查完成后依据确认回执回答。',
+        guidance:'用户需要核对 API 文档与源码、契约或示例的一致性时，调用 workflow.image.execute。当前页只有 capability.search 时，按完整工具名查询，并设置 purpose 为 execute。目录找到工具后，使用这里的 workflowId 和 inputRef 发出 tool_proposal。使用实际工作流回执中的检查与编译结果回答，并处理用户明确指定的其他目标。',
       });
     }
     return JSON.stringify({source:'trusted_desktop_environment', time, interpretation:interpretationRules, capabilityGuidance});
