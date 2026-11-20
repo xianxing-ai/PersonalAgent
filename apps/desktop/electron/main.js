@@ -905,7 +905,12 @@ function compactSubagentTasks(children){
 function conversationProjection(surface) {
   const page=historyPages.get(surface);
   const pageTasks=new Set(page.entries.filter(entry=>entry.kind==='task').map(entry=>entry.id));
-  const authorizationQuestions=authorizationQuestionHost?.snapshot(surface?conversations?.activeConversationId(surface):undefined)??[];
+  const activeConversationId=surface?conversations?.activeConversationId(surface):undefined;
+  const authorizationQuestions=(authorizationQuestionHost?.snapshot(activeConversationId)??[]).map(question=>{
+    if(!activeConversationId||question.state!=='pending')return question;
+    const review=authorizationIntentHost?.readEgressReview(question.taskId);
+    return review?.conversationId===activeConversationId?{...question,egressReview:review.payload}:question;
+  });
   const ordered=orderedTasks();
   const scoped=ordered.filter(task=>visibleConversationTask(task,surface));
   const active=scoped.filter(task=>!terminalTaskStates.has(task.state));
@@ -2416,7 +2421,8 @@ function initializeAuthorizationHosts(runtimeModule){
   authorizationQuestionHost?.close();
   authorizationQuestionHost=createDesktopAuthorizationQuestionHost({createQuestions:options=>new runtimeModule.AuthorizationQuestions(options),
     getApplication:()=>runtimeApplication,namespace:desktopHost.userNamespace,
-    resolveConversation:taskId=>conversationToolAccess?.resolveConversation(taskId)
+    resolveConversation:taskId=>authorizationIntentHost?.readEgressReview(taskId)?.conversationId
+      ??conversationToolAccess?.resolveConversation(taskId)
       ??connectorWatchHost?.resolveUserConversation(taskId)
       ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
@@ -2435,6 +2441,17 @@ function initializeAuthorizationHosts(runtimeModule){
   authorizationIntentHost?.close();
   authorizationIntentHost=createDesktopAuthorizationIntentHost({getApplication:()=>runtimeApplication,question:authorizationQuestionPort,
     openConversation:()=>openPanel(true)});
+}
+
+function authorizeAgentArtsEgress(scope) {
+  const owner=runtimeApplication,conversationId=conversationToolAccess?.resolveConversation(scope.taskId);
+  if(!conversationId||!authorizationIntentHost)return false;
+  return authorizationIntentHost.request({action:'model.egress',payload:scope.payloadDigest,
+    scope:{taskId:scope.taskId,requestId:scope.requestId,destination:scope.destination},
+    summary:`将当前任务所列内容仅发送本次到 ${scope.destination}`,
+    deadline:scope.deadline,signal:scope.signal,
+    isCurrent:()=>owner===runtimeApplication&&conversationToolAccess.resolveConversation(scope.taskId)===conversationId&&scope.isCurrent(),
+    egressReview:{conversationId,payload:scope.payload}});
 }
 
 async function initializeLocalAuthorizationControlPlane(){
@@ -3652,7 +3669,8 @@ async function initializeRuntime() {
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL,...(f23DecisionConfiguration?[F23_INITIALIZE_TOOL]:[]),...(f23Workflow?.hostOnlyTools??[])],
         requestToolAuthorization:async scope=>{
           const mailReconciliation=await connectorConversationTools?.prepareOriginalSendReconciliationAuthorization?.(scope);
-          if(!mailReconciliation)await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
+          if(!mailReconciliation&&!codingWorkspace?.isF20WorkflowAuthorization(scope))
+            await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
           await f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
           f18Workflow?.prepareMergeQuestion?.(scope,authorizationQuestionHost);
           await f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
@@ -6330,7 +6348,7 @@ app.whenReady().then(async () => {
   costRouteBudget = usageBudgetProduct;
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage,
     onCloudRun: info => usageBudgetProduct.recordCloud(info)});
-  egressHost=createNativeEgressHost({dialog});
+  egressHost=createNativeEgressHost({dialog,authorizeTaskEgress:authorizeAgentArtsEgress});
   agentArtsConfig.setEgressHost(egressHost);
   if(competitionMode&&!syntheticMvp) {
     try {

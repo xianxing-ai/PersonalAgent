@@ -467,13 +467,20 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const linked=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId);
     const original=linked?.mappedRequest??linked?.request;
     if(!source||scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId
-      ||original?.toolName!==source.toolName||original.toolVersion!==source.toolVersion
+      ||original?.commandId!==parent.operationId||original.toolName!==source.toolName||original.toolVersion!==source.toolVersion
       ||original.deadline!==scope.deadline||!isDeepStrictEqual(original.arguments,source.arguments)
       ||!['workspace.read_text','coding.repair.trial','decision.choose_candidate'].includes(source.toolName)
       ||source.toolName==='workspace.read_text'&&![binding.input.schemaFile,binding.input.codeFile].includes(source.arguments.path)
       ||source.toolName==='coding.repair.trial'&&linked.request?.toolName!=='workspace.run_allowed_command')
       throw new ProtocolError('UNAUTHORIZED','F20 操作不属于原固定图');
     return {binding,operationId:parent.operationId,preflight:parent.operationId.startsWith('f20-source-')};
+  }
+  function isF20WorkflowAuthorization(scope) {
+    const source=application?.readAuthorizationQuestionInvocation?.(scope.taskId,scope.runId);
+    return Boolean(source&&source.taskId===scope.taskId&&source.runId===scope.runId
+      &&source.toolName===scope.toolName&&source.toolVersion===scope.toolVersion
+      &&source.deadline===scope.deadline&&source.argumentsDigest===scope.argumentsDigest
+      &&readF20Operation(scope,source));
   }
   function readCodingDecision(scope,source) {
     if(source?.toolName!=='decision.choose_candidate'||source.toolVersion!=='1.0.0')return undefined;
@@ -1224,7 +1231,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       return !!input&&input.recipeId===F20_TYPESCRIPT_RECIPE&&createF20TypeScriptRecipe({rootPath:boundRoot,nodeExecutable:boundNode,input,createWorkspaceCommandTool:commandFactory}).available();
     }catch{return false;}},
     reconcileHarnessOriginalSession,readHarnessExperienceCurrentSync,
-    prepareAuthorization:scope=>prepareQuestion(scope),
+    isF20WorkflowAuthorization,prepareAuthorization:scope=>prepareQuestion(scope),
     prepareExport(scope) {
       if(!question)return;
       if(scope.phase==='preflight')prepareQuestion(scope,true);

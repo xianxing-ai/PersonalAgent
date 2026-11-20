@@ -14,6 +14,7 @@
 .authorization-question-requirements li{display:grid;grid-template-columns:90px minmax(0,1fr);gap:3px 10px}
 .authorization-question-requirements small{grid-column:2;font-size:11px;opacity:.65;overflow-wrap:anywhere}
 .authorization-question-hint{font-size:12px;opacity:.7}
+.authorization-question-egress{max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 .authorization-question-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .authorization-question-actions button,.authorization-sandbox-panel button{font:inherit;color:inherit;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;background:transparent;padding:8px 12px;min-height:36px;cursor:pointer}
 .authorization-question-actions .authorization-question-primary{background:#2563eb;border-color:#2563eb;color:#fff}

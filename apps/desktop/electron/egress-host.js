@@ -27,14 +27,15 @@ export function classifyKnownEgressContent(payload) {
   return inspect(payload)?'forbidden':'unknown';
 }
 
-/** Main-only callbacks classify locally; neither cloud output nor a permission rule classifies data. */
-export function createDesktopEgressHost({classifyLocally,approvePrivate,now=Date.now}={}) {
+/** Main-only callbacks approve the exact content before the transport may send it. */
+export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,now=Date.now}={}) {
   let closed=false;const decisions=new Map();
   return {
     async prepare(input) {
-      const {requestId,destination,payload,deadline,signal,isCurrent}=input??{};
+      const {taskId,requestId,destination,payload,deadline,signal,isCurrent}=input??{};
       let url;try{url=new URL(destination);}catch{fail('INVALID_ARGUMENT');}
       if(typeof requestId!=='string'||!requestId||requestId.length>512||typeof destination!=='string'
+        ||taskId!==undefined&&(typeof taskId!=='string'||!taskId.trim()||taskId.length>512)
         ||!['https:','wss:','ssh:'].includes(url.protocol)||url.password||url.hash
         ||(url.protocol==='ssh:'?!url.username||url.pathname!=='/'&&url.pathname!==''||Boolean(url.search):Boolean(url.username))
         ||typeof payload!=='string'||typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||!signal
@@ -44,7 +45,7 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,now=Date
         if(now()>=Date.parse(deadline))fail('TIMEOUT');
         let active;try{active=isCurrent();}catch{fail();}
         if(active&&typeof active.then==='function'){void Promise.resolve(active).catch(()=>{});fail();}
-        if(input.requestId!==requestId||input.destination!==destination||input.payload!==payload||input.deadline!==deadline
+        if(input.taskId!==taskId||input.requestId!==requestId||input.destination!==destination||input.payload!==payload||input.deadline!==deadline
           ||input.signal!==signal||active!==true)fail();
       };
       current();
@@ -52,11 +53,12 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,now=Date
       const key=JSON.stringify([requestId,destination,deadline]);
       for(const [id,value] of decisions)if(value.signal.aborted||value.expiresAt<=now())decisions.delete(id);
       const previous=decisions.get(key);
-      if(previous&&(previous.signal!==signal||previous.payloadDigest!==payloadDigest))fail();
+      if(previous&&(previous.taskId!==taskId||previous.signal!==signal||previous.payloadDigest!==payloadDigest))fail();
       if(previous){previous.guards.add(current);for(const guard of previous.guards)guard();return previous.promise;}
       if(decisions.size>=256)fail('UNSUPPORTED_CAPABILITY');
       const guards=new Set([current]),assertCurrent=()=>{for(const guard of guards)guard();};
-      const scope=Object.freeze({requestId,destination,payload,payloadDigest,deadline,signal,isCurrent:()=>{assertCurrent();return true;}});
+      const scope=Object.freeze({...(taskId===undefined?{}:{taskId}),requestId,destination,payload,payloadDigest,deadline,signal,
+        isCurrent:()=>{assertCurrent();return true;}});
       const wait=async callback=>{
         assertCurrent();if(typeof callback!=='function')fail();
         let timer,onAbort;
@@ -68,12 +70,17 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,now=Date
         })]);}catch(error){fail(['CANCELLED','TIMEOUT'].includes(error?.code)?error.code:'UNAUTHORIZED');}
         finally{clearTimeout(timer);if(onAbort)signal.removeEventListener('abort',onAbort);}
       };
-      const entry={signal,payloadDigest,guards,expiresAt:Date.parse(deadline)};decisions.set(key,entry);
+      const entry={taskId,signal,payloadDigest,guards,expiresAt:Date.parse(deadline)};decisions.set(key,entry);
       entry.promise=(async()=>{
         try{
-          const classification=await wait(classifyLocally);assertCurrent();
-          if(!['public','private'].includes(classification))fail();
-          if(classification==='private'&&await wait(approvePrivate)!==true)fail();
+          let classification='private';
+          if(taskId!==undefined) {
+            if(await wait(authorizeTaskEgress)!==true)fail();
+          } else {
+            classification=await wait(classifyLocally);assertCurrent();
+            if(!['public','private'].includes(classification))fail();
+            if(classification==='private'&&await wait(approvePrivate)!==true)fail();
+          }
           assertCurrent();
           return Object.freeze({payloadDigest,classification,assertBeforeSend(actual){
             assertCurrent();

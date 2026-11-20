@@ -37,12 +37,14 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     if(websocketDestination&&value===websocketDestination)return value;
     throw Error('出机内容必须绑定原运行时与固定部署');
   };
-  const preparePayload=prepareEgressPayload===undefined?undefined:async scope=>{
-    const destination=payloadDestination(scope.destination),key=JSON.stringify([scope.requestId,destination,scope.deadline]);
+  const preparePayload=prepareEgressPayload===undefined?undefined:async input=>{
+    const destination=payloadDestination(input.destination),scope={...input,destination};
+    const key=JSON.stringify([scope.requestId,destination,scope.deadline]);
     for(const [id,entry] of preparedPayloads)if(entry.signal.aborted||Date.parse(entry.deadline)<=Date.now())preparedPayloads.delete(id);
     const previous=preparedPayloads.get(key);
     if(previous){
-      if(previous.payload!==scope.payload||previous.signal!==scope.signal)throw Error('原出机请求内容或取消范围已改变');
+      if(previous.taskId!==scope.taskId||previous.payload!==scope.payload||previous.signal!==scope.signal)
+        throw Error('原出机请求的任务、内容或取消范围已改变');
       previous.guards.add(scope.isCurrent);
       const lease=await previous.promise;lease.assertBeforeSend({destination,payload:scope.payload});return lease;
     }
@@ -53,11 +55,11 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
         if(current!==true){if(current&&typeof current.then==='function')void Promise.resolve(current).catch(()=>{});
           throw Object.assign(Error('原出机来源已改变'),{code:'UNAUTHORIZED'});}}
     };
-    const entry={payload:scope.payload,signal:scope.signal,deadline:scope.deadline,guards};preparedPayloads.set(key,entry);
+    const entry={taskId:scope.taskId,payload:scope.payload,signal:scope.signal,deadline:scope.deadline,guards};preparedPayloads.set(key,entry);
     entry.promise=Promise.resolve().then(async()=>{
       try{
         assertCurrent();
-        const lease=await prepareEgressPayload({...scope,destination,isCurrent:()=>{assertCurrent();return true;}});
+        const lease=await prepareEgressPayload({...scope,isCurrent:()=>{assertCurrent();return true;}});
         const guarded=Object.freeze({assertBeforeSend(actual){
           assertCurrent();lease.assertBeforeSend({destination:payloadDestination(actual.destination),payload:actual.payload});
         }});
@@ -118,8 +120,11 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
           .then(response => { finish(response.ok); return response; }, error => { finish(false); throw error; });
       };
       if(!preparePayload)return send();
-      const scope={requestId:headers.get('X-Request-Id'),destination:target.href,payload:finalInit.body,
-        deadline:headers.get('X-PA-Deadline'),signal:finalInit.signal,
+      const requestId=headers.get('X-Request-Id'),deadline=headers.get('X-PA-Deadline');
+      // The upper adapter already bound task ownership. HTTP headers carry no authority to substitute it.
+      const prepared=preparedPayloads.get(JSON.stringify([requestId,target.href,deadline]));
+      const scope={...(prepared?.taskId===undefined?{}:{taskId:prepared.taskId}),
+        requestId,destination:target.href,payload:finalInit.body,deadline,signal:finalInit.signal,
         isCurrent:()=>!finalInit.signal?.aborted&&JSON.stringify(currentOptions())===JSON.stringify(options)};
       return Promise.resolve(preparePayload(scope)).then(lease=>{
         lease.assertBeforeSend({destination:target.href,payload:finalInit.body});

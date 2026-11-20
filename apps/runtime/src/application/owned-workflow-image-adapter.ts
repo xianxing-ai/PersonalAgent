@@ -72,7 +72,7 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
     const httpInit=options.fetchHandlesHostAuthorization?{...init,headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
       'x-hw-agentarts-session-id':request.sessionId,'X-Request-Id':request.requestId,'X-PA-Deadline':request.deadline,'X-Invoke-Mode':options.invokeMode??'published'}}:init;
     let response,usedTransport: 'https'|'wss'=options.transport??'https';
-    const prepare=async(destination:string)=>options.preparePayload?.({requestId:request.requestId,destination,payload:body,
+    const prepare=async(destination:string)=>options.preparePayload?.({taskId:request.taskId,requestId:request.requestId,destination,payload:body,
       deadline:request.deadline,signal:request.signal,isCurrent:()=>{assertCurrent();return true;}});
     if(options.transport==='wss') {
       if(!ws)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original owned-workflow WSS endpoint unavailable');

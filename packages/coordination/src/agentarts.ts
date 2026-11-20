@@ -1232,7 +1232,7 @@ function parseTextOnlyApplicationResult(text:string,repairCandidateVersion:'1.0'
   return parseCoordinationTextResult({kind:'text',text,verification:'unverified'});
 }
 
-export type AgentArtsPayloadPreparer=(scope:{requestId:string;destination:string;payload:string;deadline:string;
+export type AgentArtsPayloadPreparer=(scope:{taskId?:string;requestId:string;destination:string;payload:string;deadline:string;
   signal:AbortSignal;isCurrent:()=>boolean})=>Promise<{assertBeforeSend(actual:{destination:string;payload:string}):void}>;
 
 /** Bounded Competition transport; JSON proposals and WSS require explicit trusted-host opt-in. */
@@ -1497,7 +1497,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         redirect: 'error',
       };
       let payloadDestination=this.websocketUrl??url;
-      const preparePayload=()=>this.preparePayload===undefined?undefined:callWithAbort(()=>this.preparePayload!({requestId,destination:payloadDestination,payload:init.body,deadline,
+      const preparePayload=()=>this.preparePayload===undefined?undefined:callWithAbort(()=>this.preparePayload!({taskId:sendRequest.taskId,requestId,destination:payloadDestination,payload:init.body,deadline,
         signal:combined.signal,isCurrent:()=>{
           if(this.closed||currentAbortError(combined))return false;
           try{
