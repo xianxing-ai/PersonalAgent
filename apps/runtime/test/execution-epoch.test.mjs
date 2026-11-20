@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {TaskRuntime} from '../dist/index.js';
+import {completeRuntimeConnectorWatchWake,runRuntimeConnectorChangeDecision} from '../dist/application.js';
 
 test('execution epoch survives restart, deduplicates controls and retains original checkpoints',()=>{
   mkdirSync('.cache',{recursive:true});
@@ -75,5 +76,73 @@ test('final ToolGateway authorization fence rejects an epoch changed during an a
     assert.equal(executions,0);
     assert.equal(runtime.readToolExecutions(task.taskId)[0].executionStarted,false);
     assert.equal(runtime.readToolExecutions(task.taskId)[0].state,'failed');
+  } finally {runtime.close();}
+});
+
+test('cancelled pure local connector tasks allow stop epoch checkpoints while unknown checkpoints still fail closed',async()=>{
+  const runtime=new TaskRuntime(':memory:');
+  const application={profile:'huawei_ict_agentarts',runtime};
+  const deadline=new Date(Date.now()+60_000).toISOString();
+  const summary='收到一封新邮件';
+  const unusedChooser={choose:async()=>{throw new Error('Chooser must not run for cancelled decision');}};
+  const unusedReadCurrent=()=>{throw new Error('readCurrent must not run before confirmCancellation');};
+  try {
+    const cleanOrigin={id:'change-clean',origin:{taskId:'source-1',runId:'run-1'},revision:'rev-1'};
+    const cleanTask=runtime.submitTaskWithCheckpoint({goal:'判断是否告知用户：'+summary,conversationId:'desktop-panel',
+      idempotencyKey:'clean-cancel'},'connector-change-origin',cleanOrigin);
+    runtime.saveCheckpointOnce(cleanTask.taskId,'application-deadline',deadline);
+    runtime.saveCheckpointOnce(cleanTask.taskId,'connector-change-decision',{action:'notify',reason:'selected',
+      receiptId:'persisted-choice',calibrated:false,deadline,decidedAt:new Date().toISOString()});
+    runtime.transitionTask(cleanTask.taskId,'planning');
+    runtime.transitionTask(cleanTask.taskId,'running');
+    runtime.requestCancel(cleanTask.taskId,'Explicit cancel');
+    runtime.recoverInterruptedTasks();
+    assert.equal(runtime.getTask(cleanTask.taskId).state,'waiting_reconciliation');
+
+    const settled=await runRuntimeConnectorChangeDecision({application,taskId:cleanTask.taskId,origin:cleanOrigin,
+      summary,deadline,signal:new AbortController().signal,chooser:unusedChooser,readCurrent:unusedReadCurrent});
+    assert.equal(settled.state,'cancelled');
+
+    for(const kind of ['cloud','extra-epoch']){
+      const origin={id:'change-'+kind,origin:{taskId:'source-1',runId:'run-1'},revision:'rev-1'};
+      const polluted=runtime.submitTaskWithCheckpoint({goal:'判断是否告知用户：'+summary,conversationId:'desktop-panel',
+        idempotencyKey:'polluted-'+kind},'connector-change-origin',origin);
+      runtime.saveCheckpointOnce(polluted.taskId,'application-deadline',deadline);
+      runtime.transitionTask(polluted.taskId,'planning');
+      runtime.transitionTask(polluted.taskId,'running');
+      runtime.requestCancel(polluted.taskId,'Explicit cancel');
+      if(kind==='cloud')runtime.saveCheckpointOnce(polluted.taskId,'competition-cloud-inflight',{synthetic:true});
+      else runtime.advanceExecutionEpoch(polluted.taskId,{requestId:'pause',reason:'pause'});
+      runtime.recoverInterruptedTasks();
+      await assert.rejects(runRuntimeConnectorChangeDecision({application,taskId:polluted.taskId,origin,
+        summary,deadline,signal:new AbortController().signal,chooser:unusedChooser,readCurrent:unusedReadCurrent}),
+        {code:'RESULT_UNKNOWN'});
+      assert.equal(runtime.getTask(polluted.taskId).state,'waiting_reconciliation');
+    }
+
+    const createWake=(scheduleId,extraCloud=false)=>{
+      runtime.createSchedule({scheduleId,conversationId:'connector-watch:fixture:'+scheduleId,
+        goal:'唤醒已批准的连接器订阅',runAt:new Date(Date.now()-1000).toISOString(),timeZone:'UTC',
+        missedRunPolicy:'run_once',taskIdempotencyKey:scheduleId});
+      runtime.dispatchDueSchedules('connector-watch:fixture:'+scheduleId);
+      const wake=runtime.getSchedule(scheduleId);
+      runtime.saveCheckpointOnce(wake.taskId,'connector-watch-wake-admission',{version:1,scheduleId,taskId:wake.taskId,
+        conversationId:wake.conversationId,idempotencyKey:wake.taskIdempotencyKey,deadline});
+      runtime.transitionTask(wake.taskId,'planning');
+      runtime.transitionTask(wake.taskId,'running');
+      runtime.requestCancel(wake.taskId,'Explicit wake cancel');
+      if(extraCloud)runtime.saveCheckpointOnce(wake.taskId,'competition-cloud-inflight',{synthetic:true});
+      runtime.recoverInterruptedTasks();
+      return wake;
+    };
+
+    const cleanWake=createWake('connector-watch-clean-cancel');
+    const cancelledWake=await completeRuntimeConnectorWatchWake({application,scheduleId:cleanWake.scheduleId,deadline});
+    assert.equal(cancelledWake.state,'cancelled');
+
+    const pollutedWake=createWake('connector-watch-cloud-cancel',true);
+    await assert.rejects(completeRuntimeConnectorWatchWake({application,scheduleId:pollutedWake.scheduleId,deadline}),
+      {code:'RESULT_UNKNOWN'});
+    assert.equal(runtime.getTask(pollutedWake.taskId).state,'waiting_reconciliation');
   } finally {runtime.close();}
 });

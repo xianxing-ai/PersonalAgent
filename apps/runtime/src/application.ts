@@ -270,6 +270,9 @@ export type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability,
 export {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured,readConfiguredWorkflowBinding} from './application/configured-workflow-worker.js';
 export type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability,RuntimeConfiguredWorkflowBindingScope,
   RuntimeConfiguredWorkflowBinding} from './application/configured-workflow-worker.js';
+export {Z10_PRIORITY_WORKFLOW_IDS,createZ10PriorityGraphProviders} from './application/z10-priority-graph-providers.js';
+export type {Z10PriorityWorkflowId,Z10PriorityGraphComposeContext,Z10PriorityGraphComposeResult,
+  Z10PriorityGraphProvider,Z10PriorityGraphProvidersOptions} from './application/z10-priority-graph-providers.js';
 export {createRuntimeCodingRepairDispatchTool,runRuntimeCodingRepairWorkflow,readRuntimeCodingVerificationEvidence,
   CODING_REPAIR_WORKFLOW_TOOL,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './application/coding-repair-application.js';
 export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './application/coding-repair-application.js';

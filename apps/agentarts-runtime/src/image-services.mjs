@@ -30,7 +30,8 @@ export function createImageServices({receiptSecret,platform={},shadowPolicy,proa
   const services=createPlatformServices({...platform,...trustedPlatformPorts,
     ...((platform.mcp||trustedPlatformPorts.mcp)?{mcp:{...platform.mcp,...trustedPlatformPorts.mcp}}:{}),
     ...((platform.knowledge||trustedPlatformPorts.knowledge)?{knowledge:{...platform.knowledge,...trustedPlatformPorts.knowledge}}:{}),
-    ...((platform.observation||trustedPlatformPorts.observation)?{observation:{...platform.observation,...trustedPlatformPorts.observation}}:{})});
+    ...((platform.observation||trustedPlatformPorts.observation)?{observation:{...platform.observation,...trustedPlatformPorts.observation}}:{}),
+    ...((platform.evaluation||trustedPlatformPorts.evaluation)?{evaluation:{...platform.evaluation,...trustedPlatformPorts.evaluation}}:{})});
   const shadow=shadowPolicy?createWorkflowShadowController({receiptSecret,policyConfig:shadowPolicy}):undefined;
   if(!plain(proactive)||Object.keys(proactive).some(key=>key!=='decisionContracts'))bad();
   const proactiveController=receiptSecret?createProactiveWorkflowController({receiptSecret,decisionContracts:proactive.decisionContracts??[],onStage}):undefined;

@@ -34,6 +34,8 @@ export type {RuntimeStartupRecoveryOptions,RuntimeStartupRecovery,RuntimeStartup
 export {createRuntimeAtomicStatePort} from './atomic-host-state.js';
 export type {RuntimeAtomicStatePort} from './atomic-host-state.js';
 
+export {eraseDependentGraphHistory, verifyPhysicalErasureGraphUnlink} from './fact-erasure.js';
+export type {PhysicalErasureGraphUnlinkReport, VerifyPhysicalErasureGraphUnlinkInput} from './fact-erasure.js';
 export {FactProjectionError} from './fact-projection-store.js';
 export type {
   CompleteFactImpactRequest,

@@ -77,7 +77,7 @@
   },
   "designCoverage": {
     "source": "docs/design/workflow-architecture-20261013/source/src/data/architecture.json",
-    "projectionSha256": "088f7f00dfb3a7ab5ff4f1c38ca8fc80dd41ef25f36d4d019e2e0ec7e2ab341f",
+    "projectionSha256": "b9603488d7d8db8dba98619de15c3627bc5dc6f49355d332de4cfea7a7f8cc65",
     "templateVersion": "2026.10.15.2",
     "workflowCount": 28,
     "nodeCount": 185,
@@ -154,7 +154,7 @@
       },
       {
         "workflowId": "F15",
-        "templateDigest": "cbc53e499a644f43c2ab3d19116d747289a32d08b4d52eca51753584737ac517",
+        "templateDigest": "7b878391d6744dfd794f6205b2b24ea5dffe21ce43891a3a4b3cf4961de7e97c",
         "nodeCount": 6
       },
       {
@@ -179,7 +179,7 @@
       },
       {
         "workflowId": "F20",
-        "templateDigest": "531c53f8ac38a405231533698bd4fa2e25f514b84bec6b3f9531e78a3e4fd768",
+        "templateDigest": "13be4cfa2d3cbf30a969e3d7be10a998ade1ac470734bafd704d8ac23cd2b05f",
         "nodeCount": 4
       },
       {
@@ -199,7 +199,7 @@
       },
       {
         "workflowId": "F24",
-        "templateDigest": "718dee19c2b5ec0f87ffb9511764612d1d9613d8c29addcfb5ee6fa0c9af9992",
+        "templateDigest": "aed3048ca859cbdbdfb02ee98fd45d95321891fc52674a4442eff3234a0cb4ce",
         "nodeCount": 12
       },
       {
@@ -6198,27 +6198,36 @@
           "target": "F15_N06",
           "required": true,
           "feedback": false
+        },
+        {
+          "source": "F15_N05",
+          "target": "F15_N01",
+          "required": false,
+          "condition": "仅已确认的验证失败进入sealed下一轮；未知写入只读回，原期限不续期",
+          "feedback": true
         }
       ],
       "recovery": [
         "沿原task/session/revision/deadline与checkpoint恢复；取消受理不等于执行已停止。",
         "结果未知的写入保留原operation先读回，不换ID重放。",
-        "最小修复/依赖重规划算法仍暂停交接；不由本查看器定义新自动重试策略。"
+        "codingRepair v1经原F15 advance按已确认失败增量修复；保留原历史操作/Evidence，复用原任务deadline/预算；无进展停止，unknown/stopping不重试。"
       ],
       "category": "开发与工程",
-      "summary": "精确源SHA、preview/apply、原Policy授权、测试与结果读回",
+      "summary": "原F15整图内按真实失败增量修复；源SHA、隔离preview/apply、包级验证及CAS交付",
       "decisionPoints": [
         "圈定修复文件范围，排除无关文件的过度重构",
         "调用 F28 为生成补丁与独立审查指派合适编码模型（如 GLM-5.2）",
         "评估独立审查提出的接口破坏与破坏性越界告警"
       ],
       "designNotes": [
-        "当前实现/实测边界：Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收",
+        "新增codingRepair v1实现中；jsdiff仅分析hunk，TypeScript仅分析JS/TS语法与声明，其他语言消费实际已发布验证配方；代码与测试不等于任意仓库或真实云完成。",
         "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
         "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
       ],
-      "acceptance": [],
-      "templateDigest": "cbc53e499a644f43c2ab3d19116d747289a32d08b4d52eca51753584737ac517",
+      "acceptance": [
+        "初始检查失败→隔离区精确补丁→真实验证失败→重读源码→最小增补→当前必选验证VALID→CAS读回交付；真实云/设备分别验收。"
+      ],
+      "templateDigest": "7b878391d6744dfd794f6205b2b24ea5dffe21ce43891a3a4b3cf4961de7e97c",
       "requiredTools": [
         "workspace.read_text"
       ],
@@ -7413,7 +7422,7 @@
           "capabilities": [
             {
               "kind": "tool",
-              "name": "workspace.run_allowed_command",
+              "name": "coding.repair.trial",
               "boundary": "local"
             }
           ],
@@ -7496,10 +7505,10 @@
         "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
       ],
       "acceptance": [],
-      "templateDigest": "531c53f8ac38a405231533698bd4fa2e25f514b84bec6b3f9531e78a3e4fd768",
+      "templateDigest": "13be4cfa2d3cbf30a969e3d7be10a998ade1ac470734bafd704d8ac23cd2b05f",
       "requiredTools": [
         "workspace.read_text",
-        "workspace.run_allowed_command"
+        "coding.repair.trial"
       ],
       "adapterRequirements": []
     },
@@ -8881,6 +8890,10 @@
             {
               "nodeId": "F24_N01",
               "required": true
+            },
+            {
+              "nodeId": "F24_N11",
+              "required": false
             }
           ],
           "required": true,
@@ -9075,6 +9088,10 @@
             },
             {
               "nodeId": "F24_N08",
+              "required": false
+            },
+            {
+              "nodeId": "F24_N11",
               "required": false
             }
           ],
@@ -9344,7 +9361,7 @@
         "在提交前、在途、超时未知和已确认发生四个阶段取消，核对UI与执行/读回记录一致。",
         "恢复保留已发生效果且不重复写入；无依赖分支不会被别的等待决定阻塞。"
       ],
-      "templateDigest": "718dee19c2b5ec0f87ffb9511764612d1d9613d8c29addcfb5ee6fa0c9af9992",
+      "templateDigest": "aed3048ca859cbdbdfb02ee98fd45d95321891fc52674a4442eff3234a0cb4ce",
       "requiredTools": [],
       "adapterRequirements": [
         {

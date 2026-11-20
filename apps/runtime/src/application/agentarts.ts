@@ -134,6 +134,7 @@ export function createAgentArtsRuntimeApplication(
     onTransportState,
     onDiagnostic,
     beforeCompetitionSend,
+    preparePayload:configuredPayloadPreparer,
     readOwnedWorkflowReceiptSecret,
     f09WorkflowWorkerPorts,
     configuredWorkflowWorkerPorts,
@@ -165,7 +166,7 @@ export function createAgentArtsRuntimeApplication(
     throw new ProtocolError('INVALID_ARGUMENT','New task continuations require the guarded Competition tool catalog');
   }
   let application: RuntimeApplication;
-  const preparePayload:AgentArtsPayloadPreparer=options.preparePayload??(async()=>{
+  const preparePayload:AgentArtsPayloadPreparer=configuredPayloadPreparer??(async()=>{
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local cloud-payload classification is unavailable');
   });
   const cloud = new AgentArtsCloudAgentPort(
