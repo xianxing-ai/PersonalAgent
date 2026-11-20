@@ -530,9 +530,10 @@ test('cancelled saved local decision never recovers into a notification',async t
   assert.equal(f.host.snapshot().withheld,1);assert.equal(f.host.snapshot().pending,0);
 });
 
-test('an interrupted decision carrying any cloud intent cannot use the pure local recovery path',async t=>{
+for(const cancel of [false,true])test(`an interrupted decision carrying any cloud intent cannot use the pure local recovery path (cancel=${cancel})`,async t=>{
   const f=await fixture(t);await f.mail();f.addMail(2);await f.mail();
   const original=f.seedInterruptedDecision();f.app.runtime.saveCheckpointOnce(original.taskId,'competition-cloud-inflight',{synthetic:true});
+  if(cancel)f.app.runtime.requestCancel(original.taskId,'Explicit test user cancellation');
   await f.restart();f.app.runtime.recoverInterruptedTasks();await f.host.flush();
   assert.equal(f.app.runtime.getTask(original.taskId).state,'waiting_reconciliation');
   assert.equal(f.choices.length,0);assert.equal(f.native.length,0);assert.equal(f.host.snapshot().deferred,1);

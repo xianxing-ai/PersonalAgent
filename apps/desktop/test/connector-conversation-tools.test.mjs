@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
@@ -20,7 +21,7 @@ function fixture(t,overrides={}) {
     const original=cp.writes[method];cp.writes[method]=(...args)=>{calls.push(name);return original(...args);};
   }
   const host=createConnectorConversationTools({mail:{current:()=>mail},calendar:{binding:()=>calendar,readAuthorization:()=> 'Basic c3ludGhldGljOnBhc3N3b3Jk'},
-    getApplication:()=>({runtime:{getTask:()=>({state:'running',cancelRequested:false})}}),resolveConversation:()=> 'synthetic-conversation',
+    getApplication:()=>({runtime:{getTask:()=>({state:'running',cancelRequested:false}),loadCheckpoint:()=>undefined}}),resolveConversation:()=> 'synthetic-conversation',
     createMailProvider:()=>{calls.push('mail-provider');return provider;},createCalendarProvider:()=>cp,
     confirmExport:async request=>{consents.push(request.kind);return true;},...overrides});
   t.after(()=>host.close());
@@ -40,7 +41,7 @@ async function project(policy,s,result){return policy.project({taskId:s.taskId,p
 
 test('registers only existing supplemental tools; missing configuration and absent native consent stay closed',async t=>{
   const f=fixture(t,{mail:{current:()=>undefined},calendar:{binding:()=>undefined}});
-  assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
+  assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.send','mail.archive','mail.reconcile_archive','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
   for(const tool of f.host.tools){const s=scope(tool);assert.equal(await f.host.competitionToolAvailability.find(x=>x.toolName===tool.descriptor.name).available(s),false);
     await assert.rejects(f.host.prepareExport({...s,phase:'preflight'}),{code:'UNAUTHORIZED'});}
   assert.deepEqual(f.calls,[]);
@@ -63,6 +64,21 @@ test('public mail account, draft, mark-seen, reconciliation and calendar impleme
   assert.equal(reads.length,1,'only mail.inbox reports a read binding; account listing, writes and calendar do not');
   assert.deepEqual(Object.keys(reads[0]).sort(),['runId','taskId']);assert.equal(reads[0].taskId,'original');
   assert.equal(Object.isFrozen(reads[0]),true);assert.doesNotMatch(JSON.stringify(reads),/subject|authCode|synthetic-private-code|@qq/);
+});
+
+for(const [name,args] of [['mail.send',{to:'synthetic@example.invalid',subject:'Synthetic',text:'Synthetic body'}],
+  ['mail.archive',{folder:'INBOX',uid:2,uidValidity:123,messageId:'<synthetic@example.invalid>'}]])
+test(`${name} retains an independent exact permit and fails before provider access when revoked`,async t=>{
+  const f=fixture(t),writes=[];
+  if(name==='mail.send'){
+    const original=f.provider.send.bind(f.provider);
+    f.provider.send=(account,input,context)=>{writes.push(input);return original(account,input,context);};
+  }else f.provider.archive=(_account,input)=>{writes.push(input);return {actionId:'synthetic-archive',state:'confirmed',evidenceRefs:['synthetic:archive']};};
+  const {tool,s,policy}=await prepare(f.host,name,args);
+  await assert.rejects(tool.execute(args,{...s,scopes:[]}),{code:'UNAUTHORIZED'});assert.deepEqual(writes,[]);
+  const result=await tool.execute(args,s);assert.equal(writes.length,1);assert.equal(writes[0].idempotencyKey,s.runId);
+  assert.deepEqual(await project(policy,s,result),result);
+  f.revokeMail();await assert.rejects(tool.execute(args,s),{code:'UNAUTHORIZED'});assert.equal(writes.length,1);
 });
 
 test('read binding is never called for a forged or unauthorized ordinary mail invocation',async t=>{
@@ -251,13 +267,13 @@ test('actual Runtime asks for approval before a supplemental write and then conf
   const host=createConnectorConversationTools({mail:{current:()=>({user:'synthetic@qq.com',authCode:'synthetic-password',revision:1})},
     getApplication:()=>application,resolveConversation:id=>application.runtime.getTask(id).conversationId,
     createMailProvider:()=>provider,confirmExport:async()=>true});t.after(()=>host.close());
-  application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'supplemental-tools',
+  application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'supplemental-tools',
     initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
     tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
     prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
     fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
       ?{kind:'tool_proposal',proposalId:'mark',toolName:'mail.mark_seen',toolVersion:'0.1.0-alpha.1',arguments:{folder:'INBOX',uid:2}}
-      :{kind:'text',text:'已标记为已读。'})}}),{headers:{'content-type':'application/json'}});}});t.after(()=>application.close());
+      :{kind:'text',text:'已标记为已读。'})}}),{headers:{'content-type':'application/json'}});}}));t.after(()=>application.close());
   const client=new Client(application);await client.connect();const {taskId}=await client.call('task.submit',{goal:'标记合成邮件为已读',conversationId:'synthetic'},{idempotencyKey:'mark',timeoutMs:10000});
   const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
   await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');assert.equal(writes,0);
@@ -280,13 +296,13 @@ test('ordinary mail read callback runs only after original Runtime approval and 
         assert.equal(record.policyDecision,'allow');assert.equal(record.executionStarted,true);
         bindings.push(input);if(failBinding)throw Error('synthetic private binding failure');
       },createMailProvider:()=>{created++;assert.equal(bindings.length,1);return provider;},confirmExport:async()=>true});
-    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'ordinary-read',
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'ordinary-read',
       initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
       tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
       prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
       fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
         ?{kind:'tool_proposal',proposalId:'ordinary-read',toolName:'mail.inbox',toolVersion:'0.1.0-alpha.1',arguments:{limit:1}}
-        :{kind:'text',text:'Synthetic original inbox read completed'})}}),{headers:{'content-type':'application/json'}});}});
+        :{kind:'text',text:'Synthetic original inbox read completed'})}}),{headers:{'content-type':'application/json'}});}}));
     t.after(async()=>{await host.close();application.close();});
     const client=new Client(application);await client.connect();const {taskId}=await client.call('task.submit',
       {goal:'Read one explicitly synthetic message',conversationId:'ordinary-read-conversation'},{idempotencyKey:'ordinary-read',timeoutMs:10000});
@@ -345,13 +361,13 @@ test('actual Runtime requires separate original approval for each calendar write
       getApplication:()=>application,resolveConversation:id=>application.runtime.getTask(id).conversationId,
       createCalendarProvider:()=>provider,confirmExport:async()=>true});t.after(()=>host.close());
     assert.ok(host.tools.some(tool=>tool.descriptor.name===name));
-    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-writes',
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-writes',
       initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
       tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
       prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
       fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
         ?{kind:'tool_proposal',proposalId:'calendar-write',toolName:name,toolVersion:'0.1.0-alpha.1',arguments:args}
-        :{kind:'text',text:'合成日历操作已完成。'})}}),{headers:{'content-type':'application/json'}});}});t.after(()=>application.close());
+        :{kind:'text',text:'合成日历操作已完成。'})}}),{headers:{'content-type':'application/json'}});}}));t.after(()=>application.close());
     const client=new Client(application);await client.connect();const {taskId}=await client.call('task.submit',{goal:'合成日历写操作',conversationId:'synthetic-calendar'},{idempotencyKey:name,timeoutMs:10000});
     const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
     await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');assert.equal(writes,0);
@@ -458,13 +474,13 @@ test('actual Runtime advertises calendar writes and requires original approval b
     const descriptor=host.tools.find(tool=>tool.descriptor.name===name).descriptor;
     assert.equal(descriptor.sideEffect,'external_write');assert.deepEqual(descriptor.requiredScopes,['calendar:write']);
     if(name==='calendar.create'){assert.equal(descriptor.idempotencySupport,false);assert.equal(descriptor.recoverySupport,false);}
-    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-write-consumer',
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-write-consumer',
       initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
       tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
       prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
       fetchImpl:async(_url,init)=>{sends++;catalog??=String(init.body);return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
         ?{kind:'tool_proposal',proposalId:'calendar-write',toolName:name,toolVersion:descriptor.version,arguments:args}
-        :{kind:'text',text:'合成日历操作已核实。'})}}),{headers:{'content-type':'application/json'}});}});
+        :{kind:'text',text:'合成日历操作已核实。'})}}),{headers:{'content-type':'application/json'}});}}));
     t.after(()=>application.close());const client=new Client(application);await client.connect();
     const {taskId}=await client.call('task.submit',{goal:'执行合成日历操作',conversationId:'calendar-consumer'},{idempotencyKey:name,timeoutMs:10000});
     const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};

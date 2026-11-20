@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -57,7 +58,7 @@ async function fixture(t,{enabled=true,useConfigure=false}={}){
       if(publicationOutcome==='unknown')throw new ProtocolError('RESULT_UNKNOWN','Synthetic write outcome unknown');
       return result;
     }};
-  const port=new FakeCoordinationPort(async request=>{
+  const port=new FakeCoordinationPort(syntheticCoordinationExecution(async request=>{
     const parent=app.runtime.loadCheckpoint(request.taskId,'subtask-parent');
     if(parent?.subtaskId!=='user-work')return {kind:'text',text:'Original interaction summary',verification:'mock'};
     observed.push({taskId:request.taskId,goal:request.goal});
@@ -76,7 +77,7 @@ async function fixture(t,{enabled=true,useConfigure=false}={}){
     if(mode==='hold_after_publish'){entered=request.taskId;await new Promise(resolve=>release=resolve);}
     if(mode==='tool_after_publish')return proposal('coding.repair.trial',{candidateId:'extra',patches,recipeIds:['unit']});
     return {kind:'text',text:'Published original verified artifact',verification:'mock'};
-  });
+  }));
   app=createRuntimeApplication({path:join(folder,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
     coordination:port,coordinationBinding:'synthetic-original-cloud-config',competitionMaxSteps:8,
     readDeveloperHarnessConfiguration:()=>developerEnabled?{workspaceRef:bindingId,maxExecutorSteps:6}:undefined,

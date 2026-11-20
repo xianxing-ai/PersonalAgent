@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -96,7 +97,7 @@ test('actual Runtime forwards computer success semantics on each send while pres
       accepts:()=>true,project:({result})=>result}],
     competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
     coordinationInput:{beforeCoordinationSend(){},readRequestContext:()=>'{"syntheticEnvironment":true}'},
-    coordination:{execute:async request=>{
+    coordination:{execute:syntheticCoordinationExecution(async request=>{
       requests.push(request);
       const line=request.goal.split('\n').find(value=>value.startsWith('{"capabilityStatus":'));
       assert.ok(line);const status=JSON.parse(line).capabilityStatus;
@@ -104,7 +105,7 @@ test('actual Runtime forwards computer success semantics on each send while pres
       assert.match(status.computerAccess.afterSuccess,/next tool/);
       return request.continuation?{kind:'text',text:'Synthetic access result observed',verification:'mock'}
         :{kind:'tool_proposal',proposalId:'original-access',toolName:descriptor.name,toolVersion:descriptor.version,arguments:{},verification:'unverified'};
-    }}});
+    })}});
   try{
     const client=new Client(app);await client.connect();
     const submitted=await client.call('task.submit',{goal:'Synthetic access check',conversationId:'access'}, {idempotencyKey:'access'});
@@ -135,11 +136,11 @@ for(const withEnvironment of [undefined,false,true])test(`actual readiness prese
       available:()=>tool.descriptor.name!=='fixture.unavailable'})),
     coordinationInput:{beforeCoordinationSend(){},...(withEnvironment===undefined?{}:
       {readRequestContext:()=>withEnvironment?'{"fixtureEnvironment":true}':undefined})},
-    coordination:{execute:async request=>{
+    coordination:{execute:syntheticCoordinationExecution(async request=>{
       requests.push(request);
       return request.continuation?{kind:'text',text:'Synthetic complete',verification:'mock'}:
         {kind:'tool_proposal',proposalId:'ready',toolName:'fixture.ready',toolVersion:'1.0.0',arguments:{},verification:'unverified'};
-    }}});
+    })}});
   try {
     const client=new Client(app);await client.connect();
     const submitted=await client.call('task.submit',{goal:'Synthetic capability check',conversationId:'capabilities'},

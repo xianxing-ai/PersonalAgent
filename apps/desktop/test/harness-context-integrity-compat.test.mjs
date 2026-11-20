@@ -14,8 +14,9 @@ function reader(app,text,live=[]) {
   const node=file.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='readDesktopConversationContext');
   assert.ok(node);
   const box={runtimeApplication:app,ProtocolError:class extends Error {constructor(code,message){super(message);this.code=code;}},
-    conversations:{containsConversation:()=>true,turns:new Map(),session:()=>({surface:'panel'}),messagesFor:()=>text},
-    liveVoice:{historyMessages:()=>live},installedSkillsHost:undefined,knowledgeWatchHost:undefined,coordinationWatchInputs:new Map()};
+    conversations:{containsConversation:()=>true,turns:new Map(),session:()=>({surface:'panel'}),messagesFor:()=>text,prohibitions:()=>({revision:0,items:[]})},
+    liveVoice:{historyMessages:()=>live},installedSkillsHost:undefined,knowledgeWatchHost:undefined,coordinationWatchInputs:new Map(),
+    authorizationQuestionHost:undefined,tasks:new Map()};
   vm.createContext(box);vm.runInContext(node.getText(file)+'\nthis.read=readDesktopConversationContext;',box);
   return (...args)=>box.read(...args);
 }
@@ -74,6 +75,7 @@ test('metadata changes invalidate the original compaction source digest and comm
       content:'original source '.repeat(20),createdAt:'2026-10-20T01:00:00Z',taskState:'failed',...(i===0?{answerWithheld:true}:{})}));
     const f=compaction(messages),result=await compactConversationContext(f.options);
     assert.equal(result.state,'compacted');assert.ok(f.receipt().sourceDigest);result.assertCurrent();
+    assert.deepEqual(result.messages.find(message=>message.id==='source-0'),messages[0]);
     if(field==='createdAt')messages[0].createdAt='2026-10-20T02:00:00Z';
     if(field==='taskState')messages[0].taskState='cancelled';
     if(field==='answerWithheld')delete messages[0].answerWithheld;

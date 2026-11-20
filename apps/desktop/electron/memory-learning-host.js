@@ -1,4 +1,6 @@
 import {randomUUID} from 'node:crypto';
+import {createDeletionConfirmationGate} from './deletion-operation-policy.js';
+
 import {closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {learnPreference, consolidateFacts, setPreferenceEnabled, withdrawPreference, selectPromptPreferences, formatPreferenceSystemPrompt} from '@personal-agent/learning';
@@ -46,7 +48,7 @@ function preferenceNote(value) {
 }
 
 export function createMemoryLearningHost({profile, privateMemory, learningApplication,
-  publicErasure, privateErasure, managedPrivateCopies, preferenceStore}) {
+  publicErasure, privateErasure, managedPrivateCopies,preferenceStore,deletionGate=createDeletionConfirmationGate()}) {
   if (profile !== 'huawei_ict_agentarts' || !privateMemory) throw Error('需要 Competition 私人记忆宿主');
   // Only the composition owner can supply the actual application-copy inventory.
   // Unknown/existing unsupported managed copies keep production writes disabled.
@@ -157,12 +159,13 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
       if (name === 'memory.withdraw') return privateErasure ? privateErasure.withdraw(payload.ref) : privateMemory.withdraw(payload.ref);
       if (name === 'memory.delete') {
         writeReady();
-        return privateErasure ? privateErasure.erase(payload.ref) : privateMemory.delete(payload.ref);
+        return privateErasure ? privateErasure.erase(payload.ref) : deletionGate.run('memory.erase',payload.ref,()=>privateMemory.delete(payload.ref),
+          ()=>{privateMemory.assertEraseTarget?.(payload.ref);});
       }
       if (name === 'memory.boundErase') {
         if (!publicErasure) throw Error('公共事实跨库删除未配置');
-        return publicErasure.erase({factId: payload.ref?.id, expectedRevision: payload.ref?.revision,
-          operationId: randomUUID(), ...context()});
+        return deletionGate.run('facts.erase',payload.ref,()=>publicErasure.erase({factId: payload.ref?.id, expectedRevision: payload.ref?.revision,
+          operationId: randomUUID(), ...context()}));
       }
       if (!name.startsWith('learning.') || !learningApplication) throw Error('流程学习未配置');
       const scope = context();
@@ -188,8 +191,8 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
         revision: payload.revision, operationId: randomUUID(), ...scope});
       if (name === 'learning.stop') return learningApplication.stop({workflowId: payload.workflowId,
         revision: payload.revision, taskId: payload.taskId, ...scope});
-      if (name === 'learning.erase') return learningApplication.erase({workflowId: payload.workflowId,
-        expectedRevision: payload.expectedRevision, operationId: randomUUID(), ...scope});
+      if (name === 'learning.erase') return deletionGate.run('learning.erase',{id:payload.workflowId,revision:payload.expectedRevision},
+        ()=>learningApplication.erase({workflowId: payload.workflowId,expectedRevision: payload.expectedRevision, operationId: randomUUID(), ...scope}));
       throw Error('不支持的流程学习操作');
     },
   });

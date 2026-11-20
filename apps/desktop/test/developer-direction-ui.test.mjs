@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import {createDeveloperDirectionHost, createElectronDesktopChannel, deliverDesktopNotice} from '../electron/developer-direction-host.js';
+import {directionFormCommand, renderDirectionBoard, renderDirectionTimeline} from '../src/features/admin/developer-direction-controls.js';
+
+test('the settings panel exposes the four autonomy levels and the host records a report', async () => {
+  const source = readFileSync(new URL('../src/features/admin/developer-direction-controls.js', import.meta.url), 'utf8');
+  for (const label of ['观察', '建议', '可逆自动', '除不可逆外全自动', '全局急停', '时间线']) assert.match(source, new RegExp(label));
+  const sent = [];
+  const host = createDeveloperDirectionHost({now: () => Date.parse('2026-11-03T00:00:00.000Z'), channel: {name: 'desktop', async send(notice) {sent.push(notice); return {accepted: true, evidenceRef: `desktop:${notice.id}`};}}});
+  const goal = await host.invoke('goal', {sentence: '修好 CI', repo: 'octo/repo'});
+  const report = await host.invoke('report', {goalId: goal.id});
+  assert.match(report.pullRequestBody, /## 结论/);
+  const notified = await host.invoke('notify', {repo: 'octo/repo', kind: 'gate', summary: '需要确认合并'});
+  assert.equal(notified.delivered, true);
+  assert.equal(sent[0].title, '需要你确认');
+  const board = await host.invoke('board', {});
+  assert.equal(board.timeline[0].delivered, true);
+  const shown = [];
+  const delivered = await deliverDesktopNotice({id: 'n1', title: '需要你确认', body: '合并要确认'}, {tryNative: async () => ({accepted: false, reason: 'desktop notification unsupported'}), deliverInApp: notice => shown.push(notice.body)});
+  assert.equal(delivered.accepted, true);
+  assert.equal(delivered.evidenceRef, 'desktop-inapp:n1');
+  assert.deepEqual(shown, ['合并要确认']);
+  const command = directionFormCommand('goal', {sentence: '修好 CI', repo: 'octo/repo', doneWhen: 'CI 绿'});
+  assert.equal(command.action, 'goal');
+  assert.equal(command.payload.doneWhen, 'CI 绿');
+  const raised = directionFormCommand('level', {repo: 'octo/repo', level: 'act_all_but_irreversible', present: true});
+  assert.equal(raised.payload.present, true);
+  assert.equal(directionFormCommand('emergency', {}).action, 'emergency');
+  assert.equal(directionFormCommand('duty', {sentence: 'CI 红了就修', repo: 'octo/repo'}).action, 'duty');
+  assert.deepEqual(directionFormCommand('subscribe', {repo: 'octo/repo', classes: ['interrupt', 'digest']}).payload.classes, ['interrupt', 'digest']);
+  assert.equal(directionFormCommand('wizard', {credentialRef: 'github-credential-ref', repo: 'octo/repo', conventions: '用中文'}).payload.files[0].path, 'AGENTS.md');
+  assert.equal(directionFormCommand('report', {goalId: goal.id}).payload.goalId, goal.id);
+  const boardHtml = renderDirectionBoard([{id: goal.id, sentence: '修好 CI', status: 'open', step: '诊断', headSha: 'abc'}]);
+  for (const action of ['pause', 'resume', 'handoff', 'stop', 'report']) assert.match(boardHtml, new RegExp(`data-direction-act="${action}"`));
+  assert.match(renderDirectionBoard([]), /还没有开发者目标/);
+  assert.match(renderDirectionTimeline([{id: 'n1', at: '2026-11-03T00:00:00.000Z', summary: '需要确认', delivered: true, evidenceRef: 'desktop:n1'}]), /已投递/);
+  assert.match(renderDirectionTimeline([{id: 'n2', at: '2026-11-03T00:00:00.000Z', summary: '静默', delivered: false}]), /未投递/);
+  const root = mkdtempSync(path.join(tmpdir(), 'direction-ui-scan-'));
+  try {
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({scripts: {build: 'tsc'}}));
+    const scanned = await host.invoke('scan', {repo: 'octo/repo', root, policy: {maxFileBytes: 200, maxTotalBytes: 8_000_000, maxFiles: 20}});
+    assert.equal(scanned.index.evidenceLevel, 'local-scan');
+    assert.ok(scanned.profile.buildRecipes.includes('build'));
+    const listed = await host.invoke('compensations', {});
+    assert.equal(listed.every(item => item.available === false), true);
+  } finally {rmSync(root, {recursive: true, force: true});}
+  const shownNative = [];
+  const channel = createElectronDesktopChannel({electronNotification: {isSupported: () => true, create(input) {return {show() {shownNative.push(input);}};}}});
+  const native = await channel.send({id: 'e1', title: '需要你确认', body: '合并要确认'});
+  assert.equal(native.evidenceRef, 'desktop:e1');
+  assert.deepEqual(shownNative, [{title: '需要你确认', body: '合并要确认'}]);
+  const quiet = await host.invoke('notify', {repo: 'octo/repo', kind: 'timeline', summary: '只记时间线'});
+  assert.equal(quiet.delivered, false);
+});

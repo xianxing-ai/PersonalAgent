@@ -39,7 +39,7 @@ const tool = (name: string): WorkflowCapability => ({kind:'tool',name,boundary:'
 const capabilities: Record<string, WorkflowCapability[]> = {
   F01_N02:[host('memory.query'),host('responsibility.snapshot'),host('model.capabilities')],
   F01_N04:[host('policy.scope_check')],F01_N05:[host('model.native_config_check')],F01_N06:[host('runtime.commit_task_graph')],
-  F01_N07:[tool('knowledge.search')],F01_N08:[host('voice.ask_question')],F01_N09:[host('runtime.commit_responsibility')],
+  F01_N07:[host('knowledge.original_public_source')],F01_N08:[host('voice.ask_question')],F01_N09:[host('runtime.commit_responsibility')],
   F02_N01:[host('policy.pending_question')],F02_N02:[host('voice.speak_question')],F02_N03:[host('voice.final_transcript')],
   F02_N05:[host('policy.confirmation_check')],F02_N06:[host('policy.resume_original_operation')],
   F02_N07:[host('runtime.invalidate_question')],F02_N08:[host('runtime.reject_operation')],F02_N09:[host('runtime.local_stop_observation')],
@@ -47,30 +47,30 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F03_N05:[host('memory.query')],F03_N03:[host('runtime.invalidate_affected_subgraph')],F03_N06:[host('runtime.original_effect_binding')],
   F03_N07:[host('runtime.reconcile_original_effect')],F03_N08:[host('policy.compensation_check')],
   F03_N09:[host('runtime.submit_bound_compensation')],F03_N10:[host('voice.ask_question')],F03_N04:[host('runtime.schedule_graph')],
-  F04_N05:[host('memory.query')],F04_N06:[host('knowledge.source_and_write_check')],F04_N03:[tool('knowledge.apply_note_patch')],
+  F04_N05:[host('memory.query')],F04_N06:[host('knowledge.source_and_write_check')],F04_N03:[host('knowledge.original_public_patch')],
   F04_N07:[host('memory.quarantine_candidate')],F04_N04:[host('memory.invalidate_projection')],
-  F05_N02:[tool('knowledge.search'),host('memory.query')],F05_N06:[tool('knowledge.search')],
+  F05_N02:[tool('knowledge.search'),host('memory.query')],F05_N06:[host('knowledge.original_public_source')],
   F05_N05:[host('knowledge.citation_revision_check')],F05_N07:[host('runtime.publish_sourced_answer')],
   F06_N03:[host('todo.registered_write')],F06_N04:[host('reminder.current_clock_and_revision')],F06_N05:[host('notification.deliver')],
   F07_N02:[tool('calendar.events')],F07_N04:[host('calendar.freshness_check')],F07_N05:[host('calendar.registered_write')],
-  F08_N01:[tool('mail.inbox')],F08_N09:[tool('knowledge.search')],F08_N03:[host('mail.registered_archive')],
-  F08_N10:[host('policy.operation_scope_check')],F08_N06:[host('voice.ask_question')],F08_N07:[host('mail.registered_send')],
+  F08_N01:[tool('mail.inbox')],F08_N09:[host('knowledge.original_public_source')],F08_N03:[host('mail.registered_archive')],
+  F08_N10:[host('mail.prepared_plan_check')],F08_N06:[host('question.original_mail_decision')],F08_N07:[host('mail.registered_send')],
   F08_N11:[tool('mail.reconcile_send')],F08_N12:[host('runtime.wait_reconciliation')],F08_N13:[host('runtime.versioned_replan')],
   F09_N01:[tool('feeds.collect')],F09_N02:[host('feeds.validate_and_deduplicate')],F09_N04:[host('runtime.enqueue_research')],
-  F10_N02:[tool('research.search')],F10_N03:[tool('research.search')],F10_N04:[tool('knowledge.search')],
-  F10_N05:[host('knowledge.check_supported_claims')],F11_N02:[tool('calendar.events')],F11_N04:[host('voice.ask_question')],
+  F10_N02:[host('research.original_primary_sources')],F10_N03:[host('research.original_alternative_sources')],F10_N04:[host('knowledge.original_research_context')],
+  F10_N05:[host('knowledge.check_supported_claims')],F11_N01:[host('weather.original_forecast_source')],F11_N02:[tool('calendar.events')],F11_N04:[host('question.original_plan_decision')],
   F11_N05:[host('calendar.update_and_invalidate_reminder')],F12_N02:[host('policy.quiet_hours')],
-  F12_N04:[host('notification.deliver')],F12_N05:[host('notification.deliver_when_due')],
+  F12_N04:[host('notification.deliver')],F12_N05:[host('notification.current_feed_digest')],
   F13_N02:[host('system.registered_probe')],F13_N04:[host('runtime.confirmed_recovery')],
   F14_N01:[host('desktop.current_observation')],F14_N02:[host('runtime.desktop_input_lock')],
   F14_N03:[host('desktop.registered_input')],F14_N05:[host('voice.ask_question')],F14_N06:[host('desktop.registered_submit')],
   F15_N01:[tool('workspace.read_text')],F15_N04:[host('workspace.patch_scope_check')],
   F15_N05:[host('runtime.patch_and_required_checks')],F15_N06:[host('runtime.deliver_patch_evidence')],
   F16_N01:[host('github.bound_ci_failure')],F16_N03:[tool('workspace.apply_text_patch')],F16_N04:[host('workspace.test_intent_check')],
-  F16_N05:[tool('workspace.run_allowed_command')],F17_N03:[tool('workspace.run_allowed_command')],F17_N04:[host('runtime.deliver_failure_report')],
+  F16_N05:[host('runtime.publish_verified_repair')],F17_N03:[tool('workspace.run_allowed_command')],F17_N04:[host('runtime.deliver_failure_report')],
   F18_N01:[host('github.bound_pr_diff')],F18_N04:[host('github.current_head_merge_gate')],F18_N05:[host('github.registered_merge')],
   F19_N01:[host('github.issue_snapshot')],F19_N03:[host('runtime.enqueue_issue_repair')],F19_N04:[host('github.merged_repair_readback')],
-  F19_N05:[host('github.registered_close_issue')],F20_N01:[tool('workspace.read_text')],F20_N03:[tool('workspace.run_allowed_command')],
+  F19_N05:[host('github.registered_close_issue')],F20_N01:[tool('workspace.read_text')],F20_N03:[tool('coding.repair.trial')],
   F21_N01:[host('mcp_skill.source_manifest')],F21_N02:[host('mcp_skill.install_registry')],
   F21_N03:[host('mcp_skill.protocol_health')],F21_N04:[host('mcp_skill.isolated_probe')],F21_N05:[host('mcp_skill.enable_authorized')],
   F22_N09:[host('shadow.trigger_snapshot')],F22_N01:[host('shadow.versioned_snapshot')],
@@ -85,9 +85,11 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F25_N03:[host('policy.outbound_context_check')],F25_N04:[host('configuration.save_credential_reference')],
   F26_N02:[host('deployment.build_arm64_image','platform')],F26_N03:[host('deployment.runtime_readback','platform')],
   F26_N04:[host('deployment.real_tool_evidence','platform')],F26_N05:[host('deployment.publish_verified_coverage','platform')],
-  F27_N01:[host('model.capabilities')],F27_N05:[host('memory.query')],F27_N06:[tool('knowledge.search')],
+  F27_N01:[host('model.capabilities')],F27_N05:[host('memory.query')],F27_N03:[host('model.original_compaction_receipt')],F27_N06:[host('knowledge.original_context_expansion')],
   F27_N04:[host('model.context_source_map_check')],F27_N07:[host('runtime.invalidate_context_mapping')],
-  F28_N03:[host('model.native_config_check')],F28_N10:[host('workspace.source_and_test_check')],
+  F28_N03:[host('model.native_config_check')],F28_N06:[host('model.original_research_candidate')],
+  F28_N07:[host('model.original_analysis_candidate')],F28_N08:[host('model.original_coder_candidate')],
+  F28_N10:[host('workspace.source_and_test_check')],
   F28_N11:[host('runtime.completion_check')],F28_N12:[host('executor.scoped_tool_loop')],
 };
 
@@ -113,15 +115,28 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
     if (kind==='host'&&!mapped.length) mapped.push(host(`unavailable.${node.id}`));
     const condition = ['F02_N09','F24_N06'].includes(node.id)
       ? '本地可信停止事件已触发；云端不会自行触发急停' : node.condition;
+    // The reviewed F24 recovery edges also order execution: without N11, an
+    // ordinary recovery skips N09 when both cancellation predecessors skip.
+    const dependencies=[...node.dependencies];
+    if(['F24_N02','F24_N09'].includes(node.id)&&!dependencies.includes('F24_N11')
+      &&feature.edges.some(edge=>edge.source==='F24_N11'&&edge.target===node.id))dependencies.push('F24_N11');
+    // Optional expansion evidence must be settled before F05 can draft an answer.
+    if(node.id==='F05_N04'&&!dependencies.includes('F05_N06'))dependencies.push('F05_N06');
+    // Optional original tool exploration must settle before F28 completion checks.
+    if(node.id==='F28_N10'&&!dependencies.includes('F28_N12'))dependencies.push('F28_N12');
+    if(node.id==='F27_N04'&&!dependencies.includes('F27_N06'))dependencies.push('F27_N06');
+    // Optional F01 outcomes must settle before publishing the original plan outcome.
+    if(node.id==='F01_N06')for(const id of ['F01_N07','F01_N08','F01_N09'])if(!dependencies.includes(id))dependencies.push(id);
     return {id:node.id,label:node.label,designKind:node.kind,kind,
-      dependencies:node.dependencies.map(nodeId=>({nodeId,
-        required:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
+      dependencies:dependencies.map(nodeId=>({nodeId,
+        required:node.id==='F01_N06'&&['F01_N07','F01_N08','F01_N09'].includes(nodeId)||node.id==='F05_N04'&&nodeId==='F05_N06'
+          ||node.id==='F28_N10'&&nodeId==='F28_N12'?false:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F02_N09','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F01_N07','F01_N08','F01_N09','F02_N09','F03_N07','F03_N08','F03_N09','F03_N10','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
-          || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04','F12_N05',
-            'F24_N07','F24_N08','F24_N10','F24_N11','F25_N04'].includes(node.id) ? 'write':'read',
+          || ['F02_N02','F02_N05','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',
+            'F16_N05','F24_N07','F24_N08','F24_N10','F24_N11','F25_N04'].includes(node.id) ? 'write':'read',
       capabilities:mapped.map(item=>({...item})),
       inputFields:[...node.inputFields],outputFields:[...node.outputFields],
       ...(node.evidenceRequirement?{evidenceRequirement:node.evidenceRequirement}:{}),

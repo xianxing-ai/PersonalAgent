@@ -3,6 +3,8 @@
 更新：2026-10-16。先读[当前详细设计](CURRENT_DESIGN_20261015.md)及[28项逐图状态](WORKFLOW_STATUS_20261015.md)，
 再按[接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)核对实际能力。架构仍未最终定型；设计不代表验收。
 
+开发者方向（2026-11-03）：[默认自主与高风险闸门](DEVELOPER_DIRECTION_20261103.md)。夹具和本机 git worktree，不是真实 GitHub 或远端机器验收。
+
 | 文档/图 | 原始范围 | 当前适用性 |
 | --- | --- | --- |
 | [当前详细设计](CURRENT_DESIGN_20261015.md) | 本轮用户设计、实现、真实回执与缺口 | 当前统一入口 |

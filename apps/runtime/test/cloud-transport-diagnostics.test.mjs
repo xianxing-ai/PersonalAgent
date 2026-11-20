@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
@@ -8,7 +9,7 @@ import {createAgentArtsRuntimeApplication, createRuntimeApplication} from '../di
 import {readCompetitionCloudRequestIdentity} from '../dist/application/coordination.js';
 import {version, identity} from '../../../packages/coordination/test/fixtures/websocket.mjs';
 
-const options = {path: ':memory:', gatewayUrl: 'https://agentarts.example.test', runtimeName: 'synthetic',
+const options = {path: ':memory:', gatewayUrl: 'https://agentarts.example.test', runtimeName: 'synthetic',preparePayload:syntheticPublicPayloadGate,
   authorizationProvider: {read: async () => 'Bearer synthetic'}};
 async function submit(app) {
   const client = new Client(app); await client.connect();

@@ -14,7 +14,7 @@ const within=(file,directory)=>{
  */
 export function findWindowsExecutable(name,{environment=process.env,platform=process.platform,
   excludedDirectories=[],filesystem={lstatSync,realpathSync}}={}) {
-  if(platform!=='win32' || !['pwsh.exe','git.exe'].includes(name)
+  if(platform!=='win32' || !['pwsh.exe','git.exe','node.exe','docker.exe'].includes(name)
     || !Array.isArray(excludedDirectories) || !excludedDirectories.every(localAbsolute)) return undefined;
   const search=environment.PATH??environment.Path??'';
   if(typeof search!=='string') return undefined;

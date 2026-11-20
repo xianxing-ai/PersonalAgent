@@ -4,6 +4,7 @@ import {mkdir,mkdtemp,rm} from 'node:fs/promises';
 import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
 import {createAgentArtsTransportConfig} from '../electron/agentarts-transport-config.js';
+import {syntheticAgentArtsOptions,syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 
 const binding={gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'fixture'};
 const publicToken='explicit-public-fixture-credential-1234567890';
@@ -28,13 +29,13 @@ async function fixture(t){
   let current={appToken:publicToken,deploymentVersion:'v1'},executions=0;
   const calls=[];
   function create(){
-    const transport=createAgentArtsTransportConfig({binding,environment:{},configurationProvider:{read:()=>current},
-      fetchImpl:async(url,init)=>{
+    const transport=createAgentArtsTransportConfig({binding,environment:{},configurationProvider:{read:()=>current},preparePayload:syntheticPublicPayloadGate,
+      fetchImpl:syntheticAgentArtsOptions({responseMode:'tool-proposal-json',fetchImpl:async(url,init)=>{
         calls.push({url,body:JSON.parse(init.body)});
         const result=calls.length===1?proposal:{kind:'text',text:'Public fixture completed'};
         return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify(result)}}),
           {headers:{'content-type':'application/json'}});
-      }});
+      }}).fetchImpl});
     return createAgentArtsRuntimeApplication({...binding,...transport,path:directory+'/runtime.sqlite',
       responseMode:'tool-proposal-json',authorizationProvider:{read:async()=> 'Bearer explicit-public-outer'},
       tools:[{descriptor,execute:async()=>{executions++;return {value:'public fixture'};}}],

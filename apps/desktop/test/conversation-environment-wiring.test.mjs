@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync} from 'node:fs';
@@ -44,7 +45,7 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
     competitionToolExports:[{toolName:dispatch.descriptor.name,toolVersion:dispatch.descriptor.version,
       exportPolicyVersion:'synthetic-dispatch',accepts:() => true,project:({result}) => result},...host.competitionToolExports,
       {toolName:read.name,toolVersion:read.version,exportPolicyVersion:'synthetic-read',accepts:() => true,project:({result}) => result}],
-    coordinationInput:{beforeCoordinationSend(){},readRequestContext},coordination:{execute:async request => {
+    coordinationInput:{beforeCoordinationSend(){},readRequestContext},coordination:{execute:syntheticCoordinationExecution(async request => {
       app.assertCompetitionExportAllowed(request);
       const data = JSON.parse(request.goal.split('\n')[1]);
       captured.push({request,data}); clock += 1000;
@@ -55,7 +56,7 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
           arguments:{},verification:'unverified'};
       }
       return {kind:'text',text:'Synthetic answer: request the current conversation authorization card',verification:'mock'};
-    }}});
+    })}});
   host.bindApplication(app);
   t.after(async () => {await host.close();app.close();assert.equal(path.dirname(realpathSync(userData)),base);
     rmSync(userData,{recursive:true,force:true});});

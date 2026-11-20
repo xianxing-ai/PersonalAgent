@@ -4,6 +4,7 @@ import test from 'node:test';
 import {Client} from '@personal-agent/client';
 import {LayaActionChoiceService} from '@personal-agent/cognition';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createWindowsNativeDesktopControlHost} from '@personal-agent/windows-client';
 import {createComputerControlLaya} from '../electron/computer-control-laya.js';
@@ -37,7 +38,7 @@ test('synthetic integration: original Runtime and Policy carry a local Laya sugg
   const names=host.competitionToolAvailability.find(item=>item.toolName==='computer.desktop.suggest_control');
   assert.match(names.publicDescription,/local Laya/);assert.ok(names.publicEnumPaths.includes('/operation'));
   const proposal=(proposalId,toolName,args)=>({kind:'tool_proposal',proposalId,toolName,toolVersion:'1.0.0',arguments:args,verification:'unverified'});
-  const port=new FakeCoordinationPort(request=>{
+  const port=new FakeCoordinationPort(syntheticCoordinationExecution(request=>{
     const previous=request.continuation;
     if(!previous){
       const exposed=request.availableTools.find(item=>item.name==='computer.desktop.suggest_control');
@@ -50,7 +51,7 @@ test('synthetic integration: original Runtime and Policy carry a local Laya sugg
       {targetRef:previous.result.snapshot.targetRef,operation:'set_value'});
     assert.equal(previous.result.state,'control_suggested');assert.equal(previous.result.controlRef,controlRef);
     return {kind:'text',text:'Synthetic suggestion received; no input was sent.',verification:'unverified'};
-  });
+  }));
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',coordination:port,tools,
     competitionToolAvailability:availability,competitionToolExports:exports,retainPriorToolResults:true,competitionMaxSteps:5,
     isUserPresent:taskId=>host.hasPresence(taskId),prepareCompetitionToolExport:async scope=>{

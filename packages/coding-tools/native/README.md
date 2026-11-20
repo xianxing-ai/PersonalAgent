@@ -28,6 +28,12 @@
 node packages/coding-tools/native/build-helper.mjs --target-dir <trusted-external-dir>
 ```
 
+显式 `--self-contained`（公开 API `buildNativeHelper({targetDir, selfContained:true})`）发布固定 .NET 8.0.30 的独立 Job 包，目标必须是新的空外部目录。默认仍为 FDD，不覆盖或升级旧缓存。返回原 `helperPath`、`helperSha256`、`sourceSha256`、`toolchain`，另有 `selfContained:true`、`manifestSha256` 和覆盖全部伴随文件的 `helperFilesSha256`。宿主复用已发布目录时调用原 `readWindowsNativeHelperAttestation` 核验，不再次发布到非空目录。
+
+`job-component-manifest.json` / `.sha256` 记录全部运行库、apphost、托管程序集、配置及许可；attestation 与每次执行前校验完整集合及固定版本，额外、缺失、替换文件均拒绝。发布会验证仓库已有 .NET runtime 许可的固定摘要并保留原文。自包含包不依赖宿主继承 `DOTNET_ROOT`，原执行仍使用干净环境、普通用户、PSEC 与挂起/GO 握手。JSON 控制管道使用严格 UTF-8，非法字节在执行前拒绝。
+
+该包独立于 Desktop 原生设备包以及 Windows Host / PipeBridge；三者验收不能互代。当前真实中文路径、PSEC 和取消结果见 [独立验收记录](../../../docs/competition/evidence/WINDOWS_JOB_SELF_CONTAINED_20261031.md)。
+
 ### 约束与不变量：
 1. **显式外部目标目录**：`--target-dir` 必须由调用者显式传入绝对路径（如 Desktop 主进程的 app `userData/native-helper`），严禁默认为仓库或当前选定工作区；
 2. **需要系统预装 .NET 8 SDK**：绝不自动下载或安装外部 SDK，缺失 SDK 明确提示错误；

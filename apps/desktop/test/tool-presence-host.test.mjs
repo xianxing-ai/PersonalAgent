@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createToolPresenceHost} from '../electron/tool-presence-host.js';
@@ -128,11 +129,11 @@ test('original Runtime child discovers a gated write, requests real host gesture
     readConversationPreference:()=>({depth:2,fast:false}),automaticTools:[dispatch,access].map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
     competitionToolAvailability:[...broker.competitionToolAvailability,...[dispatch,write].map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,publicEnumPaths:tool===dispatch?['/subtasks/*/role']:[]}))],
     competitionToolExports:[...broker.competitionToolExports,...[dispatch,write].map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,exportPolicyVersion:'synthetic-presence',accepts:()=>true,project:({result})=>result}))],
-    coordination:{execute:async request=>{received.push(request);if(app.runtime.getTask(request.taskId).conversationId==='ui')return {kind:'text',text:'Parent summary',verification:'unverified'};
+    coordination:{execute:syntheticCoordinationExecution(async request=>{received.push(request);if(app.runtime.getTask(request.taskId).conversationId==='ui')return {kind:'text',text:'Parent summary',verification:'unverified'};
       if(!request.continuation){assert.ok(request.availableTools.some(tool=>tool.name===write.descriptor.name));assert.equal(broker.isUserPresent(request.taskId),false);
         return {kind:'tool_proposal',proposalId:'access',toolName:access.descriptor.name,toolVersion:'1.0.0',arguments:{},verification:'unverified'};}
       if(request.continuation.proposalId==='access')return {kind:'tool_proposal',proposalId:'write',toolName:write.descriptor.name,toolVersion:'1.0.0',arguments:{},verification:'unverified'};
-      return {kind:'text',text:'Child confirmed write result',verification:'unverified'};}}});
+      return {kind:'text',text:'Child confirmed write result',verification:'unverified'};})}});
   const client=new Client(app);await client.connect();
   try{const task=await client.call('task.submit',{goal:'Synthetic access then write',conversationId:'ui'},{idempotencyKey:'presence-chain',timeoutMs:60000});
     await until(()=>prompt?.state==='waiting');assert.equal(writes,0);native();
@@ -149,8 +150,8 @@ test('discoverable write proposed before F9 is rejected with no approval and zer
     tools:[{descriptor,execute:async()=>{writes++;return {};}}],
     competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
     competitionToolExports:[{toolName:descriptor.name,toolVersion:descriptor.version,exportPolicyVersion:'synthetic',accepts:()=>true,project:({result})=>result}],
-    coordination:{execute:async request=>{requests++;assert.ok(request.availableTools.some(tool=>tool.name===descriptor.name));
-      return {kind:'tool_proposal',proposalId:'early-write',toolName:descriptor.name,toolVersion:descriptor.version,arguments:{},verification:'unverified'};}}});
+    coordination:{execute:syntheticCoordinationExecution(async request=>{requests++;assert.ok(request.availableTools.some(tool=>tool.name===descriptor.name));
+      return {kind:'tool_proposal',proposalId:'early-write',toolName:descriptor.name,toolVersion:descriptor.version,arguments:{},verification:'unverified'};})}});
   const client=new Client(app);await client.connect();try{const {taskId}=await client.call('task.submit',{goal:'Synthetic early write',conversationId:'ui'},{idempotencyKey:'early-write'});
     await until(()=>app.runtime.getTask(taskId).state==='failed'&&app.activeTaskCount===0);
     assert.equal(app.runtime.getTask(taskId).error.code,'UNSUPPORTED_CAPABILITY');assert.equal(requests,1);assert.equal(writes,0);

@@ -33,19 +33,27 @@ test('fixed public Memory port excludes private/other namespaces and denies with
     const readAt = new Date().toISOString();
     const page = await query.listCurrent({at: readAt, limit: 10, ...context()});
     assert.deepEqual(page.facts.map(fact => fact.ref.id), ['public-one']);
+    assert.deepEqual(host.readCurrentPublicFact({id:'public-one',revision:1}),page.facts[0]);
+    assert.throws(()=>host.readCurrentPublicFact({id:'private-one',revision:1}),{code:'SCOPE_DENIED'});
+    assert.equal(host.readCurrentPublicFact({id:'other-public',revision:1}),undefined);
+    assert.throws(()=>host.readCurrentPublicFact({id:'public-one',revision:1,namespace:'other-public-port'}),{code:'INVALID_ARGUMENT'});
     await assert.rejects(query.getVersion({fact: {id: 'private-one', revision: 1}, ...context()}), {code: 'SCOPE_DENIED'});
     await assert.rejects(query.getVersion({fact: {id: 'other-public', revision: 1}, ...context()}), {code: 'SCOPE_DENIED'});
     await assert.rejects(query.listCurrent({at: new Date().toISOString(), limit: 10, namespace: 'other-public-port', ...context()}), {code: 'INVALID_ARGUMENT'});
     host.recordPublicSource({...source, sourceRevision: 'b'.repeat(64), summary: 'Corrected public source', expectedFactRevision: 1}, context());
+    assert.equal(host.readCurrentPublicFact({id:'public-one',revision:1}),undefined);
+    assert.equal(host.readCurrentPublicFact({id:'public-one',revision:2}).ref.revision,2);
     assert.equal((await query.listCurrent({factId: source.factId, at: new Date().toISOString(), limit: 1, ...context()})).facts[0].ref.revision, 2);
     host.withdrawPublicSource({vaultId: source.vaultId, path: source.path, factId: source.factId,
       withdrawalId: 'public-port-withdraw', expectedFactRevision: 2, observedAt: new Date().toISOString()}, context());
     assert.deepEqual((await query.listCurrent({factId: source.factId, at: new Date().toISOString(), limit: 1, ...context()})).facts, []);
+    assert.equal(host.readCurrentPublicFact({id:'public-one',revision:3}),undefined);
     assert.deepEqual((await query.listCurrent({at: readAt, limit: 10,
       snapshot: page.snapshot, ...context()})).facts, [], 'an old public snapshot cannot replay corrected/withdrawn content');
     await assert.rejects(query.getVersion({fact: {id: source.factId, revision: 1}, ...context()}), {code: 'SCOPE_DENIED'});
     await assert.rejects(query.listHistory({factId: source.factId, limit: 10, ...context()}), {code: 'SCOPE_DENIED'});
     host.close();
+    assert.throws(()=>host.readCurrentPublicFact({id:'public-one',revision:1}),{code:'UNSUPPORTED_CAPABILITY'});
     await assert.rejects(query.listCurrent({at: new Date().toISOString(), limit: 10, ...context()}), {code: 'UNSUPPORTED_CAPABILITY'});
   } finally {
     writer?.close(); host?.close(); app?.close(); await rm(directory, {recursive: true, force: true});

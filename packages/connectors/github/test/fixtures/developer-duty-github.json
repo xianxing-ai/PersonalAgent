@@ -1,0 +1,10 @@
+{
+  "evidenceLevel": "fixture",
+  "rateLimitHeaders": {"x-ratelimit-remaining": "0", "retry-after": "30"},
+  "disconnectedPoll": {"repo": "example/repo", "connected": false, "gap": true, "events": []},
+  "statusComments": [
+    {"id": 10, "body": "<!-- personal-agent:duty-status -->\nold"}
+  ],
+  "logExcerpt": "Error: connect ECONNRESET while downloading actions/setup-node",
+  "branchProtectionUnknown": "unknown"
+}

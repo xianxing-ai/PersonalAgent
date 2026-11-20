@@ -34,12 +34,12 @@ async function fixture(t) {
   const eventCursor = new EventCursor('tasks');
   const context = vm.createContext({runtimeClosed:false,eventSubscriptionConnection:undefined,eventThroughSequence:undefined,eventContinuation:undefined,setImmediate,fakeMode:false,tasks, approvals, client, runtimeError: '',
     // This event-batch fixture has no Harness event consumer installed.
-    harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,conversationDelivery:createConversationDelivery(new Set()),
+    harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,competitionMode:false,conversationDelivery:createConversationDelivery(new Set()),
     terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']), notifications: new Map(), structuredClone,
     eventBusy: false, eventCursor, taskReadbackAt:Date.now()+2000, runtimeConnection: {readEvents: after => app.readEvents(after),readEventBatch:input=>app.readEventBatch(input)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
-  for (const name of ['clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
+  for (const name of ['clearInactiveTaskExitWarning', 'observeTaskConflict', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
     vm.runInContext(declaration(name), context);
   }
   let taskNumber = 0;

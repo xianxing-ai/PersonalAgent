@@ -1,7 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {analyzeImpact,buildMeetingRepairOptions,prepareReviewedRepair,selectMeetingRepairScope} from '@personal-agent/cognition';
-import {parseCoordinationRepairCandidate} from '@personal-agent/coordination';
 import {isDeepStrictEqual} from 'node:util';
 
 const VERSION='desktop-goal-analysis-v1';
@@ -182,9 +181,8 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
     if (application.runtime.getTask(taskId).state!=='succeeded') return {kind:'unavailable',reason:'source_not_terminal'};
     const prepared=repairPreparation(bound.review);
     if (prepared.kind!=='prepared') return prepared;
-    const saved=application.runtime.loadCheckpoint(taskId,'competition-repair-candidate');
-    if (saved===undefined) return {kind:'unavailable',reason:'no_structured_candidate'};
-    const parsed=parseCoordinationRepairCandidate(saved);
+    const parsed=application.readRepairCandidate(taskId);
+    if (parsed===undefined) return {kind:'unavailable',reason:'no_structured_candidate'};
     const refs=new Map([...prepared.binding.targets,...prepared.binding.dependencies].map(ref=>[`${hash(ref.id)}:${ref.revision}`,ref]));
     const local=ref=>{const found=refs.get(`${ref.id}:${ref.revision}`);if(!found) throw Error('云端修复引用不在原有选择范围内');return {...found};};
     return repairPreparation(bound.review,{expectedGraphRevision:parsed.candidate.expectedGraphRevision,
@@ -223,26 +221,12 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
   function verifiedRepair(value,bound) {
     const {task,intent}=bound;
     if(intent.reviewDigest!==toolArgumentsDigest(value.review)) return {};
-    const original=store.read(intent.binding.graphRevision);
-    const prepared=prepareReviewedRepair(original,value.review.evaluatedAt,value.review,intent.candidate.candidate);
-    if(prepared.kind!=='prepared' || !isDeepStrictEqual(prepared.binding,intent.binding)) return {};
-    for(const record of application.runtime.readToolExecutions(task.taskId)) {
-      if(record.toolName!=='cognition.commit_repair' || record.toolVersion!=='1.0.0' || record.state!=='confirmed'
-        || record.policyDecision!=='allow' || !record.executionStarted || !task.evidenceRefs.includes(record.evidenceId)
-        || !application.runtime.matchesToolExecutionInput(record,{arguments:{intentDigest:toolArgumentsDigest(intent)},scopeRef:record.evidenceId})) continue;
-      const result=application.runtime.loadCheckpoint(task.taskId,'tool-result-'+record.evidenceId)?.result;
-      if(result?.kind!=='applied' || result.graphRevision!==prepared.preview.after.snapshot.revision
-        || !isDeepStrictEqual(store.read(result.graphRevision),prepared.preview.after.snapshot)) continue;
-      const updatedNodes=prepared.preview.inputs.map(node=>{
-        const applied=prepared.preview.after.snapshot.history.findLast(item=>item.id===node.id);return {id:applied.id,revision:applied.revision,kind:applied.kind};
-      });
-      const current=store.read();
-      const verified=updatedNodes.every(ref=>sameRef(current.history.findLast(node=>node.id===ref.id),ref));
-      return {executionVerified:true,graphUpdateVerified:verified,evidenceRefs:[record.evidenceId],
-        graphRevision:result.graphRevision,updatedNodes,
-        executionStatus:verified?'选定修复已执行，涉及的图节点版本已持久读回':'修复写入已确认，但目标已有后续版本，当前状态需复核'};
-    }
-    return {};
+    const receipt=application.readF03PlanRepairReceipt({taskId:task.taskId,sourceTaskId:intent.sourceTaskId,
+      reviewTaskId:intent.reviewTaskId,graphNamespace:namespace});
+    if(!receipt) return {};
+    return {executionVerified:true,graphUpdateVerified:receipt.graphUpdateVerified,evidenceRefs:receipt.evidenceRefs,
+      graphRevision:receipt.graphRevision,updatedNodes:receipt.updatedNodes,
+      executionStatus:receipt.graphUpdateVerified?'选定修复已执行，涉及的图节点版本已持久读回':'修复写入已确认，但目标已有后续版本，当前状态需复核'};
   }
   function record(value) {
     if (!value?.review) return;

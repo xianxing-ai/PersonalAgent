@@ -4,12 +4,40 @@
 
 > Profile：`huawei_ict_agentarts`。归属与开放缺口登记（可随分工文档合入 main）。  
 > 接线代码在 [#531](https://github.com/xianxing-ai/PersonalAgent/pull/531) / `codex/image28-full-wiring`，**接线未完成前勿合并该 PR**。  
-> 对照：[28 图工作记录](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。#531 尚未合入的资料链接固定到交接时提交，避免本分工文档先合入后出现断链。
+> 对照：[28 图工作记录](IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。  
 > **规则**：缺受信口保持 unavailable，禁止 Fake/静默回退 Local；每人交付「生产口 → 实际调用方 → 测试 → Evidence」；勾选 152 项须具备生产注册 + 真实宿主 + 约定证据。  
 > **分工修订（Owner，2026-10-31）**：**`2511375597-lab` 负责全部前端与前端接线**（Renderer/设置页/工作区 UI、Desktop 组合层把图 host/worker/IPC 接到对话与设置、相关 smoke）。Electron 受信设备宿主（语音/键鼠/WinForms 原生能力本身）、Runtime/Policy、业务连接器实现、AgentArts 云端仍归原负责人；lab 只接公开口，不伪造后端。  
 > #531 已代实现大量 fail-closed 工厂与部分 Desktop 条件接线；**下表是仍须各负责人本人完成的缺口**。
 
-## 总览
+## 接管后的当前增量（2026-11-01）
+
+下文原负责人分区保留交接来源；当前实现、组合和验证均由 Codex 及经用户授权的子智能体承担。#531 保持 Draft，完整接线及真实验收前不合并。代码集成在 `codex/pr531-integration-20261031`，通过正常合并保留原分支历史；每个工作包的证据说明其实际边界。
+
+| 图 / 面 | 当前实现及消费进展 | 仍未完成的验收或实现 |
+| --- | --- | --- |
+| 共用调用链 | 原图 host/business child 的精确预检、统一出机卡、configured decision 来源验证已接 Main | 固定本轮镜像的真实整链 |
+| F02 | Live/capture/原问题卡的工厂已接同一 Runtime/image | 真实声学证据、ASR 与同一回合设备验收 |
+| F03 | 原知识写入 SHA/Fact 回执、用户明确 Plan 版本执行、同步当前公开 Fact 最终 guard、Main 原生确认与原任务幂等读回已接 | 原生确认目视、完整因果/补偿与云整图 |
+| F06/F07 | 原待办/日历工厂已接 Main；F06 实际图→原未来调度→真实 Windows show→原 schedule/Todo 读回，Runtime/宿主重开后仍只投递一次 | 原账号/云联合验收；F06 立即到期分支的真实设备及关机持续运行不能由未来分支代替 |
+| F08 | 原归档/发送/知识工具、完整草稿采用/拒绝与 Main 已接；SMTP 身份与归档 UIDPLUS 映射先持久化，独立只读核实后继续原 F08，按钮沿用原任务；来源变化/撤销后零发送，unknown 不重放 | F02 真实语音、来源变化到原 Plan/Fact/GoalReview 的 F03 接线、真实邮箱/知识与云整图；无 UIDPLUS 映射仍无法证实归档 |
+| F12 | 原 feed/策略、同一 CAS round、真实 Windows banner；可信归来事件经固定参数原 Runtime 调用图，原 Live rendition/drain 回执链已接 Main | 真实业务来源/固定云整图、完整声学播放证明、用户已读及关机云持续运行；renderer drain 不算实际听到 |
+| F11 | 原天气/日历/提醒链及地点、原方案采用/拒绝问题已接 Main；等待写入审批时撤销回答阻止新写入，公开地点真实天气只读成功 | F02 实际语音补问、警报/交通来源、真实日历账号与云整图 |
+| F13/F14 | 原系统采样与浏览器设备工厂已接 Main；原卡、同一输入租约、实际引擎和提交前字段竞态拒绝已验证 | F13 云/配额/确认恢复 provider；F14 真实设备整图 |
+| F16/F17 | F17 原失败命令/HEAD 观测、case 原生选择和 Main 已接；F16 原修复字节→独立 commit/push→新 CI 读回与逐项在场确认已接 | 受限真实仓库/云验收；unknown 原子任务与外层图安全继续仍分开核验 |
+| F18/F19 | 原生精确 PR/Issue 配置、原 F15 enqueue、独立回归及条件关闭、同一 provider、Main/设置页与独立在场确认已接 | 真实账号/独立批准/merge 云整图；F19 正向整链仍有原 60 秒超时，未作为通过 |
+| F20 | 固定 TS 检查器、原 trial/恢复端口、case UI 和 Main 已接 | 原生隔离实机、真人签名与固定云图联合验收 |
+| F24 | 原 knowledge writer journal/readback/finalize 工厂、原父任务核实/继续入口已接 Main 与对话，本地受控文件丢失回执后零重写通过 | 真实原会话/云联合验收及其余业务效果类型 |
+| F05 | 原 Memory/Fact、Knowledge 查询与出口、引用及凭据后来源复核、实际 Main 已接；构建及根定向 42/42 | 原生确认/展示、真实模型引用支持、固定云部署整图/评估及独立审查仍待验 |
+| F04 | 公开受控 Wiki、原来源/Fact 投影及 Main；原 N03/N04 unknown 的原任务核实/继续、恢复后精确新出机确认已接，真实受控文件/SQLite 恢复零重写 | private/跨作用域与遗忘全链、真实原生点击、固定云整图/评估 |
+| F01 | 原公开 Fact/责任会话/模型目录、唯一 worker、原子任务分派、检索、补问与生命周期已接 Main；只允许最多 3 个独立子任务，补问/扩充明确等待重新规划 | 原生用户交互、可选分支及真实云整图；不把 awaiting_replan 当完成 |
+| F22 | 原记录 trace_replay 已接 Main 与默认关闭的设置；工具参数和结果正文仅保留本机，云只接收回放元数据；实际原 unknown 写不重执行 | 其他 shadow 模式、F23 晋升与真实云整图 |
+| F25 | 原加密账户引用/知识范围提案、N03 实际载荷检查、N04 原 Policy/确认后的保存与读回及 Main/设置页已接 | 连通性、模型能力及账户实际可用仍明确 unverified；真实窗口与平台整图待验 |
+| F27 | 原实际编译上下文、来源映射、模型配置及预算回执已接主分支和 Main；原已发生压缩仍消费 ModelGateway 回执 | 额外摘要/检索分支与真实云验收；模型原生能力未验证，无 tokenizer 时预算未测量 |
+| F10/F15/F21/F23/F26/F28 | 保留原交接清单及已有局部实现；F21/F28 继续实现；F26 新增固定版本/摘要镜像/endpoint 控制面读回 | 尚不能据已导出工厂或局部通过宣称全图接线完成；控制面 READY 不代表实际容器/健康探针通过 |
+
+环境的实际探针、固定旧部署与 HTTP 401、原生 .NET 8 启动缺口见 [本机与真实服务可用性](IMAGE531_ENVIRONMENT_AVAILABILITY_20261031.md)。集成 `a2898daa` 全量检查为 6625 项：6578 通过、45 跳过、2 失败；原 Main 回调定位失败已修复并 5/5 复验，Windows 原生 case 链接夹具修复后，设备/原卡/案例/UI/退出与提醒并发定向 137/137 通过，实际 Electron 工作区 smoke（Fake Runtime，隔离 userData）通过。当前增量仍需最终组合检查，各子树通过不替代此最终检查。
+
+## 原交接总览
 
 | 负责人 | 主责缺口（摘要） | 图 / 面 |
 | --- | --- | --- |
@@ -18,7 +46,7 @@
 | **goo122** | Policy/ToolGateway、知识记忆、GitHub/CI 底座、F23 配置消费者等**后端口** | F01、F03–F05、F16–F17、F21、F23–F25、F27、F10 底座 |
 | **zemeng5208** | AgentArts 部署联跑、语音/Windows **原生能力**、编码/F15 真实验收、F20 worker 信任闭环、cloudPersistent、整图协调 | F02/F14–F15/F18–F20/F22/F26/F28（能力与云，非 UI） |
 
-当前：**configured 0/28**；**152 清单 0/152**。`npm run check` 已在本工作树通过，不等于整图验收。
+原交接快照：**configured 0/28**；**152 清单 0/152**。当时 `npm run check` 通过不等于整图验收；当前代码注入范围以上述接管增量及各包证据为准，完整真实验收未完成，清单不提前勾选。
 
 ---
 
@@ -72,9 +100,9 @@
 
 ### 必须交付的受信口（后端；UI 交 lab）
 
-1. **F06**：生产 `invokeTodoCreate`（Policy/ToolGateway）；N05 真实投递回执；对齐 `f06:n03-todo:{session}`。参考 [F06_REMINDER_WIRING_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F06_REMINDER_WIRING_20261029.md)。
-2. **F07**：日历版本口、账户配置、写入外部读回、N05 网关。参考 [F07_FRESHNESS_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F07_FRESHNESS_20261029.md)。
-3. **F08**：Gateway **真归档**与 **真 SMTP 发送**（`mark_seen`/`save_draft` 不可冒充）；N12 Sent 对账。参考 [F08_MAIL_BOUNDARY_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F08_MAIL_BOUNDARY_20261029.md)。口齐后通知 lab 注册 Desktop。
+1. **F06**：生产 `invokeTodoCreate`（Policy/ToolGateway）；N05 真实投递回执；对齐 `f06:n03-todo:{session}`。参考 [F06_REMINDER_WIRING_20261029.md](F06_REMINDER_WIRING_20261029.md)。
+2. **F07**：日历版本口、账户配置、写入外部读回、N05 网关。参考 [F07_FRESHNESS_20261029.md](F07_FRESHNESS_20261029.md)。
+3. **F08**：Gateway **真归档**与 **真 SMTP 发送**（`mark_seen`/`save_draft` 不可冒充）；N12 Sent 对账。参考 [F08_MAIL_BOUNDARY_20261029.md](F08_MAIL_BOUNDARY_20261029.md)。口齐后通知 lab 注册 Desktop。
 4. **F09**：真实 feeds 提供者与会话授权；配合 zemeng 云联跑、lab 组合。
 5. **F11**：`calendar.update` 语义与真实写读回、提醒失效（守卫已有，缺生产工具链）。
 6. **F12 N04**：真实渠道投递读回端口（供 lab 接线与展示）。
@@ -106,20 +134,29 @@
 
 ## zemeng5208（核心 / AgentArts / 原生设备与编码）
 
-### 必须交付（能力与云；前端接线交 lab）
+### 本轮已落地（2026-10-31，代码层；非整图验收）
 
-1. **AgentArts**：固定 deployment、评测集整图联跑；禁止静默 Local 回退；F09 前缀云验收。
-2. **F02 原生语音能力**：声学防回声、final 回执、设备证据（UI 接线归 lab）。
-3. **F14 原生观察能力**：`browser.observe`、输入锁、会话绑定（UI 归 lab）。
-4. **F15 真实验收**：真人独立审核签名、实机 WinForms 目视（配置 UI 归 lab）。
-5. **F18/F19**：PR/Issue 图路径与平台/授权读回。
-6. **F20 worker 信任闭环**：按 [F20_WORKER_TRUST_GAPS_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F20_WORKER_TRUST_GAPS_20261029.md)；齐备后 lab 注入 Desktop；此前禁止 `ownedWorkflowWorker`。
-7. **F22/F26/F28 能力与 gate**、**cloudPersistent**（有关机后云证据才允许；Desktop 组合由 lab 在口齐后接线）。
-8. **整图协调**：汇总三人+lab Evidence；勾选 152 与矩阵；华为优先验收。
+1. **F09**：Desktop 仅在 **pinned deployment** 时注入 `f09WorkflowWorkerPorts`；ports 要求 `agentarts-deployment:*` + `real_host` harness。
+2. **F18/F19/F22/F26**：Runtime fail-closed 工厂已导出（无受信口 → `tools:[]`）；单测覆盖 empty 路径。
+3. **F20**：`verifyF20HarnessCompletion` / `assertF20CandidateSelection` 已落地；**仍禁止**注入 `ownedWorkflowWorker`（N03 候选检查工具与 Schema 未齐）。
+4. **F02/F14/F28 Desktop 受信端口模块**：`f02-voice-graph-ports.js` / `f14-observation-graph-ports.js` / `f28-model-graph-ports.js`（供 lab 组合；设备证据仍 `deviceEvidenceReady:false`）。
+5. **cloudPersistent**：`createUnavailableCloudPersistentHost` 已接入 proactive Desktop 宿主（`available()===false`）。
+
+### 仍须本人完成（需云/设备/真人，保持 unavailable）
+
+1. **AgentArts**：固定 deployment 评测集整图联跑；F09 前缀**云**验收 Evidence。
+2. **F02**：物理麦/扬声器防回声与播报证据（端口骨架已有）。
+3. **F14**：真实 Playwright/输入锁联跑 Evidence。
+4. **F15**：真人 Ed25519 签名 + WinForms 目视。
+5. **F18/F19**：真实 GitHub Token 读回与 merge/close（工厂齐，口未接）。
+6. **F20**：按 [F20_WORKER_TRUST_GAPS](F20_WORKER_TRUST_GAPS_20261029.md) 改 N03 候选检查 Schema + Desktop trial 接线后，才允许 lab 注入 worker。
+7. **F22/F26/F28**：真实 shadow / 平台部署读回端口、模型能力 gate；`cloudPersistent` 须有关机后的云证据，Desktop 组合按公开口接线。
+8. **整图协调**：勾选 152 与矩阵；华为优先验收。
 
 ### 不要做的
 
 - 不把前端/Desktop 消费接线默认揽回（已交 lab）；不代替 Potatos/goo 造业务/底座口。
+- 不在缺云证据时把 `cloudPersistentHost.available` 设为 true；不提前注入 `ownedWorkflowWorker`。
 
 ---
 
