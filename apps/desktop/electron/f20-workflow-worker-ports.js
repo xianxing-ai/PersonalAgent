@@ -23,7 +23,7 @@ export function createF20WorkflowWorkerPorts({getApplication,codingWorkspace,rea
     available(scope){try{current(scope);return codingWorkspace.f20Available(scope)===true;}catch{return false;}},
     async resolveInput(inputRef,scope){const app=current(scope),value=codingWorkspace.resolveF20Case(inputRef,scope);
       if(value)app.runtime.saveCheckpointOnce(scope.taskId,'f20-desktop-provider:v1',identity());current(scope);return value;},
-    assertCurrent:current,
+    assertCurrent(scope){current(scope);},
     async authorizeExport(input){current(input);const allowed=await codingWorkspace.authorizeF20Export(input);current(input);return allowed===true;},
     assertFrontier(request){
       const app=current(request),original=app.readF20WorkflowBinding(request);
