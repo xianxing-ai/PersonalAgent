@@ -13,8 +13,9 @@
 | 架构与生成契约 | `npm.cmd run check:architecture` / `check:generated --workspace=@personal-agent/contracts` | `3/3` 通过 / 退出码 0 | 结构与生成 Schema 一致 |
 | 契约夹具与能力覆盖 | `npm.cmd run test:contract-fixtures` / `verify-graph-capability-coverage.mjs` / `export-bindings.mjs --check` | `33/33` 通过 / 声明 `110`、提供者 `28`、缺口 `open=72, in-flight=10, needs-real=0` / 11 项绑定一致 | `workspace.patch_scope_check` 移入 `resolved`（`closedLoop: false`）；`voice.*` 与协作者缺口保留 |
 | 全仓构建与类型检查 | `npm.cmd run build` / 6 个核心工作区 `typecheck` | 37 个工作区全部退出码 0 | `dist/` 为本地产物，不入 Git |
-| 工作区单测 | `contracts`(34)、`goals`(33)、`coordination`(303)、`agentarts`(361)、`runtime`(1474)、`agentarts-runtime` 5 套件(20)、`desktop` Z-10(8) | **2,233 / 2,233** 通过（0 失败 0 跳过） | 含 `z10-privacy-graph-unlink`、`operator-brake-tray`、`execution-epoch`、`f09`/`f14`/`f20`/`shadow` 测试 |
-| 根集成测试 | `node --test tests/integration/owned-agentarts-image.test.mjs tests/integration/z10-image28-priority-graphs.test.mjs` | **5 / 5** 通过（0 失败 0 跳过） | 真实 SQLite `TaskRuntime` + Policy `allow_once` + HTTP `createAgentServer` + `executionEpochVersion=1` 跑通 `F09/F13/F14/F15/F20/F22/F26/F28` |
+| 工作区单测（PR #689 首版与增量复验） | `contracts`(34)、`goals`(33)、`coordination`(303)、`agentarts`(361)、`agentarts-runtime` 5 套件(20)、`desktop` Z-10(8)；CI 修复增量复验：`runtime` **1,475/1,475** + `desktop` `connector-change-host`(38/38) / `connector-watch-host`(25/25) / `operator-brake-tray`(2/2) | 复验用例均通过（0 失败 0 跳过） | 含 `z10-privacy-graph-unlink`、`operator-brake-tray`、`execution-epoch`(4/4 含取消停止检查点回归)、`f09`/`f14`/`f20`/`shadow` |
+| 根集成测试 | `npm.cmd run test:integration`（修复前 `0362ab0c` 全套）；本次修复后重跑 Z-10 集成套件 | `0362ab0c` 全套 **80 / 80** 通过；修复后 Z-10 集成 **5 / 5** 通过（0 失败） | 真实 SQLite `TaskRuntime` + Policy `allow_once` + HTTP `createAgentServer` + `executionEpochVersion=1` 跑通 `F09/F13/F14/F15/F20/F22/F26/F28`；全量随 PR `#689` Windows CI 执行 |
+| 示例脚本（CI Step 20） | `storage-demo.mjs`、`protocol-demo.mjs`、`task-lifecycle.mjs` | **3 / 3** 退出码 0 | 已在 `@personal-agent/runtime` 构建产物下实测 |
 | 本地 ARM64 镜像构建 | `pwsh -NoProfile -File scripts/agentarts/release-owned-image.ps1 -Build -Image personal-agent:z10-image28-20261119 ...` | 成功构建 `arm64`（`sha256:924653bb348b3dc2564f0e667e9a92df4c6d8a7367de452158dea20906d22481`），`published: false` | **严禁未经授权 `-Push`** |
 | ARM64 容器内 `v24.15.0` 服务与 28 图冒烟 | `docker run --rm -i --platform linux/arm64 personal-agent:z10-image28-20261119` | `Node v24.15.0`、`arch: arm64`、`/ping=Healthy`、`/bindings=11`、`F01`–`F28` 28 图 `/invocations` `advance` 均 200 | 校验信封 `executionEpochVersion=1` 往返 |
 | Node `24.15.0` 超时与 POSIX `SIGTERM` | ARM64 & AMD64 `node:24.15.0` 运行 `cloud-fetch-timeout-bootstrap.test.mjs`；原生 AMD64 `node:24.15.0-bookworm-slim` 运行 `server-shutdown.test.mjs` | `bootstrap` **4/4**（双架构通过）；`server-shutdown` **11/11**（含 5 条 `actual SIGTERM`，AMD64 通过） | 注：x64 宿主下的 `linux/arm64` QEMU 仿真因启动 >5s 超过 `server-shutdown` 5s 启动阈值，已在原生 AMD64 `v24.15.0` 完整实测通过 |
@@ -120,3 +121,13 @@
   - [ ] 读取 AgentArts 控制台或 API 确认新 ARM64 Digest 已生效且不再使用旧镜像或未轮换的旧 WSS 令牌；
   - [ ] 调用真实 `GET /bindings` 与 `GET /ping` 确认 11 项绑定在线；
   - [ ] 执行 `tests/manual/agentarts/` 下对应真实云端读回脚本并记录真实 `requestId` / `traceId` / `deploymentVersion`。
+
+---
+
+## 4. PR #689 Windows CI 失败根因与修复留痕（2026-11-20）
+
+- **初版 CI 失败诊断**（运行 `44548620501`）：`ecs-linux-check` 与 `Linux image CI` 均通过；`Windows CI (GitHub)` 全量 `npm run check` 中唯独 `apps/desktop/test/connector-change-host.test.mjs:525`（`cancelled saved local decision never recovers into a notification`）失败（期望 `'cancelled'`，实际 `'waiting_reconciliation'`），其余 `2,394` 条通过。
+- **根因**：`TaskRuntime.requestCancel` 在事务内持久化 `execution-epoch` 与 `execution-epoch:advance:task.cancel`（`reason: 'stop'`）检查点，而 `apps/runtime/src/application/connector-change-task.ts` 的 `runRuntimeConnectorChangeDecision`（`pure()`）与 `completeRuntimeConnectorWatchWake` 在进入 `confirmCancellation()` 前直接按严格本地白名单拒绝未识别检查点，抛出 `RESULT_UNKNOWN`。
+- **修复与回归测试**：
+  - 在 `apps/runtime/src/application/connector-change-task.ts` 新增严格 fail-closed 辅助校验 `isStopEpochCheckpoint`，仅当 `task.cancelRequested === true` 且 `execution-epoch:advance:task.cancel` 与当前 `readExecutionEpoch` 一致时放行上述两项取消停机检查点；任何额外非取消 epoch 或 `competition-cloud-*` 检查点仍以 `RESULT_UNKNOWN` 拒绝。
+  - 在 `apps/runtime/test/execution-epoch.test.mjs` 补充 `runRuntimeConnectorChangeDecision` 与 `completeRuntimeConnectorWatchWake` 的纯本地取消收敛及污染检查点拒绝测试（4/4 通过）；`@personal-agent/runtime`（1,475/1,475）、`connector-change-host.test.mjs`（38/38）、`connector-watch-host.test.mjs`（25/25）、`operator-brake-tray.test.mjs`（2/2）、`check:architecture`（3/3）及 CI Step 20 三个示例脚本均在本机复验通过。
