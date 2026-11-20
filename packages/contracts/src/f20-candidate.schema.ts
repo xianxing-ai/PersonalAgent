@@ -1,0 +1,2 @@
+// Generated from schema/f20-candidate.json. Do not edit.
+export default {"$schema":"http://json-schema.org/draft-07/schema#","title":"F20DocumentCandidate","type":"object","additionalProperties":false,"required":["version","docMarkdown","sampleSnippet"],"properties":{"version":{"const":1},"docMarkdown":{"type":"string","minLength":1,"maxLength":262144,"pattern":"^[^\\u0000]+$"},"sampleSnippet":{"type":"string","minLength":1,"maxLength":65536,"pattern":"^[^\\u0000]+$"}}};

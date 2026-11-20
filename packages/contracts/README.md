@@ -47,3 +47,5 @@ Windows Host 的内部 Pipe `0.1.0` 契约单独位于 `schema/windows-host.json
 新增依赖：Ajv 8.17.1（MIT）用于运行时校验，会增加客户端校验器代码和初始化成本；json-schema-to-typescript 15.0.4（MIT）仅开发时生成类型，不需进入产品包。替代方案是手写双份类型或编译期单独生成验证器；当前选择单一 Schema 和可测试生成流程。最终桌面打包体积和许可证声明留在分发验收中核验。
 
 AgentArts 自有镜像的独立传输 0.1.0 从 `@personal-agent/contracts/agentarts-transport` 导出，schema 为 `schema/agentarts-transport.json`，生成类型跟随既有 `generate`/`check:generated`。它是 provisional 云编排信封，不改变本地 wire 1.0.0 冻结集合；包含 invoke/status/cancel 与 ready/accepted/result/error/status，摘要绑定单键 HTTP payload，受理不等于完成，进程缓存不提供跨重启恢复。见 ADR-0014。
+
+F20 文档候选结构契约从 `@personal-agent/contracts/f20-candidate` 导出（Schema 位于 `schema/f20-candidate.json`），用于约束模型返回的有限文档候选形状（`version`、`docMarkdown`、`sampleSnippet`）；文件路径、验证配方与写权限仍完全归本地宿主。
