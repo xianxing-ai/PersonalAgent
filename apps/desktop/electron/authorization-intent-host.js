@@ -52,7 +52,8 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
     readConfirmedDecision,
     readEgressReview(taskId){
       const entry=[...pending.values()].find(item=>item.taskId===taskId&&item.egressReview);
-      return entry?.current()?entry.egressReview:undefined;
+      if(closed||!entry||entry.application!==getApplication()||entry.signal.aborted||now()>=Date.parse(entry.deadline))return;
+      return entry.egressReview;
     },
     tool:{descriptor,async execute(input,context){
       const entry=original(context);

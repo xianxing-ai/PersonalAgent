@@ -422,7 +422,7 @@ function recordExplicitUserTurn(taskId,conversationId) {
   const store=runtimeApplication.createHostStateStore('human-turns'),prior=store.get('latest');
   const task=runtimeApplication.runtime.getTask(taskId);
   if(task.conversationId!==conversationId)throw new ProtocolError('UNAUTHORIZED','原用户回合不属于此对话');
-  store.compareAndSet('latest',prior,{conversationId,turnId:taskId,createdAt:task.createdAt});
+  store.compareAndSet('latest',prior,{conversationId,turnId:taskId,createdAt:new Date().toISOString()});
 }
 let usageBudgetProduct;
 let agentArtsObservationConfig;
