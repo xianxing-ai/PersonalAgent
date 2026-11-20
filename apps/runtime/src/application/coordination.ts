@@ -219,6 +219,7 @@ export interface CoordinationWorkerCapabilityPort {
   dispatch(proposal:CoordinationToolProposalResult,context:WorkerContext & {revision:number}):Promise<
     {state:'pending'|'unknown'|'confirmed';result:unknown;evidenceRefs:readonly string[];selection:unknown}>;
   assertReceiptAllowed(proposal:CoordinationToolProposalResult,selection:unknown,receipt:unknown,context:WorkerContext & {revision:number}):void;
+  canReuseReceipt?(proposal:CoordinationToolProposalResult,original:CoordinationToolProposalResult,receipt:unknown):boolean;
 }
 export type PrepareCompetitionToolExport=(input:{phase:'preflight'|'projection';taskId:string;runId?:string;
   proposal:CoordinationToolProposalResult;deadline:string;signal:AbortSignal})=>Promise<void>;
@@ -613,6 +614,18 @@ export async function runCoordinationWorker(
         pending = undefined;
         context.saveCheckpoint('competition-loop', {executionEpoch,step: step + 1, continuation, evidenceRefs, receipts});
         consumeCompetitionCloudReceipt(runtime, taskId);
+        continue;
+      }
+
+      const capabilities=options.workerCapabilities;
+      const original=pending===undefined&&capabilities?.canReuseReceipt?receipts.find(item=>item.workerRevision!==undefined
+        &&capabilities.canReuseReceipt?.(result,item.proposal,item.continuation.result)):undefined;
+      if(original&&capabilities) {
+        capabilities.assertReceiptAllowed(original.proposal,original.workerSelection,original.continuation.result,
+          {...context,revision:original.workerRevision!});
+        continuation=original.continuation;
+        context.saveCheckpoint('competition-loop',{step:step+1,continuation,evidenceRefs,receipts});
+        consumeCompetitionCloudReceipt(runtime,taskId);
         continue;
       }
 

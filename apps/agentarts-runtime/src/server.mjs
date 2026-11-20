@@ -34,6 +34,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     || !['fixed','request-deadline'].includes(timeoutMode)
     || (!(timeoutMs === undefined && timeoutMode === 'request-deadline') && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647))
     || !Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1
+    || (mode === 'agentarts' && authToken === undefined && wssAuthToken === undefined)
     || (authToken !== undefined && (typeof authToken !== 'string' || authToken.length < 32))) {
     throw new ProtocolError('INVALID_ARGUMENT','Invalid server configuration');
   }
@@ -60,7 +61,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     active++; return true;
   };
   const release = () => {active--;};
-  const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false,channel='http'}) => {
+  const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false,channel='http',scopedWorkflowId}) => {
     const timeline=createStageTimeline({onRecord:onStageRecord});
     return timeline.run('invocation.dispatch',async()=>{
     let query = parsePayload(payload,workflowGoalInput);
@@ -79,9 +80,11 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     let testValue;
     let catalogValue;
     let serviceValue,serviceName;
+    let parsedQuery;
     try {
       const parsed=JSON.parse(query);
       if(parsed && typeof parsed==='object' && !Array.isArray(parsed)) {
+        parsedQuery=parsed;
         if(Object.hasOwn(parsed,'modelCatalogVersion'))catalogValue=parsed;
         const names=['shadowVersion','platformVersion','proactiveVersion','wikiVersion','evaluationVersion','testVersion'].filter(key=>Object.hasOwn(parsed,key));
         if(names.length>1) throw new ProtocolError('INVALID_ARGUMENT','Multiple service protocols');
@@ -89,20 +92,36 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
         else if(names.length){serviceName=names[0];serviceValue=parsed;}
       }
     }catch(error){if(error instanceof ProtocolError)throw error;}
+    if (scopedWorkflowId && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Scoped workflow credential required');
+    let effectiveQuery = query;
+    if (scopedWorkflowId) {
+      if (!parsedQuery || catalogValue || testValue || serviceValue || executionEpoch !== undefined)
+        throw new ProtocolError('INVALID_ARGUMENT','Scoped route requires workflow payload');
+      if (Object.hasOwn(parsedQuery,'workflowId')) {
+        if (parsedQuery.workflowId !== scopedWorkflowId)
+          throw new ProtocolError('INVALID_ARGUMENT','Scoped route only accepts its own workflow');
+      } else if (parsedQuery.operation === 'catalog') {
+        effectiveQuery = JSON.stringify({...parsedQuery,workflowId:scopedWorkflowId});
+      } else {
+        throw new ProtocolError('INVALID_ARGUMENT','Scoped route requires matching workflowId');
+      }
+    }
     if(catalogValue){
       if(!bindingAuthorized)throw new ProtocolError('UNAUTHORIZED','Model directory host credential required');
       if(Object.keys(catalogValue).length!==2||catalogValue.modelCatalogVersion!=='1.0'||catalogValue.action!=='list')throw new ProtocolError('INVALID_ARGUMENT','Invalid model directory query');
       if(!executionModels)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Model directory unavailable');
       return [{event:'message',data:{text:JSON.stringify(executionModels.catalog())}},{event:'task_end'},{event:'end'}];
     }
-    const binding = testValue||serviceValue?undefined:bindings.parse(query);
+    const binding = testValue||serviceValue?undefined:bindings.parse(effectiveQuery);
+    if (scopedWorkflowId && (!binding?.workflow || binding.workflowEnvelope?.workflowId !== scopedWorkflowId))
+      throw new ProtocolError('INVALID_ARGUMENT','Scoped route only accepts its own workflow');
     if(testValue&&(!testVersionController||!bindingAuthorized))
       throw new ProtocolError(testVersionController?'UNAUTHORIZED':'UNSUPPORTED_CAPABILITY','Test version requires explicit host configuration and credential');
     if (binding && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Owned binding credential required');
     if (serviceValue && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Service host credential required');
     if (serviceValue && !serviceControllers[serviceName]) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Service controller unavailable');
     const wrapResult=result=>executionEpoch===undefined?result:{executionEpochVersion:1,executionEpoch,result};
-    const invocation = {query,deadline,signal,sessionId,requestId,
+    const invocation = {query:effectiveQuery,deadline,signal,sessionId,requestId,
       ...(binding?.workflow&&channel==='websocket'?{resultFits:result=>Buffer.byteLength(JSON.stringify(resultEvents(wrapResult(result))))<=MAX_AGENTARTS_RESULT_BYTES}:{})};
     const result = serviceValue ? await serviceControllers[serviceName]({...invocation,value:serviceValue})
       : testValue ? await testVersionController({...invocation,value:testValue})
@@ -143,10 +162,11 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       catch {return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});}
     }
     const statusRequest = request.method === 'POST' && route === '/invocation-status';
-    if (!statusRequest && (request.method !== 'POST' || route !== '/invocations')) return json(response,404,{error:{code:'NOT_FOUND'}});
+    const scopedWorkflowId = request.method === 'POST' && route === '/invocations/f09' ? 'F09' : undefined;
+    if (!statusRequest && !scopedWorkflowId && (request.method !== 'POST' || route !== '/invocations')) return json(response,404,{error:{code:'NOT_FOUND'}});
     const innerCredential = request.headers['x-pa-agent-token'] !== undefined;
     const inboundToken = statusRequest || innerCredential ? wssAuthToken : authToken;
-    if (statusRequest && inboundToken === undefined) return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});
+    if ((statusRequest || innerCredential || mode === 'agentarts') && inboundToken === undefined) return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});
     if (inboundToken !== undefined && !equalInboundToken(request.headers,inboundToken)) return json(response,401,{error:{code:'UNAUTHORIZED'}});
     const invocationSlot = !statusRequest;
     if (invocationSlot && !acquire()) return json(response,429,{error:{code:'RATE_LIMITED'}});
@@ -199,7 +219,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
         if ((incomingSession !== undefined && !safeId(incomingSession)) || (incomingId !== undefined && !safeId(incomingId))) throw new ProtocolError('INVALID_ARGUMENT','Invalid request correlation');
         return invoke({payload,deadline:new Date(expiresAt).toISOString(),signal:controller.signal,
           sessionId:incomingSession ?? `pa-${randomUUID()}`,requestId:incomingId ?? randomUUID(),
-          bindingAuthorized:wssAuthToken !== undefined && equalInboundToken(request.headers,wssAuthToken)});
+          bindingAuthorized:wssAuthToken !== undefined && equalInboundToken(request.headers,wssAuthToken),
+          scopedWorkflowId});
       };
       const result = await Promise.race([execute(),expired,cancelled]);
       if (!response.destroyed) json(response,200,result);

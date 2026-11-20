@@ -24,8 +24,16 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     try{return Boolean(!closed&&verified?.available&&configuration().identity===verified.configuration.identity
       &&digest(coding.readWindowsNativeHelperAttestation(verified.pins.helperPath))===digest(verified.pins));}catch{return false;}
   }
+  function isF20Trial(scope) {
+    if(scope?.toolName!=='coding.repair.trial')return false;
+    const app=getApplication(),parent=app?.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent');
+    if(!parent?.taskId)return false;
+    const linked=app.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId);
+    return linked?.localTaskId===scope.taskId&&linked.mappedRequest?.toolName==='coding.repair.trial'
+      &&linked.request?.toolName==='workspace.run_allowed_command';
+  }
   async function prepare(scope,{forTaskConsent=false}={}){
-    if(!external(scope.toolName)&&!forTaskConsent)return;
+    if(!external(scope.toolName)&&!forTaskConsent&&!isF20Trial(scope))return;
     const original=getApplication()?.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);if(!original)blocked();
     const config=configuration();
     if(!current()){
@@ -51,7 +59,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
         :'外部命令在已验证 Windows 进程边界内执行；仅选定工作区与固定工具路径，默认禁止网络'}],assertCurrent:()=>current()});
   }
   function describeExecution(request,profile){
-    const required=Boolean(request?.requirements.some(item=>item.requirementId==='native-execution'))||external(request?.toolName);
+    const required=Boolean(request?.requirements.some(item=>item.requirementId==='native-execution'))||external(request?.toolName)||isF20Trial(request);
     return {required,available:current(),backend:profile.mode==='full-access'?'none':'windows-psec',
       enforced:profile.mode!=='full-access'&&current(),...(verified?.bindingDigest?{bindingDigest:verified.bindingDigest}:{}),
       ...(!current()?{reason:'外部进程需已配置工作区、可信 Node 和通过实际检查的 Windows helper；应用内工具不需要这些配置'}:{})};
@@ -83,6 +91,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       return {path:target,identity:digest(identity(target))};});
     const fixedRecipes=options.recipes.map(recipe=>({executable:realpathSync.native(recipe.executable),args:[...(recipe.args??[])]}));
     const executables=[...new Set(fixedRecipes.map(recipe=>recipe.executable))];
+    const f20Recipe=fixedRecipes.length===1&&options.recipes[0].id==='f20-typescript-sample';
     const assertCommand=request=>{
       assertBinding(request);
       if(readFixedBinding){
@@ -118,8 +127,8 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           writeRoots:mode==='workspace-write'?[root]:[],executableAllowlist:allowedExecutables,
           network:{mode:mode==='full-access'?'unrestricted':'deny'}};
         const application=getApplication(),f20=application.readF20TrialBinding?.(context);
-        if(f20){
-          if(fixedRecipes.length!==1||options.recipes[0].id!=='f20-typescript-sample')blocked();
+        if(f20Recipe||f20){
+          if(!f20Recipe||!f20||mode==='full-access'||path.basename(root)!=='workspace')blocked();
           const original={version:1,taskId:context.taskId,runId:context.runId,argumentsDigest:context.argumentsDigest,
               sourceDigest:f20.sourceDigest,candidateId:f20.candidateId,root,rootIdentity,configuration:verified.configuration.identity,
               workspaceIdentity:digest([identity(verified.configuration.rootPath),identity(verified.configuration.nodeExecutable)]),

@@ -1,4 +1,7 @@
 /** Renderer controls only; the trusted host selects and binds the workspace. */
+const F20_INPUT_REF = 'f20-case';
+const F20_DOC_TEMPLATE = '根据所选契约和实现编写简洁的 API 说明，并给出可通过类型检查的例子。';
+
 export function mountWorkspaceControls(root, invoke) {
   const section = document.createElement('section');
   section.className = 'sheet coding-workspace';
@@ -15,6 +18,12 @@ export function mountWorkspaceControls(root, invoke) {
     <p class="notice">Node --check 只检查所选文件的语法，不运行项目脚本；可执行文件和文件路径由本机宿主固定，Agent 无法指定。</p>
     <p class="notice" data-workspace="project-status"></p>
     <button class="btn" type="button" data-workspace="select-npm">找不到 npm 时选择本机 npm 文件</button>
+    <div data-workspace="f20" hidden>
+      <h3>API 文档检查</h3>
+      <p class="notice" data-workspace="f20-status"></p>
+      <p class="notice" data-workspace="f20-files" hidden></p>
+      <button class="btn" type="button" data-workspace="f20-configure">选择契约、实现和目标文档</button>
+    </div>
     <p class="notice">选择目录和运行组件只保存配置。读取、写入、受限命令和结果出机的具体范围，会在执行请求的对话提问卡一次确认，无需在设置重复允许。</p>
     <p class="notice">项目构建和测试会运行工作区代码。是否具备隔离能力以可信宿主报告的沙箱为准；组件未就绪不能通过卡片放行，每次执行仍经原 Policy 校验。</p>
     <button class="btn" type="button" data-workspace="revoke">撤销工作区授权</button>
@@ -32,12 +41,6 @@ export function mountWorkspaceControls(root, invoke) {
     <p class="notice">选择原 Issue、修复范围与独立回归目录的配置。发布修复、运行回归和关闭 Issue 仍须分别确认；原 PR 独立审核并合并、实际回归通过后才能关闭。</p>
     <p class="notice" data-workspace="f19-state"></p>
     <button class="btn" type="button" data-workspace="f19-select">选择 Issue 修复配置</button>
-    <h3>API 文档检查</h3>
-    <p class="notice">选择 TypeScript 契约、实现和目标文档。示例在隔离目录进行类型检查，结果为待审文档候选；每次读取、执行与发送仍在原任务确认。</p>
-    <p class="notice" data-workspace="f20-state"></p>
-    <label>案例标识 <input data-workspace="f20-ref" autocomplete="off" maxlength="128" placeholder="api-docs"></label>
-    <label>文档模板 <textarea data-workspace="f20-template" rows="3" maxlength="4096" placeholder="描述参数、返回值和与实现一致的示例"></textarea></label>
-    <button class="btn" type="button" data-workspace="f20-configure">选择契约、实现和文档</button>
     <h3>独立补丁审核</h3>
     <p class="notice">由本机选择独立审核者的公钥与签名目录。确认独立性只表示用户确认，不证明审核者身份；补丁不会自动发送。</p>
     <p class="notice" data-workspace="review-state"></p>
@@ -78,10 +81,10 @@ export function mountWorkspaceControls(root, invoke) {
     field('select-node').disabled = busy || unavailable || !configured;
     field('select-file').disabled = busy || unavailable || !configured;
     field('select-npm').disabled = busy || unavailable || !configured || state.nodeConfigured !== true;
+    field('f20-configure').disabled = busy || unavailable || !configured || state.nodeConfigured !== true;
     field('revoke').disabled = busy || unavailable || (!configured && state.cloudExportAllowed !== true);
     field('review-configure').disabled=busy||unavailable||state.independentReview?.canConfigure!==true;
     field('review-revoke').disabled=busy||unavailable||state.independentReview?.configured!==true;
-    field('f20-configure').disabled=busy||unavailable||!configured||state.nodeConfigured!==true;
     for(const workflow of ['F16','F17'])field(workflow.toLowerCase()+'-select').disabled=
       busy||unavailable||!configured||!state.f16f17;
     field('f18-select').disabled=busy||unavailable||!configured||state.f18?.selectionAvailable!==true;
@@ -119,7 +122,6 @@ export function mountWorkspaceControls(root, invoke) {
           /^[a-z0-9_]+$/u.test(reason)?'工作区、固定命令或运行服务尚未就绪。':reason):[];
       field(workflow.toLowerCase()+'-state').textContent=`${workflow}：${selected?`案例 ${value.selectionRef}；执行时核对原失败来源与许可`:'尚未配置案例'}${reasons.length?` · 宿主报告不可用：${reasons.join('；')}`:''}`;
     }
-    field('f20-state').textContent=state.f20?.configured===true?`已配置案例：${state.f20.inputRef}；运行条件会在任务执行时核对。`:'文档检查案例尚未配置。';
     field('f18-state').textContent=state.f18?.configured===true?
       `已选择 ${state.f18.repo} #${state.f18.prNumber}；${state.f18.requiresRestart?'请重启应用以加载此次审核配置。':'尚未授予合并许可；运行时核对原提交与审核条件。'}`:
       '尚未选择 PR 审核配置；请先配置开发者仓库。';
@@ -136,6 +138,19 @@ export function mountWorkspaceControls(root, invoke) {
       button.className='btn';button.type='button';button.textContent='在本机查看原补丁';button.disabled=busy;
       button.addEventListener('click',()=>run('coding.review.show',{operationId:item.recordFileName.slice(0,-5)}));
       row.append(description,button);pending.append(row);
+    }
+    const f20 = state.f20;
+    field('f20').hidden = !f20;
+    if (f20) {
+      field('f20-status').textContent = f20.configured
+        ? '已选好资料。可从对话直接提出检查要求。'
+        : configured && state.nodeConfigured === true
+          ? '选择 TypeScript 契约、实现和现有目标文档。'
+          : '先选择工作区和本机 Node。';
+      const files = [f20.schemaFile && `契约 ${f20.schemaFile}`, f20.codeFile && `实现 ${f20.codeFile}`,
+        f20.targetDoc && `文档 ${f20.targetDoc}`].filter(Boolean);
+      field('f20-files').hidden = files.length === 0;
+      field('f20-files').textContent = files.join(' · ');
     }
     updateButtons();
   }
@@ -155,8 +170,12 @@ export function mountWorkspaceControls(root, invoke) {
       const result = payload === undefined ? await invoke(action) : await invoke(action, payload);
       if (result && typeof result === 'object' && result.coding && typeof result.coding === 'object'
         && !Array.isArray(result.coding) && typeof result.coding.configured === 'boolean') {
-        feedback = action==='coding.review.show'?(result.reviewShown===true?'原补丁窗口已关闭；审核结论以独立签名为准。':'未完成本机展示。'):'';
-        render(result,{keepFeedback:!!feedback});
+        if (action === 'coding.review.show') {
+          feedback = result.reviewShown === true ? '原补丁窗口已关闭，审核结论以独立签名为准。' : '未完成本机展示。';
+        } else {
+          feedback = action === 'coding.f20.configure' && (result.cancelled || result.codingSelectionCancelled) ? '已取消选择。' : '';
+        }
+        render(result, {keepFeedback: !!feedback});
       } else {
         unconfirmed = true;
         feedback = '操作结果未获确认，请检查本机工作区状态后再操作。';
@@ -182,6 +201,11 @@ export function mountWorkspaceControls(root, invoke) {
   field('select-node').addEventListener('click', () => run('coding.selectNode'));
   field('select-file').addEventListener('click', () => run('coding.selectCheckFile'));
   field('select-npm').addEventListener('click', () => run('coding.selectNpmCli'));
+  field('f20-configure').addEventListener('click', () => run('coding.f20.configure', {
+    inputRef: state.f20?.inputRef ?? F20_INPUT_REF,
+    docTemplate: F20_DOC_TEMPLATE,
+    recipeId: 'f20-typescript-sample',
+  }));
   field('revoke').addEventListener('click', () => run('coding.revoke'));
   for(const workflowId of ['F16','F17'])field(workflowId.toLowerCase()+'-select')
     .addEventListener('click',()=>run('coding.f16f17.select',{workflowId}));
@@ -190,8 +214,6 @@ export function mountWorkspaceControls(root, invoke) {
   field('review-configure').addEventListener('click',()=>run('coding.review.configure',{
     reviewerId:field('reviewer-id').value,policyId:field('review-policy').value}));
   field('review-revoke').addEventListener('click',()=>run('coding.review.revoke'));
-  field('f20-configure').addEventListener('click',()=>run('coding.f20.configure',{
-    inputRef:field('f20-ref').value.trim(),docTemplate:field('f20-template').value,recipeId:'f20-typescript-sample'}));
 
   render();
   return {render,show:visible=>{section.hidden=!visible;if(!visible) restoreFocus=false;}};

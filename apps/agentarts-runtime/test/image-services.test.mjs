@@ -65,3 +65,13 @@ test('actual HTTP advance forwards signed pause/controller/user controls and fix
  assert.equal(bad.status,400);
  assert.equal(state.verification,'unverified');
 });
+test('composed image services merge evaluation sub-objects from platform and trustedPlatformPorts',async()=>{
+ const services=createImageServices({
+  platform:{evaluation:{readResult:async()=>({score:1})}},
+  trustedPlatformPorts:{evaluation:{validateResult:result=>result,authorize:async()=>true}}});
+ try {
+  const status=services.status().platform;
+  assert.equal(status.evaluation.state,'configured_not_verified');
+  assert.deepEqual(status.evaluation.missingConfiguration,[]);
+ } finally { await services.close(); }
+});

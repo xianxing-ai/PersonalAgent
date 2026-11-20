@@ -15,7 +15,6 @@ import {codingRepairExportOperation,projectCodingRepairResult} from './coding-re
 import {workspaceRepairProjectionSchema,workspaceWorkflowSummaryProjectionSchema} from './workspace-result-projection.js';
 import {createF20CaseConfiguration} from './f20-case-config-host.js';
 import {createF20TypeScriptRecipe,F20_TYPESCRIPT_RECIPE} from './f20-typescript-recipe.js';
-import {f20InputProjectionSchema,f20CompletionProjectionSchema,f20TrialProjectionSchema} from './f20-workflow-projection.js';
 import {initializeDefaultWorkspace} from './default-workspace.js';
 
 const codingConsentGroups=Object.freeze([
@@ -28,6 +27,11 @@ const codingConsentGroups=Object.freeze([
   {id:'cas-delivery',tools:['coding.repair.publish','coding.repair.reconcile','workflow.host.f15_n06'],
     summary:'将本次已验证修改写回所选文件，并核对原文件版本和写入结果。'},
 ]);
+const projectionObject=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
+const f20CaseExport=projectionObject(Object.fromEntries(['schemaFile','codeFile','recipeId','docTemplate','targetDoc','sourceVersion']
+  .map(key=>[key,{type:'string'}])));
+const f20CompletionExport=projectionObject({workflowId:{const:'F20'},state:{const:'settled'},published:{const:false}});
+const f20CommandExport=projectionObject({recipeId:{const:F20_TYPESCRIPT_RECIPE},exitCode:{const:0},stdout:{const:''},stderr:{const:''}});
 
 function directory(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.startsWith('\\\\')
@@ -461,12 +465,15 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const binding=application.readF20WorkflowBinding?.({taskId:parent.taskId,deadline:scope.deadline,signal:scope.signal});
     if(!binding)return undefined;
     const linked=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId);
-    if(scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId
-      ||linked.request?.toolName!==source?.toolName||linked.request.toolVersion!==source.toolVersion
-      ||linked.request.deadline!==scope.deadline||!isDeepStrictEqual(linked.request.arguments,source.arguments)
-      ||!['workspace.read_text','coding.repair.trial','decision.choose_candidate'].includes(source.toolName))
+    const original=linked?.mappedRequest??linked?.request;
+    if(!source||scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId
+      ||original?.toolName!==source.toolName||original.toolVersion!==source.toolVersion
+      ||original.deadline!==scope.deadline||!isDeepStrictEqual(original.arguments,source.arguments)
+      ||!['workspace.read_text','coding.repair.trial','decision.choose_candidate'].includes(source.toolName)
+      ||source.toolName==='workspace.read_text'&&![binding.input.schemaFile,binding.input.codeFile].includes(source.arguments.path)
+      ||source.toolName==='coding.repair.trial'&&linked.request?.toolName!=='workspace.run_allowed_command')
       throw new ProtocolError('UNAUTHORIZED','F20 操作不属于原固定图');
-    return binding;
+    return {binding,operationId:parent.operationId,preflight:parent.operationId.startsWith('f20-source-')};
   }
   function readCodingDecision(scope,source) {
     if(source?.toolName!=='decision.choose_candidate'||source.toolVersion!=='1.0.0')return undefined;
@@ -478,7 +485,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const f20=readF20Operation(scope,source);
     if(scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId||!original
       ||!f20&&(graph?.version!==1||graph.input?.codingRepair?.session?.taskId!==parent.taskId
-      ||graph.sessionId!==graph.input.codingRepair.session.sessionId)
+        ||graph.sessionId!==graph.input.codingRepair.session.sessionId)
       ||original.commandId!==parent.operationId||original.toolName!==source.toolName||original.toolVersion!==source.toolVersion
       ||original.deadline!==scope.deadline||!isDeepStrictEqual(original.arguments,source.arguments))
       throw new ProtocolError('UNAUTHORIZED','本地编码判断缺少原 F15 操作关联');
@@ -543,6 +550,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const source=scope.proposal?{...scope.proposal,argumentsDigest:toolArgumentsDigest(scope.proposal.arguments)}
       :application?.readAuthorizationQuestionInvocation?.(scope.taskId,scope.runId);
     const decision=readCodingDecision(scope,source);
+    const f20=readF20Operation(scope,source);
     const tool=implementations.find(item=>item.descriptor.name===source?.toolName&&item.descriptor.version===source?.toolVersion)
       ??(decision?{descriptor:createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Descriptor only');}}}).descriptor}:undefined);
     const delegated=source?.toolName==='workspace.run_allowed_command'&&source.toolVersion===developerCommand?.descriptor.version;
@@ -562,7 +570,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(previous&&previous.signature!==signature)throw new ProtocolError('UNAUTHORIZED','原工作区操作不能替换参数或配置');
     const entry=previous??{scope:request,argumentsDigest:request.argumentsDigest,generation,resource,resourceGeneration,signature,
       ...(decision?{decision}: {})};
-    const taskConsent=readCodingTaskConsent(request,source,resource,resourceGeneration);
+    const taskConsent=f20?undefined:readCodingTaskConsent(request,source,resource,resourceGeneration);
     if(previous&&!isDeepStrictEqual(previous.taskConsent,taskConsent))throw new ProtocolError('UNAUTHORIZED','原编码工作流授权分组不能替换');
     if(taskConsent)entry.taskConsent=taskConsent;
     prepared.set(key,entry);
@@ -573,15 +581,22 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       scopes:descriptor?.requiredScopes??source.scopes??[],bindingDigest:signature,ruleBindingDigest,
       summary:'仅对已选择且仍有效的工作区执行本操作所列读写或固定命令；不开放任意路径、命令或其他任务'}],
       ...(taskConsent?{taskConsent}:{}),assertCurrent:()=>{try{preparedEntry(request);return true;}catch{return false;}}});
-    const f20=readF20Operation(scope,source);
-    if(f20){
-      const schema=source.toolName==='coding.repair.trial'?f20TrialProjectionSchema():decision?decisionProjectionSchema(decision):readTool.descriptor.outputSchema;
-      for(const [requirementId,projectionSchema,summary] of [
-        ['f20-receipt-export',schema,'仅向原 F20 工作流发送本次工具的原确认结果；来源正文仅限已选两份契约/代码，trial 仅发送隔离元数据'],
-        ['f20-initial-export',f20InputProjectionSchema(),'向原 F20 模型发送本次固定案例的相对路径、文档模板、recipe 与配置摘要'],
-        ['f20-completion-export',f20CompletionProjectionSchema(),'仅向原 F20 模型发送已验证且未发布的完成状态'],
-      ])question.prepareExport(request,{requirementId,projectionSchema,summary,bindingDigest:hash({signature,requirementId,input:f20.input}),
-        assertCurrent:()=>!!readF20Operation(scope,source)});
+    if(f20) {
+      const prepareExport=(requirementId,projectionSchema,summary)=>question.prepareExport(request,{requirementId,projectionSchema,summary,
+        bindingDigest:hash({signature,requirementId,input:f20.binding.input}),assertCurrent:()=>!!readF20Operation(scope,source)});
+      if(f20.preflight&&source.arguments.path===f20.binding.input.schemaFile) {
+        prepareExport('f20-initial-export',f20CaseExport,'向本次固定 AgentArts 工作流发送所选案例的相对文件名、文档要求和校验配置');
+        prepareExport('f20-completion-export',f20CompletionExport,'向原工作流发送本次本机验证状态');
+      } else if(!f20.preflight) {
+        const original=readTool.descriptor.outputSchema;
+        const schema=decision?decisionProjectionSchema(decision):source.toolName==='coding.repair.trial'?f20CommandExport:
+          {...original,required:[...original.required,'originalSources'],properties:{...original.properties,
+            originalSources:{type:'array',minItems:2,maxItems:2,items:original}}};
+        prepareExport('f20-receipt-export',schema,source.toolName==='workspace.read_text'
+          ?'仅将选定的契约和实现两份源码发送给本次 AgentArts 工作流'
+          :'仅将本步候选选择或隔离检查结果发送给原工作流');
+      }
+      return;
     }
     const workflowRun=application.runtime.loadCheckpoint(scope.taskId,'coding-repair:graph')?.initialRunId===scope.runId
       ||Boolean(application.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent'));
@@ -873,6 +888,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     finally {inflight.delete(controller);}
   }}));
   const snapshot=() => ({configured:Boolean(savedRoot),selectionAvailable:active && typeof selectDirectory==='function',displayName:savedRoot?path.basename(savedRoot):'',
+    f20:f20Cases.snapshot(),
     nodeConfigured:Boolean(savedNode),checkFileConfigured:Boolean(savedCheckFile),npmCliConfigured:Boolean(savedNpmCli),
     checkFileName:savedCheckFile?path.basename(savedCheckFile):'',
     nodeCheckAvailable:tools.some(tool=>tool.descriptor.name==='workspace.node_check' && enabled(tool)),
@@ -964,12 +980,52 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const f20Cases=createF20CaseConfiguration({userData,safeStorage,readWorkspace:()=>{
     const configuration=readDeveloperConfiguration();
     if(!configuration||!boundNode||!boundRepairPowerShell)return undefined;
-    return {rootPath:configuration.rootPath,bindingId:configuration.bindingId,recipeIds:[...(configuration.command?.recipeIds??[]),F20_TYPESCRIPT_RECIPE],
-      checkFile:boundCheckFile,available:configuration.available};
+    return {...configuration,recipeIds:[F20_TYPESCRIPT_RECIPE]};
   }});
+  async function authorizeF20Export(input) {
+    const binding=assertF20Current(input);
+    if(!binding||binding.inputRef!==input.inputRef)return false;
+    const sourceReads=binding.sourceReads.map(item=>item.confirmed.result);
+    const localTaskId=input.localTaskId??binding.sourceReads.find(item=>item.confirmed.result.path===binding.input.schemaFile)?.task.taskId;
+    if(!localTaskId)return false;
+    const read=application.readHostToolTask(localTaskId),runId='host-tool-'+localTaskId;
+    if(read.task.state!=='succeeded'||!read.confirmed?.evidenceRefs.includes(runId)||input.operationId&&input.operationId!==read.commandId)return false;
+    const source=application.readAuthorizationQuestionInvocation(localTaskId,runId,true);
+    const scope={taskId:localTaskId,runId,deadline:input.deadline,signal:input.signal};
+    const operation=readF20Operation(scope,source);
+    if(!operation||operation.preflight!==(input.stage!=='receipt'))return false;
+    let expected;
+    if(input.stage==='initial')expected=binding.input;
+    else if(input.stage==='completion')expected={workflowId:'F20',state:'settled',published:false};
+    else if(read.toolName==='workspace.read_text')expected={...read.confirmed.result,
+      originalSources:[binding.input.schemaFile,binding.input.codeFile].map(path=>sourceReads.find(item=>item.path===path))};
+    else if(read.toolName==='coding.repair.trial')expected={recipeId:F20_TYPESCRIPT_RECIPE,exitCode:0,stdout:'',stderr:''};
+    else expected=read.confirmed.result;
+    if(!isDeepStrictEqual(input.value,expected))return false;
+    const entry=preparedEntry(scope);
+    question.authorizeConsumedExport({...entry.scope,signal:input.signal},input.value,'f20-'+input.stage+'-export');
+    assertF20Current(input);
+    return true;
+  }
+  async function assertF20CompletionSources(request,baseline) {
+    const binding=assertF20Current(request);
+    if(!binding||!isDeepStrictEqual(request.input,binding.input)||request.sourceReads.some(read=>{
+      const {path,content}=read.confirmed.result;
+      return baseline.files.find(file=>file.path===path)?.sha256!==createHash('sha256').update(content).digest('hex');
+    }))return false;
+    const taskId=request.check.task.taskId,runId=request.check.confirmed.runId;
+    const intent=application.runtime.loadCheckpoint(taskId,'f20-native-command:v1:'+runId);
+    const records=application.runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId);
+    return intent?.sourceDigest===binding.sourceDigest&&intent.candidateId===request.candidateId&&Array.isArray(records)
+      &&records.length===1&&records[0].originalBindingDigest===hash(intent)&&records[0].runId===runId
+      &&records[0].backend==='windows-psec'&&records[0].enforced===true&&records[0].executionStarted===true
+      &&records[0].stopped===true&&records[0].exitCode===0;
+  }
   function assertHarnessWorkspace(context) {
     if(dependencyPreparation||dependencyPreparationReason)throw new ProtocolError('UNSUPPORTED_CAPABILITY',dependencyPreparationReason??'原锁定依赖正在准备');
-    assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal,Boolean(application?.readF20TrialBinding?.(context)));
+    const f20=application?.readF20TrialBinding?.(context);
+    assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal,Boolean(f20));
+    if(f20)assertF20Current({taskId:f20.ownerTaskId,deadline:context.deadline,signal:context.signal});
     assertQuestionAccess(context);
   }
   function assertHarnessWorkspaceBinding(taskId,deadline,signal,f20=false) {
@@ -1110,22 +1166,6 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     }
     return saved;
   }
-  async function authorizeF20Export(input) {
-    const binding=assertF20Current(input);
-    if(!binding||binding.inputRef!==input.inputRef)return false;
-    const localTaskId=input.localTaskId??binding.sourceReads[0]?.task.taskId;
-    if(!localTaskId)return false;
-    const read=application.readHostToolTask(localTaskId),runId='host-tool-'+localTaskId;
-    if(read.task.state!=='succeeded'||!read.confirmed?.evidenceRefs.length||input.operationId&&input.operationId!==read.commandId)return false;
-    const source=application.readAuthorizationQuestionInvocation(localTaskId,runId,true);
-    const scope={taskId:localTaskId,runId,deadline:input.deadline,signal:input.signal};
-    if(!readF20Operation(scope,source))return false;
-    const expected=input.stage==='initial'?binding.input:input.stage==='completion'?{workflowId:'F20',state:'settled',published:false}:read.confirmed.result;
-    if(!isDeepStrictEqual(input.value,expected))return false;
-    const entry=preparedEntry(scope);
-    question.authorizeConsumedExport({...entry.scope,signal:input.signal},input.value,'f20-'+input.stage+'-export');
-    assertF20Current(input);return true;
-  }
   function projectResult(tool,{taskId,proposalId,result,signal}) {
     if(signal.aborted)throw new ProtocolError('CANCELLED','Workspace result export cancelled');
     if(!(question?questionReady():consent?.cloudExportAllowed===true)||!enabled(tool)||!bound(taskId))
@@ -1177,14 +1217,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     setF20CaseFromNativeSelection:value=>f20Cases.setFromNativeSelection(value),
     readF20CaseConfiguration:()=>f20Cases.snapshot(),resolveF20Case:(inputRef,scope)=>f20Cases.resolveInput(inputRef,scope),
     assertF20Current,authorizeF20Export,
-    async assertF20CompletionSources(scope,baseline){
-      const original=assertF20Current(scope);if(!original?.sourceDigest)throw new ProtocolError('UNAUTHORIZED','F20 原来源未绑定');
-      const snapshot=coding.captureCodingRepairSnapshotSync(boundRoot,()=>assertF20Current(scope)).snapshot;
-      if(harnessCandidateArtifactDigest(snapshot)!==harnessCandidateArtifactDigest(baseline)
-        ||await coding.capturePreparedDependencyFingerprint(boundRoot,{deadline:scope.deadline,signal:scope.signal})!==dependencyFingerprint)
-        throw new ProtocolError('REVISION_CONFLICT','F20 试验后的原工作区或已准备依赖已变化');
-      assertF20Current(scope);return true;
-    },
+    assertF20CompletionSources,
     readF20WorkspaceRef:scope=>{assertF20Current(scope);return readDeveloperConfiguration()?.bindingId;},
     f20Available:scope=>{try{assertF20Current(scope);const selected=f20Cases.snapshot();
       const input=selected.configured?f20Cases.resolveInput(selected.inputRef,scope):undefined;

@@ -33,7 +33,12 @@ function textModels(catalog) {
     && model.availability !== 'unavailable' && model.available !== false);
 }
 
+const publishedTier = model => model?.tier === 'flash' ? 'fast' : model?.tier;
+
 function pickTier(models, featured, tierName) {
+  const published = models.filter(model => publishedTier(model) === tierName);
+  const firstParty = published.find(model => (model.route ?? 'agentarts-proxy') === 'agentarts-proxy');
+  if (published.length) return (firstParty ?? published[0]).id;
   const ids = new Set(models.map(model => model.id));
   return featured.find(item => item.tier === tierName && ids.has(item.id))?.id
     ?? models.find(model => (tierName === 'fast' ? /flash|turbo|lite|mini/i : /max|pro/i).test(model.id))?.id;
@@ -57,14 +62,16 @@ export function routeModel({goal, catalog, featured = FEATURED_MODELS, preferenc
     const decision = budget.decide({origin: 'user', modelId, candidates});
     if (!decision || typeof decision.allowed !== 'boolean') throw Error('用量上限返回无效');
     if (!decision.allowed) return {state: 'blocked', reason: decision.prompt || '已超过用量上限', modelId};
+    if (explicit && decision.modelId && decision.modelId !== modelId)
+      return {state: 'blocked', reason: '当前预算无法运行所选模型，请改选低成本模型或调整用量上限', modelId};
     if (typeof decision.modelId === 'string' && candidates.includes(decision.modelId)) modelId = decision.modelId;
   }
-  const meta = featured.find(item => item.id === modelId);
+  const modelTier = publishedTier(models.find(item => item.id === modelId)) ?? featured.find(item => item.id === modelId)?.tier;
   const reasoningEffort = explicit && preference?.executionModel?.modelId === modelId ? preference.executionModel.reasoningEffort : undefined;
   return {
     state: 'selected',
-    tier: meta?.tier ?? wanted,
-    tierLabel: meta?.tier === 'flagship' ? '旗舰' : meta?.tier === 'fast' ? '快速' : '目录模型',
+    tier: modelTier ?? wanted,
+    tierLabel: modelTier === 'flagship' ? '旗舰' : modelTier === 'fast' ? '快速' : '目录模型',
     modelId,
     estimatedYuan: estimateModelYuan(modelId, tokens),
     reason: explicit ? '沿用已选模型，并服从用量上限' : (wanted === 'flagship' ? '任务较难，选用旗舰' : '任务较轻，选用快速模型'),
@@ -74,6 +81,14 @@ export function routeModel({goal, catalog, featured = FEATURED_MODELS, preferenc
 
 export function alternateModel(modelId, catalog, featured = FEATURED_MODELS) {
   const models = textModels(catalog);
+  const model = models.find(item => item.id === modelId);
+  const tier = publishedTier(model);
+  if (tier) {
+    const alternatives = models.filter(item => publishedTier(item) === (tier === 'flagship' ? 'fast' : 'flagship'));
+    return (alternatives.find(item => item.vendor === model.vendor && item.route === model.route)
+      ?? alternatives.find(item => item.vendor === model.vendor)
+      ?? alternatives[0])?.id ?? '';
+  }
   const meta = featured.find(item => item.id === modelId);
   const want = meta?.tier === 'flagship' ? 'fast' : 'flagship';
   const ids = new Set(models.map(model => model.id));
@@ -84,10 +99,10 @@ export function alternateModel(modelId, catalog, featured = FEATURED_MODELS) {
 
 function displayModelLabel(modelId, catalog, featured = FEATURED_MODELS) {
   if (typeof modelId !== 'string' || !modelId.trim()) return '目录模型';
-  const meta = featured.find(item => item.id === modelId);
-  if (meta?.tier === 'flagship') return '旗舰强力模型';
-  if (meta?.tier === 'fast') return '轻量快速模型';
-  const inCatalog = Array.isArray(catalog?.models) ? catalog.models.find(item => item?.id === modelId) : undefined;
+  const inCatalog = textModels(catalog).find(item => item.id === modelId);
+  const modelTier = publishedTier(inCatalog) ?? featured.find(item => item.id === modelId)?.tier;
+  if (modelTier === 'flagship') return '旗舰强力模型';
+  if (modelTier === 'fast') return '轻量快速模型';
   const rank = tier(modelId).rank;
   if (rank === 0) return '轻量快速模型';
   if (rank === 2) return '旗舰强力模型';
@@ -108,7 +123,10 @@ export function createCostRouteProduct({readCatalog, readBudget, complete, asser
     },
     apply(preference, executionModel, conversationId) {
       const current = catalog();
-      const routed = routeModel({goal: goals.get(conversationId) ?? '', catalog: current, featured, preference, budget: budget()});
+      const selected = preference.modelSelection === 'default' && executionModel
+        ? {...preference, executionModel}
+        : preference;
+      const routed = routeModel({goal: goals.get(conversationId) ?? '', catalog: current, featured, preference: selected, budget: budget()});
       last = routed.state === 'selected'
         ? {...routed, modelLabel: displayModelLabel(routed.modelId, current, featured)}
         : routed;

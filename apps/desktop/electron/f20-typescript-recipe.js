@@ -10,14 +10,15 @@ export const F20_TYPESCRIPT_RECIPE='f20-typescript-sample';
 /** The single compiler identity this recipe accepts; a lockfile change must be reviewed, not silently trusted. */
 export const F20_TYPESCRIPT_VERSION='5.9.3';
 const require=createRequire(import.meta.url);
-const checker=fileURLToPath(new URL('./f20-typescript-check.cjs',import.meta.url));
+const unpacked=file=>file.replace(/([\\/])app\.asar(?=[\\/])/u,'$1app.asar.unpacked');
+const checker=unpacked(fileURLToPath(new URL('./f20-typescript-check.cjs',import.meta.url)));
 const sha=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
 const relative=value=>typeof value==='string'&&value.length>0&&!/[\\:\u0000-\u001f]/u.test(value)&&!path.isAbsolute(value)
   &&value.split('/').every(part=>part&&part!=='.'&&part!=='..');
 
 /** Main-only recipe. Fixed compiler and flags; no project scripts, config, plugins or sample execution. */
 export function createF20TypeScriptRecipe({rootPath,nodeExecutable,input,createWorkspaceCommandTool}) {
-  let compiler;try{compiler=require.resolve('typescript');}catch{throw new ProtocolError('UNSUPPORTED_CAPABILITY','Pinned F20 TypeScript compiler is unavailable');}
+  let compiler;try{compiler=unpacked(require.resolve('typescript'));}catch{throw new ProtocolError('UNSUPPORTED_CAPABILITY','Pinned F20 TypeScript compiler is unavailable');}
   const root=realpathSync.native(rootPath),node=resolveNodeExecutable(root,nodeExecutable);
   if(lstatSync(rootPath).isSymbolicLink()||typeof createWorkspaceCommandTool!=='function'
     ||input?.recipeId!==F20_TYPESCRIPT_RECIPE||!relative(input.schemaFile)||!input.schemaFile.endsWith('.ts')||!relative(input.codeFile))

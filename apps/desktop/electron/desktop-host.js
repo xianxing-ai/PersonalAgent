@@ -202,6 +202,7 @@ export function createDesktopHost() {
     return settings;
   }
   return {attach, restore, openSettings, updateAppearance, logAgentArtsFailure,
+    configureShadowPreview(enabled) { return state.update({shadowPreview: enabled}).shadowPreview; },
     loginItemSnapshot:loginItem.snapshot,readLoginItem:loginItem.read,configureLoginItem:loginItem.configure,
     hasSavedBounds: mode => Boolean(state.value.windows[mode]),
     logVoicePlayback(phase) {

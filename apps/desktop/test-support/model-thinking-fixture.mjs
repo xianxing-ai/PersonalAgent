@@ -2,9 +2,9 @@ import {createModelThinkingController} from '../src/features/conversation/model-
 export const revision='a'.repeat(64);
 export const selection=(modelId='a',reasoningEffort)=>({catalogRevision:revision,modelId,...(reasoningEffort?{reasoningEffort}:{})});
 export const snapshot=(depth=1,fast=false,extra={})=>({conversationState:{activeId:'conversation-1'},conversationPreference:{depth,fast,...(!extra.modelId&&!extra.executionModel?{modelSelection:'default'}:{}),...extra},thinking:{depth,fast},agentArtsModels:{catalog:{revision,defaultModelId:'a',models:[
-  {id:'a',displayName:'A',type:'text',reasoningEfforts:['low','medium','high'],availability:'unverified'},
-  {id:'b',displayName:'B',type:'text',reasoningEfforts:['max'],availability:'unverified'},
-  {id:'custom-model',displayName:'Custom',type:'text',reasoningEfforts:[],availability:'unverified'},
+  {id:'a',displayName:'A',type:'text',reasoningEfforts:['low','medium','high'],availability:'available'},
+  {id:'b',displayName:'B',type:'text',reasoningEfforts:['max'],availability:'available'},
+  {id:'custom-model',displayName:'Custom',type:'text',reasoningEfforts:[],availability:'available'},
   {id:'blocked',displayName:'Blocked',type:'text',reasoningEfforts:[],availability:'unavailable'},
   {id:'audio',displayName:'Audio',type:'audio',reasoningEfforts:[],availability:'unverified'},
  ]},preferences:{catalogRevision:revision,defaultModelId:'a',defaultSubmodelId:'b',reasoningEffort:'medium',submodelReasoningEffort:'max'}}});

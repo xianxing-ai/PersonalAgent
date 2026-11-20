@@ -112,11 +112,6 @@ async function fixture(t, {actions = 72, initialSteps = 4, windowSteps = 4, maxS
       }
       guardMeasurements.push(sample);
     }
-    if (delegate && !task.conversationId.startsWith('desktop-subtask:')
-      && !task.conversationId.startsWith('desktop-subagent-conversation:')) {
-      assert.ok(request.continuation, 'The parent only summarizes its original confirmed dispatch');
-      return {kind: 'text', text: 'Synthetic coordinator consumed the child completion', verification: 'unverified'};
-    }
     const next = repeated ? ordinal : request.continuation ? request.continuation.result.sequence + 1 : 0;
     if (next >= actions) return {kind: 'text', text: 'Synthetic development completed with original local readback', verification: 'unverified'};
     const toolName = repeated ? names[1] : names[next % names.length];
@@ -322,6 +317,8 @@ test('default user-work and fresh followup tasks inherit policy while retaining 
   assert.ok(child);
   assert.equal(child.state, 'succeeded', JSON.stringify(child.error));
   const sourceTask = f.app.runtime.getTask(child.taskId);
+  assert.match(parent.resultSummary, /^子助手已完成。执行记录和结果在子对话中。/u);
+  assert.equal(f.queries.filter(query => query.taskId === parentTaskId).length, 0);
   const sourceCapacity = f.app.runtime.loadCheckpoint(child.taskId, EXECUTION_CAPACITY_CHECKPOINT);
   const parentCapacity = f.app.runtime.loadCheckpoint(parentTaskId, EXECUTION_CAPACITY_CHECKPOINT);
   assert.equal(sourceCapacity.windowSteps, parentCapacity.windowSteps);

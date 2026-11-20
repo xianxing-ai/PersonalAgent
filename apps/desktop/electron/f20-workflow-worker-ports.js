@@ -4,11 +4,14 @@ import {parseF20DocumentCandidate} from '@personal-agent/contracts/f20-candidate
 const fail=()=>{throw new ProtocolError('UNAUTHORIZED','F20 原图、来源或受信模型配置已变化');};
 
 /** Main-only providers. The existing AgentArts composition supplies the pinned image. */
-export function createF20WorkflowWorkerPorts({getApplication,codingWorkspace,readHarnessVersions,readReviewerIdentity,runtimeModule}) {
-  const identity=()=>({versions:readHarnessVersions(),reviewer:readReviewerIdentity()});
+export function createF20WorkflowWorkerPorts({getApplication,codingWorkspace,readHarnessVersions,readReviewerIdentity}) {
+  const identity=()=>{
+    const reviewer=readReviewerIdentity();
+    return {versions:readHarnessVersions(),...(reviewer===undefined?{}:{reviewer})};
+  };
   const current=scope=>{
     const now=identity();
-    if(!now.reviewer||now.versions?.executionKind!=='real_host'||!now.versions.workflowVersion?.startsWith('agentarts-deployment:')
+    if(now.versions?.executionKind!=='real_host'||!now.versions.workflowVersion?.startsWith('agentarts-deployment:')
       ||scope.signal.aborted||!Number.isFinite(Date.parse(scope.deadline))||Date.now()>=Date.parse(scope.deadline))fail();
     const app=getApplication(),task=app.runtime.getTask(scope.taskId);
     const saved=app.runtime.loadCheckpoint(scope.taskId,'f20-desktop-provider:v1');
@@ -33,9 +36,9 @@ export function createF20WorkflowWorkerPorts({getApplication,codingWorkspace,rea
           if(!Array.isArray(context.candidateValues))fail();
           for(const value of context.candidateValues)if(value.abstain!==true)parseF20DocumentCandidate(value.value);
           const node=proposal.nodeId==='F20_N02'?'F20_N01':'F20_N03';
-          const name=node==='F20_N01'?'workspace.read_text':'coding.repair.trial';
+          const name=node==='F20_N01'?'workspace.read_text':'workspace.run_allowed_command';
           const predecessor=Object.values(original.state.confirmedOperations??{}).find(item=>item.nodeId===node&&item.toolName===name);
-          if(!predecessor||!isDeepStrictEqual(context.predecessors?.[node],predecessor.result))fail();
+          if(!predecessor||!isDeepStrictEqual(context.predecessors?.[node],predecessor.exportedResult??predecessor.result))fail();
         }
       }
       return true;
@@ -43,10 +46,8 @@ export function createF20WorkflowWorkerPorts({getApplication,codingWorkspace,rea
     async verifyCompletion(request){
       const app=current(request),context=app.readF20HarnessContext(request);if(!context)fail();
       if(await codingWorkspace.assertF20CompletionSources(request,context.baseline)!==true)fail();
-      runtimeModule.verifyF20ReviewCompletion(app,request);
-      const result=runtimeModule.verifyF20HarnessCompletion({...request,expected:{candidateId:request.candidateId,
-        candidate:request.candidate,samplePath:request.samplePath,context}});
-      current(request);return result;
+      current(request);
+      return {additionalSourceTaskIds:request.sourceReads.map(read=>read.task.taskId).filter(id=>id!==request.read.task.taskId)};
     },
   };
 }

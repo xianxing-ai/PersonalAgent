@@ -53,7 +53,23 @@ function hasExactEnumerableKeys(value: object, fields: readonly string[]): boole
 /** Only the trusted host selects and minimizes these existing descriptor fields. */
 export type CoordinationAvailableTool = Pick<ToolDescriptor, 'name' | 'version' | 'inputSchema'>;
 export interface ExecutionModelSelection {catalogRevision: string; modelId: string; reasoningEffort?: 'none'|'minimal'|'low'|'medium'|'high'|'xhigh'|'max'}
-export interface ExecutionModelCatalog {version:'1.0';revision:string;defaultModelId:string;models:readonly {id:string;displayName:string;reasoningEfforts:readonly string[];requestProfile:'standard'|'deepseek-native-v1'|'bailian-deepseek-v1'|'huawei-openai-v1';route?:'agentarts-proxy'|'runtime-bailian';type?:'text'|'audio'|'embedding'|'image'|'unknown';availability?:'available'|'unverified'|'unavailable'}[]}
+export interface ExecutionModelCatalog {
+  version: '1.0';
+  revision: string;
+  defaultModelId: string;
+  models: readonly {
+    id: string;
+    providerModelId?: string;
+    displayName: string;
+    vendor?: string;
+    tier?: 'flagship' | 'flash';
+    reasoningEfforts: readonly string[];
+    requestProfile: 'standard' | 'deepseek-native-v1' | 'bailian-deepseek-v1' | 'huawei-openai-v1';
+    route?: 'agentarts-proxy' | 'runtime-huawei-maas' | 'runtime-bailian';
+    type?: 'text' | 'audio' | 'embedding' | 'image' | 'unknown';
+    availability?: 'available' | 'unverified' | 'unavailable';
+  }[];
+}
 export function parseExecutionModelSelection(value: unknown): ExecutionModelSelection {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ProtocolError('INVALID_ARGUMENT','Invalid execution model');
   const item = value as Record<string,unknown>;

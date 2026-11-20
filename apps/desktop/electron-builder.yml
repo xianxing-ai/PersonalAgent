@@ -24,7 +24,9 @@ files:
   - "!**/.cache*"
 
 asar: true
-asarUnpack: []
+asarUnpack:
+  - electron/f20-typescript-check.cjs
+  - node_modules/typescript/lib/**/*
 
 win:
   target:

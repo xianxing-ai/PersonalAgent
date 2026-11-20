@@ -85,7 +85,8 @@ export function answerCardHtml(task, live, escape) {
   const tools = steps.length ? `<div class="tool-steps">${steps.map((step, index) => {
     const key = stepDisclosureKey(step, index);
     const stepOpen = openDisclosures.has(key) ? ' open' : '';
-    return `<details class="tool-step" data-disclosure-key="${escape(key)}"${stepOpen}><summary>${escape(step.label || step.toolName || '工具')}</summary><p>${step.argsSummary ? `参数：${escape(step.argsSummary)}` : ''}${step.resultSummary ? `\n结果：${escape(step.resultSummary)}` : ''}${step.durationMs !== undefined ? `\n耗时：${escape(String(step.durationMs))} 毫秒` : ''}</p></details>`;
+    const label = step.toolName === 'workflow.shadow_preview' ? '影子工作流试运行预览' : step.label || step.toolName || '工具';
+    return `<details class="tool-step" data-disclosure-key="${escape(key)}"${stepOpen}><summary>${escape(label)}</summary><p>${step.argsSummary ? `参数：${escape(step.argsSummary)}` : ''}${step.resultSummary ? `\n结果：${escape(step.resultSummary)}` : ''}${step.durationMs !== undefined ? `\n耗时：${escape(String(step.durationMs))} 毫秒` : ''}</p></details>`;
   }).join('')}</div>` : '';
   const body = answer ? `<div class="assistant-message">${escape(answer)}</div>` : (task?.error?.message ? `<div class="assistant-error">${escape(task.error.message)}</div>` : '');
   const back = summary ? `<p class="child-summary">结果已回到主对话：${escape(summary)}</p>` : '';

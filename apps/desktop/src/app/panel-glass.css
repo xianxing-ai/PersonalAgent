@@ -49,6 +49,35 @@
 .panel .voice-runtime-controls .notice {margin:0 0 8px}
 .panel #live-open-settings {border:0;border-radius:999px;padding:6px 11px;background:var(--panel-lens);color:var(--fg-2);font:inherit;font-size:11px;box-shadow:inset 0 1px 0 var(--panel-glint)}
 .panel .user-message {border:0;border-radius:19px 19px 6px 19px;background:var(--panel-hover);box-shadow:none}
+.panel .delegated-task-list {display:grid;gap:8px}
+.panel .delegated-task-card {
+  padding:10px 12px;border:1px solid var(--panel-line);border-radius:14px;
+  background:var(--panel-lens);color:var(--fg-2);font-size:12px;line-height:1.5;min-width:0;
+}
+.panel .delegated-task-card>header {
+  display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;
+}
+.panel .delegated-task-card strong {font-weight:600;color:var(--fg);overflow-wrap:anywhere}
+.panel .delegated-task-state {color:var(--muted);white-space:nowrap}
+.panel .delegated-task-card [data-state="failed"] small,.panel .delegated-task-state[data-state="failed"] {color:var(--danger)}
+.panel .delegated-task-state:is([data-state="waiting_approval"],[data-state="waiting_reconciliation"]) {color:var(--warn)}
+.panel .delegated-task-card button {
+  padding:4px 7px;border:1px solid var(--panel-line);border-radius:8px;
+  background:transparent;color:var(--fg-2);font:inherit;white-space:nowrap;
+}
+.panel .delegated-task-card button:hover:not(:disabled) {background:var(--panel-hover)}
+.panel .delegated-task-receipts,.panel .delegated-task-message {margin:6px 0 0;color:var(--muted)}
+.panel .delegated-task-card :is(p,ol):empty {display:none}
+.panel .delegated-task-card details {margin-top:8px;padding-top:6px;border-top:1px solid var(--panel-line)}
+.panel .delegated-task-card summary {cursor:pointer;color:var(--fg-2)}
+.panel .delegated-task-card summary span {
+  display:inline-block;max-width:calc(100% - 78px);margin-inline-start:5px;
+  vertical-align:bottom;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.panel .delegated-task-card details[open] summary span {display:none}
+.panel .delegated-task-card ol {display:grid;gap:4px;margin:7px 0 0;padding:0;list-style:none}
+.panel .delegated-task-card li {display:flex;gap:8px;align-items:baseline;justify-content:space-between;overflow-wrap:anywhere}
+.panel .delegated-task-card li small {flex:none;color:var(--muted);font-size:11px}
 .panel>.composer {
   margin:0 12px 12px;padding:14px 14px 10px;border:0;border-radius:25px;
   background:linear-gradient(155deg,rgba(233,244,255,.06),transparent 70%),var(--panel-lens);

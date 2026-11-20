@@ -4,10 +4,10 @@ import path from 'node:path';
 
 const HOST_USER_NAMESPACE = /^desktop-user-v1:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-export const defaults = {theme: 'system', language: 'system', fontScale: 1, calm: false, alwaysOnTop: true, snap: true, hover: true, shortcut: false};
+export const defaults = {theme: 'system', language: 'system', fontScale: 1, calm: false, alwaysOnTop: true, snap: true, hover: true, shortcut: false, shadowPreview: false};
 export function normalizeSettings(value = {}) {
   const result = {...defaults};
-  for (const key of ['calm', 'alwaysOnTop', 'snap', 'hover', 'shortcut']) if (typeof value[key] === 'boolean') result[key] = value[key];
+  for (const key of ['calm', 'alwaysOnTop', 'snap', 'hover', 'shortcut', 'shadowPreview']) if (typeof value[key] === 'boolean') result[key] = value[key];
   if (['system', 'light', 'dark'].includes(value.theme)) result.theme = value.theme;
   if (['system', 'zh-CN', 'en'].includes(value.language)) result.language = value.language;
   if ([0.9, 1, 1.1, 1.2, 1.3].includes(value.fontScale)) result.fontScale = value.fontScale;

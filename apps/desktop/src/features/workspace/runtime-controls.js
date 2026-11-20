@@ -1,5 +1,4 @@
 import {renderPermissionSheet} from './permission-sheet.js';
-import {renderDryRun} from './dry-run-status.js';
 import {renderContentFence} from './content-fence-status.js';
 import {renderCostRoute} from './cost-route-status.js';
 
@@ -11,9 +10,8 @@ export function mountWorkspaceRuntimeControls(root,invoke,report){
   actions.after(controls);
   const auditAlert=document.createElement('div');auditAlert.className='notice';auditAlert.hidden=true;auditAlert.setAttribute('role','alert');auditAlert.dataset.auditAlert='';
   const sheet=document.createElement('div');sheet.className='notice';sheet.hidden=true;sheet.dataset.permissionSheet='';sheet.dataset.signature='';
-  const dryRun=document.createElement('div');dryRun.className='notice';dryRun.hidden=true;dryRun.dataset.dryRun='';
   const fence=document.createElement('p');fence.className='notice';fence.hidden=true;fence.dataset.contentFence='';
-  controls.append(auditAlert,sheet,dryRun,fence);
+  controls.append(auditAlert,sheet,fence);
   const costRouteStatus=document.createElement('div');costRouteStatus.className='notice';costRouteStatus.hidden=true;costRouteStatus.dataset.costRoute='';
   controls.append(costRouteStatus);
   const access=controls.querySelector('.cc-access'),overview=controls.querySelector('.cc-permission-overview'),approval=controls.querySelector('.cc-approval'),live=controls.querySelector('.cc-live');
@@ -43,7 +41,6 @@ export function mountWorkspaceRuntimeControls(root,invoke,report){
     approval.hidden=count===0;approval.textContent=`待批准 · ${count}`;
     live.disabled=pending;live.setAttribute('aria-pressed',String(data.live?.active===true));
     live.querySelector('span').textContent=data.live?.active?'结束语音':'实时语音';
-    renderDryRun(dryRun,data.dryRun,invoke);
     renderContentFence(fence,data.contentFence);
     renderCostRoute(costRouteStatus,data.costRoute,invoke,report);
     live.title=data.live?.active?'结束当前实时语音通话':data.live?.configured?'在原语音面板开启实时语音':'打开语音设置，确认音频用途后启用实时语音';

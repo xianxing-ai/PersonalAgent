@@ -7,9 +7,10 @@ import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
-import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTINUATION_TOOL_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, REVIEW_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTINUATION_TOOL_PROMPT, WORKFLOW_CONTINUATION_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, PLAN_GUIDANCE_PROMPT, BOUND_PLAN_DRAFT_PROMPT, REVIEW_PROMPT, BOUND_REVIEW_DECISION_PROMPT, PROMPT_VERSION} from './prompts.js';
 import {ownedBinding} from './bindings.js';
-import {worldGuidance} from './world-guidance.js';
+import {worldGuidance, planGuidance} from './world-guidance.js';
+import {bindLiteralGoalRepair, boundPlanSlots, bindPlanDraft, bindReviewDecision} from './repair-role-binding.js';
 import type {OwnedBinding} from './bindings.js';
 import {getOwnedWorkflowBindings, getOwnedWorkflowTemplate,getOwnedWorkflowDesignCoverage} from './owned-workflow-templates.js';
 import type {OwnedWorkflowEngine, OwnedWorkflowAdvanceRequest, WorkflowNodeContext, WorkflowCandidate} from './owned-workflows.js';
@@ -97,7 +98,8 @@ export interface RoleReceipt {
   /** Additive application observability, not a platform trace or execution receipt. */
   spanId?: string; startedAt?: string; endedAt?: string; durationMs?: number;
   durationScope?: 'model_gateway_complete'; event?: 'workflow_candidates';
-  failureStage?: 'model_gateway' | 'response_shape' | 'response_json' | 'response_object';
+  failureStage?: 'model_gateway' | 'response_shape' | 'response_json' | 'response_object' | 'role_validation';
+  validationReason?: 'world_report_invalid' | 'plan_report_invalid' | 'plan_scope_exceeded' | 'plan_unsupported_operation' | 'review_contract_invalid' | 'review_plan_substituted' | 'tool_proposal_invalid';
   /** Fixed response-shape metadata only; never model text or parser error messages. */
   responseJsonShape?: 'object' | 'array' | 'fenced' | 'other';
   responseJsonChars?: number;
@@ -125,6 +127,14 @@ export interface OwnedBindingOutput {
 type RepairChange = Extract<CoordinationResult, {kind: 'repair_candidate'}>['candidate']['changes'][number];
 interface WorldReport {disposition: string; affected: string[]; complete: boolean; reportVersion?: '1.1' | '1.2'}
 interface PlanReport {disposition: string; changes: RepairChange[]; unsupported: boolean}
+type RepairProjection = NonNullable<ReturnType<typeof repairInput>> & {allowedAffected?: ReadonlySet<string>};
+
+function prepareRepair(input: AgentInput, bound: boolean): RepairProjection | undefined {
+  const repair = repairInput(input);
+  if (!repair || !bound || !repair.initial) return repair;
+  const known = bindLiteralGoalRepair(repair.context, repair.sources);
+  return known ? {...repair, ...known} : repair;
+}
 
 /** Cloud-only orchestration. There is deliberately no ToolHost, TaskRuntime or persistence. */
 export class OwnedAgentOrchestrator {
@@ -180,6 +190,8 @@ export class OwnedAgentOrchestrator {
         workflowRequirements:{summary:context.template.summary,decisionPoints:context.template.decisionPoints,
           designNotes:context.template.designNotes,acceptance:context.template.acceptance},
         ...workflowCandidateMetadata(context.node,context.availableTools),
+        ...(context.rejectedF20Draft?{rejectedDraft:context.rejectedF20Draft,
+          draftRevision:'The previous draft was declined by the reviewer. Compare it with both original sources. Rewrite unsupported or overstated claims as a narrower, source-backed draft. Preserve an explicitly typed TypeScript example. Do not reuse the declined draft.'}:{}),
         predecessorOutputs:context.predecessorOutputs,predecessorStates:context.predecessorStates,availableTools:context.availableTools,
         ...(context.predecessorOperations?{predecessorOperations:context.predecessorOperations}:{}),
         ...(context.codingRepair?{codingRepair:context.codingRepair,codingRepairContract:{version:1,
@@ -228,33 +240,43 @@ export class OwnedAgentOrchestrator {
   private async runInvocation(request: AgentInvocation, bound: boolean): Promise<AgentOutput> {
     this.control(request);
     const input = parseAgentInput(request.query);
-    const repair = repairInput(input);
+    const repair = prepareRepair(input, bound);
     let raw: unknown;
     let reviewedChanges: unknown;
     if (repair) {
       const world = await this.callWorld(repair, request);
-      const worldReport = this.validateWorld(world, repair.context, repair.sources, bound);
+      let worldReport: WorldReport;
+      try { worldReport = this.validateWorld(world, repair.context, repair.sources, bound, repair.allowedAffected); }
+      catch (error) { this.emitValidationFailure('world', request, 'world_report_invalid'); throw error; }
       if (worldReport.disposition === 'KEEP') return this.selectOutput({kind: 'text', text: 'KEEP：世界状态分析无需修复。'},input,request);
       if (worldReport.disposition !== 'REVISE' || repair.sources.length === 0) {
         return this.selectOutput({kind: 'text', text: 'RECHECK：世界状态分析缺少确定的修复依据。'},input,request);
       }
-      const plan = await this.call('plan', PLAN_PROMPT, {input: repair.data, world}, request);
-      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, bound);
+      const plan = await this.callPlan(repair, world, worldReport, request, bound);
+      let planReport: PlanReport;
+      try {
+        planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, bound);
+        if (planReport.disposition === 'REVISE') this.planScope(planReport, worldReport);
+      } catch (error) {
+        const reason: NonNullable<RoleReceipt['validationReason']> = error instanceof ProtocolError
+          ? (error.code === 'UNSUPPORTED_CAPABILITY' ? 'plan_unsupported_operation'
+            : error.message === 'Plan exceeds world impact scope' ? 'plan_scope_exceeded' : 'plan_report_invalid')
+          : 'plan_report_invalid';
+        this.emitValidationFailure('plan', request, reason);
+        throw error;
+      }
       if (planReport.disposition === 'KEEP') return this.selectOutput({kind: 'text', text: 'KEEP：现有计划无需修复。'},input,request);
       if (planReport.disposition !== 'REVISE') return this.selectOutput({kind: 'text', text: 'RECHECK：计划修复缺少确定依据。'},input,request);
-      if (planReport.unsupported) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Plan requests operations outside the repair candidate contract');
-      if (planReport.changes.some(change => !worldReport.affected.includes(change.node.id))) {
-        throw new ProtocolError('EXTERNAL_FAILURE', 'Plan exceeds world impact scope');
-      }
       reviewedChanges = planReport.changes;
-      raw = await this.call('review', REVIEW_PROMPT, {input: repair.data, world, plan}, request);
+      raw = await this.callReview(repair, world, plan, planReport, request, bound);
     } else {
       const deterministic = this.commandReceipt(input);
       if (deterministic) return deterministic;
       raw = await this.call('fast', input.kind === 'goal_analysis'
         ? FAST_PROMPT + '\n仅分析宿主 RECHECK 数据；只返回 text，不提出工具或修复候选。没有执行授权，尚未执行或修改计划。'
         : FAST_PROMPT + CONTEXT_INTEGRITY_PROMPT + HISTORY_LOOKUP_PROMPT + (input.kind==='continuation'
-          ?(input.availableTools===undefined?CONTINUATION_REPLY_PROMPT:CONTINUATION_TOOL_PROMPT)+CONTINUATION_CONTEXT_PROMPT:DISPATCH_PROMPT), input, request);
+          ?(input.availableTools===undefined?CONTINUATION_REPLY_PROMPT:CONTINUATION_TOOL_PROMPT)+CONTINUATION_CONTEXT_PROMPT+WORKFLOW_CONTINUATION_PROMPT
+          :DISPATCH_PROMPT), input, request);
     }
     return this.selectOutput(this.applicationOutput(raw, input, repair, reviewedChanges, request), input, request);
   }
@@ -267,7 +289,7 @@ export class OwnedAgentOrchestrator {
       throw new ProtocolError('INVALID_ARGUMENT', 'Unexpected workflow role report');
     }
     if (binding.dispatch === 'router') return this.envelope(binding, {kind:'application_result',value:await this.runInvocation(request, true)});
-    const input = parseAgentInput(request.query), repair = repairInput(input);
+    const input = parseAgentInput(request.query), repair = prepareRepair(input, true);
     if (binding.dispatch === 'fast' || binding.dispatch === 'deterministic') {
       if (repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input on an ordinary workflow');
       let output: AgentOutput;
@@ -280,18 +302,28 @@ export class OwnedAgentOrchestrator {
     if (!repair) throw new ProtocolError('INVALID_ARGUMENT', 'Repair input required by workflow');
     if (binding.dispatch === 'world') {
       const world = await this.callWorld(repair, request);
-      this.validateWorld(world, repair.context, repair.sources, true);
+      try { this.validateWorld(world, repair.context, repair.sources, true, repair.allowedAffected); }
+      catch (error) { this.emitValidationFailure('world', request, 'world_report_invalid'); throw error; }
       return this.envelope(binding, {kind:'role_report',role:'world',value:world});
     }
     if (request.world === undefined) throw new ProtocolError('INVALID_ARGUMENT', 'World report required by workflow');
     const world = this.reportCopy(request.world);
-    const worldReport = this.validateWorld(world, repair.context, repair.sources, true);
+    const worldReport = this.validateWorld(world, repair.context, repair.sources, true, repair.allowedAffected);
     if (repair.sources.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'Repair source projection required');
     if (worldReport.disposition !== 'REVISE') throw new ProtocolError('INVALID_ARGUMENT', 'World does not permit a repair proposal');
     if (binding.dispatch === 'plan') {
-      const plan = await this.call('plan', PLAN_PROMPT, {input:repair.data,world}, request);
-      const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, true);
-      this.planScope(planReport, worldReport);
+      const plan = await this.callPlan(repair, world, worldReport, request, true);
+      try {
+        const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, true);
+        this.planScope(planReport, worldReport);
+      } catch (error) {
+        const reason: NonNullable<RoleReceipt['validationReason']> = error instanceof ProtocolError
+          ? (error.code === 'UNSUPPORTED_CAPABILITY' ? 'plan_unsupported_operation'
+            : error.message === 'Plan exceeds world impact scope' ? 'plan_scope_exceeded' : 'plan_report_invalid')
+          : 'plan_report_invalid';
+        this.emitValidationFailure('plan', request, reason);
+        throw error;
+      }
       return this.envelope(binding, {kind:'role_report',role:'plan',value:plan});
     }
     if (request.plan === undefined) throw new ProtocolError('INVALID_ARGUMENT', 'Plan report required by workflow');
@@ -299,7 +331,7 @@ export class OwnedAgentOrchestrator {
     const planReport = this.validatePlan(plan, repair.context, worldReport, repair.prospectiveDependencies, true);
     this.planScope(planReport, worldReport);
     if (planReport.disposition !== 'REVISE') throw new ProtocolError('INVALID_ARGUMENT', 'Plan does not permit a repair candidate');
-    const raw = await this.call('review', REVIEW_PROMPT, {input:repair.data,world,plan}, request);
+    const raw = await this.callReview(repair, world, plan, planReport, request, true);
     const output = await this.selectOutput(this.applicationOutput(raw, input, repair, planReport.changes, request), input, request);
     return this.envelope(binding, {kind:'application_result',value:output});
   }
@@ -330,36 +362,38 @@ export class OwnedAgentOrchestrator {
     }
   }
   private applicationOutput(raw: unknown, input: AgentInput, repair: ReturnType<typeof repairInput>,
-    reviewedChanges: unknown, request: AgentInvocation): AgentOutput {
+    reviewedChanges: unknown, request: AgentInvocation, role: AgentRole = repair ? 'review' : 'fast'): AgentOutput {
     this.check(request);
     const object = record(raw);
-    if (Object.hasOwn(object, 'verification')) throw new ProtocolError('EXTERNAL_FAILURE', 'Agent output includes a trust claim');
+    if (Object.hasOwn(object, 'verification')) throw this.validationFailure(role, request, 'review_contract_invalid', 'EXTERNAL_FAILURE', 'Agent output includes a trust claim');
     let result: CoordinationResult;
     try { result = parseCoordinationResult({...object, verification: 'unverified'}); }
-    catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Agent output does not match the application contract'); }
+    catch { throw this.validationFailure(role, request, 'review_contract_invalid', 'EXTERNAL_FAILURE', 'Agent output does not match the application contract'); }
     if (input.kind === 'goal_analysis') {
-      if (result.kind !== 'text') throw new ProtocolError('EXTERNAL_FAILURE', 'Non-text output on an analysis-only route');
+      if (result.kind !== 'text') throw this.validationFailure(role, request, 'review_contract_invalid', 'EXTERNAL_FAILURE', 'Non-text output on an analysis-only route');
       try { result = parseCoordinationResult({...result, text: result.text + '\n仅分析；尚未执行或修改计划。'}); }
-      catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Analysis output exceeds the application contract'); }
+      catch { throw this.validationFailure(role, request, 'review_contract_invalid', 'EXTERNAL_FAILURE', 'Analysis output exceeds the application contract'); }
     }
     if (result.kind === 'tool_proposal') {
       const availableTools=input.kind==='initial'?input.availableTools
         :input.kind==='continuation'&&input.goal!==undefined?input.availableTools:undefined;
-      if (availableTools===undefined || repair) throw new ProtocolError('EXTERNAL_FAILURE', 'Tool proposal on a result-only route');
+      if (availableTools===undefined || repair) throw this.validationFailure(role, request, 'tool_proposal_invalid', 'EXTERNAL_FAILURE', 'Tool proposal on a result-only route');
       const tool = availableTools.find(item => item.name === result.toolName && item.version === result.toolVersion);
-      if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Proposed tool is absent from the host catalog');
-      validateToolValue(tool.inputSchema, result.arguments);
+      if (!tool) throw this.validationFailure(role, request, 'tool_proposal_invalid', 'UNSUPPORTED_CAPABILITY', 'Proposed tool is absent from the host catalog');
+      try { validateToolValue(tool.inputSchema, result.arguments); }
+      catch (error) { this.emitValidationFailure(role, request, 'tool_proposal_invalid'); throw error; }
     }
     if (result.kind === 'repair_candidate') {
-      if (!repair) throw new ProtocolError('EXTERNAL_FAILURE', 'Repair candidate on an ordinary route');
-      this.validateChanges(result.candidate, repair.context, repair.prospectiveDependencies);
+      if (!repair) throw this.validationFailure(role, request, 'review_contract_invalid', 'EXTERNAL_FAILURE', 'Repair candidate on an ordinary route');
+      try { this.validateChanges(result.candidate, repair.context, repair.prospectiveDependencies); }
+      catch (error) { this.emitValidationFailure(role, request, 'review_contract_invalid'); throw error; }
       // Review may reject with text, but cannot silently replace the reviewed plan.
       const normalize = (changes: unknown) => (changes as typeof result.candidate.changes).map(change => ({
         node: {id: change.node.id, revision: change.node.revision}, summary: change.summary, reason: change.reason,
         dependencies: change.dependencies.map(dep => ({id: dep.id, revision: dep.revision})),
       }));
       if (JSON.stringify(normalize(result.candidate.changes)) !== JSON.stringify(normalize(reviewedChanges))) {
-        throw new ProtocolError('EXTERNAL_FAILURE', 'Review substituted the proposed plan');
+        throw this.validationFailure(role, request, 'review_plan_substituted', 'EXTERNAL_FAILURE', 'Review substituted the proposed plan');
       }
     }
     const {verification: _verification, ...output} = result;
@@ -381,9 +415,38 @@ export class OwnedAgentOrchestrator {
       void Promise.resolve(this.onReceipt?.(receipt)).catch(() => {});
     } catch { /* Observability cannot change a result. */ }
   }
-  private callWorld(repair: NonNullable<ReturnType<typeof repairInput>>, request: AgentInvocation): Promise<unknown> {
+  private emitValidationFailure(role: AgentRole, request: AgentInvocation,
+    validationReason: NonNullable<RoleReceipt['validationReason']>): void {
+    this.emit({role, requestId: request.requestId, promptVersion: PROMPT_VERSION,
+      status: 'failed', failureStage: 'role_validation', validationReason});
+  }
+  private validationFailure(role: AgentRole, request: AgentInvocation,
+    validationReason: NonNullable<RoleReceipt['validationReason']>, code: string, message: string): ProtocolError {
+    this.emitValidationFailure(role, request, validationReason);
+    return new ProtocolError(code, message);
+  }
+  private callWorld(repair: RepairProjection, request: AgentInvocation): Promise<unknown> {
     return this.call('world', WORLD_PROMPT + WORLD_GUIDANCE_PROMPT, {input: repair.data,
-      report_constraints: worldGuidance(repair.context, repair.sources)}, request);
+      report_constraints: worldGuidance(repair.context, repair.sources, repair.allowedAffected)}, request);
+  }
+  private async callPlan(repair: RepairProjection, world: unknown,
+    worldReport: WorldReport, request: AgentInvocation, bound: boolean): Promise<unknown> {
+    const plan_constraints = planGuidance(repair.context, worldReport, repair.prospectiveDependencies);
+    if (!bound || !worldReport.reportVersion) {
+      return this.call('plan', PLAN_PROMPT + PLAN_GUIDANCE_PROMPT, {input: repair.data, world, plan_constraints}, request);
+    }
+    const slots = boundPlanSlots(repair.context, worldReport.affected);
+    const raw = await this.call('plan', BOUND_PLAN_DRAFT_PROMPT, {input: repair.data, world, plan_constraints, slots}, request);
+    try { return bindPlanDraft(raw, slots, repair.context.expectedGraphRevision, worldReport.reportVersion); }
+    catch (error) { this.emitValidationFailure('plan', request, 'plan_report_invalid'); throw error; }
+  }
+  private async callReview(repair: RepairProjection, world: unknown, plan: unknown,
+    report: PlanReport, request: AgentInvocation, bound: boolean): Promise<unknown> {
+    const raw = await this.call('review', bound ? BOUND_REVIEW_DECISION_PROMPT : REVIEW_PROMPT,
+      {input: repair.data, world, plan}, request);
+    if (!bound) return raw;
+    try { return bindReviewDecision(raw, repair.context.expectedGraphRevision, report.changes); }
+    catch (error) { this.emitValidationFailure('review', request, 'review_contract_invalid'); throw error; }
   }
   private async selectOutput(proposal: AgentOutput, input: AgentInput, request: AgentInvocation): Promise<AgentOutput> {
     if (!this.candidateSelector) return proposal; // Existing callers retain their explicit old configuration.
@@ -421,11 +484,11 @@ export class OwnedAgentOrchestrator {
         const input=record(data);
         if(Array.isArray(input.availableTools) && input.availableTools.some(tool=>tool && typeof tool==='object' && (tool as {name?:unknown}).name==='subagent.dispatch')) {
           const catalog=this.options.executionModels.catalog();
-          // A missing implicit catalog hint does not replace an explicit model selection.
-          if (catalog && Array.isArray(catalog.models) && catalog.defaultModelId) {
-            modelData={...input,executionModelCatalog:{revision:catalog.revision,defaultModelId:catalog.defaultModelId,
-              models:catalog.models.filter(model=>model.type==='text' && model.availability!=='unavailable')
-                .map(model=>({id:model.id,reasoningEfforts:model.reasoningEfforts}))}};
+          const accepted = catalog?.models.filter(model => model.type === 'text' && model.availability === 'available') ?? [];
+          if (accepted.length) {
+            const defaultModelId = accepted.find(model => model.id === catalog.defaultModelId)?.id ?? accepted[0]!.id;
+            modelData = {...input, executionModelCatalog: {revision: catalog.revision, defaultModelId,
+              models: accepted.map(model => ({id: model.id, reasoningEfforts: model.reasoningEfforts}))}};
           }
         }
       }
@@ -511,7 +574,8 @@ export class OwnedAgentOrchestrator {
     if (!Number.isSafeInteger(item.revision) || (item.revision as number) < 1) this.reportFailure();
     return {id: item.id, revision: item.revision as number};
   }
-  private validateWorld(value: unknown, context: RepairContext, sources: RepairSource[], bound: boolean): WorldReport {
+  private validateWorld(value: unknown, context: RepairContext, sources: RepairSource[], bound: boolean,
+    allowedAffected?: ReadonlySet<string>): WorldReport {
     const report = record(value);
     const hasGoalTarget=context.targets.some(target=>sources.some(source=>source.kind==='goal'
       && source.node.id===target.node.id && source.node.revision===target.node.revision));
@@ -561,6 +625,7 @@ export class OwnedAgentOrchestrator {
       this.reportText(item.reason);
       if (!(report.reportVersion==='1.2'?['goal','decision','plan_step']:['decision','plan_step']).includes(item.kind as string) || !['direct','transitive'].includes(item.impact as string)
         || !context.targets.some(target => target.node.id === node.id && target.node.revision === node.revision)
+        || (allowedAffected !== undefined && !allowedAffected.has(node.id))
         || ((sources.length || item.kind==='goal') && !sources.some(source => source.node.id === node.id && source.node.revision === node.revision
           && source.kind === (item.kind === 'plan_step' ? 'plan' : item.kind==='goal'?'goal':'decision')))
         || affected.includes(node.id)) this.reportFailure();

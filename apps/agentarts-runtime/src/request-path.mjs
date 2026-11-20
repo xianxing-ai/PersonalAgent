@@ -4,6 +4,7 @@ const aliases = new Map([
   ['/ping','/ping'], ['/invocations','/invocations'], ['/bindings','/bindings'],
   ['/invocation-status','/invocation-status'], ['/ws','/ws'],
   ['/invocations/bindings','/bindings'], ['/invocations/invocation-status','/invocation-status'],
+  ['/invocations/f09','/invocations/f09'],
   ['/invocations/ws','/ws'],
 ]);
 export function ownedRequestPath(raw) {

@@ -14,10 +14,12 @@ interface ChatTransport {
   headers: Record<string, string>;
   /** Provider body without the stream flag. Used when the endpoint rejects streaming. */
   payload: Record<string, unknown>;
-  /** Exact first request body, including stream:true, so a token meter can bind the sent bytes. */
+  /** Exact first request body including the selected stream flag. */
   streamBody?: string;
+  streaming?: boolean;
   signal: AbortSignal;
   onDelta?: (delta: ModelDelta) => void;
+  onResponseModel?: (response: Response, model: string) => void;
   /** Race credential/abort promises the caller already owns. */
   race<T>(operation: Promise<T>): Promise<T>;
   mapStatus: (status: number, retryAfter: string | null) => ProtocolError;
@@ -202,14 +204,15 @@ function streamUnsupported(status: number, body: string): boolean {
 
 /** Open stream:true, parse reasoning and text deltas, and retry once without streaming when the endpoint rejects it. */
 export async function completeChatCompletion(transport: ChatTransport): Promise<ChatCompletionBody> {
+  const streaming=transport.streaming!==false;
   const post = async (stream: boolean): Promise<Response> => transport.race(Promise.resolve(transport.request(transport.url, {
     method: 'POST',
     headers: transport.headers,
-    body: stream && transport.streamBody ? transport.streamBody : JSON.stringify({...transport.payload, stream}),
+    body: stream === streaming && transport.streamBody ? transport.streamBody : JSON.stringify({...transport.payload, stream}),
     signal: transport.signal,
   })));
-  let response = await post(true);
-  if (!response.ok) {
+  let response = await post(streaming);
+  if (streaming && !response.ok) {
     let detail = '';
     try { detail = await response.text(); } catch { detail = ''; }
     if (streamUnsupported(response.status, detail)) response = await post(false);
@@ -227,5 +230,11 @@ export async function completeChatCompletion(transport: ChatTransport): Promise<
     if (error instanceof ProtocolError) throw error;
     throw new ProtocolError('EXTERNAL_FAILURE', 'Model endpoint returned invalid JSON');
   }
-  return parseCompletion(body, transport.onDelta, streamed);
+  const parsed = parseCompletion(body, transport.onDelta, streamed);
+  const model = (body as Record<string, unknown>).model;
+  if (typeof model === 'string' && /^[a-zA-Z0-9._:/-]{1,255}$/u.test(model)) {
+    try { transport.onResponseModel?.(response, model); }
+    catch { /* Telemetry cannot change the model result. */ }
+  }
+  return parsed;
 }

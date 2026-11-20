@@ -30,6 +30,26 @@ test('empty, missing, conflicting and merely similar identities cannot establish
   assert.equal(projectTraceObservation({total:1,span_list:[span()]},'request-1').requestCorrelation.status,'not_checked');
 });
 
+test('explicit platform traceId correlates requestId -> traceId without falling back to unverified equivalence or leaking raw IDs', () => {
+  const matched = projectTraceObservation({total:1,span_list:[span({trace_id:'platform-trace-1'})]},'platform-trace-1',
+    {...invocation,requestId:'caller-req-1',traceId:'platform-trace-1'});
+  assert.equal(matched.requestCorrelation.status,'exact_id_match');
+  assert.equal(matched.requestCorrelation.basis,'request_id->trace_id+session_id+resource_id');
+  assert.equal(matched.requestCorrelation.expectedTraceRef,matched.traceRef);
+  assert.equal(typeof matched.requestCorrelation.requestRef,'string');
+  assert.notEqual(matched.requestCorrelation.requestRef,matched.traceRef);
+  assert.equal(JSON.stringify(matched).includes('caller-req-1'),false);
+  assert.equal(JSON.stringify(matched).includes('platform-trace-1'),false);
+
+  const mismatched = projectTraceObservation({total:1,span_list:[span({trace_id:'platform-trace-2'})]},'platform-trace-2',
+    {...invocation,requestId:'caller-req-1',traceId:'platform-trace-1'});
+  assert.equal(mismatched.requestCorrelation.status,'mismatch');
+
+  for (const bad of [{...invocation,traceId:''},{...invocation,traceId:null},{...invocation,traceId:'../bad'},{...invocation,extra:'x'}]) {
+    assert.throws(()=>projectTraceObservation({total:1,span_list:[span({trace_id:'platform-trace-1'})]},'platform-trace-1',bad),{code:'INVALID_ARGUMENT'});
+  }
+});
+
 test('foreign/duplicate spans, impossible counts, noninteger metrics and accessors fail closed', () => {
   for (const input of [[span({trace_id:'other'})],[span(),span()],[span({tokens:-1})],[span({duration:0.2})],new Array(1)]) {
     assert.throws(() => project(input),{code:'EXTERNAL_FAILURE'});

@@ -44,11 +44,11 @@ export function createF20CaseConfiguration({userData,safeStorage,readWorkspace})
       ||typeof workspace.rootPath!=='string'||!path.isAbsolute(workspace.rootPath)
       ||!Array.isArray(workspace.recipeIds)||!workspace.recipeIds.includes(value.recipeId))
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 case or fixed recipe is unavailable');
-    if(value.recipeId==='node-check'&&workspace.checkFile!==value.codeFile)
-      throw new ProtocolError('UNAUTHORIZED','F20 Node recipe must check the selected code file');
-    if(value.recipeId==='f20-typescript-sample'&&!value.schemaFile.endsWith('.ts'))
+    if(value.recipeId!=='f20-typescript-sample'||!value.schemaFile.endsWith('.ts')
+      ||new Set([value.schemaFile,value.codeFile,value.targetDoc]).size!==3)
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 TypeScript sample checking requires a TypeScript contract');
     sourceFile(workspace.rootPath,value.schemaFile);sourceFile(workspace.rootPath,value.codeFile);
+    sourceFile(workspace.rootPath,value.targetDoc);
   }
   function current() {
     try {
@@ -70,7 +70,10 @@ export function createF20CaseConfiguration({userData,safeStorage,readWorkspace})
       mkdirSync(userData,{recursive:true});writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted}),'utf8');renameSync(file+'.tmp',file);
       saved=record;return {configured:true,inputRef:value.inputRef};
     },
-    snapshot(){const value=current();return value?{configured:true,inputRef:value.configuration.inputRef}:{configured:false};},
+    snapshot(){const value=current();if(!value)return {configured:false};
+      const {inputRef,schemaFile,codeFile,targetDoc}=value.configuration;
+      return {configured:true,inputRef,schemaFile,codeFile,targetDoc};
+    },
     /** Main-only metadata for explicit native observation; this grants no task or export permission. */
     readConfiguredInput(inputRef){const value=current();return value&&inputRef===value.configuration.inputRef?configuredInput(value):undefined;},
     resolveInput(inputRef,scope) {

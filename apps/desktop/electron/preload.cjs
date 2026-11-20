@@ -47,6 +47,11 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     ipcRenderer.on('desktop:task-activity', receive);
     return () => ipcRenderer.removeListener('desktop:task-activity', receive);
   },
+  onSubagentUpdate: listener => {
+    const receive = (_event, taskId) => listener(taskId);
+    ipcRenderer.on('desktop:subagent-task-updated', receive);
+    return () => ipcRenderer.removeListener('desktop:subagent-task-updated', receive);
+  },
   onOpenAssistant: listener => {
     const receive = (_event, value) => listener(value);
     ipcRenderer.on('desktop:open-assistant', receive);

@@ -1424,6 +1424,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       taskId, revision, goal, deadline, signal: combined.signal,
       ...(executionEpoch===undefined?{}:{executionEpoch}),
       ...(textOnly ? {textOnly:true as const} : {}),
+      ...(executionModel === undefined ? {} : {executionModel}),
       ...(continuation === undefined ? {} : {continuation}),
       ...(selectedContext==='goal'&&priorContinuations?.length?{priorContinuations}:{}),
       ...(availableTools === undefined ? {} : {availableTools}),

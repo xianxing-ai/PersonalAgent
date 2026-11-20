@@ -302,13 +302,17 @@ test('actual delegated child consumes the original main conversation summary, wi
   const first=await client.call('task.submit',{goal:'/压缩',conversationId:'original-main'},{idempotencyKey:'main-compact',timeoutMs:60000});
   assert.equal((await settled(app,first.taskId)).state,'succeeded');const calls=summaries;
   const next=await client.call('task.submit',{goal:'Continue my original request',conversationId:'original-main'},{idempotencyKey:'main-continue',timeoutMs:60000});
-  assert.equal((await settled(app,next.taskId)).state,'succeeded');
-  assert.equal(summaries,calls);assert.equal(sent.length,2);
+  const result=await settled(app,next.taskId);assert.equal(result.state,'succeeded');
   const [child]=app.readSubagentTasks(next.taskId);assert.equal(child.state,'succeeded');
+  assert.match(result.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
+  assert.match(child.resultSummary,/^Synthetic delegated answer/u);
+  assert.equal(summaries,calls);assert.deepEqual(sent.map(request=>request.taskId),[child.taskId]);
   assert.match(sent.find(request=>request.taskId===child.taskId).goal,/Synthetic original main history/);
   const other=await client.call('task.submit',{goal:'A separate conversation',conversationId:'other-main'},{idempotencyKey:'other',timeoutMs:60000});
   assert.equal((await settled(app,other.taskId)).state,'succeeded');
-  assert.doesNotMatch(sent.filter(request=>request.taskId!==child.taskId&&request.taskId!==next.taskId).map(request=>request.goal).join('\n'),/context-summary:/);
+  const [otherChild]=app.readSubagentTasks(other.taskId);
+  assert.deepEqual(sent.map(request=>request.taskId),[child.taskId,otherChild.taskId]);
+  assert.doesNotMatch(sent[1].goal,/context-summary:/);
 });
 
 test('cancelling an in-progress manual summary cannot publish a projection or checkpoint',async t=>{
@@ -442,12 +446,13 @@ test('Synthetic native persistent subagent conversation consumes more than twent
       {toolName:read.name,toolVersion:read.version,available:()=>true}],
     coordinationInput:{beforeCoordinationSend(){},contextCompaction:compaction},coordination:{execute:async request=>{
       sent.push(request);app.assertCompetitionExportAllowed(request);
-      return {kind:'text',text:app.runtime.getTask(request.taskId).conversationId==='native-main'
-        ?'Main interaction summary':'Synthetic executed subagent answer '+('retained detail '.repeat(55)),verification:'mock'};}}});
+      return {kind:'text',text:'Synthetic executed subagent answer '+('retained detail '.repeat(55)).trim(),verification:'mock'};}}});
   t.after(()=>app.close());const client=new Client(app);await client.connect();
   const parent=await client.call('task.submit',{goal:'Only a subagent performs the actual work',conversationId:'native-main'},
     {idempotencyKey:'native-parent',timeoutMs:60000});
-  await settled(app,parent.taskId);const [child]=app.readSubagentTasks(parent.taskId);
+  const result=await settled(app,parent.taskId);const [child]=app.readSubagentTasks(parent.taskId);
+  assert.equal(result.state,'succeeded');assert.match(result.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
+  assert.match(child.resultSummary,/^Synthetic executed subagent answer/u);
   assert.equal(child.state,'succeeded',JSON.stringify(app.runtime.getTask(child.taskId)));const origin={parentTaskId:parent.taskId,taskId:child.taskId};
   let final;
   for(let i=0;i<14;i++) {
@@ -460,5 +465,5 @@ test('Synthetic native persistent subagent conversation consumes more than twent
   assert.match(goal.publicGoal,/Synthetic user followup 13/);
   assert.equal(goal.conversationContext.treatment,'untrusted_data');
   assert.deepEqual(app.readSubagentTasks(parent.taskId).map(task=>task.taskId),[child.taskId]);
-  assert.ok(sent.filter(request=>request.taskId===parent.taskId).every(request=>(request.availableTools??[]).every(tool=>tool.name==='subagent.dispatch')));
+  assert.equal(sent.filter(request=>request.taskId===parent.taskId).length,0);
 });

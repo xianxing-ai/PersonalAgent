@@ -25,7 +25,8 @@ export async function handleWorkspaceSubagentAction({event,name,payload,window,r
     throw Error('工作区子对话窗口不可信');
   const actions={'workspace.subagent.snapshot':'subagentConversation.snapshot','workspace.subagent.submit':'subagentConversation.submit','workspace.subagent.cancel':'subagentConversation.cancel'};
   const mapped=actions[name],exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>keys.includes(key));
-  if(!mapped||!exact(payload,mapped==='subagentConversation.snapshot'?['binding']:['binding','request'])
+  if(!mapped||!exact(payload,mapped==='subagentConversation.snapshot'?['binding','watch']:['binding','request'])
+    ||(payload.watch!==undefined&&typeof payload.watch!=='boolean')
     ||!exact(payload.binding,['parentTaskId','taskId'])
     ||!['parentTaskId','taskId'].every(key=>typeof payload.binding[key]==='string'&&payload.binding[key].trim()===payload.binding[key]&&payload.binding[key]))
     throw Error('工作区子对话参数无效');

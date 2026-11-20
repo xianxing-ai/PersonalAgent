@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {analyzeImpact,buildMeetingRepairOptions,prepareReviewedRepair,selectMeetingRepairScope} from '@personal-agent/cognition';
+import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import {isDeepStrictEqual} from 'node:util';
 
 const VERSION='desktop-goal-analysis-v1';
@@ -19,12 +20,19 @@ const REPAIR_TASK_MARKER='desktop-goal-cognition-repair-task-v1';
 const MEETING_SCOPE_MARKER='desktop-meeting-review-scope-v1';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const sameRef=(a,b)=>a?.id===b?.id && a?.revision===b?.revision;
-const machineReview=review=>!review?.selectedOption && review?.machineReview?.reason==='uncertain'
-  && review.machineReview.action==='RECHECK' && review.selection?.state==='review'
-  && review.selection.reason==='uncertain' && review.selection.eligibleForRuntime===false
-  && review.options?.some(option=>sameRef(option,review.selection.selected))
-  && review.options?.some(option=>sameRef(option,review.machineReview.option)
-    && option.id==='recheck' && option.action==='RECHECK' && option.repair===undefined);
+function machineReview(review) {
+  const decision=review?.machineReview, selection=review?.selection;
+  if (review?.selectedOption || decision?.action!=='RECHECK' || selection?.eligibleForRuntime!==false
+    || decision.reason!==selection.reason) return false;
+  const uncertain=selection.state==='review' && selection.reason==='uncertain' && selection.selected
+    && review.options.some(option=>sameRef(option,selection.selected));
+  const abstained=selection.state==='abstain' && !selection.selected
+    && ['unavailable','invalid_response'].includes(selection.reason);
+  if (!uncertain && !abstained) return false;
+  const options=review.options.filter(option=>option.id==='recheck' && option.action==='RECHECK'
+    && option.repair===undefined && Number.isSafeInteger(option.revision) && option.revision>0);
+  return options.length===1 && sameRef(options[0],decision.option);
+}
 const canHandoff=review=>machineReview(review) || Boolean(review?.selectedOption
   && review.selection?.state==='selected' && review.selection.eligibleForRuntime===true
   && sameRef(review.selectedOption,review.selection.selected)
@@ -33,7 +41,7 @@ const canHandoff=review=>machineReview(review) || Boolean(review?.selectedOption
 
 /** Local Laya chooses; existing Runtime/AgentArts orchestrates. No direct repair execution. */
 export function createDesktopGoalCognitionHost({application,client,facts,namespace,goalHost,initialRequestMode,
-  chooser,ready,createHost,onTask=()=>{},onUpdate=()=>{},now=Date.now}) {
+  chooser,ready,createHost,readTeacherExecutionModel,onTask=()=>{},onUpdate=()=>{},now=Date.now}) {
   const store=application.runtime.bindCoordinationStore(namespace);
   const conversationId=`desktop-proactive-goals:${namespace}`;
   let enabled=false,cloudAllowed=false,closed=false,busy=false,nextTick=0,cursor=0;
@@ -119,8 +127,8 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
       add(item.node);
       for (const cause of item.causes) {add(cause.reference);if(cause.currentRevision) add({id:cause.reference.id,revision:cause.currentRevision});}
     }
-    const prepared=repairPreparation(review);
-    if(prepared.kind==='prepared') for(const dependency of prepared.binding.dependencies) {
+    const prepared=needsMachineReview?undefined:repairPreparation(review);
+    if(prepared?.kind==='prepared') for(const dependency of prepared.binding.dependencies) {
       if(snapshot.history.some(node=>sameRef(node,dependency))) add(dependency);
     }
     const nodes=[];
@@ -131,7 +139,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
       nodes.push({id:hash(node.id),revision:node.revision,kind:node.kind,summary:node.summary,
         state:node.state,validFrom:node.validFrom,validUntil:node.validUntil});
     }
-    const repairContext=prepared.kind==='prepared'?{
+    const repairContext=prepared?.kind==='prepared'?{
       expectedGraphRevision:prepared.request.expectedGraphRevision,
       allowedDependencies:prepared.binding.dependencies.map(ref=>({id:hash(ref.id),revision:ref.revision})),
       targets:prepared.request.changes.map(change=>({node:{id:hash(change.node.id),revision:change.node.revision},
@@ -139,7 +147,8 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
         requestedDependencies:change.dependencies.map(ref=>({id:hash(ref.id),revision:ref.revision}))}))}:undefined;
     const payload={action:needsMachineReview?'RECHECK':review.selectedOption.action,strategy,nodes,
       ...(repairContext?{repairContext}:{}),
-      ...(needsMachineReview?{decisionSource:'host_uncertainty_escalation',layaState:'uncertain',
+      ...(needsMachineReview?{decisionSource:'host_uncertainty_escalation',
+        ...(review.selection.state==='abstain'?{layaState:'abstain',layaReason:review.selection.reason}:{layaState:'uncertain'}),
         selectedOption:null,eligibleForRuntime:false}:{}),
       omittedSources:refs.size-nodes.length,calibrated:false,executed:false};
     const introduction=needsMachineReview?'本地 Laya 尚未确定选择，宿主将本次变化交给 AgentArts 复核；这不是执行授权。':'本地 Laya 已选择下述方案。';
@@ -147,7 +156,13 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
   }
   let cognition;
   const handoff={
-    async prepare(review) {const projected=project(review);return exportLimit(projected)?undefined:projected;},
+    acceptsLayaAbstention:true,
+    async prepare(review) {
+      const projected=project(review);
+      if (!projected || exportLimit(projected)) return;
+      const selection=machineReview(review)?readTeacherExecutionModel?.():undefined;
+      return selection===undefined?projected:{...projected,executionModel:parseExecutionModelSelection(selection)};
+    },
     read:commandId=>application.runtime.findTaskByIdempotencyKey(commandId),
     async dispatch(request,input) {
       if (input.signal.aborted) throw Error('目标分析已取消');
@@ -155,8 +170,10 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
       const projected=review && project(review);
       if (!projected || exportLimit(projected) || toolArgumentsDigest(review)!==request.selectionDigest
         || projected.exportPolicyVersion!==request.exportPolicyVersion || projected.goal!==request.goal
+        || (request.executionModel!==undefined && !machineReview(review))
         || Date.parse(request.deadline)<=now()) throw Error('目标分析范围或授权已经变化');
-      outgoing.set(request.commandId,{...request,generation});
+      const executionModel=request.executionModel===undefined?undefined:parseExecutionModelSelection(request.executionModel);
+      outgoing.set(request.commandId,{...request,executionModel,generation});
       const receipt=await client.call('task.submit',{conversationId,goal:request.goal},
         {idempotencyKey:request.commandId,signal:input.signal,
           timeoutMs:Math.max(1,Date.parse(request.deadline)-now())});
@@ -174,6 +191,9 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
       const review=cognition.readReview(envelope.reviewTaskId).review;
       if (review && project(review)?.goal===envelope.goal && toolArgumentsDigest(review)===envelope.selectionDigest) return {envelope,review};
     }
+  }
+  function readCognitionExecutionModel(taskId) {
+    return currentEnvelope(taskId)?.envelope.executionModel;
   }
   function readPreparedRepair(taskId) {
     const bound=currentEnvelope(taskId);
@@ -265,7 +285,8 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
     if (store.read().revision!==value.review.graphRevision && value.handoff?.state!=='submitted') {
       status='outdated';reason='旧决策已被新的目标或事实版本替代，等待分析新变化';return;
     }
-    status=value.handoff?.state==='submitted'?'submitted':value.review.selection?.state==='review'?'needs_review':'reviewed';
+    status=value.handoff?.state==='submitted'?'submitted'
+      :machineReview(value.review)||value.review.selection?.state==='review'?'needs_review':'reviewed';
     reason=value.handoff?.state==='submitted'?(machineReview(value.review)?'Laya 尚不确定，已交 AgentArts 复核，尚未执行计划':'Laya 选择已交 AgentArts，执行结果以任务回执为准')
       :machineReview(value.review)?'Laya 尚不确定，等待有效云端分析许可后交 AgentArts 复核'
       :value.review.selectedOption?'Laya 已选择方案，等待有效云端分析许可':'本地分析已记录；未选择可自动推进的方案';
@@ -470,6 +491,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
     },
     /** Reuse Runtime's validated versioned candidate; translate only refs offered by this exact local selection. */
     readPreparedRepair,
+    readCognitionExecutionModel,
     configure(input) {
       if (typeof input.enabled!=='boolean'||typeof input.cloudAllowed!=='boolean') throw Error('目标分析设置无效');
       controller.abort();controller=new AbortController();generation=randomUUID();
@@ -480,19 +502,13 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
     /** Called synchronously immediately before every AgentArts HTTP send. */
     assertCloudSend(request) {
       if(application.runtime.getTask(request.taskId).conversationId!==conversationId) return;
-      for (const [commandId,envelope] of outgoing) {
-        const task=application.runtime.findTaskByIdempotencyKey(commandId);
-        if (task?.taskId!==request.taskId) continue;
-        const review=cognition.readReview(envelope.reviewTaskId).review;
-        const projected=review && project(review);
-        if (envelope.generation!==generation || !projected || projected.goal!==request.goal
-          || projected.goal!==envelope.goal || request.signal.aborted || Date.parse(envelope.deadline)<=now()) {
-          throw Error('目标分析出云许可已失效');
-        }
-        return;
+      const bound=currentEnvelope(request.taskId);
+      if (!bound || bound.envelope.goal!==request.goal || request.signal.aborted) {
+        throw Error('此主动分析任务没有当前会话的出云许可');
       }
-      // Session grants are not restored from persisted tasks after restart.
-      throw Error('此主动分析任务没有当前会话的出云许可');
+      if (bound.envelope.executionModel && !isDeepStrictEqual(bound.envelope.executionModel,request.executionModel)) {
+        throw Error('目标分析执行模型与复核请求不匹配');
+      }
     },
     snapshot:()=>{
       const graphRevision=store.read().revision;
@@ -532,6 +548,7 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
             record(readback);
             if (cloudAllowed && canHandoff(readback.review) && readback.review.graphRevision===store.read().revision
               && !['submitted','expired'].includes(reviews.get(prior)?.handoff?.state)) record(await cognition.handoffReview(prior,current));
+            if (['submitted','expired','pending'].includes(reviews.get(prior)?.handoff?.state)) continue;
             // Old Desktop versions persisted this marker even when Laya was temporarily unavailable.
             // Re-enter the existing Runtime review API, which owns backoff and successor idempotency.
             if (readback.review?.selection?.state!=='abstain' || readback.review.selection.reason!=='unavailable') continue;

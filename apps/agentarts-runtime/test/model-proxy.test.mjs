@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createAgentArtsModelFetch} from '../src/model-proxy.mjs';
+import {createRequestDeadlineModel} from '../src/request-deadline-model.mjs';
 const endpoint='https://proxy.synthetic.invalid/inference/v1',model='registered-domestic-alias',secret='public-fixture-secret';
 const init=()=>({method:'POST',headers:{authorization:'Bearer backend-must-not-leak','content-type':'application/json'},
   body:JSON.stringify({model,messages:[{role:'user',content:'public fixture'}],stream:false,reasoning_effort:'none'}),signal:new AbortController().signal});
@@ -44,11 +45,20 @@ test('proxy uses mapped model, configured key-name, safe timing and explicit Bai
   requestProfile:'bailian-deepseek-v1',onRecord:r=>records.push(r),fetch:async(url,request)=>{
    calls++;assert.equal(url,endpoint+'/chat/completions');assert.equal(request.headers.get('authorization'),null);
    assert.equal(request.headers.get('x-test-key'),secret);assert.equal(request.redirect,'error');
-   const body=JSON.parse(request.body);assert.equal(body.model,model);assert.equal(body.reasoning_effort,undefined);assert.equal(body.enable_thinking,false);
-   return Response.json({model:'domestic-backend-actual-id',choices:[]},{headers:{'x-request-id':'trace-fixture'}});
+   const body=JSON.parse(request.body);assert.equal(body.model,model);assert.equal(body.stream,false);assert.equal(body.reasoning_effort,undefined);assert.equal(body.enable_thinking,false);
+   return Response.json({model:'domestic-backend-actual-id',choices:[{message:{content:'完成'}}]},{headers:{'x-request-id':'trace-fixture'}});
   }});
- const response=await fetch(endpoint+'/chat/completions',init());assert.equal(response.status,200);assert.equal(calls,1);
- assert.equal(records.find(r=>r.event==='model_proxy_response').responseModel,'domestic-backend-actual-id');
+ const provider=createRequestDeadlineModel({baseUrl:endpoint,model,apiKey:()=>secret,streaming:false,fetch,onResponseModel:fetch.recordResponseModel});
+ const response=await provider.complete({messages:[{role:'user',content:'public fixture'}],tools:[],reasoningEffort:'none',
+   deadline:new Date(Date.now()+15_000).toISOString(),signal:new AbortController().signal});
+ assert.equal(response.response.text,'完成');assert.equal(calls,1);
+ const receipt=records.find(r=>r.event==='model_proxy_response');
+ assert.equal(receipt.responseModel,null);
+ assert.deepEqual(records.find(r=>r.event==='model_proxy_response_model'),{
+   event:'model_proxy_response_model',correlationId:receipt.correlationId,responseModel:null,modelMismatch:true,
+   verification:'response_received_not_platform_trace_readback',
+ });
+ assert.equal(JSON.stringify(records).includes('domestic-backend-actual-id'),false);
  assert.ok(records.some(r=>r.status==='completed'&&r.finishedAtUtc&&r.wallMs>=0));
  assert.equal(JSON.stringify(records).includes(secret),false);assert.equal(JSON.stringify(records).includes('backend-must-not-leak'),false);
 });

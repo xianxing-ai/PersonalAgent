@@ -78,7 +78,15 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     const destination=gateway.origin+`/runtimes/${encodeURIComponent(binding.runtimeName)}/invocations`;
     return {fetchHandlesHostAuthorization:true,readOwnedWorkflowReceiptSecret:async signal=>{
       if(signal?.aborted)throw Error('AgentArts 请求已取消');
-      const token=currentOptions().appToken??(transport==='wss'?environment.PA_AGENTARTS_APP_TOKEN:undefined);
+      const options=currentOptions();
+      const receiptSecret=environment.PA_WORKFLOW_RECEIPT_SECRET;
+      if(receiptSecret!==undefined){
+        if(typeof receiptSecret!=='string'||Buffer.byteLength(receiptSecret)<32||/[\r\n]/.test(receiptSecret)){
+          throw Error('AgentArts 本机回执签名配置无效');
+        }
+        return receiptSecret;
+      }
+      const token=options.appToken??(transport==='wss'?environment.PA_AGENTARTS_APP_TOKEN:undefined);
       if(typeof token!=='string'||! /^[\x21-\x7e]{32,4096}$/.test(token))throw Error('AgentArts 应用入站凭据不可用');
       return deriveOwnedWorkflowKeys({transportToken:token}).receiptSecret;
     },fetchImpl:(url,init)=>{

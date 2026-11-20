@@ -32,8 +32,9 @@ test('only dispatch-capable fast calls receive compact executable text choices',
   const model=new FakeModelProvider(Array.from({length:3},()=>({kind:'final',text:JSON.stringify({kind:'text',text:'answer'})})));
   let reads=0;
   const entries=[
-    {id:'text',displayName:'large display name',requestProfile:'standard',type:'text',availability:'unverified',reasoningEfforts:[]},
+    {id:'text',displayName:'large display name',requestProfile:'standard',type:'text',availability:'available',reasoningEfforts:[]},
     {id:'audio',displayName:'audio',requestProfile:'standard',type:'audio',availability:'available',reasoningEfforts:[]},
+    {id:'candidate',displayName:'candidate',requestProfile:'standard',type:'text',availability:'unverified',reasoningEfforts:[]},
     {id:'unavailable',displayName:'unavailable',requestProfile:'standard',type:'text',availability:'unavailable',reasoningEfforts:[]},
   ];
   const agent=new OwnedAgentOrchestrator({fast:model,world:model,plan:model,review:model},128,undefined,undefined,undefined,

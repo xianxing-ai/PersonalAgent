@@ -15,7 +15,7 @@ export interface RuntimeOwnedWorkflowDriverState<TInput=unknown> {
   waiting?:{localTaskId:string;operationId:string};
   confirmedHost:Record<string,{localTaskId:string;operationId:string;result:unknown}>;
   /** Additive per-operation readback; the legacy per-tool index remains for F15 checkpoints. */
-  confirmedOperations?:Record<string,{toolName:string;nodeId?:string;localTaskId:string;operationId:string;result:unknown}>;
+  confirmedOperations?:Record<string,{toolName:string;nodeId?:string;localTaskId:string;operationId:string;result:unknown;exportedResult?:unknown}>;
   evidenceRefs:string[];timings:{stage:string;startedAt:string;elapsedMs:number;nodeId?:string;operationId?:string}[];
   unavailable?:{nodeId:string;requiredCapabilities:string[];missingPublishedTools:string[]}[];
 }
@@ -116,6 +116,9 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
           operationId:proposal.operationId,result:structuredClone(receipt.result)};
       }
       const authorized=await options.authorizeReceipt({proposal,receipt,localTaskId:local.localTaskId,state});active();
+      const operation=state.confirmedOperations?.[proposal.operationId];
+      if(operation&&authorized&&!isDeepStrictEqual(authorized.result,operation.result))
+        operation.exportedResult=structuredClone(authorized.result);
       state.evidenceRefs=[...new Set([...state.evidenceRefs,...receipt.evidenceRefs])];
       state.receipts.push(authorized??receipt);delete state.waiting;save();
     }

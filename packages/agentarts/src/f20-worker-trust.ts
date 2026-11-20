@@ -15,6 +15,9 @@ import {codingVerificationCurrent} from './coding-repair.js';
 
 export const F20_WORKER_TRUST_VERSION = '0.1.0' as const;
 
+export {f20DocumentCandidateSchema,parseF20DocumentCandidate} from '@personal-agent/contracts/f20-candidate';
+export type {F20DocumentCandidate} from '@personal-agent/contracts/f20-candidate';
+
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 const unavailable = (message: string): never => {throw new ProtocolError('UNSUPPORTED_CAPABILITY', message);};
 const invalid = (message: string): never => {throw new ProtocolError('INVALID_ARGUMENT', message);};

@@ -6,7 +6,7 @@ import {createEvaluationController} from './evaluation-controller.mjs';
 import {createAgentServer} from './server.mjs';
 import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
 import {createRoleReceiptWriter} from './role-receipts.mjs';
-import {createAgentArtsModelFetch} from './model-proxy.mjs';
+import {createAgentArtsModelFetch,HUAWEI_MAAS_MODEL_ENDPOINT} from './model-proxy.mjs';
 import {createTestVersionController} from './test-version-controller.mjs';
 import {createWikiWorkflowController} from './wiki-controller.mjs';
 import {createImageServices,loadImageServiceConfiguration} from './image-services.mjs';
@@ -19,29 +19,40 @@ function integer(name, fallback) {
   if (!Number.isSafeInteger(value) || value < 1) throw new Error('Invalid runtime integer configuration');
   return value;
 }
-function model(role,entry) {
+const maasKeyFile=process.env.PA_AGENT_MAAS_KEY_FILE?.trim();
+const maasKey=process.env.PA_AGENT_MAAS_API_KEY?.trim();
+
+function model(role,entry,structuredRole=false) {
   const prefix = `PA_AGENT_${role.toUpperCase()}`;
+  const route=entry?.route??process.env.PA_AGENT_MODEL_ROUTE??(process.env.PA_AGENT_HOST_MODE==='agentarts'?'agentarts-proxy':'direct-validation');
+  if(!['agentarts-proxy','runtime-bailian','runtime-huawei-maas','direct-validation'].includes(route)||process.env.PA_AGENT_HOST_MODE==='agentarts'&&route==='direct-validation')throw new Error('Explicit AgentArts model route required');
+  const maas=route==='runtime-huawei-maas';
   const bailian=entry?.route==='runtime-bailian';
   const workspace=process.env.PA_AGENT_REALTIME_WORKSPACE_ID;
   if(bailian&&!(typeof workspace==='string'&&/^[a-zA-Z0-9-]+$/u.test(workspace)))throw new Error('Invalid trusted domestic workspace');
-  const endpoint = bailian?`https://${workspace}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`:process.env[`${prefix}_BASE_URL`] ?? process.env.PA_AGENT_MODEL_BASE_URL;
-  const name = entry?.id ?? process.env[`${prefix}_MODEL`] ?? process.env.PA_AGENT_MODEL;
+  const endpoint = maas?HUAWEI_MAAS_MODEL_ENDPOINT
+    :bailian?`https://${workspace}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`
+    :process.env[`${prefix}_BASE_URL`]??process.env.PA_AGENT_MODEL_BASE_URL;
+  const name = entry?.providerModelId ?? entry?.id ?? process.env[`${prefix}_MODEL`] ?? process.env.PA_AGENT_MODEL;
+  const jsonResponse=!maas||(structuredRole&&name==='deepseek-v4.1-flash-1017');
   if (!endpoint || !name) throw new Error('Agent model endpoint and model must be explicitly configured');
   const url = new URL(endpoint);
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Invalid trusted model endpoint');
-  const keyFile = bailian?undefined:process.env[`${prefix}_KEY_FILE`] ?? process.env.PA_AGENT_MODEL_KEY_FILE;
-  const key = bailian?process.env.PA_AGENT_REALTIME_API_KEY:process.env[`${prefix}_API_KEY`] ?? process.env.PA_AGENT_MODEL_API_KEY;
+  const keyFile = maas?maasKeyFile:bailian?undefined:process.env[`${prefix}_KEY_FILE`]??process.env.PA_AGENT_MODEL_KEY_FILE;
+  const key = maas?maasKey:bailian?process.env.PA_AGENT_REALTIME_API_KEY:process.env[`${prefix}_API_KEY`]??process.env.PA_AGENT_MODEL_API_KEY;
   if (!keyFile && !key) throw new Error('Agent model credential must be provided by the trusted host');
   const readSecret=async()=>keyFile?(await readFile(keyFile,'utf8')).trim():key;
-  const route=entry?.route??process.env.PA_AGENT_MODEL_ROUTE??(process.env.PA_AGENT_HOST_MODE==='agentarts'?'agentarts-proxy':'direct-validation');
-  if(!['agentarts-proxy','runtime-bailian','direct-validation'].includes(route)||process.env.PA_AGENT_HOST_MODE==='agentarts'&&route==='direct-validation')throw new Error('Explicit AgentArts model route required');
+  const bearerAuth=maas||bailian;
   const fetch=route!=='direct-validation'?createAgentArtsModelFetch({endpoint,model:name,route,
-    authentication:{kind:'api_key',headerName:bailian?'Authorization':process.env.PA_AGENT_MODEL_PROXY_KEY_HEADER,keyPrefix:bailian?'Bearer':process.env.PA_AGENT_MODEL_PROXY_KEY_PREFIX??'',readSecret},
+    authentication:{kind:'api_key',headerName:bearerAuth?'Authorization':process.env.PA_AGENT_MODEL_PROXY_KEY_HEADER,keyPrefix:bearerAuth?'Bearer':process.env.PA_AGENT_MODEL_PROXY_KEY_PREFIX??'',readSecret},
     requestProfile:entry?.requestProfile??process.env.PA_AGENT_MODEL_REQUEST_PROFILE??'standard',onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')})
     :createOwnedModelFetch({endpoint,model:name});
   return createRequestDeadlineModel({baseUrl:endpoint,model:name,
-    responseFormat:'json_object',
-    requestFormat:ownedModelRequestFormat({endpoint,model:name}),fetch,apiKey:readSecret},
+    streaming:false,
+    ...(route==='direct-validation'?{}:{onResponseModel:fetch.recordResponseModel}),
+    ...(jsonResponse?{responseFormat:'json_object'}:{}),
+    ...(maas?{}:{requestFormat:ownedModelRequestFormat({endpoint,model:name})}),
+    fetch,apiKey:readSecret},
     {timeoutMs:process.env.PA_AGENT_TIMEOUT_MS === undefined ? undefined : integer('PA_AGENT_TIMEOUT_MS')});
 }
 let server;
@@ -61,8 +72,10 @@ try {
   if (!['agentarts','standalone-validation'].includes(mode)) throw new Error('Explicit host mode required');
   const models = Object.fromEntries(['fast','world','plan','review'].map(role => [role,model(role)]));
   const modelConfiguration=await loadExecutionModelConfiguration(process.env);
-  const executionModels=modelConfiguration===undefined?undefined:createExecutionModelRegistry({
-    configuration:modelConfiguration,createProvider:entry=>new ModelGateway(model('execution',entry))});
+  const createExecutionModels=structuredRole=>modelConfiguration===undefined?undefined:createExecutionModelRegistry({
+    configuration:modelConfiguration,createProvider:entry=>new ModelGateway(model('execution',entry,structuredRole)),
+    unavailableRoutes:maasKeyFile||maasKey?[]:['runtime-huawei-maas']});
+  const executionModels=createExecutionModels(false),roleExecutionModels=createExecutionModels(true);
   const layaMode = process.env.PA_AGENT_LAYA_MODE;
   // User-selected deployment: local Laya returns signed host-tool receipts; no public local endpoint.
   if (!['local','legacy-without-laya'].includes(layaMode)
@@ -80,9 +93,13 @@ try {
     ...(receiptSecret === undefined ? {} : {receiptVerifier:createOwnedWorkflowReceiptVerifier({secret:receiptSecret})})}) : undefined;
   orchestrator = new OwnedAgentOrchestrator(models,integer('PA_AGENT_MAX_OUTPUT_TOKENS',32768),
     createRoleReceiptWriter({deploymentVersion:process.env.PA_AGENT_DEPLOYMENT_VERSION}),
-    undefined, workflowEngine,executionModels?{executionModels}:undefined);
+    undefined, workflowEngine,roleExecutionModels?{executionModels:roleExecutionModels}:undefined);
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
+  const timeoutMode = process.env.PA_AGENT_TIMEOUT_MODE ?? 'request-deadline';
+  if (!['request-deadline','fixed'].includes(timeoutMode)) throw new Error('Invalid runtime timeout mode configuration');
+  if (timeoutMode === 'fixed' && process.env.PA_AGENT_TIMEOUT_MS === undefined) throw new Error('Fixed timeout mode requires explicit timeout');
+  const timeoutMs = process.env.PA_AGENT_TIMEOUT_MS === undefined ? undefined : integer('PA_AGENT_TIMEOUT_MS');
   server = createAgentServer({orchestrator,mode,serviceControllers:{...imageServices.controllers,
     ...(executionModels?{evaluationVersion:createEvaluationController({executionModels})}:{}),
     wikiVersion:createWikiWorkflowController({model:new ModelGateway(models.plan),onCall:record=>process.stdout.write(JSON.stringify(record)+'\n')})},
@@ -95,8 +112,8 @@ try {
     ...(wssAuthToken ? {wssAuthToken}:{}),
     getBindings:getOwnedBindings,defaultControllerId:process.env.PA_AGENT_DEFAULT_CONTROLLER_ID,
     workflowGoalInput:process.env.PA_AGENT_WORKFLOW_GOAL_INPUT,
-    timeoutMode:'request-deadline',
-    ...(process.env.PA_AGENT_TIMEOUT_MS === undefined ? {} : {timeoutMs:integer('PA_AGENT_TIMEOUT_MS')}),
+    timeoutMode,
+    ...(timeoutMs === undefined ? {} : {timeoutMs}),
     maxConcurrency:integer('PA_AGENT_MAX_CONCURRENCY',8)});
   const port = integer('PORT',8080);
   if (port > 65535) throw new Error('Invalid port');

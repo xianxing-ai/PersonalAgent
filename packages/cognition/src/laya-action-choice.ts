@@ -88,7 +88,7 @@ function excluded(candidate: LayaActionCandidate): 'expired' | 'unauthorized' | 
 
 /** Selects host-owned concrete candidates. Never executes or creates a Policy grant. */
 export class LayaActionChoiceService {
-  constructor(private readonly inference: LayaInferencePort) {}
+  constructor(private readonly inference?: LayaInferencePort) {}
   async choose(request: LayaActionChoiceRequest): Promise<LayaActionSelection> {
     if (!request || !text(request.context, Number.MAX_SAFE_INTEGER) || !Array.isArray(request.candidates)
       || request.candidates.length < 2 || request.candidates.length > 16
@@ -123,6 +123,7 @@ export class LayaActionChoiceService {
     if (Date.now() >= Date.parse(request.deadline)) return empty('deadline');
     const eligible = candidates.filter(candidate => !excluded(candidate));
     if (eligible.length < 2) return empty('insufficient_candidates');
+    if (!this.inference) return empty('unavailable');
     // Opaque question keys prevent model text from manufacturing candidate IDs.
     const criteria = Object.fromEntries(eligible.map((candidate, index) => [`candidate_${index}`,
       JSON.stringify({kind: candidate.kind, description: candidate.description, risk: candidate.risk,

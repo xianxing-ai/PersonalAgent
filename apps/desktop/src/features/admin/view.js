@@ -51,13 +51,13 @@ export const sections = {
   dashboard: '数据看板', settings: '常规', activity: '活动', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: '工作文件夹', workspace: '工作文件夹',
-  tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
+  tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览', experiments: '实验性功能',
 };
 
 const primaryPages = ['settings', 'connections', 'authorizations', 'usage'];
 const navGroups = [
   {label: '偏好', items: ['appearance', 'voice', 'notifications', 'briefing', 'profile', 'memory', 'shortcuts', 'pets']},
-  {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'workspace']},
+  {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'workspace', 'experiments']},
   {label: '记录', items: ['dashboard', 'tasks', 'activity']},
 ];
 const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
@@ -282,6 +282,9 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('默认策略', '外部内容不能提升权限，工具声明不构成授权', '<span class="value-pill">拒绝优先</span>') +
         settingRow('操作授权', '在当前对话的提问卡选择本次、永久规则或拒绝，无需在此预先允许', '<button class="btn btn-sm" data-jump="authorizations">沙箱与规则</button>') +
         settingRow('能力范围', '查看 Runtime 当前公开的能力与作用域', '<button class="btn btn-sm" data-jump="capabilities">查看能力</button>')],
+      experiments: ['实验性功能', '管理可选的实验功能',
+        settingRow('影子工作流试运行预览', '开启后，任务模型可按需预览计划中的操作。预览只读。默认关闭。',
+          `<label class="switch-control"><input id="shadow-preview-enabled" aria-label="影子工作流试运行预览" type="checkbox" ${data.shadowPreview?.enabled ? 'checked' : ''} ${data.shadowPreview?.available ? '' : 'disabled'}><span></span></label>`)],
       shortcuts: ['快捷键', '当前可用的桌面输入快捷键',
         settingRow('发送消息', '输入框内提交任务', '<kbd>Enter</kbd>') +
         settingRow('换行', '在输入框中插入新行', '<kbd>Shift</kbd><span class="key-plus">＋</span><kbd>Enter</kbd>') +
@@ -566,7 +569,7 @@ export function mountAdmin(root, invoke, escape) {
     if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
     if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
     if(modelApiRoot)modelApiRoot.hidden=section!=='models';
-    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
+    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts', experiments: 'experiments'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     // Commit navigation only after its body and mounted controls are ready. A
     // highlighted sidebar alone must never acknowledge a half-rendered page.
@@ -643,7 +646,7 @@ export function mountAdmin(root, invoke, escape) {
         ? `${orbVariantPreference()}/${orbStateOverride() ?? 'auto'}/${visualOrbState(data)}`
         : undefined;
     const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections'].includes(section)
-      || ['settings', 'appearance', 'pets'].includes(section) && renderedPreferenceKey === preferenceKey)
+      || ['settings', 'appearance', 'pets', 'experiments'].includes(section) && renderedPreferenceKey === preferenceKey)
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
       ? document.activeElement.parentElement.dataset.taskDetails : undefined;
@@ -797,6 +800,18 @@ export function mountAdmin(root, invoke, escape) {
       } catch (error) { root.querySelector('#error').textContent = error.message; button.disabled = false; }
     }));
     root.querySelector('#quit')?.addEventListener('click', () => invoke('app.quit'));
+    root.querySelector('#shadow-preview-enabled')?.addEventListener('change', async event => {
+      const input = event.currentTarget;
+      input.disabled = true;
+      try {
+        const shadowPreview = await invoke('shadowPreview.configure', {enabled: input.checked});
+        current = {...current, shadowPreview};
+        render(current);
+      } catch (error) {
+        input.checked = current.shadowPreview?.enabled === true;
+        root.querySelector('#error').textContent = error.message;
+      } finally { input.disabled = false; }
+    });
     root.querySelector('#login-item-refresh')?.addEventListener('click',async()=>{
       try{const result=await invoke('app.startup.read');current={...current,loginItem:result};render(current,true);}
       catch(error){root.querySelector('#error').textContent=error.message;}

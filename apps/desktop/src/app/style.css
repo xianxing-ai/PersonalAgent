@@ -63,6 +63,7 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 .picker-default[aria-pressed="false"] [data-check] {display:none}
 .picker-search {box-sizing:border-box;width:100%;min-width:0;margin:8px 0;padding:7px 10px;border:1px solid var(--glass-border);border-radius:8px;background:rgba(127,127,127,.05);color:var(--fg);font-size:12px}
 .picker-model-list {max-height:160px;overflow:auto;overscroll-behavior:contain}
+.picker-model-source {padding:7px 10px 3px;color:var(--muted);font-size:11px;font-weight:600}
 .picker-model-list[data-empty="true"]::after {content:'没有匹配的可用模型';display:block;padding:8px;color:var(--muted);font-size:11px}
 .picker-thinking {padding:4px 2px 2px}
 .model-thinking-picker .picker-thinking input[type="range"] {-webkit-appearance:none;appearance:none;box-sizing:border-box;display:block;width:100%;height:40px;margin:0;accent-color:#0877d9;background:transparent;cursor:pointer}

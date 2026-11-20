@@ -12,6 +12,11 @@ param(
 $ErrorActionPreference='Stop'
 $paRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 Set-Location -LiteralPath $paRoot
+$paSource=(& git rev-parse --verify HEAD)
+if($LASTEXITCODE -or $paSource -notmatch '^[a-f0-9]{40}$'){throw 'Cannot read the release source revision'}
+$paDirty=[bool](& git status --porcelain)
+if($LASTEXITCODE){throw 'Cannot read the release working tree'}
+if($Push -and $paDirty){throw 'Publishing requires an image built from the clean release revision'}
 $paDocker=(Get-Command $DockerPath -ErrorAction Stop).Source
 $paNode=(Get-Command $NodePath -ErrorAction Stop).Source
 function Assert-PaReleaseSource {
@@ -46,16 +51,27 @@ if($Build){
   $paContext=($paExport|Select-Object -Last 1|ConvertFrom-Json).context
   Assert-PaReleaseSource
   # Fixed releases must not acquire a different index digest from timestamped provenance on a cached rebuild.
-  $null=Invoke-PaReleaseDocker 'build' @('build','--platform','linux/arm64','--provenance=false','--tag',$Image,$paContext)
+  $null=Invoke-PaReleaseDocker 'build' @('build','--platform','linux/arm64','--provenance=false','--tag',$Image,
+    '--label',"org.opencontainers.image.revision=$paSource",
+    '--label',"io.personalagent.source.dirty=$($paDirty.ToString().ToLowerInvariant())",$paContext)
 }
 $paInspect=(& $paDocker image inspect $Image|ConvertFrom-Json)
 if($LASTEXITCODE -or $paInspect.Count -ne 1 -or $paInspect[0].Architecture -ne 'arm64'){throw 'An existing ARM64 image is required'}
 $paImageId=$paInspect[0].Id
 if($ExpectedImageId -and $ExpectedImageId -ne $paImageId){throw 'Image identity mismatch'}
+$paLabels=$paInspect[0].Config.Labels
+$paImageSource=$paLabels.'org.opencontainers.image.revision'
+$paImageDirty=switch($paLabels.'io.personalagent.source.dirty'){'true'{$true};'false'{$false};default{$null}}
 $paRegistryDigest=$null
 if($Push){
   Assert-PaReleaseSource
   if(-not $RegistryReference -or $RegistryReference -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._:/-]+$'){throw 'Explicit registry reference required'}
+  $paHead=(& git rev-parse --verify HEAD)
+  if($LASTEXITCODE -or $paHead -ne $paSource -or $paImageSource -ne $paSource -or $paImageDirty -ne $false){
+    throw 'Image source does not match the clean release revision; rebuild the ARM64 image'
+  }
+  $paReleaseChanges=(& git status --porcelain)
+  if($LASTEXITCODE -or $paReleaseChanges){throw 'Release source changed before publishing'}
   # Authenticate with docker login beforehand; credentials never enter this script.
   $null=Invoke-PaReleaseDocker 'tag' @('tag',$Image,$RegistryReference)
   $paPushOutput=Invoke-PaReleaseDocker 'push' @('push',$RegistryReference)
@@ -77,6 +93,6 @@ if($Push){
   if($paPlatform.os -ne 'linux' -or $paPlatform.architecture -ne 'arm64'){throw 'Remote image architecture mismatch'}
 }
 Assert-PaReleaseSource
-$paReceipt=@{schemaVersion=1;image=$Image;imageId=$paImageId;imageSizeBytes=$paInspect[0].Size;architecture='arm64';sourceRevision=(& git rev-parse HEAD);sourceDirty=[bool](& git status --porcelain);built=$Build.IsPresent;context=$paContext;published=$Push.IsPresent;registryReference=$RegistryReference;registryManifestDigest=$paRegistryDigest;remoteReadbackVerified=$Push.IsPresent;runtimeDeploymentVerified=$false;stages=$paStages;recordedAtUtc=[DateTime]::UtcNow.ToString('o')}
+$paReceipt=@{schemaVersion=1;image=$Image;imageId=$paImageId;imageSizeBytes=$paInspect[0].Size;architecture='arm64';sourceRevision=$paImageSource;sourceDirty=$paImageDirty;built=$Build.IsPresent;context=$paContext;published=$Push.IsPresent;registryReference=$RegistryReference;registryManifestDigest=$paRegistryDigest;remoteReadbackVerified=$Push.IsPresent;runtimeDeploymentVerified=$false;stages=$paStages;recordedAtUtc=[DateTime]::UtcNow.ToString('o')}
 $paReceipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $paOutput 'release.json') -Encoding utf8
 $paReceipt|Select-Object image,imageId,architecture,built,published,remoteReadbackVerified,runtimeDeploymentVerified|ConvertTo-Json
