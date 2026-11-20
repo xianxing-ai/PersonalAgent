@@ -11,10 +11,18 @@ export function clampOrb(bounds, area) {
     y: Math.round(Math.max(area.y, Math.min(bounds.y, area.y + area.height - bounds.height))) };
 }
 
+export const ORB_SIZE = 112;
+export const ORB_DOCK_HANDLE_WIDTH = 12;
+export const ORB_DOCK_HANDLE_HEIGHT = 64;
+
+export function dockedOrbBounds(bounds, area) {
+  return clampOrb({...bounds, x: area.x + area.width - ORB_SIZE, width: ORB_SIZE, height: ORB_SIZE}, area);
+}
+
 // setPosition round-trips rounded outer bounds on Windows fractional DPI and
 // can grow a transparent window on every move. Keep the approved content size.
 export function placeOrb(win, bounds) {
-  win.setContentBounds({x: bounds.x, y: bounds.y, width: 112, height: 112});
+  win.setContentBounds({x: bounds.x, y: bounds.y, width: ORB_SIZE, height: ORB_SIZE});
 }
 
 export function draggedGroupBounds(orbStart, pointerStart, pointer, area) {

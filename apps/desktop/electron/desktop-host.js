@@ -2,16 +2,18 @@ import {app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, shell} from
 import {mkdirSync, appendFileSync, readFileSync, statSync, renameSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DesktopState, fitBounds, snapBounds} from './desktop-state.js';
+import {DesktopState, fitBounds, isOrbPlacement, snapBounds} from './desktop-state.js';
 import {placeOrb} from './placement.js';
 import {createLoginItemHost} from './login-item-host.js';
+import {lowerOwnDesktopWindow} from './native-desktop-component.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-export function createDesktopHost() {
+export function createDesktopHost({onOrbPlacementChanged} = {}) {
   const loginItem=createLoginItemHost({app});
   const state = new DesktopState(path.join(app.getPath('userData'), 'desktop-state.json'));
   const logFile = path.join(app.getPath('userData'), 'logs', 'desktop.log');
   const windows = new Map();
+  const lowering = new Map();
   let settingsWindow;
   let recoveryPrompt = false;
   async function recover(win, mode) {
@@ -89,6 +91,27 @@ export function createDesktopHost() {
     const bounds = mode === 'orb' ? {...saved, width: fallback.width, height: fallback.height} : saved;
     return fitBounds(bounds, area(bounds));
   }
+  function applyAlwaysOnTop(win) {
+    // Electron's Windows "floating" level reinserts the HWND after the
+    // taskbar on activation. This may demote it to the ordinary z-order.
+    const level = process.platform === 'win32' ? 'pop-up-menu' : 'floating';
+    win.setAlwaysOnTop(state.value.settings.alwaysOnTop, level);
+  }
+  async function lowerWhenIdle(win, mode) {
+    if (process.platform !== 'win32' || state.value.settings.orbPlacement !== 'bottom'
+      || win.isDestroyed() || !win.isVisible() || (mode === 'panel' && win.isFocused())) return;
+    if (lowering.has(win)) return lowering.get(win).request;
+    const controller = new AbortController();
+    const request = lowerOwnDesktopWindow(win, {electronDir: dir, packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath, signal: controller.signal}).finally(() => lowering.delete(win));
+    lowering.set(win, {controller, request});
+    return request;
+  }
+  async function cancelLowering() {
+    const pending = [...lowering.values()];
+    for (const {controller} of pending) controller.abort();
+    await Promise.allSettled(pending.map(({request}) => request));
+  }
   function attach(win, mode, {remember = true} = {}) {
     const contentsId = win.webContents.id;
     windows.set(contentsId, {win, mode});
@@ -102,14 +125,15 @@ export function createDesktopHost() {
     win.on('restore', publishWindowState);
     let saveTimer;
     const save = () => {
-      if (!remember || mode === 'panel' || win.isDestroyed() || win.isMinimized()) return;
+      if (!remember || mode === 'panel' || win.isDestroyed() || win.isMinimized()
+        || (mode === 'orb' && state.value.settings.orbPlacement === 'right')) return;
       try { state.remember(mode, win.getNormalBounds()); } catch { log('settings-write-failed', mode); }
     };
     const changed = () => { clearTimeout(saveTimer); saveTimer = setTimeout(save, 200); };
     win.on('move', changed);
     win.on('resize', changed);
     win.on('close', save);
-    win.on('closed', () => { clearTimeout(saveTimer); windows.delete(contentsId); });
+    win.on('closed', () => { clearTimeout(saveTimer); lowering.get(win)?.controller.abort(); windows.delete(contentsId); });
     win.webContents.on('did-finish-load', () => {
       const fontScale = state.value.settings.fontScale;
       if (!['orb', 'panel'].includes(mode) && win.webContents.getZoomFactor() !== fontScale) {
@@ -125,7 +149,14 @@ export function createDesktopHost() {
       void recover(win, mode);
     });
     win.on('unresponsive', () => { log('unresponsive', mode); void recover(win, mode); });
-    if (mode === 'orb' || mode === 'panel') win.setAlwaysOnTop(state.value.settings.alwaysOnTop);
+    if (mode === 'orb' || mode === 'panel') {
+      applyAlwaysOnTop(win);
+      const lower = () => { void lowerWhenIdle(win, mode).catch(() => {
+        if (state.value.settings.orbPlacement === 'bottom' && !win.isDestroyed()) log('orb-placement-lower-failed', mode);
+      }); };
+      win.on('blur', lower);
+      if (mode === 'orb') win.on('show', lower);
+    }
     log('created', mode);
   }
   function openSettings() {
@@ -158,12 +189,35 @@ export function createDesktopHost() {
     }
     if (name === 'save') {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw Error('Invalid desktop settings');
+      if (Object.hasOwn(payload, 'orbPlacement') && !isOrbPlacement(payload.orbPlacement)) throw Error('悬浮球位置无效');
       const before = {...state.value.settings};
+      const requestedPlacement = payload.orbPlacement ?? (typeof payload.alwaysOnTop === 'boolean'
+        ? (payload.alwaysOnTop ? 'top' : 'bottom') : before.orbPlacement);
+      const floatingWindows = [...windows.values()].filter(({mode}) => mode === 'orb' || mode === 'panel');
+      const orb = floatingWindows.find(({mode}) => mode === 'orb')?.win;
+      if (before.orbPlacement !== 'right' && requestedPlacement === 'right' && orb && !orb.isDestroyed()) {
+        state.remember('orb', orb.getContentBounds());
+      }
       const settings = state.update(payload);
-      try { shortcut(settings.shortcut); } catch (error) { state.update(before); throw error; }
+      try {
+        shortcut(settings.shortcut);
+        if (settings.orbPlacement !== before.orbPlacement) {
+          await cancelLowering();
+          for (const {win, mode} of floatingWindows) {
+            if (win.isDestroyed()) continue;
+            applyAlwaysOnTop(win);
+            await lowerWhenIdle(win, mode);
+          }
+          onOrbPlacementChanged?.(before.orbPlacement);
+        }
+      } catch (error) {
+        state.update(before);
+        shortcut(before.shortcut);
+        for (const {win} of floatingWindows) if (!win.isDestroyed()) applyAlwaysOnTop(win);
+        throw error;
+      }
       for (const {win, mode} of windows.values()) {
-        if (mode === 'orb' || mode === 'panel') win.setAlwaysOnTop(settings.alwaysOnTop);
-        else if (win.webContents.getZoomFactor() !== settings.fontScale) win.webContents.setZoomFactor(settings.fontScale);
+        if (!['orb', 'panel'].includes(mode) && win.webContents.getZoomFactor() !== settings.fontScale) win.webContents.setZoomFactor(settings.fontScale);
         if (mode === 'admin' || mode === 'workspace') win.webContents.send('desktop:preferences', {settings, locale:app.getLocale()});
       }
       log('settings-saved', 'desktop-settings');
@@ -183,11 +237,9 @@ export function createDesktopHost() {
   });
   function reposition() {
     for (const {win, mode} of windows.values()) {
-      if (mode === 'panel' || win.isDestroyed()) continue;
-      const current = mode === 'orb' ? win.getContentBounds() : win.getNormalBounds();
-      const bounds = fitBounds(current, area(current));
-      if (mode === 'orb') placeOrb(win, bounds);
-      else if (!win.isMaximized()) win.setBounds(bounds);
+      if (mode === 'orb' || mode === 'panel' || win.isDestroyed() || win.isMaximized()) continue;
+      const current = win.getNormalBounds();
+      win.setBounds(fitBounds(current, area(current)));
     }
   }
   screen.on('display-removed', reposition);
@@ -214,6 +266,7 @@ export function createDesktopHost() {
     snap(win) {
       if (!state.value.settings.snap) return;
       const isOrb = windows.get(win.webContents.id)?.mode === 'orb';
+      if (isOrb && state.value.settings.orbPlacement === 'right') return;
       const current = isOrb ? win.getContentBounds() : win.getBounds();
       const bounds = snapBounds(current, area(current));
       if (isOrb) placeOrb(win, bounds); else win.setPosition(bounds.x, bounds.y);

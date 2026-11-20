@@ -32,7 +32,7 @@ const {_electron} = require('playwright');
     assert.ok(page.url().includes('/desktop-settings/'));
     await page.locator('[name=language]').selectOption('en');
     await page.locator('[name=fontScale]').selectOption('1.2');
-    await page.locator('[name=alwaysOnTop]').uncheck();
+    await page.locator('[name=orbPlacement]').selectOption('right');
     await page.locator('button[type=submit]').click();
     await page.getByText('Saved',{exact:true}).waitFor();
     assert.equal(await page.locator('h1').innerText(),'Desktop settings');
@@ -75,7 +75,7 @@ const {_electron} = require('playwright');
     const pending=app.waitForEvent('window');await nextOrb.evaluate(()=>window.desktop.openSettings());const next=await pending;
     await next.waitForSelector('#settings');
     const restored=await next.evaluate(()=>window.localDesktop.call('read'));
-    assert.equal(restored.settings.language,'en');assert.equal(restored.settings.fontScale,1.2);assert.equal(restored.settings.alwaysOnTop,false);
+    assert.equal(restored.settings.language,'en');assert.equal(restored.settings.fontScale,1.2);assert.equal(restored.settings.orbPlacement,'right');
     console.log('PASS: single instance, desktop settings, language, zoom isolation, window controls, recovery handler, logs and restart/position persistence');
     console.log(path.join(data,'desktop-settings.png'));
   } finally {if(app)await app.close();}

@@ -3,14 +3,15 @@ import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {computerControlFailure} from './computer-control-errors.js';
 
 const REQUEST_TOOL = 'computer.request_access';
+const PRESENCE_MISS = 'windows-desktop-presence-miss:v1';
 const REQUEST_SCOPE = 'computer:desktop:request';
 const VERSION = '1.0.0';
 const RUN = /^[A-Za-z0-9_-]{1,128}$/;
 const runRef=value=>typeof value==='string'&&RUN.test(value);
 const SHA = /^[a-f0-9]{64}$/;
 const controlName = name => /^computer\.desktop\.[a-z_]+$/.test(name);
-const requestOutput = {type:'object',properties:{state:{enum:['presence_confirmed','policy_allowed']},expiresAt:{type:'string'},
-  authorizationGranted:{const:false}},required:['state','expiresAt','authorizationGranted'],additionalProperties:false};
+const requestOutput = {type:'object',properties:{state:{enum:['presence_confirmed','policy_allowed','not_present']},expiresAt:{type:'string'},
+  skippedAction:{type:'string',maxLength:120},authorizationGranted:{const:false}},required:['state','authorizationGranted'],additionalProperties:false};
 const fail = (code, message) => {throw new ProtocolError(code, message);};
 
 /** Trusted Desktop lifecycle around the public native/compatibility provider. Runtime remains
@@ -172,9 +173,9 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
   }
   async function preparePresence(input) {
     active(input);
-    const policy=fullAccess();
+    const policy=fullAccess()&&!input.requireGesture;
     if(!state.available || !RUN.test(input.taskId) || (!policy&&typeof registerConfirmation!=='function' && typeof presenceHost?.requestPresence!=='function'))fail('UNSUPPORTED_CAPABILITY','本机确认快捷键尚不可用');
-    if(hasPresence(input.taskId)&&(!policy||leaseSources.get(input.taskId)==='full-access-policy'))return;
+    if(!input.requireGesture&&hasPresence(input.taskId)&&(!policy||leaseSources.get(input.taskId)==='full-access-policy'))return;
     if(presenceHost){
       publish({waitingConfirmation:!policy,state:policy?'checking_policy':'waiting_confirmation',taskId:input.taskId,
         reason:policy?'正在核对当前完全访问策略与原任务。'
@@ -225,7 +226,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
           }catch(error){finish(error);}
         });
         if(typeof unregister!=='function')fail('UNSUPPORTED_CAPABILITY','本机 F9 注册失败');
-        publish({waitingConfirmation:true,state:'waiting_confirmation',taskId:input.taskId,
+        publish({waitingConfirmation:true,state:'waiting_confirmation',taskId:input.taskId,reviewAction:input.reviewAction,
           reason:allowObservationExport
             ?'请将本次授权的应用保持在前台，按 F9 允许当前任务在30秒内观察和请求操作；窗口与界面文字将提供给当前对话模型。每次写入仍需原任务授权。'
             :'请将本次授权的应用保持在前台，按 F9 允许当前任务在30秒内请求电脑操作；每次写入仍需原任务授权。'});
@@ -234,25 +235,29 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
     });
   }
   const attempts={async record(identity,execution){
+    const launching=identity.toolName==='computer.desktop.launch_app';
+    const providedBinding=launching?identity.app:identity.targetRef;
+    const inputBinding=launching?execution?.arguments?.app:execution?.arguments?.targetRef??execution?.arguments?.windowRef;
     if(!application || !RUN.test(identity.taskId) || !RUN.test(identity.runId)
       || !controlName(identity.toolName) || identity.toolVersion!==VERSION
       || !SHA.test(identity.argumentsDigest) || !SHA.test(identity.observationDigest)
       || typeof identity.authorizationRef!=='string' || !identity.authorizationRef
-      || !/^[a-f0-9-]{36}$/.test(identity.targetRef))fail('INVALID_ARGUMENT','电脑操作原始身份无效');
+      || (launching?providedBinding!=='notepad':!/^[a-f0-9-]{36}$/.test(providedBinding)))fail('INVALID_ARGUMENT','电脑操作原始身份无效');
     if(!execution || !execution.arguments || typeof execution.arguments!=='object')fail('UNAUTHORIZED','缺少原始Runtime参数');
     active(execution);
     const task=application.runtime.getTask(identity.taskId);
     const record=application.runtime.readToolExecutions(identity.taskId).find(item=>item.evidenceId===identity.runId);
-    if(task.state!=='running' || task.cancelRequested || !hasPresence(identity.taskId)
+    if(task.state!=='running' || task.cancelRequested || (!launching && !hasPresence(identity.taskId))
       || application.runtime.loadCheckpoint(identity.taskId,'application-deadline')!==execution.deadline
-      || (execution.arguments.targetRef??execution.arguments.windowRef)!==identity.targetRef || toolArgumentsDigest(execution.arguments)!==identity.argumentsDigest
+      || inputBinding!==providedBinding || toolArgumentsDigest(execution.arguments)!==identity.argumentsDigest
       || !record || record.taskId!==identity.taskId || record.toolName!==identity.toolName || record.toolVersion!==identity.toolVersion
       || record.policyDecision!=='allow' || record.executionStarted!==true || record.state!=='started'
       || !application.runtime.matchesToolExecutionInput(record,{arguments:execution.arguments,scopeRef:identity.authorizationRef})) {
       fail('UNAUTHORIZED','电脑操作不匹配原Runtime授权执行');
     }
     const saved={taskId:identity.taskId,runId:identity.runId,toolName:identity.toolName,toolVersion:identity.toolVersion,
-      authorizationRef:identity.authorizationRef,argumentsDigest:identity.argumentsDigest,targetRef:identity.targetRef,observationDigest:identity.observationDigest};
+      authorizationRef:identity.authorizationRef,argumentsDigest:identity.argumentsDigest,
+      ...(launching?{app:providedBinding}:{targetRef:providedBinding}),observationDigest:identity.observationDigest};
     if(!application.runtime.saveCheckpointOnce(identity.taskId,'windows-desktop-attempt:'+identity.runId,saved)) {
       fail('RESULT_UNKNOWN','此原始电脑操作已记录；请在原任务核实，不会重新执行');
     }
@@ -265,13 +270,26 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
       try{active({signal,deadline});return hasPresence(taskId);}catch{return false;}
     },...(verifyTarget?{verifyTarget}:{})}):undefined;
   const requestTool={descriptor:{name:REQUEST_TOOL,version:VERSION,
-    inputSchema:{type:'object',description:'为原任务取得本机访问凭证。state=policy_allowed 或 presence_confirmed 表示这一步成功，应继续列出或观察目标；authorizationGranted=false 只说明本机凭证不能签发后续工具权限，后续各工具仍由原 Runtime/Policy 授权。不要因此循环重复本工具。只在凭证过期或明确要求重新确认时再次请求。',properties:{},required:[],additionalProperties:false},outputSchema:requestOutput,
+    inputSchema:{type:'object',properties:{action:{type:'string',minLength:1,maxLength:120,
+      description:'Specific step that needs real user presence or review. Briefly describe the step without quoting private content.'}},additionalProperties:false},outputSchema:requestOutput,
     sideEffect:'read',requiredScopes:[REQUEST_SCOPE],requiresPresence:false,idempotencySupport:false,recoverySupport:false},
     async execute(input,context){
       validateToolValue(requestTool.descriptor.inputSchema,input);
       if(!context.authorizationRef || !context.scopes.includes(REQUEST_SCOPE))fail('UNAUTHORIZED','需要原任务的请求权限');
-      const seed=policySeed(context);policyPresenceSeeds.delete(context.taskId);
-      await preparePresence(context);
+      const reviewAction=input.action?.replace(/[\p{Cc}\p{Cf}]+/gu,' ').trim();
+      const notPresent={state:'not_present',...(reviewAction?{skippedAction:reviewAction}:{}),authorizationGranted:false};
+      if(application.runtime.loadCheckpoint(context.taskId,PRESENCE_MISS))return notPresent;
+      const seed=reviewAction?undefined:policySeed(context);policyPresenceSeeds.delete(context.taskId);
+      const wait=new AbortController();
+      const timer=setTimeout(()=>wait.abort(),30_000);
+      try{
+        await preparePresence({...context,signal:AbortSignal.any([context.signal,wait.signal]),
+          requireGesture:Boolean(reviewAction),reviewAction});
+      }catch(error){
+        if(context.signal.aborted||(!wait.signal.aborted&&error?.code!=='UNSUPPORTED_CAPABILITY'))throw error;
+        application.runtime.saveCheckpointOnce(context.taskId,PRESENCE_MISS,{state:'not_present'});
+        return notPresent;
+      }finally{clearTimeout(timer);}
       if(seed&&leaseSources.get(context.taskId)==='full-access-policy') {
         try{assertPolicySeed(seed,context,false);policyPresenceSeeds.set(context.taskId,seed);}
         catch(error){revokePolicyPresence(context.taskId);throw error;}
@@ -280,6 +298,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
         expiresAt:new Date(leases.get(context.taskId)).toISOString(),authorizationGranted:false};
     }};
   const tools=()=>!closed&&state.state!=='blocked'&&provider?.tools?.length?[requestTool,...provider.tools]:[];
+  const requiresToolPresence=name=>provider?.tools?.find(tool=>tool.descriptor.name===name)?.descriptor.requiresPresence===true;
   async function readScreenshot(name,input) {
     active(input);
     if(!enabled||!state.available||state.state==='blocked'||!hasPresence(input.taskId))fail('UNAUTHORIZED','原任务的截图读取许可已失效');
@@ -323,10 +342,12 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
     },
     get tools(){return tools();},
     get competitionToolAvailability(){return [requestTool,...(provider?.tools??[])].map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,
-      publicEnumPaths:['/button','/direction','/type','/caret_position','/operation'],
-      ...(tool.descriptor.name===REQUEST_TOOL?{publicDescription:'Checks current-task computer access. Successful policy_allowed or presence_confirmed means continue the original task with the next tool. authorizationGranted:false only means later tools need their own Runtime/Policy checks; it does not mean this access step failed. Request access again only after expiry, revocation, or an explicit missing-access error.'}
+      publicEnumPaths:['/app','/button','/direction','/type','/caret_position','/operation'],
+      ...(tool.descriptor.name===REQUEST_TOOL?{publicDescription:'Call only when a necessary step needs real user presence or review. Pass action to show the specific step and request a real gesture, even under full access. Wait at most 30 seconds. If not_present, skip that step, do the rest, and report what was skipped. Routine launch_app does not need this.'}
+        :tool.descriptor.name==='computer.desktop.launch_app'?{publicDescription:'Call with app=notepad and text to open a new blank system Notepad, write the user-requested text and verify it by reading it back in one operation. Omit text when the user only asks to open Notepad. This action does not require computer.request_access.'}
         :tool.descriptor.name==='computer.desktop.suggest_control'?{publicDescription:'Optional local Laya suggestion for choosing an observed control for a simple operation. Pass the current targetRef and operation after observing; it never performs an action or grants permission. The suggestion is valid only for that observation. Review or unavailable means use the original observation or observe again.'}:{}),
       available:async context=>!closed&&enabled&&state.available&&provider?.health().state==='ready'
+        && provider?.supportsTool?.(tool.descriptor.name)!==false
         && !context.signal?.aborted && now()<Date.parse(context.deadline)
         && (tool.descriptor.name===REQUEST_TOOL || observationExportAllowed())}));},
     // Composition captures these ports once. Keep every original provider policy
@@ -334,13 +355,14 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
     get competitionToolExports(){return [requestTool,...(provider?.tools??[])].map(tool=>({
       toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:'windows-desktop-observed-v1',
       accepts:({taskId,signal})=>!closed&&!signal?.aborted&&state.available
-        && (tool.descriptor.name===REQUEST_TOOL||observationExportAllowed()&&hasPresence(taskId)),
+        && (tool.descriptor.name===REQUEST_TOOL||observationExportAllowed()&&(!requiresToolPresence(tool.descriptor.name)||hasPresence(taskId))),
       project:({taskId,result,signal})=>{
-        if(closed||signal.aborted||!state.available||(tool.descriptor.name!==REQUEST_TOOL&&(!observationExportAllowed()||!hasPresence(taskId))))fail('UNAUTHORIZED','本机观察结果出口许可已过期');
+        if(closed||signal.aborted||!state.available||(tool.descriptor.name!==REQUEST_TOOL
+          &&(!observationExportAllowed()||requiresToolPresence(tool.descriptor.name)&&!hasPresence(taskId))))fail('UNAUTHORIZED','本机观察结果出口许可已过期');
         validateToolValue(tool.descriptor.outputSchema,result);
         return structuredClone(result);
       }}));},
-    preparePresence,refreshPolicyPresence,prepareToolPresence,hasPresence,
+    preparePresence,refreshPolicyPresence,prepareToolPresence,requiresToolPresence,hasPresence,
     readScreenshotArtifact:input=>readScreenshot('readScreenshotArtifact',input),
     readScreenshotArtifactMetadata:input=>readScreenshot('readScreenshotArtifactMetadata',input),
     activeTasks:()=>provider?.activeTasks?.()??[],
@@ -350,11 +372,19 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
       const reference=currentRecovery(state.state==='blocked'||health.state==='blocked',state.state==='blocked'||health.state==='blocked');
       const providerAvailable=state.available&&health.state==='ready'&&!closed;
       const exportAllowed=observationExportAllowed();
-      return {...state,enabled,provider:health,providerAvailable,available:enabled&&providerAvailable&&exportAllowed,
-        activeTaskId:state.waitingConfirmation?state.taskId:provider?.activeTasks?.()[0],
+      const prompt=presenceHost?.pendingPrompt?.();
+      const {reviewAction:legacyReviewAction,...status}=state;
+      const waitingConfirmation=typeof presenceHost?.pendingPrompt==='function'?Boolean(prompt):state.waitingConfirmation;
+      const taskId=prompt?.taskId??state.taskId;
+      const reviewAction=prompt?prompt.reviewAction:legacyReviewAction;
+      const finishedWaiting=!waitingConfirmation&&['waiting_confirmation','checking_policy'].includes(status.state);
+      return {...status,taskId,waitingConfirmation,enabled,provider:health,providerAvailable,available:enabled&&providerAvailable&&exportAllowed,
+        ...(prompt?{state:'waiting_confirmation'}:finishedWaiting?{state:'ready',reason:'电脑组件已就绪。'}:{}),
+        ...(waitingConfirmation&&reviewAction?{reviewAction}:{}),
+        activeTaskId:waitingConfirmation?taskId:provider?.activeTasks?.()[0],
         ...(reference?{recoveryTaskId:reference.taskId,recoveryRunId:reference.runId}:{}),
         observationExportAllowed:exportAllowed,
-        ...(providerAvailable&&fullAccess()?{waitingConfirmation:false,
+        ...(providerAvailable&&fullAccess()&&!waitingConfirmation?{
           reason:'当前完全访问允许电脑访问；工具仍校验目标、原任务与期限。'}:{}),
         ...(providerAvailable&&!exportAllowed?{state:'observation_export_disabled',unavailableReason:'observation_export_not_authorized',
           reason:'电脑组件已连接；允许当前任务的模型接收目标窗口观察后，才能执行电脑操作。'}:{}),

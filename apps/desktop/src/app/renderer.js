@@ -82,14 +82,14 @@ let render, orb, reportSnapshotFailure, clearSnapshotFailure;
 if(mode==='orb') {
   root.innerHTML='<button class="orb-button" aria-label="打开 PersonalAgent"><canvas aria-hidden="true"></canvas></button>';
   orb=new Orb(root.querySelector('canvas'),{variant:orbVariantPreference(),layout:'shell',count:170});
-  let lastOrbData={};
+  let lastOrbData={},docked=false;
   const syncMotion=()=>{
     const variant=typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix');
     const override=typeof orbStateOverride==='function'?orbStateOverride():((document.documentElement?.dataset?.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null);
     orb.setVariant?.(variant);
     if(override){orb.setState(override);if(override==='listening')orb.setLevel(Math.max((typeof lastOrbData!=='undefined'?lastOrbData?.audioLevel:0)??0,0.68));}
     else if(typeof lastOrbData!=='undefined'&&lastOrbData&&(lastOrbData.tasks||lastOrbData.live))orb.setState(visualOrbState(lastOrbData));
-    if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');
+    if(document.hidden||docked)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');
   };syncMotion();
   window.addEventListener('preferences-changed',syncMotion);
   document.addEventListener('visibilitychange',syncMotion);
@@ -111,13 +111,27 @@ if(mode==='orb') {
   };
   window.addEventListener('unload',()=>{operationClosed=true;},{once:true});
   button.addEventListener('pointerdown',e=>{if(e.button!==0)return;start={x:e.screenX,y:e.screenY,offset:{x:e.clientX,y:e.clientY}};button.setPointerCapture(e.pointerId);});
-  button.addEventListener('pointermove',e=>{if(start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart',start.offset);}});
+  button.addEventListener('pointermove',e=>{if(!docked&&start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart',start.offset);}});
   function finish(){if(drag)orbOperation('orb.dragEnd');else if(start)orbOperation('orb.open');start=null;drag=false;}
   button.addEventListener('pointerup',finish);button.addEventListener('pointercancel',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('lostpointercapture',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();orbOperation('orb.open');}});
   button.addEventListener('click',e=>{if(e.detail===0)orbOperation('orb.open');});
-  render=data=>{if(typeof lastOrbData!=='undefined')lastOrbData=data??{};const variant=typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix');const override=typeof orbStateOverride==='function'?orbStateOverride():((document.documentElement?.dataset?.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null);orb.setVariant?.(variant);orb.setLevel(override==='listening'?Math.max(data.audioLevel??0,0.68):(data.audioLevel??0));orb.setState(override??visualOrbState(data));if(document.hidden)orb.stop();orbLabel=`PersonalAgent · ${orbStatusLabel(data)}`;syncOperationFeedback();};
+  render=data=>{
+    const wasDocked=docked;
+    docked=data.orbDocked===true;
+    button.dataset.docked=String(docked);
+    if(typeof lastOrbData!=='undefined')lastOrbData=data??{};
+    const variant=typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix');
+    const override=typeof orbStateOverride==='function'?orbStateOverride():((document.documentElement?.dataset?.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null);
+    orb.setVariant?.(variant);
+    orb.setLevel(override==='listening'?Math.max(data.audioLevel??0,0.68):(data.audioLevel??0));
+    orb.setState(override??visualOrbState(data));
+    if(document.hidden||docked)orb.stop();
+    else if(wasDocked)orb.setCalm(document.documentElement.dataset.calm==='true');
+    orbLabel=docked?'展开 PersonalAgent':`PersonalAgent · ${orbStatusLabel(data)}`;
+    syncOperationFeedback();
+  };
 } else if(mode==='admin') render=mountAdmin(root,invoke,escape);
 else if(mode==='workspace') render=mountWorkspace(root,invoke,escape,{flushBeforeClose:bridge?.flushDrafts});
 else if(mode==='subagent') {const page=mountSubagentConversationPage(root,invoke);render=()=>page.refresh();}

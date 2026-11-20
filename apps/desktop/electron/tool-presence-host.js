@@ -68,11 +68,11 @@ export function createToolPresenceHost({registerNativeShortcut,isTaskCurrent,rea
       if(signal.aborted)return Promise.reject(failure('CANCELLED','Presence request cancelled'));
       if(deadlineMs<=requestedAt)return Promise.reject(failure('TIMEOUT','Presence request expired'));
       const originalBinding=binding(taskId);if(!originalBinding)return Promise.reject(failure('UNAUTHORIZED','Task is outside the current trusted session'));
-      let full;try{full=isFullAccess();}catch{return Promise.reject(failure('UNAUTHORIZED','Presence policy is unavailable'));}
+      let full;try{full=isFullAccess()&&input.requireGesture!==true;}catch{return Promise.reject(failure('UNAUTHORIZED','Presence policy is unavailable'));}
       const originalPolicyBinding=policyBinding();
       if((readPolicyBinding!==undefined||full===true)&&originalPolicyBinding===undefined)
         return Promise.reject(failure('UNAUTHORIZED','Presence policy binding is unavailable'));
-      const scope={taskId,deadlineMs,signal,binding:originalBinding,requestedAt,policyBinding:originalPolicyBinding,
+      const scope={taskId,deadlineMs,signal,binding:originalBinding,requestedAt,policyBinding:originalPolicyBinding,reviewAction:input.reviewAction,
         source:full===true?'full-access-policy':'native-gesture'};
       if(full===true){try{const receipt=issue(scope);host.refresh();return Promise.resolve(receipt);}catch(error){return Promise.reject(error);}}
       return new Promise((resolve,rejectPromise)=>{
@@ -87,6 +87,10 @@ export function createToolPresenceHost({registerNativeShortcut,isTaskCurrent,rea
       const receipt=receipts.get(taskId);if(!receipt)return false;
       try{const time=clock();if(closed||receipt.signal.aborted||binding(taskId)!==receipt.binding||!policyCurrent(receipt)||time<receipt.issuedAt||time>=receipt.expiresAtMs){revoke(receipt);return false;}}
       catch{revoke(receipt);return false;}return true;
+    },
+    pendingPrompt(){
+      const entry=queue[0];
+      if(entry?.kind==='presence'&&valid(entry))return {taskId:entry.taskId,reviewAction:entry.reviewAction};
     },
     /** Only Main's trusted, task-bound click handler may consume this pending gesture. */
     confirmPending(taskId){

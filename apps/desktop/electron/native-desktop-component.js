@@ -1,9 +1,12 @@
 import {existsSync} from 'node:fs';
-import {spawn} from 'node:child_process';
+import {execFile,spawn} from 'node:child_process';
 import path from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 import {StringDecoder} from 'node:string_decoder';
+import {promisify} from 'node:util';
 import {computerControlFailure} from './computer-control-errors.js';
+
+const executeComponent = promisify(execFile);
 
 function failure(error,stage,extra=''){
   const detail=computerControlFailure(error,stage);
@@ -81,4 +84,13 @@ export async function prepareNativeDesktopComponent({electronDir,packaged=false,
 export function nativeDesktopExecutable({electronDir,packaged=false,resourcesPath}){
   return packaged?path.join(resourcesPath,'native-tools','desktop','WindowsHost.Desktop.exe')
     :path.resolve(electronDir,'../../windows-host/desktop/bin/Release/net8.0-windows/WindowsHost.Desktop.exe');
+}
+
+/** Desktop chrome only. The native component verifies the target belongs to its launcher. */
+export async function lowerOwnDesktopWindow(win,{electronDir,packaged=false,resourcesPath,signal}){
+  if(process.platform!=='win32'||win.isDestroyed())return;
+  const raw=win.getNativeWindowHandle();
+  const handle=raw.length===8?raw.readBigUInt64LE():raw.readUInt32LE();
+  await executeComponent(nativeDesktopExecutable({electronDir,packaged,resourcesPath}),
+    ['--lower-owned-window',handle.toString()],{windowsHide:true,timeout:3000,signal});
 }

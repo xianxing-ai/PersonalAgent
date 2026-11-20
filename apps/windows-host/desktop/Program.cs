@@ -32,8 +32,9 @@ internal static class Program
     private const int MaxLine = 1024 * 1024;
 
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
+        if (args.Length > 0) return OwnedWindowLayer.Run(args);
         Console.InputEncoding = new UTF8Encoding(false, true);
         Console.OutputEncoding = new UTF8Encoding(false);
         try

@@ -70,7 +70,8 @@ async function inventory(directory,prefix=''){
 async function sourceIdentity(root){
   const native='apps/windows-host/desktop/';
   const paths=(await fs.readdir(path.join(root,native))).filter(name=>/\.(cs|csproj)$/.test(name)).map(name=>native+name);
-  paths.push('apps/desktop/scripts/publish-native-desktop.mjs');
+  paths.push('apps/windows-host/WindowsHost.csproj','apps/windows-host/NotepadAction.cs',
+    'apps/desktop/scripts/publish-native-desktop.mjs');
   const sourceFiles=[];for(const relative of paths.sort()){const bytes=await fs.readFile(path.join(root,relative));sourceFiles.push({path:relative,byteLength:bytes.length,sha256:sha(bytes)});}
   return {sourceFiles,sourceDigest:sha(JSON.stringify(sourceFiles))};
 }
