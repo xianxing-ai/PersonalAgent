@@ -41,8 +41,8 @@ import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSy
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
 import {openDesktopActivity} from './activity-host.js';
-import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
-import {createOrbHitTestController} from './orb-hit-testing.js';
+import {panelBounds, clampOrb, dockedOrbBounds, draggedGroupBounds, placeOrb, ORB_DOCK_HANDLE_WIDTH, ORB_DOCK_HANDLE_HEIGHT} from './placement.js';
+import {orbShapeRects} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
 import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
@@ -955,6 +955,7 @@ function orbSnapshot() {
   const task=visible.findLast(task=>!terminalTaskStates.has(task.state))??visible.at(-1);
   const live=liveVoice?.snapshot()??liveConfig?.snapshot();
   return {tasks:task?[{taskId:task.taskId,state:task.state}]:[],audioLevel,orbStateOverride,
+    orbDocked:desktopHost?.settings.orbPlacement==='right',
     live:live?{active:live.active,status:live.status}:undefined,resourceBudget:resourcePolicy.snapshot()};
 }
 function projectWindowSnapshot(surface,topics=['all']) {
@@ -1066,13 +1067,14 @@ function computerControlSnapshot(surface){
   const current=windowsControlHost?.snapshot(),preference=computerControlConfig?.snapshot();
   if(!current)return {state:'unavailable',enabled:preference?.enabled!==false,available:false,providerAvailable:false,
     observationExportAllowed:false,waitingConfirmation:false,reason:'电脑组件将在Runtime连接后准备。',input:{state:'unavailable',busy:false,writeBlocked:true},browser:{state:'unavailable',available:false},vision:computerVisionConfig?.snapshot()};
-  const {presenceTasks,taskId,activeTaskId,recoveryTaskId,recoveryRunId,...publicStatus}=current;
+  const {presenceTasks,taskId,activeTaskId,recoveryTaskId,recoveryRunId,reviewAction,...publicStatus}=current;
   const active=activeTaskId??(current.waitingConfirmation?taskId:undefined);
   const owned=!surface||active&&conversationToolAccess?.resolveConversation(active)===conversations?.activeConversationId(surface);
   const recoveryOwned=!surface||recoveryTaskId&&conversationToolAccess?.resolveConversation(recoveryTaskId)===conversations?.activeConversationId(surface);
   const input=computerControlLease?.snapshot()??{state:'unavailable',busy:false,writeBlocked:true};
   if(current.state==='blocked'||browserControlHost?.snapshot().state==='blocked'||openCliBrowserHost?.snapshot().state==='blocked')Object.assign(input,{state:'blocked',writeBlocked:true});
   return {...publicStatus,...(owned&&active?{activeTaskId:active}:{}),...(recoveryOwned&&recoveryTaskId?{recoveryTaskId}:{}),waitingConfirmation:owned&&current.waitingConfirmation===true,
+    ...(owned&&current.waitingConfirmation&&reviewAction?{reviewAction}:{}),
     input,browser:{...(browserControlHost?.snapshot()??{state:'unavailable',available:false}),connected:openCliBrowserHost?.snapshot()},vision:computerVisionHost?.snapshot()??computerVisionConfig?.snapshot(),
     ...(computerPreparing?{state:'preparing',reason:'正在准备电脑组件；可以立即停止。'}:{})};
 }
@@ -1182,6 +1184,7 @@ function windowFor(mode, bounds, options = {}) {
     win.webContents.on('render-process-gone', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
     win.webContents.on('destroyed', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
   }
+  if (mode === 'orb') bindOrbShape(win);
   if (mode === 'orb') {
     const invalidateDrag = () => {
       if (win !== orb) return;
@@ -1197,7 +1200,12 @@ function windowFor(mode, bounds, options = {}) {
   const present = () => {
     if (presented || win.isDestroyed()) return;
     presented = true;
-    if (mode === 'orb') placeOrb(win, win.getBounds());
+    if (mode === 'orb') {
+      const bounds = win.getBounds();
+      placeOrb(win, desktopHost.settings.orbPlacement === 'right'
+        ? dockedOrbBounds(bounds, screen.getDisplayMatching(bounds).workArea) : bounds);
+      applyOrbShape(win);
+    }
     if (centerOnPresent) win.center();
     if (mode === 'panel') applyShape(win, 40);
     if (mode !== 'panel') win.show();
@@ -1237,6 +1245,40 @@ function applyShape(win, radius) {
   win.setShape(roundedRects(bounds.width, bounds.height, Math.max(0, radius * win.webContents.getZoomFactor() - 1)));
 }
 
+function applyOrbShape(win) {
+  const {width, height} = win.getBounds();
+  win.setShape(desktopHost.settings.orbPlacement === 'right'
+    ? [{x: width - ORB_DOCK_HANDLE_WIDTH, y: Math.floor((height - ORB_DOCK_HANDLE_HEIGHT) / 2),
+      width: ORB_DOCK_HANDLE_WIDTH, height: ORB_DOCK_HANDLE_HEIGHT}]
+    : orbShapeRects(width, height));
+}
+
+function bindOrbShape(win) {
+  const refresh = () => { if (!win.isDestroyed()) applyOrbShape(win); };
+  win.on('resize', refresh);
+  if (process.platform === 'win32') {
+    // Chromium builds the HRGN at the current HWND DPI. Reapply after
+    // WM_DPICHANGED, including moves where the DIP size stays 112×112.
+    const WM_DPICHANGED = 0x02e0;
+    win.hookWindowMessage(WM_DPICHANGED, () => { setImmediate(refresh); });
+  }
+}
+
+function reconfigureOrbPlacement(previous) {
+  if (!orb || orb.isDestroyed()) return;
+  orbDragRevision++;
+  if (dragging === true) { dragging = false; stopOrbDrag(); }
+  const bounds = orb.getContentBounds();
+  if (desktopHost.settings.orbPlacement === 'right') {
+    placeOrb(orb, dockedOrbBounds(bounds, screen.getDisplayMatching(bounds).workArea));
+  } else if (previous === 'right') {
+    placeOrb(orb, desktopHost.restore('orb', bounds));
+  }
+  applyOrbShape(orb);
+  if (panel && !panel.isDestroyed() && panel.isVisible()) placePanelNearOrb();
+  publish();
+}
+
 function placePanel(bounds) {
   const current = panel.getBounds();
   if (current.width === bounds.width && current.height === bounds.height) {
@@ -1246,11 +1288,19 @@ function placePanel(bounds) {
   }
 }
 
+function placePanelNearOrb() {
+  const bounds = orb.getBounds();
+  const anchor = desktopHost.settings.orbPlacement === 'right'
+    ? {...bounds, x: bounds.x + bounds.width - ORB_DOCK_HANDLE_WIDTH, width: ORB_DOCK_HANDLE_WIDTH}
+    : bounds;
+  placePanel(panelBounds(anchor, screen.getDisplayMatching(bounds).workArea));
+  applyShape(panel, 40);
+}
+
 function openPanel(focus = false) {
   if (!orb || !panel || orb.isDestroyed() || panel.isDestroyed()) return;
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
-  placePanel(panelBounds(orb.getBounds(), screen.getDisplayMatching(orb.getBounds()).workArea));
-  applyShape(panel, 40);
+  placePanelNearOrb();
   if (focus) panel.show(); else panel.showInactive();
   away = 0;
 }
@@ -1270,6 +1320,12 @@ function moveOrbDrag() {
 function movePanelGroup(point) {
   if (!panelDragOrigin || !orb || !panel) return;
   const area = screen.getDisplayNearestPoint(point).workArea;
+  if (desktopHost.settings.orbPlacement === 'right') {
+    const {panel: start, pointer} = panelDragOrigin;
+    placePanel(clampOrb({...start, x: start.x + point.x - pointer.x, y: start.y + point.y - pointer.y}, area));
+    applyShape(panel, 40);
+    return;
+  }
   const next = draggedGroupBounds(panelDragOrigin.orb, panelDragOrigin.pointer, point, area);
   placeOrb(orb, next.orb);
   placePanel(next.panel);
@@ -2670,14 +2726,12 @@ async function initializeRuntime() {
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
           authorizePresence:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
-            if(scope.phase!=='export')await windowsControlHost.preparePresence(scope);
             return windowsControlHost.hasPresence(scope.taskId);
           },onUpdate:publish});
         openCliBrowserHost=createOpenCliBrowserHost({
           readTask:taskId=>{try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}},
           authorize:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
-            if(scope.phase!=='export')await windowsControlHost.preparePresence(scope);
             return windowsControlHost.hasPresence(scope.taskId);
           },onUpdate:publish});
         if(computerVisionConfig)computerVisionHost=createComputerVisionHost({configuration:computerVisionConfig,
@@ -3009,9 +3063,9 @@ async function initializeRuntime() {
       };
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       const desktopControl={
-        tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[]),...(browserControlHost?.tools??[]),...(openCliBrowserHost?.tools??[]),...(computerVisionHost?.tools??[])],
-        availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[]),...(browserControlHost?.competitionToolAvailability??[]),...(openCliBrowserHost?.competitionToolAvailability??[]),...(computerVisionHost?.competitionToolAvailability??[])],
-        exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[]),...(browserControlHost?.competitionToolExports??[]),...(openCliBrowserHost?.competitionToolExports??[]),...(computerVisionHost?.competitionToolExports??[])],
+        tools:[...(windowsControlHost?.tools??[]),...(browserControlHost?.tools??[]),...(openCliBrowserHost?.tools??[]),...(computerVisionHost?.tools??[])],
+        availability:[...(windowsControlHost?.competitionToolAvailability??[]),...(browserControlHost?.competitionToolAvailability??[]),...(openCliBrowserHost?.competitionToolAvailability??[]),...(computerVisionHost?.competitionToolAvailability??[])],
+        exports:[...(windowsControlHost?.competitionToolExports??[]),...(browserControlHost?.competitionToolExports??[]),...(openCliBrowserHost?.competitionToolExports??[]),...(computerVisionHost?.competitionToolExports??[])],
       };
       const historyTool=syntheticMvp?undefined:createConversationHistoryTool({readContext:({taskId,signal})=>{
         const task=runtimeApplication.runtime.getTask(taskId);
@@ -3520,7 +3574,7 @@ async function initializeRuntime() {
             'workspace.read_text','workspace.list_entries','workspace.preview_text_patch',
             'workspace.stage_text_patch','workspace.apply_text_patch','workspace.git_diff_check',
             'workspace.node_check','workspace.npm_build','workspace.npm_test',SUBAGENT_DISPATCH_TOOL_NAME,'knowledge.search','mcp.workspace.read_text',
-            'desktop.request_presence','computer.request_access',WORKFLOW_SHADOW_PREVIEW,
+            'computer.request_access',WORKFLOW_SHADOW_PREVIEW,
             'developer.repository_context',
             'workflow.image.catalog',
           ].includes(tool.descriptor.name))
@@ -3653,7 +3707,7 @@ async function initializeRuntime() {
           const scope={phase,taskId,runId,proposal,deadline,signal};
           await remoteMcpCompetition.prepare(scope);
           if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
-          if(phase==='preflight'&&(/^computer\.desktop\./u.test(proposal?.toolName??'')||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
+          if(phase==='preflight'&&(windowsControlHost?.requiresToolPresence(proposal?.toolName)||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
           await computerVisionHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
           await feedsHost?.prepareExport?.(scope);
@@ -4835,6 +4889,7 @@ async function action(event, name, payload) {
   if (name === 'panel.hide' && sender === panel) { await hidePanel(); return; }
   if (name === 'orb.open' && sender === orb) { pinned = true; openPanel(true); publish(); return; }
   if (name === 'orb.dragStart' && sender === orb) {
+    if (desktopHost.settings?.orbPlacement === 'right') return;
     const revision = ++orbDragRevision, dragWindow = orb;
     const point = screen.getCursorScreenPoint(), bounds = dragWindow.getBounds();
     if (payload !== undefined && (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)
@@ -4853,7 +4908,7 @@ async function action(event, name, payload) {
     orbDragRevision++;
     stopOrbDrag();
     dragging = 'panel';
-    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getContentBounds()};
+    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getContentBounds(), panel: panel.getBounds()};
     return;
   }
   if (name === 'panel.dragMove' && sender === panel && dragging === 'panel') {
@@ -6241,7 +6296,7 @@ app.whenReady().then(async () => {
   powerMonitor.on('thermal-state-change',value=>{thermalState=value.state;sampleResources();});
   powerMonitor.on('speed-limit-change',value=>{speedLimit=value.limit;sampleResources();});
   powerMonitor.on('on-battery',sampleResources);powerMonitor.on('on-ac',sampleResources);
-  desktopHost = createDesktopHost();
+  desktopHost = createDesktopHost({onOrbPlacementChanged: reconfigureOrbPlacement});
   activityProduct = openDesktopActivity({userData:app.getPath('userData'),onUpdate:publish});
   microphonePermissionGate = createMicrophonePermissionGate({
     expectedPageUrl: pathToFileURL(entry).href,
@@ -6364,17 +6419,9 @@ app.whenReady().then(async () => {
 
   const area = screen.getPrimaryDisplay().workArea;
   orb = windowFor('orb', {x: area.x + area.width - 150, y: area.y + area.height - 180, width: 112, height: 112},
-    {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false});
+    {frame: false, transparent: true, skipTaskbar: true, resizable: false, hasShadow: false});
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
-    {frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
-  // MOD-11: clicks over the orb's transparent regions must reach the windows
-  // underneath. The controller samples the cursor in DIPs, keeps capturing
-  // inside the visible shell (hysteresis-stable across fractional DPI) and
-  // forwards everything else; drag states always capture.
-  const orbHitTest = createOrbHitTestController({win:orb, screen, isBusy:()=>dragging!==false,
-    log:event=>desktopHost.log(event,'orb')});
-  orbHitTest.start();
-  orb.on('closed', () => orbHitTest.stop());
+    {frame: false, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
   const panelMaterial=bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
@@ -6417,9 +6464,10 @@ app.whenReady().then(async () => {
 
   function reposition() {
     const bounds = orb.getContentBounds();
-    const next = clampOrb(bounds, screen.getDisplayMatching(bounds).workArea);
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const next = desktopHost.settings.orbPlacement === 'right' ? dockedOrbBounds(bounds, area) : clampOrb(bounds, area);
     placeOrb(orb, next);
-    if (panel.isVisible()) openPanel();
+    if (!panel.isDestroyed() && panel.isVisible()) placePanelNearOrb();
   }
   screen.on('display-removed', reposition);
   screen.on('display-metrics-changed', reposition);
@@ -6428,7 +6476,8 @@ app.whenReady().then(async () => {
     const point = screen.getCursorScreenPoint();
     const bounds = orb.getBounds();
     if (away > Date.now()) return;
-    const near = Math.hypot(point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2) <= 90;
+    const near = desktopHost.settings.orbPlacement === 'top'
+      && Math.hypot(point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2) <= 90;
     const panelBoundsValue = panel.getBounds();
     const inside = panel.isVisible() && point.x >= panelBoundsValue.x && point.x <= panelBoundsValue.x + panelBoundsValue.width && point.y >= panelBoundsValue.y && point.y <= panelBoundsValue.y + panelBoundsValue.height;
     if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panel.isVisible()) openPanel(); }

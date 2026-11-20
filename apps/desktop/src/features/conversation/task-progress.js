@@ -26,10 +26,11 @@ export function taskProgress(tasks, computer, authorization = {}) {
   }
   // Main has already restricted this projection to the visible conversation,
   // including its executing child. Do not relabel the persisted Runtime state.
-  if (['running', 'planning', 'waiting_approval'].includes(task.state)
+  if (['running', 'planning', 'waiting_approval', 'waiting_external'].includes(task.state)
     && computer?.waitingConfirmation === true && typeof computer.activeTaskId === 'string') {
     return {state: task.state, label: '等待本机确认',confirmationTaskId:computer.activeTaskId,
-      detail: '电脑操作尚未开始。确认本次在场后继续原任务；也可保持目标应用在前台按 F9。任务中的停止按钮随时可用。'};
+      detail: computer.reviewAction ? `需要你确认：${computer.reviewAction}。30 秒内未确认会跳过这一步，继续其他工作。`
+        : '电脑操作尚未开始。确认本次在场后继续原任务；也可保持目标应用在前台按 F9。'};
   }
   const step = ['running', 'planning', 'verifying'].includes(task.state)
     ? task.steps?.find(item => ['running', 'executing', 'verifying'].includes(item.state)) : undefined;

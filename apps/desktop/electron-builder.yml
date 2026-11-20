@@ -27,6 +27,7 @@ asar: true
 asarUnpack:
   - electron/f20-typescript-check.cjs
   - node_modules/typescript/lib/**/*
+  - node_modules/typescript/package.json
 
 win:
   target:
