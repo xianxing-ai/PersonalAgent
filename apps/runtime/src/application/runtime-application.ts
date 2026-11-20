@@ -829,8 +829,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT','Tool discovery requires Competition Profile');
     const discoveryTool=options.competitionToolDiscovery?createRuntimeToolDiscoveryTool(taskId=>this.taskCompetitionCatalog(taskId)):undefined;
     this.competitionToolExports = [...(options.competitionToolExports ?? []),...(discoveryTool?[{
-      toolName:TOOL_DISCOVERY_NAME,toolVersion:TOOL_DISCOVERY_VERSION,exportPolicyVersion:'original-task-public-tool-discovery-v1',
-      accepts:()=>true,project:({result}:{result:unknown})=>structuredClone(result),
+      toolName:TOOL_DISCOVERY_NAME,toolVersion:TOOL_DISCOVERY_VERSION,exportPolicyVersion:'original-task-public-tool-discovery-v2',
+      accepts:()=>true,project:({result}:{result:unknown})=>{
+        const {authorization,...catalog}=result as {authorization:'checked_on_invocation'};
+        return {...catalog,authorizationMode:authorization};
+      },
     }]:[])].map(binding => Object.freeze({...binding}));
     this.retainPriorToolResults=options.retainPriorToolResults===true;
     this.enableNewTaskToolContinuations=options.enableNewTaskToolContinuations===true;
