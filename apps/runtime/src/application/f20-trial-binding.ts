@@ -17,6 +17,52 @@ const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const plain=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const denied=():never=>{throw new ProtocolError('UNAUTHORIZED','Original F20 trial binding is unavailable or changed');};
 
+type F20Graph=RuntimeOwnedWorkflowDriverState<RuntimeF20Input>;
+
+/** Only the selected draft can enter the original trial. Reviewed drafts remain execution evidence. */
+export function readF20DraftSelection(application:RuntimeApplication,taskId:string,graph:F20Graph,readOnlyRecovery=false) {
+  const runtime=application.runtime,node=graph.result?.nodes.F20_N02;
+  if(node?.state!=='completed')return denied();
+  const choices=Object.values(graph.confirmedOperations??{}).filter(item=>item.nodeId==='F20_N02'&&item.toolName==='decision.choose_candidate');
+  let selected:{candidateId:string;candidate:ReturnType<typeof parseF20DocumentCandidate>}|undefined;
+  const evidenceRefs:string[]=[];
+  for(const choice of choices){
+    const original=runtime.loadCheckpoint(taskId,'owned-workflow:operation:'+choice.operationId) as
+      {taskId?:string;sessionId?:string;workflowId?:string;localTaskId?:string;
+        proposal?:{nodeId?:string;operationId?:string;toolName?:string;toolVersion?:string;arguments?:Record<string,unknown>}}|undefined;
+    const parent=runtime.loadCheckpoint(choice.localTaskId,'coding-repair:parent') as {taskId?:string;operationId?:string}|undefined;
+    const observed=application.readHostToolTask(choice.localTaskId),proposal=original?.proposal;
+    if(original?.taskId!==taskId||original.sessionId!==graph.sessionId||original.workflowId!=='F20'||original.localTaskId!==choice.localTaskId
+      ||proposal?.nodeId!=='F20_N02'||proposal.operationId!==choice.operationId||proposal.toolName!==choice.toolName||proposal.toolVersion!=='1.0.0'
+      ||parent?.taskId!==taskId||parent.operationId!==choice.operationId
+      ||observed.commandId!==choice.operationId||observed.toolName!==proposal.toolName||observed.toolVersion!==proposal.toolVersion
+      ||observed.task.state!=='succeeded'||!observed.confirmed?.evidenceRefs.length
+      ||observed.confirmed.evidenceRefs.some(ref=>!node.evidenceRefs?.includes(ref))
+      ||!isDeepStrictEqual(observed.confirmed.result,choice.result)||!plain(choice.result)||typeof choice.result.selectedId!=='string'
+      ||typeof proposal.arguments?.context!=='string')return denied();
+    let context:unknown;try{context=JSON.parse(proposal.arguments.context);}catch{return denied();}
+    if(!plain(context)||context.workflowId!=='F20'||context.nodeId!=='F20_N02'||!Array.isArray(context.candidateValues))return denied();
+    const candidateId=choice.result.selectedId,values=context.candidateValues;
+    evidenceRefs.push(...observed.confirmed.evidenceRefs);
+    if(candidateId==='owned-review'){
+      const intent=runtime.loadCheckpoint(taskId,'owned-workflow:intent:'+choice.operationId) as
+        {taskId?:string;sessionId?:string;workflowId?:string;proposal?:unknown}|undefined;
+      const sentinel=values.filter(value=>plain(value)&&value.id===candidateId);
+      if(intent?.taskId!==taskId||intent.sessionId!==graph.sessionId||intent.workflowId!=='F20'
+        ||!isDeepStrictEqual(intent.proposal,proposal)||sentinel.length!==1||sentinel[0].abstain!==true||sentinel[0].value!==null)return denied();
+      continue;
+    }
+    if(selected)return denied();
+    assertF20CandidateSelection({runtime,parentTaskId:taskId,operationId:choice.operationId,candidateValues:values,selectedId:candidateId,
+      ...(readOnlyRecovery?{readOnlyRecovery:true}:{})});
+    const candidate=parseF20DocumentCandidate(values.find(value=>plain(value)&&value.id===candidateId)?.value);
+    if(!isDeepStrictEqual(node.value,candidate))return denied();
+    selected={candidateId,candidate};
+  }
+  if(!selected)return denied();
+  return {...selected,choices,evidenceRefs};
+}
+
 /** Original pending proposal and confirmed HostBridge reads only. No checkpoint enumeration or authority grant. */
 export function readRuntimeF20Binding(application:RuntimeApplication,scope:{taskId:string;deadline:string;signal:AbortSignal}) {
   return readBinding(application,scope);
@@ -88,18 +134,8 @@ function readTrialBinding(application:RuntimeApplication,context:ToolContext,rec
       :runtime.getTask(context.taskId).state!=='running'||runtime.getTask(context.taskId).cancelRequested)
     ||execution?.state!==(recovery?'unknown':'started')||execution.policyDecision!=='allow'||!execution.executionStarted
     ||!plain(invocation.arguments)||!runtime.matchesToolExecutionInput(execution,{arguments:invocation.arguments,scopeRef:context.authorizationRef}))denied();
-  const choices=Object.values(saved.state.confirmedOperations??{}).filter(item=>item.nodeId==='F20_N02'&&item.toolName==='decision.choose_candidate');
-  if(choices.length!==1)denied();
-  const choice=choices[0]!,observed=application.readHostToolTask(choice.localTaskId);
-  const original=runtime.loadCheckpoint(parent.taskId,'owned-workflow:operation:'+choice.operationId) as {proposal?:{arguments?:{context?:string}}}|undefined;
-  let values:unknown;try{values=JSON.parse(original?.proposal?.arguments?.context??'').candidateValues;}catch{denied();}
-  if(!Array.isArray(values)||observed.task.state!=='succeeded'||!observed.confirmed?.evidenceRefs.length
-    ||!isDeepStrictEqual(observed.confirmed.result,choice.result)||!plain(choice.result)||typeof choice.result.selectedId!=='string')denied();
-  const candidateId=(choice.result as {selectedId:string}).selectedId;
-  assertF20CandidateSelection({runtime,parentTaskId:parent.taskId,operationId:choice.operationId,candidateValues:values as unknown[],selectedId:candidateId,
-    ...(recovery?{readOnlyRecovery:true}:{})});
-  const selected=(values as {id:string;value:unknown}[]).find(value=>value.id===candidateId);
-  const candidate=parseF20DocumentCandidate(selected?.value),samplePath=saved.input.codeFile+'.f20-sample.ts';
+  const {candidateId,candidate}=readF20DraftSelection(application,parent.taskId,saved.state,recovery);
+  const samplePath=saved.input.codeFile+'.f20-sample.ts';
   const args={candidateId,recipeIds:[saved.input.recipeId],patches:[{path:samplePath,expectedSha256:null,edits:[],createText:candidate.sampleSnippet}]};
   if(!isDeepStrictEqual(args,invocation!.arguments))denied();
   return {...saved,ownerTaskId:parent.taskId,candidateId,candidate,samplePath};
@@ -140,13 +176,7 @@ export function f20ReviewContext(application:RuntimeApplication,context:ToolCont
   if(trials.length!==1)denied();
   const trial=application.readHostToolTask(trials[0]!.localTaskId);
   if(trial.task.state!=='succeeded'||!trial.confirmed?.evidenceRefs.length||!isDeepStrictEqual(trial.confirmed.result,trials[0]!.result))denied();
-  const choices=Object.values(saved.state.confirmedOperations??{}).filter(item=>item.nodeId==='F20_N02'&&item.toolName==='decision.choose_candidate');
-  if(choices.length!==1||!plain(choices[0]!.result)||typeof choices[0]!.result.selectedId!=='string')denied();
-  const selectedId=(choices[0]!.result as {selectedId:string}).selectedId;
-  const selection=runtime.loadCheckpoint(parent.taskId,'owned-workflow:operation:'+choices[0]!.operationId) as {proposal?:{arguments?:{context?:string}}}|undefined;
-  const values=JSON.parse(selection?.proposal?.arguments?.context??'').candidateValues as {id:string;value:unknown}[];
-  assertF20CandidateSelection({runtime,parentTaskId:parent.taskId,operationId:choices[0]!.operationId,candidateValues:values,selectedId});
-  const candidate=parseF20DocumentCandidate(values.find(value=>value.id===selectedId)?.value);
+  const {candidate}=readF20DraftSelection(application,parent.taskId,saved.state);
   const review=JSON.parse(originalContext) as {candidateValues?:{id:string;value:unknown;abstain?:boolean}[]};
   if(!Array.isArray(review.candidateValues)||!review.candidateValues.some(value=>value.abstain!==true&&isDeepStrictEqual(value.value,candidate))
     ||review.candidateValues.some(value=>value.abstain!==true&&!isDeepStrictEqual(value.value,candidate)))denied();

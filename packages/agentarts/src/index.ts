@@ -7,7 +7,7 @@ import {ModelGateway} from '@personal-agent/models';
 import type {ModelPort} from '@personal-agent/models';
 import {parseAgentInput, repairInput, record} from './input.js';
 import type {AgentInput, RepairContext, RepairRef, RepairSource} from './input.js';
-import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTINUATION_TOOL_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, PLAN_GUIDANCE_PROMPT, BOUND_PLAN_DRAFT_PROMPT, REVIEW_PROMPT, BOUND_REVIEW_DECISION_PROMPT, PROMPT_VERSION} from './prompts.js';
+import {FAST_PROMPT, DISPATCH_PROMPT, CONTINUATION_REPLY_PROMPT, CONTINUATION_TOOL_PROMPT, WORKFLOW_CONTINUATION_PROMPT, CONTEXT_INTEGRITY_PROMPT, CONTINUATION_CONTEXT_PROMPT, HISTORY_LOOKUP_PROMPT, WORLD_PROMPT, WORLD_GUIDANCE_PROMPT, PLAN_PROMPT, PLAN_GUIDANCE_PROMPT, BOUND_PLAN_DRAFT_PROMPT, REVIEW_PROMPT, BOUND_REVIEW_DECISION_PROMPT, PROMPT_VERSION} from './prompts.js';
 import {ownedBinding} from './bindings.js';
 import {worldGuidance, planGuidance} from './world-guidance.js';
 import {bindLiteralGoalRepair, boundPlanSlots, bindPlanDraft, bindReviewDecision} from './repair-role-binding.js';
@@ -184,6 +184,8 @@ export class OwnedAgentOrchestrator {
         workflowRequirements:{summary:context.template.summary,decisionPoints:context.template.decisionPoints,
           designNotes:context.template.designNotes,acceptance:context.template.acceptance},
         ...workflowCandidateMetadata(context.node,context.availableTools),
+        ...(context.rejectedF20Draft?{rejectedDraft:context.rejectedF20Draft,
+          draftRevision:'The previous draft was declined by the reviewer. Compare it with both original sources. Rewrite unsupported or overstated claims as a narrower, source-backed draft. Preserve an explicitly typed TypeScript example. Do not reuse the declined draft.'}:{}),
         predecessorOutputs:context.predecessorOutputs,predecessorStates:context.predecessorStates,availableTools:context.availableTools,
         ...(context.codingRepair?{codingRepair:context.codingRepair,codingRepairContract:{version:1,
           currentRound:context.codingRepair.round,rule:'Use the current SHA-bound snapshot and actual verification diagnostics; preserve working code and unrelated files. Patch the smallest causally supported scope. Do not remove tests or assertions merely to make checks pass. JS/TS AST analysis describes syntax/declaration ranges only; other languages require the published validation recipes.',
@@ -266,7 +268,8 @@ export class OwnedAgentOrchestrator {
       raw = await this.call('fast', input.kind === 'goal_analysis'
         ? FAST_PROMPT + '\n仅分析宿主 RECHECK 数据；只返回 text，不提出工具或修复候选。没有执行授权，尚未执行或修改计划。'
         : FAST_PROMPT + CONTEXT_INTEGRITY_PROMPT + HISTORY_LOOKUP_PROMPT + (input.kind==='continuation'
-          ?(input.availableTools===undefined?CONTINUATION_REPLY_PROMPT:CONTINUATION_TOOL_PROMPT)+CONTINUATION_CONTEXT_PROMPT:DISPATCH_PROMPT), input, request);
+          ?(input.availableTools===undefined?CONTINUATION_REPLY_PROMPT:CONTINUATION_TOOL_PROMPT)+CONTINUATION_CONTEXT_PROMPT+WORKFLOW_CONTINUATION_PROMPT
+          :DISPATCH_PROMPT), input, request);
     }
     return this.selectOutput(this.applicationOutput(raw, input, repair, reviewedChanges, request), input, request);
   }

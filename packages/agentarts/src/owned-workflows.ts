@@ -13,7 +13,8 @@ import type {RepairPolicyOptions,RepairTrace} from './repair-policy.js';
 import {codingRepairConfiguration,createCodingRepairFrontier,compactCodingSnapshot,acceptCodingChecks,parseCodingPatchCandidate,
   analyzeCodingPatches,codingPatchCost,codingPatchRepeated,codingSnapshotFingerprint,codingFailureFingerprint,codingPatchFingerprint,requiredCodingVerification,codingRepairDigestText} from './coding-repair.js';
 import type {CodingRepairFrontier} from './coding-repair.js';
-import {f20DocumentCandidateSchema} from './f20-worker-trust.js';
+import {f20DocumentCandidateSchema,parseF20DocumentCandidate} from './f20-worker-trust.js';
+import type {F20DocumentCandidate} from './f20-worker-trust.js';
 
 export type OwnedWorkflowMode = 'main' | 'decision_shadow' | 'trace_replay' | 'isolated';
 export interface WorkflowSelector {
@@ -34,6 +35,7 @@ export interface WorkflowNodeContext {
   deadline:string;signal:AbortSignal;requestId:string;mode:OwnedWorkflowMode;namespace:string;
   /** Sealed F15 round plus SHA-bound current sources, never a tool grant. */
   codingRepair?:CodingRepairFrontier;
+  rejectedF20Draft?:F20DocumentCandidate;
 }
 export interface WorkflowHostPort {
   /** Discovery is trusted startup composition, never supplied in query by an end user. */
@@ -91,7 +93,8 @@ interface StepState {state:NodeState;value?:unknown;proposal?:WorkflowProposal;e
   repairTrace?:RepairTrace;repairHoldUntil?:string;
   shadow?:{plan:WorkflowShadowSelectedPlan;selectionDigest:string;evaluation?:WorkflowShadowEvaluationReceipt};
   /** Sealed original alternatives; a decision receipt is not a business-tool receipt. */
-  pendingSelection?:readonly WorkflowCandidate[];selectedCandidate?:WorkflowCandidate;pendingGuard?:true}
+  pendingSelection?:readonly WorkflowCandidate[];selectedCandidate?:WorkflowCandidate;pendingGuard?:true;
+  f20DraftReview?:{lastDraft:F20DocumentCandidate;rejectedDigests:readonly string[]}}
 interface CheckpointState {
   workflowVersion:typeof OWNED_WORKFLOW_VERSION;workflowId:string;templateVersion:string;templateDigest:string;
   taskId:string;sessionId:string;controlRevision:number;inputDigest:string;catalogDigest:string;mode:OwnedWorkflowMode;
@@ -117,6 +120,7 @@ export interface OwnedWorkflowAdvanceResult {
 }
 const plain = (value:unknown):value is Record<string,unknown> => !!value&&typeof value==='object'&&!Array.isArray(value);
 const digest = (value:unknown):string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const f20DraftDigest=(draft:F20DocumentCandidate)=>digest([draft.docMarkdown.trim(),draft.sampleSnippet.trim()]);
 const invalid = (message='Invalid owned workflow request'):never => {throw new ProtocolError('INVALID_ARGUMENT',message);};
 const safeId = (value:unknown):value is string => typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
 const control = (request:Pick<OwnedWorkflowAdvanceRequest,'signal'|'deadline'>):void => {
@@ -157,7 +161,7 @@ export function workflowCandidateMetadata(node:OwnedWorkflowNode,tools:readonly 
     resultEvidenceStage:proposed?'after_actual_execution':'required_for_generated_claims'},
     ...(['F20_N02','F20_N04'].includes(node.id)?{candidateValueSchema:f20DocumentCandidateSchema(),
       candidateConstraint:node.id==='F20_N02'
-        ?'Use both original sources. Document the observable behavior the implementation actually performs, including exact return values and defaults. Do not infer operations, side effects, or response semantics from names or from the existing documentation. Mark any unsupported feature as proposed or unverified. Include the API documentation and a TypeScript example with an explicitly typed object, or abstain.'
+        ?'Use both original sources. Document the observable behavior the implementation actually performs, including exact return values and defaults. TypeScript declarations describe the static contract, not runtime validation: do not claim extra or invalid inputs are rejected unless the implementation actually rejects them. Do not infer operations or side effects from names or existing documentation. Omit unsupported behavior. Include documentation and a TypeScript example with an explicitly typed object, or abstain.'
         :'Retain the exact original selected F20 document candidate after the verified check, or abstain.'}:{}),
     publishedTools:tools.filter(tool=>node.capabilities.some(cap=>cap.kind==='tool'&&cap.name===tool.name)
       ||node.kind==='host'&&tool.name===workflowHostToolName(node.id)).map(tool=>copy(tool))};
@@ -319,9 +323,11 @@ export class OwnedWorkflowEngine {
     const sourceTool=coding&&node.id==='F15_N01'?'workspace.coding_snapshot':coding&&node.id==='F15_N03'&&coding.readPath?'coding.repair.read':undefined;
     const effectiveNode=sourceTool?{...node,kind:'tool' as const,effect:'read' as const,capabilities:[{kind:'tool' as const,name:sourceTool,boundary:'local' as const}]}:node;
     const predecessors=node.dependencies.map(dependency=>dependency.nodeId);
+    const rejectedF20Draft=state.nodes[node.id]?.f20DraftReview?.lastDraft;
     // N03 already depends on N02. Carry the sealed selected draft into N04 without changing the imported graph.
     if(template.workflowId==='F20'&&node.id==='F20_N04')predecessors.push('F20_N02');
     return {template:copy(template),node:copy(effectiveNode),input:copy(request.input),...(coding?{codingRepair:coding}:{}),
+      ...(rejectedF20Draft?{rejectedF20Draft:copy(rejectedF20Draft)}:{}),
       predecessorOutputs:copy(Object.fromEntries(predecessors.map(nodeId=>{
         const value=state.nodes[nodeId]?.value;
         if(state.nodes[nodeId]?.inputReference) {
@@ -395,7 +401,14 @@ export class OwnedWorkflowEngine {
           this.validateShadowEvaluation(evaluation,plan!,workflowShadowSelectionDigest(result),receipt.nodeId,state);
         }
         if(plan)step.shadow={plan:evaluation?copy(evaluation.plan):{...plan,mode:'ordinary'},selectionDigest:workflowShadowSelectionDigest(result),...(evaluation?{evaluation:copy(evaluation)}:{})};
-        step.state='pending';step.selectedCandidate=copy(selected!);
+        step.state='pending';
+        if(state.workflowId==='F20'&&receipt.nodeId==='F20_N02'&&selected!.abstain) {
+          const drafts=step.pendingSelection.filter(candidate=>!candidate.abstain).map(candidate=>parseF20DocumentCandidate(candidate.value));
+          if(!drafts.length)invalid('F20 review requires an original draft');
+          step.f20DraftReview={lastDraft:drafts[0]!,rejectedDigests:[...new Set([
+            ...(step.f20DraftReview?.rejectedDigests??[]),...drafts.map(f20DraftDigest)])]};
+          delete step.selectedCandidate;
+        } else step.selectedCandidate=copy(selected!);
         step.evidenceRefs=[...(step.evidenceRefs??[]),...receipt.evidenceRefs];
         delete step.proposal;delete step.pendingSelection;delete step.reason;
         continue;
@@ -480,11 +493,16 @@ export class OwnedWorkflowEngine {
     if(this.options.decisionTool&&!context.availableTools.some(tool=>tool.name===this.options.decisionTool!.name&&tool.version===this.options.decisionTool!.version)) {
       return {state:'unavailable',reason:'Local decision tool is not published by the trusted Runtime'};
     }
-    const candidates=copy(await this.options.prepareCandidates(context));
+    let candidates=copy(await this.options.prepareCandidates(context));
     control(context);
     if(!Array.isArray(candidates)||candidates.length<2||candidates.length>16||new Set(candidates.map(item=>item.id)).size!==candidates.length
       ||candidates.some(item=>!safeId(item.id)||typeof item.description!=='string'||!item.description.trim()
         ||!Object.hasOwn(item,'value'))) throw new ProtocolError('EXTERNAL_FAILURE','Invalid executor candidates');
+    if(context.template.workflowId==='F20'&&context.node.id==='F20_N02') {
+      const rejected=new Set(state.nodes[context.node.id]!.f20DraftReview?.rejectedDigests??[]);
+      candidates=candidates.filter(candidate=>candidate.abstain||!rejected.has(f20DraftDigest(parseF20DocumentCandidate(candidate.value))));
+      if(candidates.every(candidate=>candidate.abstain))return {state:'failed',reason:'F20 review rejected the original draft and no revised draft was produced'};
+    }
     for(const candidate of candidates)if(candidate.metadata)parseWorkflowSelectionResult({selectedId:candidate.id,metadata:candidate.metadata},candidates.map(item=>item.id));
     const selectionRequest={context:JSON.stringify({workflowId:context.template.workflowId,
       nodeId:context.node.id,label:context.node.label,
@@ -778,6 +796,7 @@ export class OwnedWorkflowEngine {
       const prior=state.nodes[id]!;
       state.nodes[id]={...result,...(prior.evidenceRefs?{evidenceRefs:prior.evidenceRefs}:{}),
         ...(prior.shadow?{shadow:prior.shadow}:{}),
+        ...(prior.f20DraftReview&&result.state!=='completed'?{f20DraftReview:prior.f20DraftReview}:{}),
         ...(prior.previousAttempts?{previousAttempts:prior.previousAttempts}:{}),
         ...(prior.repairTrace?{repairTrace:prior.repairTrace}:{}),
         ...(prior.retrySafe?{retrySafe:true}:{})};

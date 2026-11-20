@@ -29,6 +29,7 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
   const access = createConversationToolAccess({getApplication:() => app,
     getConversations:() => ({containsConversation:id => id === 'synthetic-main'}), now:() => clock});
   const readRequestContext = vm.runInNewContext(`(${source})`, {conversationToolAccess:access,todoHost:host,
+    codingWorkspace:{readF20CaseConfiguration:()=>({configured:true,inputRef:'f20-case'})},
     connectorConversationTools:{tools:[{descriptor:{name:'calendar.create'}}]},calendarConfig:{snapshot:()=>({configured:false})},
     createConversationEnvironmentContext:options => createConversationEnvironmentContext({...options,
       now:() => new Date(clock),readTimeZone:() => 'Asia/Shanghai'})});

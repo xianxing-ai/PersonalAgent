@@ -1986,7 +1986,11 @@ function readDesktopRequestContext(scope) {
   if (!conversationToolAccess?.resolveConversation(scope.taskId)) return;
   return createConversationEnvironmentContext({readTodoState:current=>todoHost?.readConversationGuidance?.(current),
     readCalendarState:()=>({registered:connectorConversationTools?.tools.some(tool=>tool.descriptor.name==='calendar.create')===true,
-      configured:calendarConfig?.snapshot().configured===true})})(scope);
+      configured:calendarConfig?.snapshot().configured===true}),
+    readF20InputRef:()=>{
+      const selected = codingWorkspace?.readF20CaseConfiguration();
+      return selected?.configured === true ? selected.inputRef : undefined;
+    }})(scope);
 }
 
 function readDesktopConversationContext(scope,maxMessages) {
