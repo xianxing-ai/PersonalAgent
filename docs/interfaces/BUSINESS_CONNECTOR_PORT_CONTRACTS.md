@@ -2,15 +2,15 @@
 
 > 本文是 28 图中业务域能力名（`todo./reminder./calendar./mail./feeds./notification./research./weather.` 前缀）的接口约定登记。
 > 机器校验：`node scripts/competition/verify-graph-capability-coverage.mjs --domain business`（tests/contracts/business-connector-graph-contract.test.mjs）。
-> 数据来源：`docs/competition/workflow-wiring.json`（图声明）+ `docs/competition/evidence/graph-capability-gaps.json`（缺口登记，86 条全域共享）。
-> 规则：缺受信口保持 unavailable，禁止 Fake/静默回退；每个缺口必须有归属（owners/status/note/sources），每个有提供者的名字必须从缺口登记移除。
+> 数据来源：`docs/competition/workflow-wiring.json`（图声明）+ `docs/competition/evidence/graph-capability-gaps.json`（缺口登记）。
+> 规则：缺受信口保持 unavailable，禁止 Fake/静默回退。覆盖校验的源码命中只证明存在实现候选；在可信生产调用方接线前保留缺口登记。
 
 ## 1. 已提供（main 有生产实现，工具名与连接器操作对齐）
 
 | 图能力 | kind | 提供者 | 说明 |
 | --- | --- | --- | --- |
 | `calendar.events` | tool | packages/connectors/calendar（`calendar.events` 操作） | 只读日历查询 |
-| `calendar.create` / `calendar.update` / `calendar.cancel` | tool | packages/connectors/calendar | 受控写操作（经 Policy/审批） |
+| `calendar.create` / `calendar.update` / `calendar.cancel` | tool | packages/connectors/calendar | 受控写操作（经 Policy/审批，支持 externalId、重放幂等与 `expectedSequence`/`ifMatch` 条件写） |
 | `mail.inbox` / `mail.reconcile_send` | tool | packages/connectors/mail | 收件与 Sent 对账（reconcile 已有） |
 | `mail.save_draft` / `mail.accounts` / `mail.mark_seen` | tool | packages/connectors/mail | 草稿/账户/已读 |
 | `feeds.collect` / `feeds.subscriptions` | tool | packages/connectors/feeds | 订阅抓取与目录 |
@@ -20,18 +20,22 @@
 | `todo.create` / `todo.list` / `todo.update` | tool | packages/productivity | 待办基础操作 |
 | `weather.forecast` | tool（图未引用） | packages/connectors/weather | 连接器提供但当前 F11 未在图中引用；保留提供面 |
 
-## 2. 已登记缺口（main 尚无提供者；状态见缺口登记 JSON，逐条含 owner/note/sources）
+## 2. 已登记缺口与接线说明
 
-| 图能力 | 图 | 缺口（摘要） | 负责 |
+`F06`/`F07`/`F08`/`F09`/`F11`/`F12` 的宿主实现（[packages/agentarts/src/f06-f07-f11-business-hosts.ts](../../packages/agentarts/src/f06-f07-f11-business-hosts.ts)、[packages/agentarts/src/f08-f09-business-hosts.ts](../../packages/agentarts/src/f08-f09-business-hosts.ts)、[packages/agentarts/src/f12-notification-hosts.ts](../../packages/agentarts/src/f12-notification-hosts.ts)）与开发工作流宿主端口（[packages/agentarts/src/f16-dev-workflows-hosts.ts](../../packages/agentarts/src/f16-dev-workflows-hosts.ts)、[packages/agentarts/src/f18-f19-github-hosts.ts](../../packages/agentarts/src/f18-f19-github-hosts.ts)）均已通过 [apps/desktop/electron/business-workflow-hosts.js](../../apps/desktop/electron/business-workflow-hosts.js) 及 [apps/desktop/electron/feeds-host.js](../../apps/desktop/electron/feeds-host.js) 完成桌面宿主接线与 SQLite/Loopback 回路实测，并在 [apps/desktop/test/business-workflow-hosts.test.mjs](../../apps/desktop/test/business-workflow-hosts.test.mjs) 与 [apps/desktop/test/feeds-host.test.mjs](../../apps/desktop/test/feeds-host.test.mjs) 持续回归。外部真云/真硬件/真实邮箱账号读回仍按真实环境独立验收：
+
+| 图能力 | kind | 宿主实现与接线 | 说明 |
 | --- | --- | --- | --- |
-| `todo.registered_write` | F06 | 生产 `invokeTodoCreate` 注册写口 | Potatos498 |
-| `reminder.current_clock_and_revision` | F06 | 提醒时钟与版本口 | Potatos498 |
-| `notification.deliver` | F06/F12 | N05 真实投递回执 | Potatos498 + goo122（#574 在途） |
-| `notification.deliver_when_due` | F12 | 到期投递口（#574 在途） | Potatos498 |
-| `mail.registered_send` | F08 | 真 SMTP 发送（非 Fake 回执） | Potatos498 |
-| `mail.registered_archive` | F08 | Gateway 真归档 | Potatos498 |
-| `feeds.validate_and_deduplicate` | F09 | 真实 feeds 提供者与会话授权 | Potatos498 |
-| `calendar.update_and_invalidate_reminder` | F11 | `calendar.update` 生产工具链与提醒失效联动 | Potatos498 |
+| `calendar.freshness_check` | host | `f06-f07-f11-business-hosts.ts` + `business-workflow-hosts.js` | 日历序列号与时间窗新鲜度校验（已接 `CalDavProvider`） |
+| `calendar.registered_write` | host | `f06-f07-f11-business-hosts.ts` + `business-workflow-hosts.js` | 受控日历创建/更新写口与账户绑定（已接 `CalDavProvider`） |
+| `calendar.update_and_invalidate_reminder` | host | `f06-f07-f11-business-hosts.ts` + `business-workflow-hosts.js` + `todo-host.js` | 条件更新 + `todoHost.invalidateReminder` 联动 |
+| `todo.registered_write` | host | `f06-f07-f11-business-hosts.ts` + `business-workflow-hosts.js` | SQLite CAS（`RuntimeAtomicStatePort`）幂等写口 |
+| `reminder.current_clock_and_revision` | host | `f06-f07-f11-business-hosts.ts` + `todo-host.js` | 真实时钟与 `todoHost.readReminderState` 读回 |
+| `feeds.validate_and_deduplicate` | host | `f08-f09-business-hosts.ts` + `feeds-host.js` | `feed-source-grant` 租约与跨重启持久游标/指纹 |
+| `notification.deliver` / `notification.deliver_when_due` | host | `f12-notification-hosts.ts` + `notification-application-host.js` + `desktop-notification-port.js` | OS 回执/点击/撤回账本接线（真机系统通知另行实测） |
+| `mail.registered_archive` | host | `f08-f09-business-hosts.ts` + `packages/connectors/mail` (`archiveMessage`) + `business-workflow-hosts.js` | IMAP 真实归档方法已落盘，真实 QQ 账号联跑需配置环境变量 |
+| `mail.registered_send` | host | `f08-f09-business-hosts.ts` + `business-workflow-hosts.js` | 对齐 `MailService.send` 与 `unknown` 对账态，真实发信需配置环境变量 |
+| `github.bound_ci_failure` / `workspace.test_intent_check` | host | `f16-dev-workflows-hosts.ts` + `business-workflow-hosts.js` | F16 CI 失败日志读回与测试意图校验（已接 `GhCliProvider`/`GitHubService`） |
 
 ## 3. 组合契约（谁注入什么）
 

@@ -207,3 +207,164 @@ export function createGithubMergedRepairReadbackHostPort(options: {
     },
   };
 }
+
+/** F19_N03：创建关联 F15 修复子任务——按 Issue 绑定幂等入队，不复用对话 ID。 */
+export interface IssueRepairTaskPort {
+  submitRepairTask(request: {
+    owner: string;
+    repo: string;
+    issueNumber: number;
+    linkedPrNumber?: number;
+    idempotencyKey: string;
+  }, context: WorkflowNodeContext): Promise<{taskId: string; state?: string; idempotencyKey?: string}> | {taskId: string; state?: string; idempotencyKey?: string};
+}
+
+export function createRuntimeEnqueueIssueRepairHostPort(options: {
+  runtime: IssueRepairTaskPort;
+  resolveBinding(context: WorkflowNodeContext): {issue: GithubBinding; linkedPrNumber?: number} | undefined;
+}): WorkflowHostPort {
+  if (typeof options?.runtime?.submitRepairTask !== 'function' || typeof options?.resolveBinding !== 'function') {
+    throw new TypeError('createRuntimeEnqueueIssueRepairHostPort 需要 runtime.submitRepairTask 与 resolveBinding');
+  }
+  return {
+    capabilities: ['runtime.enqueue_issue_repair'],
+    async read(context: WorkflowNodeContext) {
+      const binding = options.resolveBinding(context);
+      if (!binding || !text(binding.issue?.owner) || !text(binding.issue?.repo) || !Number.isSafeInteger(binding.issue?.number)) {
+        return fail('unavailable', 'issue_repair_binding_unavailable');
+      }
+      const key = `f19-issue-repair:${binding.issue.owner}/${binding.issue.repo}#${binding.issue.number}`;
+      try {
+        const submitted = await options.runtime.submitRepairTask({
+          owner: binding.issue.owner,
+          repo: binding.issue.repo,
+          issueNumber: binding.issue.number,
+          ...(binding.linkedPrNumber !== undefined ? {linkedPrNumber: binding.linkedPrNumber} : {}),
+          idempotencyKey: key,
+        }, context);
+        if (!isPlainObject(submitted) || !text(submitted.taskId)) {
+          return fail('failed', 'issue_repair_enqueue_malformed');
+        }
+        return {
+          state: 'completed' as const,
+          value: {
+            fixSubtaskSpawned: true,
+            taskId: submitted.taskId,
+            issue: {...binding.issue},
+            ...(binding.linkedPrNumber !== undefined ? {linkedPrNumber: binding.linkedPrNumber} : {}),
+            idempotencyKey: submitted.idempotencyKey ?? key,
+            enqueuedAt: new Date().toISOString(),
+            source: 'runtime_issue_repair_queue',
+          },
+        };
+      } catch (error) {
+        if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw error;
+        return fail('failed', 'issue_repair_enqueue_failed');
+      }
+    },
+  };
+}
+
+/** F19_N05：核实修复 PR 已合并且回归验证通过后才允许关闭 Issue；未合并/未通过/冲突均拒绝，写入未知保 unknown 对账。 */
+export interface GithubIssueClosePort {
+  execute(operation: 'issue.get' | 'pr.get' | 'issue.close', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
+}
+
+export interface GithubCloseIssueBinding {
+  readonly issue: GithubBinding;
+  readonly repairPr: number;
+  readonly expectedUpdatedAt?: string;
+  readonly comment?: string;
+  readonly verifiedPassed: boolean;
+}
+
+export function createGithubRegisteredCloseIssueHostPort(options: {
+  github: GithubIssueClosePort;
+  resolveBinding(context: WorkflowNodeContext): GithubCloseIssueBinding | undefined;
+}): WorkflowHostPort {
+  if (typeof options?.github?.execute !== 'function' || typeof options?.resolveBinding !== 'function') {
+    throw new TypeError('createGithubRegisteredCloseIssueHostPort 需要 github 端口与 resolveBinding');
+  }
+  return {
+    capabilities: ['github.registered_close_issue'],
+    async read(context: WorkflowNodeContext) {
+      const binding = options.resolveBinding(context);
+      if (!binding || !binding.issue || !text(binding.issue.owner) || !text(binding.issue.repo)
+        || !Number.isSafeInteger(binding.issue.number) || !Number.isSafeInteger(binding.repairPr)) {
+        return fail('unavailable', 'issue_close_binding_unavailable');
+      }
+      if (binding.verifiedPassed !== true) {
+        return fail('failed', 'issue_repair_verification_required', {
+          issue: {...binding.issue},
+          repairPr: binding.repairPr,
+        });
+      }
+      const repoSlug = `${binding.issue.owner}/${binding.issue.repo}`;
+      let closeDispatched = false;
+      try {
+        const pr = await options.github.execute('pr.get', {
+          repo: repoSlug,
+          number: binding.repairPr,
+        }, context);
+        if (!isPlainObject(pr) || (pr.merged !== true && pr.state !== 'merged')) {
+          return fail('failed', 'repair_pr_not_merged', {
+            issue: {...binding.issue},
+            repairPr: binding.repairPr,
+          });
+        }
+        const issue = await options.github.execute('issue.get', {
+          repo: repoSlug,
+          number: binding.issue.number,
+        }, context);
+        if (!isPlainObject(issue) || !bindingMatches(issue, binding.issue)) {
+          return fail('failed', 'issue_binding_mismatch');
+        }
+        if (binding.expectedUpdatedAt !== undefined && typeof issue.updatedAt === 'string' && issue.updatedAt !== binding.expectedUpdatedAt) {
+          return fail('failed', 'issue_revision_conflict', {
+            expectedUpdatedAt: binding.expectedUpdatedAt,
+            actualUpdatedAt: issue.updatedAt,
+          });
+        }
+        closeDispatched = true;
+        const closed = await options.github.execute('issue.close', {
+          repo: repoSlug,
+          number: binding.issue.number,
+          ...(binding.expectedUpdatedAt ? {expectedUpdatedAt: binding.expectedUpdatedAt} : {}),
+          ...(binding.comment ? {comment: binding.comment} : {}),
+          stateReason: 'completed',
+        }, context);
+        if (!isPlainObject(closed) || closed.state !== 'confirmed') {
+          return fail('unknown', 'issue_close_outcome_uncertain', {
+            reconciliationRequired: true,
+            issue: {...binding.issue},
+            repairPr: binding.repairPr,
+          });
+        }
+        return {
+          state: 'completed' as const,
+          value: {
+            closedSuccess: true,
+            issue: {...binding.issue},
+            repairPr: binding.repairPr,
+            externalId: typeof closed.externalId === 'string' ? closed.externalId : String(binding.issue.number),
+            url: typeof closed.url === 'string' ? closed.url : undefined,
+            evidenceRefs: Array.isArray(closed.evidenceRefs) ? closed.evidenceRefs : [],
+            closedAt: new Date().toISOString(),
+            source: 'platform_readback',
+          },
+        };
+      } catch (error) {
+        if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw error;
+        const code = (error as {code?: unknown})?.code;
+        if (closeDispatched && (code === 'RESULT_UNKNOWN' || !['INVALID_ARGUMENT', 'UNAUTHORIZED', 'SCOPE_DENIED', 'REVISION_CONFLICT', 'NOT_FOUND'].includes(String(code ?? '')))) {
+          return fail('unknown', 'issue_close_outcome_uncertain', {
+            reconciliationRequired: true,
+            issue: {...binding.issue},
+            repairPr: binding.repairPr,
+          });
+        }
+        return fail('failed', 'issue_close_failed');
+      }
+    },
+  };
+}

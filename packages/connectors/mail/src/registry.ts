@@ -1,6 +1,8 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import type { ProtocolContracts } from '@personal-agent/contracts';
 import type {
+  MailArchiveInput,
+  MailArchiveResult,
   MailFetchInput,
   MailFolder,
   MailMarkSeenInput,
@@ -104,6 +106,12 @@ export class RegistryMailProvider implements MailProvider {
 
   markSeen(accountRef: string, input: MailMarkSeenInput, context?: MailOperationContext): {uid: number; seen: boolean} | Promise<{uid: number; seen: boolean}> {
     return this.registry.resolve(accountRef).markSeen(accountRef, input, context);
+  }
+
+  archiveMessage(accountRef: string, input: MailArchiveInput, context?: MailOperationContext): MailArchiveResult | Promise<MailArchiveResult> {
+    const provider = this.registry.resolve(accountRef);
+    if (!provider.archiveMessage) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'This mail provider cannot archive messages');
+    return provider.archiveMessage(accountRef, input, context);
   }
 
   send(accountRef: string, input: MailSendInput & {idempotencyKey: string}): MailSendResult | Promise<MailSendResult> {

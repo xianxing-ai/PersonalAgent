@@ -55,7 +55,7 @@ const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
 
 const createEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。给 uid 时同 UID 重放幂等。',
+  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。给 externalId/uid 时同标识同内容重放幂等。',
   required: ['summary', 'startUtc', 'endUtc'],
   additionalProperties: false,
   properties: {
@@ -64,6 +64,7 @@ const createEventInputSchema: ToolDescriptor['inputSchema'] = {
     endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
     location: {type: 'string', maxLength: 512},
     notes: {type: 'string', maxLength: 4096},
+    externalId: {type: 'string', minLength: 1, maxLength: 512, pattern: '^[^\\u0000-\\u001f\\u007f]+$', description: '可选：显式事件外部标识（与 calendar.events 返回字段同名）；缺省由提供商生成。'},
     uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '可选：显式资源 UID（用于重放幂等）；缺省由提供商生成。'},
   },
 };
@@ -91,6 +92,16 @@ function resolveEventId(raw: {externalId?: unknown; uid?: unknown}): string {
   return (externalId ?? uid) as string;
 }
 
+/** 创建时的可选标识：至多一个；两者都给直接拒绝。 */
+function resolveOptionalEventId(raw: {externalId?: unknown; uid?: unknown}): string | undefined {
+  const externalId = typeof raw.externalId === 'string' && raw.externalId.length > 0 ? raw.externalId : undefined;
+  const uid = typeof raw.uid === 'string' && raw.uid.length > 0 ? raw.uid : undefined;
+  if (externalId !== undefined && uid !== undefined) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Provide at most one of externalId or uid');
+  }
+  return externalId ?? uid;
+}
+
 const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
   description: '更新既有日历事件的字段（缺省字段保持原值）；SEQUENCE 递增后写回并读回核对。',
@@ -103,6 +114,8 @@ const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
     endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
     location: {type: 'string', maxLength: 512},
     notes: {type: 'string', maxLength: 4096},
+    expectedSequence: {type: 'integer', minimum: 0},
+    ifMatch: {type: 'string', minLength: 1, maxLength: 1024},
   },
 };
 
@@ -189,12 +202,13 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         inputSchema: createEventInputSchema, outputSchema: writeOutputSchema,
         idempotencySupport: false, recoverySupport: false},
       execute: async (input: unknown, context) => {
-        const raw = input as {summary: string; startUtc: string; endUtc: string; location?: string; notes?: string; uid?: string};
+        const raw = input as {summary: string; startUtc: string; endUtc: string; location?: string; notes?: string; uid?: string; externalId?: string};
+        const uid = resolveOptionalEventId(raw);
         const record = await writes.createEvent({
           summary: raw.summary, startUtc: raw.startUtc, endUtc: raw.endUtc,
           ...(raw.location === undefined ? {} : {location: raw.location}),
           ...(raw.notes === undefined ? {} : {notes: raw.notes}),
-          ...(raw.uid === undefined ? {} : {uid: raw.uid})},
+          ...(uid === undefined ? {} : {uid})},
           {signal: context.signal, deadline: context.deadline});
         return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'created', summary: '日程已创建，日历中已存在该条目。'};
       },
@@ -204,14 +218,16 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         inputSchema: updateEventInputSchema, outputSchema: writeOutputSchema,
         idempotencySupport: true, recoverySupport: true},
       execute: async (input: unknown, context) => {
-        const raw = input as {externalId?: string; uid?: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string};
+        const raw = input as {externalId?: string; uid?: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string; expectedSequence?: number; ifMatch?: string};
         const record = await writes.updateEvent({
           uid: resolveEventId(raw),
           ...(raw.summary === undefined ? {} : {summary: raw.summary}),
           ...(raw.startUtc === undefined ? {} : {startUtc: raw.startUtc}),
           ...(raw.endUtc === undefined ? {} : {endUtc: raw.endUtc}),
           ...(raw.location === undefined ? {} : {location: raw.location}),
-          ...(raw.notes === undefined ? {} : {notes: raw.notes})},
+          ...(raw.notes === undefined ? {} : {notes: raw.notes}),
+          ...(raw.expectedSequence === undefined ? {} : {expectedSequence: raw.expectedSequence}),
+          ...(raw.ifMatch === undefined ? {} : {ifMatch: raw.ifMatch})},
           {signal: context.signal, deadline: context.deadline});
         return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'updated', summary: '日程已更新，日历中已保存新内容。'};
       },

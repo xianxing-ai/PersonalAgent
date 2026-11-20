@@ -33,3 +33,24 @@ test('a hook exception does not roll back the failure', async () => {
     assert.equal(runtime.getTask(task.taskId).state, 'failed');
   } finally { runtime.close(); }
 });
+
+test('runtime task failure propagates retryable flag to repair planning', async () => {
+  const notices = [];
+  const runtime = new TaskRuntime(':memory:', {
+    onTaskFailed(notice) {
+      notices.push(notice);
+      runtime.saveCheckpoint(notice.taskId, TASK_FAILURE_REPAIR_CHECKPOINT, planRuntimeTaskFailure(notice));
+    },
+  });
+  try {
+    const transient = runtime.submitTask({goal: '查询天气', conversationId: 'fixture', idempotencyKey: 'weather-transient'});
+    runtime.transitionTask(transient.taskId, 'failed', {error: {code: 'EXTERNAL_FAILURE', message: 'upstream 503', retryable: true}});
+    const fatal = runtime.submitTask({goal: '查询天气', conversationId: 'fixture', idempotencyKey: 'weather-fatal'});
+    runtime.transitionTask(fatal.taskId, 'failed', {error: {code: 'EXTERNAL_FAILURE', message: 'bad cert', retryable: false}});
+    await Promise.resolve();
+    assert.equal(notices[0].retryable, true);
+    assert.equal(runtime.loadCheckpoint(transient.taskId, TASK_FAILURE_REPAIR_CHECKPOINT).trace.attempts[0].classification, 'transient');
+    assert.equal(notices[1].retryable, false);
+    assert.equal(runtime.loadCheckpoint(fatal.taskId, TASK_FAILURE_REPAIR_CHECKPOINT).trace.attempts[0].classification, 'unrecoverable');
+  } finally { runtime.close(); }
+});

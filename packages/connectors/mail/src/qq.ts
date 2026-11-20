@@ -5,6 +5,8 @@ import type { SentMessageInfo, Transporter } from 'nodemailer';
 import { ProtocolError } from '@personal-agent/contracts';
 import type { ProtocolContracts } from '@personal-agent/contracts';
 import type {
+  MailArchiveInput,
+  MailArchiveResult,
   MailFetchInput,
   MailFolder,
   MailMarkSeenInput,
@@ -210,6 +212,51 @@ export class QQMailProvider implements MailProvider {
       return {uid: input.uid, seen: true};
     } catch (error) {
       if (storeStarted) throw new ProtocolError('RESULT_UNKNOWN', 'Mail seen write result unknown; reconcile before continuing', false);
+      if (error instanceof ProtocolError) throw error;
+      throw mapImapError(error);
+    } finally {
+      lock.release();
+    }
+  }
+
+  async archiveMessage(_accountRef: string, input: MailArchiveInput, context?: MailOperationContext): Promise<MailArchiveResult> {
+    guardMailWrite(context);
+    if (!input?.idempotencyKey) throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
+    const sourceFolder = input.folder?.trim() || 'INBOX';
+    const folders = await this.listFolders(_accountRef, context);
+    guardMailWrite(context);
+    const archiveFolder = folders.find(entry => entry.path === input.targetFolder)
+      ?? (input.targetFolder ? {path: input.targetFolder} : folders.find(entry => entry.role === 'archive'));
+    if (!archiveFolder) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Mailbox does not expose an Archive folder');
+    const client = await this.connect();
+    guardMailWrite(context);
+    const lock = await client.getMailboxLock(sourceFolder);
+    let moveStarted = false;
+    let resolvedUid: number | undefined = Number.isSafeInteger(input.uid) && (input.uid ?? 0) > 0 ? input.uid : undefined;
+    let resolvedMessageId = input.messageId;
+    try {
+      guardMailWrite(context);
+      if (resolvedUid === undefined && resolvedMessageId) {
+        const uids = await client.search({header: {'message-id': resolvedMessageId}}, {uid: true});
+        if (Array.isArray(uids) && uids.length > 0) {
+          resolvedUid = Number(uids[uids.length - 1]);
+        }
+      }
+      if (resolvedUid === undefined) {
+        throw new ProtocolError('NOT_FOUND', `No mail matching messageId in ${sourceFolder}`);
+      }
+      const before = await client.fetchOne(String(resolvedUid), {envelope: true}, {uid: true});
+      if (!before) throw new ProtocolError('NOT_FOUND', `No mail uid=${resolvedUid} in ${sourceFolder}`);
+      resolvedMessageId = before.envelope?.messageId ?? resolvedMessageId ?? `${sourceFolder}:${resolvedUid}`;
+      guardMailWrite(context);
+      moveStarted = true;
+      const moved = await client.messageMove(String(resolvedUid), archiveFolder.path, {uid: true});
+      if (!moved) {
+        throw new ProtocolError('RESULT_UNKNOWN', 'Mail archive move result unknown; reconcile before retrying', false);
+      }
+      return {archived: true, messageId: resolvedMessageId, folder: archiveFolder.path};
+    } catch (error) {
+      if (moveStarted) throw new ProtocolError('RESULT_UNKNOWN', 'Mail archive move outcome unknown; reconcile before retrying', false);
       if (error instanceof ProtocolError) throw error;
       throw mapImapError(error);
     } finally {

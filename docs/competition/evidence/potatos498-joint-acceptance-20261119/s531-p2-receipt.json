@@ -1,0 +1,16 @@
+{
+  "package": "S531-P2",
+  "issues": [
+    "#21",
+    "F12"
+  ],
+  "verifiedAt": "2026-11-20T06:09:44.208Z",
+  "checks": {
+    "f12PolicyTaskId": "22edb083-9240-479c-836f-ad88c7d6d299",
+    "pendingStaysWaitingReconciliation": "da2af772-5538-4dec-ab5f-982d78126791",
+    "withdrawTaskId": "646b1011-d119-4e5b-973a-9e0ebaa6a03e",
+    "confirmedDeliverTaskId": "2a1c42db-7cfd-45a7-9676-2aab28c6927d",
+    "crossRestartAuditClicks": 1,
+    "crossRestartAuditWithdraws": 1
+  }
+}

@@ -1,5 +1,7 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import type {
+  MailArchiveInput,
+  MailArchiveResult,
   MailFetchInput,
   MailFolder,
   MailMarkSeenInput,
@@ -43,6 +45,8 @@ export class FakeMailProvider implements MailProvider {
   private readonly pageSize: number;
   private uidValidity: number;
   private readonly seenActions = new Map<string, {uid: number; seen: boolean}>();
+  private readonly archiveActions = new Map<string, MailArchiveResult>();
+  private readonly archived: MailMessage[] = [];
   private readonly sendActions = new Map<string, MailSendResult>();
   private readonly sentOutbox: MailMessage[] = [];
   private sentUidNext = 100;
@@ -58,6 +62,7 @@ export class FakeMailProvider implements MailProvider {
     return [
       {path: 'INBOX', role: 'inbox', uidValidity: this.uidValidity},
       {path: 'Sent Messages', role: 'sent', uidValidity: 1725686401},
+      {path: 'Archive', role: 'archive', uidValidity: 1725686402},
     ];
   }
 
@@ -103,6 +108,29 @@ export class FakeMailProvider implements MailProvider {
     const result = {uid: input.uid, seen: true};
     this.seenActions.set(input.idempotencyKey, result);
     return result;
+  }
+
+  archiveMessage(_accountRef: string, input: MailArchiveInput): MailArchiveResult {
+    if (input.idempotencyKey.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
+    const prior = this.archiveActions.get(input.idempotencyKey);
+    if (prior !== undefined) return structuredClone(prior);
+    const sourceFolder = input.folder ?? 'INBOX';
+    const targetFolder = input.targetFolder?.trim() || 'Archive';
+    const pool = sourceFolder === 'INBOX' ? this.inbox : this.sent;
+    const idx = pool.findIndex(entry =>
+      (input.uid !== undefined && entry.uid === input.uid)
+      || (input.messageId !== undefined && (entry.messageId === input.messageId || String(entry.uid) === input.messageId || `${entry.folder}:${entry.uid}` === input.messageId)));
+    if (idx < 0) throw new ProtocolError('NOT_FOUND', `No message to archive in ${sourceFolder}`);
+    const [message] = pool.splice(idx, 1);
+    const archivedMessage: MailMessage = {...message!, folder: targetFolder};
+    this.archived.push(archivedMessage);
+    const result: MailArchiveResult = {
+      archived: true,
+      messageId: archivedMessage.messageId ?? `${sourceFolder}:${archivedMessage.uid}`,
+      folder: targetFolder,
+    };
+    this.archiveActions.set(input.idempotencyKey, result);
+    return structuredClone(result);
   }
 
   send(_accountRef: string, input: MailSendInput & {idempotencyKey: string}): MailSendResult {

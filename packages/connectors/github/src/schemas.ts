@@ -24,6 +24,7 @@ const fields: Record<GitHubOperation, Record<string, unknown>> = {
   'issue.list': {...page, state: {enum: ['open', 'closed', 'all']}, labels},
   'issue.label': {number: positive, labels, expectedUpdatedAt: {type: 'string', format: 'date-time', maxLength: 40}},
   'issue.comment': {number: positive, body},
+  'issue.close': {number: positive, expectedUpdatedAt: {type: 'string', format: 'date-time', maxLength: 40}, comment: body, stateReason: {enum: ['completed', 'not_planned']}},
   'pr.get': {number: positive}, 'pr.diff': {number: positive, expectedHeadSha: sha, expectedBaseSha: sha, ...textPage},
   'pr.create': {title: {...body, maxLength: 256}, body, head: branch, base: branch, expectedHeadSha: sha, draft: {type: 'boolean'}},
   'pr.comment': {number: positive, body},
@@ -35,6 +36,7 @@ const required: Partial<Record<GitHubOperation, string[]>> = {
   'actions.repair.get': [...Object.keys(repairIdentity), 'checkRunId'],
   'issue.get': ['number'], 'issue.label': ['number', 'labels', 'expectedUpdatedAt'],
   'issue.comment': ['number', 'body'],
+  'issue.close': ['number'],
   'pr.get': ['number'], 'pr.diff': ['number', 'expectedHeadSha', 'expectedBaseSha'], 'pr.create': ['title', 'body', 'head', 'base', 'expectedHeadSha'],
   'pr.comment': ['number', 'body'], 'pr.review.comment': ['number', 'body', 'commitId', 'path', 'line'],
 };

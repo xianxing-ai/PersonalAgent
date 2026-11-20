@@ -64,6 +64,20 @@ export interface MailMarkSeenInput {
   idempotencyKey: string;
 }
 
+export interface MailArchiveInput {
+  folder?: string;
+  uid?: number;
+  messageId?: string;
+  targetFolder?: string;
+  idempotencyKey: string;
+}
+
+export interface MailArchiveResult {
+  archived: boolean;
+  messageId: string;
+  folder: string;
+}
+
 /** Trusted execution context; kept separate from mail content and idempotency fingerprints. */
 export interface MailOperationContext {
   signal?: AbortSignal;
@@ -87,6 +101,8 @@ export interface MailProvider {
   fetchPage(accountRef: string, input: MailFetchInput): MailPage | Promise<MailPage>;
   getMessage(accountRef: string, folder: string, uid: number): MailMessage | undefined | Promise<MailMessage | undefined>;
   markSeen(accountRef: string, input: MailMarkSeenInput, context?: MailOperationContext): {uid: number; seen: boolean} | Promise<{uid: number; seen: boolean}>;
+  /** Optional real archive capability; moves a confirmed message into the Archive folder. */
+  archiveMessage?(accountRef: string, input: MailArchiveInput, context?: MailOperationContext): MailArchiveResult | Promise<MailArchiveResult>;
   send(accountRef: string, input: MailSendInput & {idempotencyKey: string}): MailSendResult | Promise<MailSendResult>;
   /** Optional real draft capability; absent providers remain unsupported. No SMTP delivery. */
   saveDraft?(accountRef: string, input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): Promise<ProtocolContracts['connectorAction']>;

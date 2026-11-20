@@ -3,6 +3,13 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 
 const terminal=new Set(['succeeded','failed','cancelled','waiting_reconciliation']);
+const terminalReasons={
+  TIMEOUT:'天气服务响应超时，请重试',
+  RATE_LIMITED:'天气服务请求过于频繁，请稍后重试',
+  NOT_FOUND:'未找到该城市的天气信息，请检查城市名称后重试',
+  INVALID_ARGUMENT:'天气城市或参数无效，请提供明确城市名后重试',
+  CANCELLED:'天气查询已取消',
+};
 /** Desktop projection only: the existing Runtime/Policy/ToolGateway performs every fetch. */
 export function createWeatherCardHost({userData,getApplication,readToolVersion,onUpdate=()=>{},now=Date.now}){
   const file=path.join(userData,'weather-card.json');let location='',operation,result,failure='',timer,closed=false;
@@ -23,7 +30,7 @@ export function createWeatherCardHost({userData,getApplication,readToolVersion,o
           fetchedAt:cache?.fetchedAt??confirmed.result.record?.fetchedAt,stale:cache?.state==='stale',
           source:confirmed.result.record?.source,taskId:current.taskId,evidenceRefs:confirmed.evidenceRefs};failure='';
       }else failure='天气任务没有可核实的结果';
-    }else if(terminal.has(current.state))failure='天气查询未完成，请重试';
+    }else if(terminal.has(current.state))failure=terminalReasons[readback.task.error?.code]??'天气查询未完成，请重试';
     else if(now()>=current.expiresAt)failure='天气查询超时，请核对原任务状态';
   }
   function snapshot(){read();return {configured:Boolean(location),location,state:operation?.state??'idle',reason:failure,...result,

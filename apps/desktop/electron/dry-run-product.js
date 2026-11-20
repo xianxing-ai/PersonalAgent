@@ -13,6 +13,8 @@ const TARGET_FIELDS = [
   ['target', '目标'],
   ['url', '地址'],
   ['calendarId', '日历'],
+  ['externalId', '事件标识'],
+  ['uid', '事件标识'],
   ['noteId', '笔记'],
   ['todoId', '待办'],
   ['id', '标识'],
@@ -27,7 +29,54 @@ const CONTENT_FIELDS = [
   ['content', '内容'],
   ['message', '内容'],
   ['amount', '金额'],
+  ['startUtc', '开始时间'],
+  ['endUtc', '结束时间'],
+  ['location', '地点'],
 ];
+
+function parseItemTitleFromContentRef(contentRef) {
+  if (typeof contentRef !== 'string') return undefined;
+  const match = /^\[[^\]]+\]\s*([^｜|]+?)(?:｜|\||$)/u.exec(contentRef.trim());
+  return match?.[1]?.trim() || undefined;
+}
+
+function extractResultComparableField(result, field) {
+  if (!result || typeof result !== 'object') return undefined;
+  const item = result.item && typeof result.item === 'object' && !Array.isArray(result.item) ? result.item : undefined;
+  if (item) {
+    if (field === 'uid' || field === 'externalId') {
+      return result[field] ?? result.uid ?? result.externalId ?? item.externalId ?? item.uid ?? item.id;
+    }
+    if (field === 'id' || field === 'todoId' || field === 'noteId') {
+      return result[field] ?? item[field] ?? item.id ?? item.externalId;
+    }
+    if (field === 'summary') {
+      // Connector write receipts store a fixed human-readable effect line in top-level `summary`
+      // while the actual event/item title lives on `item` (or `item.contentRef`).
+      return item.summary ?? item.title ?? parseItemTitleFromContentRef(item.contentRef);
+    }
+    if (field === 'title') {
+      return result.title ?? item.title ?? item.summary ?? parseItemTitleFromContentRef(item.contentRef);
+    }
+    if (field === 'startUtc' || field === 'endUtc') {
+      if (result[field] !== undefined) return result[field];
+      if (item[field] !== undefined) return item[field];
+      if (typeof item.validFor === 'string' && item.validFor.includes('/')) {
+        const [startUtc, endUtc] = item.validFor.split('/');
+        return field === 'startUtc' ? startUtc : endUtc;
+      }
+      return undefined;
+    }
+    return result[field] !== undefined ? result[field] : item[field];
+  }
+  if (field === 'uid' || field === 'externalId') {
+    return result[field] ?? result.uid ?? result.externalId;
+  }
+  if (field === 'summary' && ['created', 'updated', 'cancelled', 'already_absent'].includes(String(result.state ?? '')) && result.uid !== undefined) {
+    return undefined;
+  }
+  return result[field];
+}
 
 function canonicalJson(item) {
   if (item === null || typeof item !== 'object') return String(JSON.stringify(item));
@@ -185,10 +234,19 @@ export function verifyToolResult(result, preview) {
   const targetFields = preview.targetFields && typeof preview.targetFields === 'object' ? preview.targetFields : {};
   const matchedTargetFields = [];
   for (const [field, expected] of Object.entries(comparableFields)) {
-    if (result[field] === undefined) continue;
-    const actual = normalizeComparableValue(result[field]);
+    const rawActual = extractResultComparableField(result, field);
+    if (rawActual === undefined) continue;
+    const actual = normalizeComparableValue(rawActual);
     if (actual !== expected) {
-      return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具返回的目标或内容与试运行预览不一致'};
+      return {
+        ok: false,
+        verified: false,
+        targetMatched: false,
+        identityMatched: false,
+        mismatchedField: field,
+        scope: 'tool_result',
+        reason: `工具返回的目标或内容与试运行预览不一致（字段：${field}）`,
+      };
     }
     if (field in targetFields) {
       matchedTargetFields.push(field);

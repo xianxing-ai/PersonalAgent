@@ -191,6 +191,7 @@ export interface TaskFailureNotice {
   taskId: string;
   revision: number;
   errorCode?: string;
+  retryable?: boolean;
   effect: 'read' | 'write' | 'none';
   outcome: 'failed' | 'unknown';
   risk?: 'ordinary' | 'high';
@@ -1647,6 +1648,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return {
       taskId: task.taskId, revision: task.revision, effect, outcome: unknown ? 'unknown' : 'failed',
       ...(task.error?.code ? {errorCode: task.error.code} : {}),
+      ...(task.error?.retryable === undefined ? {} : {retryable: task.error.retryable}),
       ...(side === 'external_write' ? {risk: 'high' as const} : {}),
       ...(last?.reconciliationOutcome ? {reconciliationOutcome: last.reconciliationOutcome} : {}),
       ...(priorSideEffects ? {priorSideEffects: true} : {}),
