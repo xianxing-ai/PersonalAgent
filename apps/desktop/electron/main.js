@@ -2680,9 +2680,10 @@ async function initializeRuntime() {
       contentFence=createContentFenceProduct({readGoal:taskId=>{
         try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
       }});
-      conversationTools=contentFence.wrapTools(conversationTools);
       dryRun=createDryRunProduct({onUpdate:()=>{try{publish();}catch{/* 预览通知不能影响工具结果 */}}});
-      conversationTools=dryRun.wrapTools(conversationTools);
+      conversationTools=conversationTools.map(tool=>tool.descriptor.name==='calendar.update'
+        ?contentFence.wrapTools(dryRun.wrapTools([tool]))[0]
+        :dryRun.wrapTools(contentFence.wrapTools([tool]))[0]);
       conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);

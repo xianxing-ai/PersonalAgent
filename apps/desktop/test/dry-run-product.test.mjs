@@ -14,6 +14,37 @@ function tool(name, sideEffect, execute) {
 }
 const context = () => ({taskId: 'task-1', deadline: new Date(Date.now() + 5_000).toISOString(), signal: new AbortController().signal});
 
+test('calendar update uses the original event readback and rejects a different event without repeating writes', async () => {
+  const dryRun = createDryRunProduct();
+  let writes = 0;
+  const [update] = dryRun.wrapTools([tool('calendar.update','external_write',async () => {
+    writes++;
+    return {state:'updated',summary:'固定成功文案',item:{source:'calendar',externalId:'event-1'}};
+  })]);
+  const confirmed = update.execute({externalId:'event-1',summary:'合成日程标题'},context());
+  dryRun.handleAction('dryRun.confirm',{id:dryRun.snapshot().pending[0].id});
+  assert.equal((await confirmed).state,'updated');
+  const result = update.execute({uid:'another-event',summary:'合成日程标题'},context());
+  dryRun.handleAction('dryRun.confirm',{id:dryRun.snapshot().pending[0].id});
+  await assert.rejects(result,error=>error.code==='RESULT_UNKNOWN'&&/字段 item.externalId/.test(error.message)
+    &&!/合成日程标题|固定成功文案/.test(error.message));
+  assert.equal(writes,2);
+});
+
+test('calendar update diagnostics identify the mismatched receipt field', () => {
+  const preview = previewToolCall({name:'calendar.update',sideEffect:'external_write'}, {externalId:'private-preview-id'});
+  const item = {source:'calendar',externalId:'private-preview-id'};
+  for (const [result,field] of [
+    [{state:'created',item},'state'],
+    [{state:'updated',item:{...item,source:'other'}},'item.source'],
+    [{state:'updated',item:{...item,externalId:'private-receipt-id'}},'item.externalId'],
+  ]) {
+    const check = verifyToolResult(result,preview);
+    assert.equal(check.ok,false);
+    assert.equal(check.reason,`日历写入回执与试运行预览不一致（字段 ${field}）`);
+  }
+});
+
 test('a high-risk send waits for the preview, distinguishes target/content while redacting secrets, and verifies the tool result', async () => {
   assert.equal(isHighRiskTool({name: 'workspace.custom_action', sideEffect: 'local_write'}), true);
   assert.equal(isHighRiskTool({name: 'mail.compose_draft', sideEffect: 'external_write'}), true);
@@ -193,7 +224,8 @@ test('startup wraps tools and preload still carries desktop actions', () => {
   assert.match(main, /dryRun=createDryRunProduct/);
   assert.match(main, /beforeToolAuthorize:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*dryRun\?\.beforeAuthorize\(input\)|[^\n;]*dryRun\?\.beforeAuthorize\(input\))/);
   assert.match(main, /assertToolPrechecked:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*dryRun\?\.assertAuthorized\(input\)|[^\n;]*dryRun\?\.assertAuthorized\(input\))/);
-  assert.match(main, /dryRun\.wrapTools\(conversationTools\)/);
+  assert.match(main, /contentFence\.wrapTools\(dryRun\.wrapTools\(\[tool\]\)\)/);
+  assert.match(main, /dryRun\.wrapTools\(contentFence\.wrapTools\(\[tool\]\)\)/);
   assert.match(main, /name === 'dryRun\.confirm' \|\| name === 'dryRun\.cancel'/);
   assert.match(main, /dryRun:dryRun\?\.snapshot\(\)/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action'/);

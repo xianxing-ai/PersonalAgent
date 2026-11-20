@@ -7,6 +7,7 @@ import {createServer} from 'node:http';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
 import {Client} from '@personal-agent/client';
 import {createConnectorConversationTools} from '../electron/connector-conversation-tools.js';
+import {createDryRunProduct} from '../electron/dry-run-product.js';
 
 function fixture(t,overrides={}) {
   let mail={user:'synthetic@qq.com',authCode:'synthetic-private-code',revision:1},calendar={calendarUrl:'https://calendar.example.invalid/collection/',calendarName:'Synthetic',revision:1};
@@ -456,11 +457,14 @@ test('actual Runtime advertises calendar writes and requires original approval b
       confirmExport:async request=>{consents.push(request.kind);return true;}});
     t.after(()=>host.close());
     const descriptor=host.tools.find(tool=>tool.descriptor.name===name).descriptor;
+    const dryRun=createDryRunProduct();
     assert.equal(descriptor.sideEffect,'external_write');assert.deepEqual(descriptor.requiredScopes,['calendar:write']);
     if(name==='calendar.create'){assert.equal(descriptor.idempotencySupport,false);assert.equal(descriptor.recoverySupport,false);}
     application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-write-consumer',
       initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
-      tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
+      tools:host.tools.map(tool=>tool.descriptor.name==='calendar.update'?dryRun.wrapTools([tool])[0]:tool),
+      beforeToolAuthorize:input=>input.toolName==='calendar.update'?dryRun.beforeAuthorize(input):undefined,
+      competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
       prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
       fetchImpl:async(_url,init)=>{sends++;catalog??=String(init.body);return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
         ?{kind:'tool_proposal',proposalId:'calendar-write',toolName:name,toolVersion:descriptor.version,arguments:args}
@@ -468,6 +472,11 @@ test('actual Runtime advertises calendar writes and requires original approval b
     t.after(()=>application.close());const client=new Client(application);await client.connect();
     const {taskId}=await client.call('task.submit',{goal:'执行合成日历操作',conversationId:'calendar-consumer'},{idempotencyKey:name,timeoutMs:10000});
     const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
+    if(name==='calendar.update'){
+      await wait(()=>dryRun.snapshot().pending.length===1);
+      assert.deepEqual(server.requests,[]);
+      dryRun.handleAction('dryRun.confirm',{id:dryRun.snapshot().pending[0].id});
+    }
     await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');
     assert.deepEqual(server.requests,[],'Policy approval precedes provider access');
     for(const toolName of ['calendar.create','calendar.update','calendar.cancel'])assert.ok(catalog.includes(toolName),'model catalog contains '+toolName);
