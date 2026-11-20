@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {Client} from '@personal-agent/client';
+import {CalDavProvider, register as registerCalendar} from '@personal-agent/calendar';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createDryRunProduct, isHighRiskTool, previewToolCall, verifyToolResult} from '../electron/dry-run-product.js';
 import {renderDryRun} from '../src/features/workspace/dry-run-status.js';
@@ -247,5 +248,154 @@ test('cancelling preview stops before RuntimeApplication requests Policy authori
     assert.equal(app.runtime.listApprovals({taskId: submitted.taskId}).items.length, 0);
   } finally {
     app.close();
+  }
+});
+
+test('calendar.update and calendar.create write receipts bind verification to item UID, event title, and validFor window without colliding with status summary', async () => {
+  const updateInput = {
+    externalId: 'caldav-evt-42',
+    summary: '下午交互走查',
+    startUtc: '2026-11-19T06:00:00.000Z',
+    endUtc: '2026-11-19T07:00:00.000Z',
+  };
+  const preview = previewToolCall({name: 'calendar.update', sideEffect: 'external_write'}, updateInput);
+  assert.equal(preview.targetFields.externalId, 'caldav-evt-42');
+  assert.equal(preview.comparableFields.summary, '下午交互走查');
+
+  const receipt = {
+    item: {
+      source: 'calendar',
+      accountRef: 'desktop-calendar',
+      externalId: 'caldav-evt-42',
+      occurredAt: '2026-11-19T06:00:00.000Z',
+      fetchedAt: '2026-11-19T05:00:00.000Z',
+      contentRef: '[confirmed] 下午交互走查｜2026-11-19 14:00（Asia/Shanghai）→ 15:00｜组织者未知｜编号 caldav-evt-42（取消或更新时用）',
+      sensitivity: 'normal',
+      dedupeKey: 'calendar:default:caldav-evt-42:1',
+      validFor: '2026-11-19T06:00:00.000Z/2026-11-19T07:00:00.000Z',
+    },
+    state: 'updated',
+    summary: '日程已更新，日历中已保存新内容。',
+  };
+  const verified = verifyToolResult(receipt, preview);
+  assert.equal(verified.ok, true);
+  assert.equal(verified.verified, true);
+  assert.equal(verified.targetMatched, true);
+  assert.equal(verified.scope, 'tool_result_matched');
+
+  const wrongTitle = verifyToolResult({
+    ...receipt,
+    item: {...receipt.item, contentRef: '[confirmed] 错误标题｜2026-11-19 14:00（Asia/Shanghai）→ 15:00｜组织者未知｜编号 caldav-evt-42（取消或更新时用）'},
+  }, preview);
+  assert.equal(wrongTitle.ok, false);
+  assert.equal(wrongTitle.mismatchedField, 'summary');
+  assert.match(wrongTitle.reason, /字段：summary/);
+
+  const wrongUid = verifyToolResult({
+    ...receipt,
+    item: {...receipt.item, externalId: 'caldav-evt-99'},
+  }, preview);
+  assert.equal(wrongUid.ok, false);
+  assert.equal(wrongUid.mismatchedField, 'externalId');
+});
+
+test('CalDAV calendar.update succeeds through dryRun and RuntimeApplication in both restricted and full-access modes with SEQUENCE 0->1 readback', async t => {
+  for (const mode of ['restricted', 'full-access']) {
+    const dir = await mkdtemp(path.join(os.tmpdir(), `pa-caldav-${mode}-`));
+    t.after(() => rm(dir, {recursive: true, force: true, maxRetries: 5, retryDelay: 100}));
+    const uid = `evt-${mode}-01`;
+    let currentEtag = '"etag-v0"';
+    let currentIcs = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Test//EN', 'BEGIN:VEVENT',
+      `UID:${uid}`, 'SUMMARY:初版评审', 'DTSTART:20261120T060000Z', 'DTEND:20261120T070000Z',
+      'STATUS:CONFIRMED', 'SEQUENCE:0', 'END:VEVENT', 'END:VCALENDAR',
+    ].join('\r\n');
+    const fetchImpl = async (_url, init = {}) => {
+      const method = (init.method ?? 'GET').toUpperCase();
+      if (method === 'REPORT') {
+        const escapedIcs = currentIcs.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        const escapedEtag = currentEtag.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        const xml = `<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>/alice/work/${uid}.ics</D:href><D:propstat><D:prop><D:getetag>${escapedEtag}</D:getetag><C:calendar-data>${escapedIcs}</C:calendar-data></D:prop></D:propstat></D:response></D:multistatus>`;
+        return {ok: false, status: 207, headers: {get: () => null}, text: async () => xml};
+      }
+      if (method === 'GET') {
+        return {ok: true, status: 200, headers: {get: name => name.toLowerCase() === 'etag' ? currentEtag : null}, text: async () => currentIcs};
+      }
+      if (method === 'PUT') {
+        currentIcs = String(init.body ?? '');
+        currentEtag = '"etag-v1"';
+        return {ok: true, status: 204, headers: {get: name => name.toLowerCase() === 'etag' ? currentEtag : null}, text: async () => ''};
+      }
+      return {ok: false, status: 405, headers: {get: () => null}, text: async () => ''};
+    };
+    const provider = new CalDavProvider({
+      calendarUrl: 'http://127.0.0.1:5232/alice/work/',
+      authorization: 'Basic dXNlcjpwYXNz',
+      allowLoopbackHttp: true,
+      fetchImpl,
+    });
+    const rawTools = [];
+    const unregister = registerCalendar({register(tool) { rawTools.push(tool); return () => {}; }}, {provider, accountRef: 'desktop-calendar'});
+    t.after(() => unregister());
+    const dryRun = createDryRunProduct();
+    let step = 0;
+    let authCalls = 0;
+    const app = createRuntimeApplication({
+      path: path.join(dir, 'runtime.sqlite'),
+      profile: 'huawei_ict_agentarts',
+      tools: dryRun.wrapTools(rawTools),
+      beforeToolAuthorize: input => dryRun.beforeAuthorize(input),
+      assertToolPrechecked: input => dryRun.assertAuthorized(input),
+      requestToolAuthorization: async () => { authCalls += 1; return 'allow_once'; },
+      requiresToolAuthorization: () => mode === 'restricted',
+      competitionToolAvailability: rawTools.map(tool => ({toolName: tool.descriptor.name, toolVersion: tool.descriptor.version, available: () => true})),
+      competitionToolExports: rawTools.map(tool => ({toolName: tool.descriptor.name, toolVersion: tool.descriptor.version, exportPolicyVersion: 'public-v1', accepts: () => true, project: ({result}) => result})),
+      coordination: {
+        execute: async request => {
+          step += 1;
+          if (!request.continuation) {
+            return {
+              kind: 'tool_proposal',
+              proposalId: `prop-${mode}`,
+              toolName: 'calendar.update',
+              toolVersion: '0.1.0-alpha.1',
+              arguments: {externalId: uid, summary: '终版交互走查'},
+              verification: 'unverified',
+            };
+          }
+          return {kind: 'text', text: '已更新日程为终版交互走查', verification: 'mock'};
+        },
+      },
+    });
+    try {
+      const client = new Client(app);
+      await client.connect();
+      const submitted = await client.call('task.submit', {goal: '修改日程标题', conversationId: `c-${mode}`}, {idempotencyKey: `cal-upd-${mode}`});
+      const started = Date.now();
+      while (dryRun.snapshot().pending.length === 0 && Date.now() - started < 3000) {
+        await new Promise(resolve => setTimeout(resolve, 15));
+      }
+      const preview = dryRun.snapshot().pending[0];
+      assert.ok(preview, `expected dry-run preview in ${mode}`);
+      dryRun.handleAction('dryRun.confirm', {id: preview.id});
+      while (app.activeTaskCount > 0 && Date.now() - started < 3000) {
+        await new Promise(resolve => setTimeout(resolve, 15));
+      }
+      const task = app.runtime.getTask(submitted.taskId);
+      assert.equal(task.state, 'succeeded', `task in ${mode} should succeed, got ${task.state}`);
+      assert.equal(authCalls, 1);
+      const executions = app.runtime.readToolExecutions(submitted.taskId);
+      assert.equal(executions.length, 1);
+      assert.equal(executions[0].state, 'confirmed');
+      assert.equal(dryRun.snapshot().recent.at(-1)?.verified, true);
+      assert.equal(dryRun.snapshot().recent.at(-1)?.scope, 'tool_result_matched');
+      const getCheck = await fetchImpl('http://127.0.0.1:5232/alice/work/' + uid + '.ics', {method: 'GET'});
+      const text = await getCheck.text();
+      assert.equal(getCheck.headers.get('etag'), '"etag-v1"');
+      assert.match(text, /SUMMARY:终版交互走查/);
+      assert.match(text, /SEQUENCE:1/);
+    } finally {
+      app.close();
+    }
   }
 });

@@ -19,7 +19,7 @@ function validSourceResponsibilityBinding(value) {
 
 /** Desktop binds trusted configuration and user commands. The original Runtime owns its worker. */
 export function createDesktopProactiveWorkflowApplication({application,readConfiguration,notificationHost,
-  context,bindings,controller,cloudPersistentHost,localDeviceAvailable,resolveUserConversation,onSession=()=>{},
+  context,bindings,sourceAdapters,controller,cloudPersistentHost,localDeviceAvailable,resolveUserConversation,onSession=()=>{},
   readPersistedSession,responsibilityLifecycleAuthority,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter,
   sourceResponsibilityBinding}) {
   // Only a per-task resolver is accepted: a plain object would apply one binding to every session and make the
@@ -155,11 +155,16 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     },
     snapshot() {
       let configured=false;try{configuration();configured=true;}catch{}
+      const adapters=typeof sourceAdapters?.list==='function'?sourceAdapters.list()
+        :Array.isArray(sourceAdapters)?sourceAdapters:[];
       return {state:configured?'configured_not_verified':'unavailable',sessions:[...sessions.values()].map(({binding,host})=>({
         taskId:binding.taskId,sourceTaskId:binding.sourceTaskId,sessionId:binding.sessionId,contractRef:binding.contractRef,
         taskDeadline:binding.taskDeadline,controlRevision:host.binding.controlRevision,
         taskState:application.runtime.getTask(binding.taskId).state})),
-        missing:['business_source_adapters','local_decision_and_teacher_tools'].filter(value=>!bindings?.length||value==='business_source_adapters')};
+        missing:[
+          ...(adapters.length?['']:['business_source_adapters']),
+          ...(bindings?.length?['']:['local_decision_and_teacher_tools']),
+        ].filter(Boolean)};
     },
     async start(input,request) {
       if(!input||Object.keys(input).some(key=>!['sourceTaskId','commandId','taskDeadline','sourceResponsibilityBinding'].includes(key))

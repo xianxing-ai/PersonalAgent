@@ -32,7 +32,7 @@ function validSaved(value) {
  */
 export function createCalendarConfig({userData, safeStorage, question}) {
   const target = path.join(userData, 'calendar-config.json');
-  let saved, failure = '';
+  let saved, sessionAllowed = false, boundRevision, failure = '';
   if (existsSync(target)) {
     try {
       const raw = readFileSync(target);
@@ -44,11 +44,14 @@ export function createCalendarConfig({userData, safeStorage, question}) {
       saved = value;
     } catch {failure = '日历加密配置无法读取，原文件已保留，请重新保存';}
   }
+  const activeSession = () => Boolean(saved && sessionAllowed && boundRevision === saved.revision);
   const snapshot = () => ({configured: Boolean(saved), providerKind: saved?.providerKind ?? 'caldav',
     calendarName: saved?.calendarName ?? '', hasCredentials: Boolean(saved?.password),
-    readAvailable: false, sessionAllowed: false, calendarWriteVerified: false,
+    readAvailable: false, sessionAllowed: activeSession(), calendarWriteVerified: false,
     status: failure ? 'unavailable' : saved ? 'read_unavailable' : 'unconfigured',
-    reason: failure || (saved ? '配置已加密保存；日历读取能力尚未接入，本次未读取日历'
+    reason: failure || (activeSession()
+      ? '已允许本会话只读汇总日历时段；不会修改日历或跨重启保留读取许可'
+      : saved ? '配置已加密保存；日历读取能力尚未接入，本次未读取日历'
       : '请配置一个 CalDAV 日历；保存配置不会读取日历或授予读取权限')});
   const requireBinding = binding => {
     if (!saved || !binding || binding.accountRef !== saved.accountRef
@@ -102,10 +105,37 @@ export function createCalendarConfig({userData, safeStorage, question}) {
         if (temporary) {try {unlinkSync(temporary);} catch {}}
         throw Error('日历加密配置未保存，请检查本机安全存储');
       }
-      saved = value; failure = '';
+      saved = value; failure = ''; sessionAllowed = false; boundRevision = undefined;
+      return snapshot();
+    },
+    isSessionAllowed(revision, scope) {
+      if (!saved || (revision !== undefined && saved.revision !== revision)) return false;
+      if (sessionAllowed && boundRevision === saved.revision) return true;
+      if (question && scope) {
+        try { return question.currentRequirement(scope, scope.requirementId ?? 'calendar-local-read') === true; }
+        catch { return false; }
+      }
+      return false;
+    },
+    enableSession(input) {
+      if (!saved || !input || typeof input !== 'object' || Array.isArray(input)
+        || Object.keys(input).some(key => !['readConsent', 'scope'].includes(key))
+        || input.readConsent !== true) {
+        throw Error('请确认本会话日历只读访问用途');
+      }
+      sessionAllowed = true;
+      boundRevision = saved.revision;
+      return snapshot();
+    },
+    releaseSession() {
+      sessionAllowed = false;
+      boundRevision = undefined;
+      rotateAuthorization();
       return snapshot();
     },
     revoke() {
+      sessionAllowed = false;
+      boundRevision = undefined;
       rotateAuthorization();
       try {if (existsSync(target)) unlinkSync(target);} catch {throw Error('日历配置清除失败，原文件已保留');}
       saved = undefined; failure = '';

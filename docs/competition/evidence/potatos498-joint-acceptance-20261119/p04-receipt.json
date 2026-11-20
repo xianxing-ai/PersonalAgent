@@ -1,0 +1,54 @@
+{
+  "package": "P-04",
+  "issues": [
+    "#14",
+    "F09"
+  ],
+  "verifiedAt": "2026-11-20T06:09:41.176Z",
+  "feedUrl": "http://127.0.0.1:8258/feed.xml",
+  "checks": {
+    "failClosedBeforeGrant": true,
+    "feedSourceGrant1": {
+      "id": "dbc3e485-e611-4ad6-a480-44e3003071df",
+      "state": "granted",
+      "grantedScopes": [
+        "feeds.collect",
+        "feeds.validate_and_deduplicate"
+      ],
+      "configurationRef": "9571e34419e4fbd67197cd9c81a84ca840471d8fbb930f91be1d5e959b95c710"
+    },
+    "f09FourNodeFlow": {
+      "state": "settled",
+      "nodes": {
+        "F09_N01": "completed",
+        "F09_N02": "completed",
+        "F09_N03": "completed",
+        "F09_N04": "completed"
+      },
+      "n01CollectedCount": 2,
+      "n02Validation": {
+        "uniqueCount": 2,
+        "duplicateDiscarded": 0,
+        "authorizationRef": "feed-source-grant:dbc3e485-e611-4ad6-a480-44e3003071df"
+      },
+      "n03Decision": {
+        "highValueSignal": true,
+        "discardedJunk": 0,
+        "forwardToFeature": "F10",
+        "selectedGuid": "rss-2"
+      },
+      "n04ResearchTaskId": "c5c5f5f6-05fc-480b-b57a-862862154264"
+    },
+    "crossRestartAndDelta": {
+      "persistedCursorMatchesAfterRestart": true,
+      "httpRequestsTotal": 3,
+      "httpConditional304Count": 1,
+      "unchangedDeliveredCount": 0,
+      "deltaDeliveredCount": 1,
+      "deltaUniqueCount": 1,
+      "deltaDuplicateDiscarded": 1,
+      "persistedFingerprintCountAfterDelta": 3,
+      "revokedSessionRejected": true
+    }
+  }
+}

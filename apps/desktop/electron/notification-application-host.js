@@ -281,6 +281,28 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       current();const saved=application.runtime.loadCheckpoint(taskId,voiceKey(roundId));
       return saved?.binding.roundId===roundId&&saved.binding.taskId===taskId?structuredClone(saved.receipt):undefined;
     },
+    withdrawDelivery({id, roundId, reason = 'withdrawn'} = {}) {
+      if (disposed) return {withdrawn: false, reason: 'disposed'};
+      const targetId = typeof id === 'string' && id.trim() ? id
+        : typeof roundId === 'string' && roundId.trim() ? channelId(roundId) : undefined;
+      if (!targetId || typeof channel.withdraw !== 'function') {
+        return {withdrawn: false, reason: 'withdraw_unavailable'};
+      }
+      const res = channel.withdraw(targetId, reason);
+      publish();
+      return res;
+    },
+    readDeliveryChannelOutcome(roundIdOrId, isRawId = false) {
+      const targetId = isRawId ? roundIdOrId : channelId(roundIdOrId);
+      return channel.readDeliveryOutcome(targetId);
+    },
+    listChannelAuditReceipts() {
+      return {
+        clicks: channel.listClickReceipts?.() ?? [],
+        withdraws: channel.listWithdrawReceipts?.() ?? [],
+        records: channel.list?.() ?? [],
+      };
+    },
     dispose() {disposed = true; commands.clear(); channel.dispose?.();},
   };
   return api;

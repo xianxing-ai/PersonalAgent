@@ -76,3 +76,129 @@ test('revocation rejects an in-flight result even if the provider ignores cancel
   host.revoke(); finish();
   await assert.rejects(task); host.close();
 });
+
+test('F09 persistent cursor, feed-source-grant session lease and feeds.validate_and_deduplicate survive host restart', async () => {
+  const userData = mkdtempSync(new URL('f09-persist-', cache));
+  const sharedRows = new Map();
+  const makePersistentRuntime = () => ({
+    runtime: {
+      loadCheckpoint: (id, key) => sharedRows.get(`${id}:${key}`),
+      saveCheckpoint: (id, key, value) => sharedRows.set(`${id}:${key}`, value),
+      getTask: id => ({
+        taskId: id,
+        conversationId: 'desktop-panel',
+        state: 'running',
+        cancelRequested: false,
+        goal: 'Track public release notes',
+      }),
+    },
+    createHostStateStore: scope => ({
+      get: key => sharedRows.get(`${scope}:${key}`),
+      set: (key, value) => sharedRows.set(`${scope}:${key}`, value),
+      delete: key => sharedRows.delete(`${scope}:${key}`),
+    }),
+  });
+  const xml1 = '<?xml version="1.0"?><rss version="2.0"><channel><title>Engineering</title>'
+    + '<item><guid>item-1</guid><title>Release v1</title><link>https://example.com/1</link><pubDate>Sun, 27 Sep 2026 08:00:00 GMT</pubDate></item>'
+    + '<item><guid>item-2</guid><title>Release v2</title><link>https://example.com/2</link><pubDate>Sun, 27 Sep 2026 09:00:00 GMT</pubDate></item>'
+    + '</channel></rss>';
+  const xml2 = '<?xml version="1.0"?><rss version="2.0"><channel><title>Engineering</title>'
+    + '<item><guid>item-1</guid><title>Release v1</title><link>https://example.com/1</link><pubDate>Sun, 27 Sep 2026 08:00:00 GMT</pubDate></item>'
+    + '<item><guid>item-2</guid><title>Release v2</title><link>https://example.com/2</link><pubDate>Sun, 27 Sep 2026 09:00:00 GMT</pubDate></item>'
+    + '<item><guid>item-3</guid><title>Release v3</title><link>https://example.com/3</link><pubDate>Sun, 27 Sep 2026 10:00:00 GMT</pubDate></item>'
+    + '</channel></rss>';
+  let currentXml = xml1;
+  const provider = new HttpFeedProvider({
+    fetchImpl: async () => ({status: 200, headers: {get: () => null}, body: null, text: async () => currentXml}),
+  });
+
+  const rt1 = makePersistentRuntime();
+  const ctx1 = request('f09-task-1');
+  rt1.runtime.saveCheckpoint('f09-task-1', 'application-deadline', ctx1.deadline);
+  const host1 = createDesktopFeedsHost({userData, safeStorage, provider});
+  host1.add({title: 'Engineering', url: 'https://example.com/feed.xml'});
+  host1.prepare();
+  host1.bindApplication(rt1, 'f09-user');
+  host1.authorize({readAndCloudConsent: true});
+  const subscriptionId = host1.snapshot().subscriptions[0].id;
+
+  // Before native feed-source-grant, validateAndDeduplicate must fail closed and persist nothing.
+  await assert.rejects(
+    host1.validateAndDeduplicate({subscriptionId, taskId: 'f09-task-1', items: [{guid: 'item-1', url: 'https://example.com/1'}]}),
+    /feed_source_grant_unavailable/,
+  );
+  assert.equal(host1.readPersistedCursor(subscriptionId), undefined);
+
+  const choice = host1.prepareNativeSourceChoice({subscriptionId, taskId: 'f09-task-1'});
+  host1.applyNativeSourceChoice(choice, 'public');
+  host1.authorize({readAndCloudConsent: true});
+  const avail1 = host1.competitionToolAvailability.find(item => item.toolName === 'feeds.collect');
+  assert.equal(avail1.available(ctx1), true);
+  const grant = host1.readTrackingGrant({namespace: 'f09-user', sourceId: subscriptionId, taskId: 'f09-task-1'});
+  assert.equal(grant.state, 'granted');
+  assert.deepEqual(grant.grantedScopes, ['feeds.collect', 'feeds.validate_and_deduplicate']);
+
+  const collect1 = host1.tools.find(t => t.descriptor.name === 'feeds.collect');
+  const batch1 = await collect1.execute({subscriptionId}, ctx1);
+  assert.equal(batch1.items.length, 2);
+  const dedupe1 = await host1.validateAndDeduplicate({
+    subscriptionId,
+    taskId: 'f09-task-1',
+    items: batch1.items,
+    nextCursor: batch1.nextCursor,
+  });
+  assert.equal(dedupe1.uniqueCount, 2);
+  assert.equal(dedupe1.duplicateDiscarded, 0);
+  assert.equal(host1.readPersistedCursor(subscriptionId), batch1.nextCursor);
+  host1.close();
+
+  // Reopen after process restart with the persisted grantStore & runtime checkpoints.
+  const rt2 = makePersistentRuntime();
+  const ctx2 = request('f09-task-2');
+  rt2.runtime.saveCheckpoint('f09-task-2', 'application-deadline', ctx2.deadline);
+  const host2 = createDesktopFeedsHost({userData, safeStorage, provider});
+  host2.prepare();
+  host2.bindApplication(rt2, 'f09-user');
+  const choice2 = host2.prepareNativeSourceChoice({subscriptionId, taskId: 'f09-task-2'});
+  host2.applyNativeSourceChoice(choice2, 'public');
+  host2.authorize({readAndCloudConsent: true});
+  const avail2 = host2.competitionToolAvailability.find(item => item.toolName === 'feeds.collect');
+  assert.equal(avail2.available(ctx2), true);
+  const grant2 = host2.readTrackingGrant({namespace: 'f09-user', sourceId: subscriptionId, taskId: 'f09-task-2'});
+  const savedCursor = host2.readPersistedCursor(subscriptionId);
+  assert.equal(savedCursor, batch1.nextCursor);
+
+  // Poll same content with persisted cursor -> 0 items delivered.
+  const collect2 = host2.tools.find(t => t.descriptor.name === 'feeds.collect');
+  const batch2 = await collect2.execute({subscriptionId, cursor: savedCursor}, ctx2);
+  assert.equal(batch2.items.length, 0);
+
+  // Add item-3 -> only 1 new item delivered and validated.
+  currentXml = xml2;
+  const batch3 = await collect2.execute({subscriptionId, cursor: savedCursor}, ctx2);
+  assert.equal(batch3.items.length, 1);
+  assert.equal(batch3.items[0].title, 'Release v3');
+
+  // Even if duplicate old item is re-submitted to workflow.host.f09_n02 adapter, persisted fingerprints block duplicates.
+  const f09Adapter = host2.workflowHostTools.find(t => t.descriptor.name === 'workflow.host.f09_n02');
+  assert.ok(f09Adapter);
+  const dedupe3 = await f09Adapter.execute(
+    {
+      subscriptionId,
+      events: [batch1.items[0], ...batch3.items],
+      nextCursor: batch3.nextCursor,
+    },
+    {...ctx2, authorizationRef: `feed-source-grant:${grant2.id}`},
+  );
+  assert.equal(dedupe3.uniqueCount, 1);
+  assert.equal(dedupe3.duplicateDiscarded, 1);
+  assert.equal(host2.readPersistedCursor(subscriptionId), batch3.nextCursor);
+
+  // Revoking session revokes feed-source-grant and rejects further validation.
+  host2.revoke();
+  await assert.rejects(
+    host2.validateAndDeduplicate({subscriptionId, taskId: 'f09-task-2', items: [{guid: 'item-4', url: 'https://example.com/4'}]}),
+    /feed_session_not_authorized|feed_source_grant_unavailable/,
+  );
+  host2.close();
+});

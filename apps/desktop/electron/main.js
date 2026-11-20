@@ -110,6 +110,7 @@ import {createDesktopOperatorBrake, createOperatorBrakeTrayController} from './o
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createDesktopBusinessSourceAdapters} from './business-source-adapters.js';
 import {createProactiveSourceHost} from './proactive-source-host.js';
 import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
@@ -487,7 +488,7 @@ let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, voiceSessionFinalHost, proactiveWorkflowApplication, cloudPersistentWorkflowHost, riskAutonomyHost, desktopNotificationPort;
 let conversationToolAccess, proactiveConversationTools;
-let proactiveRuntimePump,proactiveSourceRouter;
+let proactiveRuntimePump,proactiveSourceRouter,businessSourceAdapters;
 let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
@@ -2121,6 +2122,7 @@ function initializeHarnessEventPorts(runtimeModule) {
     // Production controller consumer; absent cloudPersistentHost stays unavailable (no invented port).
     controller:createDesktopProactiveControllerHost({getRuntime:()=>runtimeApplication?.runtime}),
     bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+    ...(typeof businessSourceAdapters!=='undefined'&&businessSourceAdapters?{sourceAdapters:businessSourceAdapters}:{}),
     context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
       readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
       readKnowledgeSource:()=>obsidianPairing?.source??knowledgeSourceConfig,limit:20}),
@@ -3689,6 +3691,12 @@ async function initializeRuntime() {
       calendarMeetingHost?.bindApplication(runtimeApplication);
       goalCloudHost?.bindApplication(runtimeApplication);
       notepadHost?.bind(runtimeApplication);
+      if (!businessSourceAdapters) businessSourceAdapters = createDesktopBusinessSourceAdapters({
+        getApplication: () => runtimeApplication,
+        getCalendarConfig: () => calendarConfig,
+        getMailConfig: () => mailConfig,
+        getFeedsHost: () => feedsHost,
+      });
       // Startup guards read the same native policy host; the Client is attached after registration.
       notificationApplicationHost?.bindApplication(runtimeApplication);
       initializeHarnessEventPorts(runtimeModule);
@@ -4051,9 +4059,16 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
+  if (!businessSourceAdapters) businessSourceAdapters = createDesktopBusinessSourceAdapters({
+    getApplication: () => runtimeApplication,
+    getCalendarConfig: () => calendarConfig,
+    getMailConfig: () => mailConfig,
+    getFeedsHost: () => feedsHost,
+  });
   if (!proactiveSourceHost) proactiveSourceHost = createProactiveSourceHost({
     getApplication: () => runtimeApplication,
     getTools: () => connectorConversationTools?.tools ?? [],
+    sourceAdapters: businessSourceAdapters,
     submitTask: async input => {
       const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
       const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});

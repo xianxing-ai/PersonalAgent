@@ -256,6 +256,88 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       await tick(true);
       return snapshot();
     },
+    readReminderState(reminderId) {
+      if (!active || typeof reminderId !== 'string' || !reminderId.trim()) return undefined;
+      const items = service.list();
+      const item = items.find(entry => entry.id === reminderId || `todo-reminder:${entry.id}` === reminderId);
+      const known = records();
+      const rec = known[reminderId];
+      if (item) {
+        const dueUtc = item.reminder?.remindAt?.utc ?? item.due?.utc ?? rec?.dueUtc;
+        if (typeof dueUtc !== 'string') return undefined;
+        const cancelled = item.status === 'cancelled' || !item.reminder || rec?.state === 'cancelled';
+        return {
+          reminderId,
+          revision: Number.isSafeInteger(rec?.revision) ? Math.max(item.revision, rec.revision) : item.revision,
+          dueUtc,
+          state: cancelled ? 'cancelled' : item.reminder?.state === 'delivered' ? 'triggered' : 'active',
+        };
+      }
+      if (rec && typeof rec.dueUtc === 'string') {
+        return {
+          reminderId,
+          revision: Number.isSafeInteger(rec.revision) ? rec.revision : 1,
+          dueUtc: rec.dueUtc,
+          state: rec.state === 'cancelled' ? 'cancelled' : rec.state === 'visible' ? 'triggered' : 'active',
+        };
+      }
+      return undefined;
+    },
+    registerReminderRecord({reminderId, dueUtc, taskId, summary}) {
+      if (!active || typeof reminderId !== 'string' || !reminderId.trim() || !Number.isFinite(Date.parse(dueUtc))) {
+        throw Error('提醒记录参数无效');
+      }
+      const known = records();
+      const prevRev = Number.isSafeInteger(known[reminderId]?.revision) ? known[reminderId].revision : 0;
+      known[reminderId] = {
+        notificationId: reminderId,
+        taskId: taskId ?? `desktop-reminder:${reminderId}`,
+        summary: summary ?? '日历关联提醒',
+        occurredAt: new Date(now()).toISOString(),
+        dueUtc,
+        revision: prevRev + 1,
+        state: 'queued',
+      };
+      storage.set('desktop-reminder-records', known);
+      return known[reminderId];
+    },
+    async invalidateReminder(reminderId, reason = 'rescheduled') {
+      if (!active || typeof reminderId !== 'string' || !reminderId.trim()) {
+        return {reminderId: String(reminderId ?? ''), invalidated: false, state: 'absent'};
+      }
+      const known = records();
+      const items = service.list();
+      const item = items.find(entry => entry.id === reminderId || `todo-reminder:${entry.id}` === reminderId);
+      if (item && item.reminder) {
+        service.update(item.id, {clearReminder: true});
+      }
+      const existing = known[reminderId];
+      if (!item && !existing) {
+        return {reminderId, invalidated: false, state: 'absent'};
+      }
+      const nextRevision = Math.max(
+        Number.isSafeInteger(item?.revision) ? item.revision + 1 : 1,
+        Number.isSafeInteger(existing?.revision) ? existing.revision + 1 : 1,
+      );
+      known[reminderId] = {
+        ...(existing ?? {
+          notificationId: reminderId,
+          taskId: item ? `todo-reminder:${item.id}` : `desktop-reminder:${reminderId}`,
+          summary: item?.title ?? '已作废提醒',
+          occurredAt: new Date(now()).toISOString(),
+          dueUtc: item?.reminder?.remindAt?.utc ?? item?.due?.utc ?? new Date(now()).toISOString(),
+        }),
+        state: 'cancelled',
+        revision: nextRevision,
+        invalidatedReason: reason,
+        invalidatedAt: new Date(now()).toISOString(),
+      };
+      storage.set('desktop-reminder-records', known);
+      if (typeof application?.runtime?.cancelSchedule === 'function' && existing?.taskId) {
+        try { application.runtime.cancelSchedule(reminderId); } catch { /* noop */ }
+      }
+      return {reminderId, invalidated: true, state: 'cancelled'};
+    },
     get competitionToolAvailability(){return tools.map(tool=>({toolName:tool.descriptor.name,
       toolVersion:tool.descriptor.version,
       publicEnumPaths:tool.descriptor.name==='todo.list'?['/status']:tool.descriptor.name==='todo.update'?['/status','/missedPolicy']:tool.descriptor.name==='todo.create'?['/missedPolicy']:[],
