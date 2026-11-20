@@ -538,7 +538,7 @@ let calendarConfig;
 let calendarMeetingHost;
 let feedsHost;
 let f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
-let workflowGraphComposition={tools:[],unavailable:['not_assembled']};
+let workflowGraphComposition;
 let todoHost;
 let asyncSubagentHost;
 let remoteRunnerHost;
@@ -2578,7 +2578,8 @@ async function initializeRuntime() {
         rootPath: path.resolve(dir, '../fixtures/agentarts'), createWorkspaceReadTool,
       });
       productTools = createPublicConnectorHost({systemObservationFactory:runtimeModule.createSystemObservationTool});
-      if(!syntheticMvp)imageWorkflowCatalog=createImageWorkflowCatalogHost({getApplication:()=>runtimeApplication});
+      if(!syntheticMvp)imageWorkflowCatalog=createImageWorkflowCatalogHost({getApplication:()=>runtimeApplication,
+        readWorkflowEntries:()=>workflowGraphComposition?.workflowEntries});
       if(!syntheticMvp){
         const observation=productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe');
         if(observation)systemObservationConversation=createSystemObservationConversation({tool:observation,
@@ -2870,9 +2871,6 @@ async function initializeRuntime() {
       f09FeedGraphHost=feedsHost?createF09FeedGraphHost({getApplication:()=>runtimeApplication,
         collectTool:feedsHost.tools.find(tool=>tool.descriptor?.name==='feeds.collect'),
         assertFeedAccess:binding=>feedsHost.assertWorkflowFeedAccess(binding)}):{tools:[],unavailable:'feeds_host_required'};
-      const systemObserveTool=productTools?.tools?.find(tool=>tool.descriptor?.name==='computer.system.observe');
-      workflowGraphComposition=createDesktopWorkflowGraphComposition({runtimeModule,getApplication:()=>runtimeApplication,
-        feedsHost,todoHost,mailHost,notificationApplicationHost,systemObserveTool});
       // F09 worker ports require a pinned AgentArts deployment (matches ownedImage gate).
       // Unpinned / missing version stays unavailable — never inject ports that would look ready without image.
       const agentArtsPinned=(()=>{
@@ -3087,7 +3085,22 @@ async function initializeRuntime() {
             digest:createHash('sha256').update(JSON.stringify({payload:request.payload,destination:request.model.baseUrl})).digest('hex')},
           summary:`仅本次原引用发送给独立辅助审查模型 ${request.model.model}（${new URL(request.model.baseUrl).hostname}）；不是 AgentArts 主模型验收`,
           deadline:request.deadline,signal:request.signal,isCurrent:request.isCurrent})}):undefined;
-      const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
+      const configuredWorkflowWorkerPorts=[
+        f02Workflow,businessWorkflow,f03Workflow,f01Workflow,f10Workflow,f21Workflow,f22Workflow,f25Workflow,
+        f26Workflow,f23Workflow,f27Workflow,f28Workflow,f04Workflow,f05Workflow,f16F17Workflow,
+        f24Workflow,f18Workflow,f19Workflow,f13Workflow,f14Workflow,
+      ].flatMap(workflow=>workflow?.configuredWorkflowWorkerPorts??[]);
+      const workflowEntries=Object.fromEntries(configuredWorkflowWorkerPorts.map(({workflowId,toolName,toolVersion})=>
+        [workflowId,{name:toolName,version:toolVersion}]));
+      if(f09WorkflowWorkerPorts)workflowEntries.F09={name:runtimeModule.F09_WORKFLOW_WORKER_TOOL,version:runtimeModule.F09_WORKFLOW_WORKER_VERSION};
+      if(f20WorkflowWorkerPorts)workflowEntries.F20={name:runtimeModule.OWNED_WORKFLOW_WORKER_TOOL,version:runtimeModule.OWNED_WORKFLOW_WORKER_VERSION};
+      workflowGraphComposition?.close?.();
+      workflowGraphComposition=syntheticMvp?undefined:createDesktopWorkflowGraphComposition({
+        runtimeModule,getApplication:()=>runtimeApplication,feedsHost,todoHost,mailHost,notificationApplicationHost,
+        systemObserveTool:productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe'),
+        codingWorkspace,workflowEntries,
+      });
+      const genericWorkflowTools=(workflowGraphComposition?.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(f10Workflow?.tools??[]),
         ...(f26Workflow?.tools??[]),
@@ -3251,23 +3264,7 @@ async function initializeRuntime() {
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
         ...(f04Workflow?.recovery?{f04Recovery:f04Workflow.recovery}:{}),
-        configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f03Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f01Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f10Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f21Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f22Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f25Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f26Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f23Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f27Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f28Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f18Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f19Workflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
+        configuredWorkflowWorkerPorts,
         planExecution:{readCurrentFact:(input,context)=>{
           if(f08SourceChanges&&input.memoryNamespace===f08SourceChanges.memoryNamespace){
             if(context.signal.aborted||Date.now()>=Date.parse(context.deadline))throw Error('原计划 Fact 读取已过期');
@@ -3547,8 +3544,10 @@ async function initializeRuntime() {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
-          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
+            competitionToolAvailability:[...(workflowGraphComposition?.competitionToolAvailability??[]),
+              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
+          competitionToolExports: [...(workflowGraphComposition?.competitionToolExports??[]),
+            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -6442,12 +6441,13 @@ app.whenReady().then(async () => {
       toolPresenceHost?.close();
       computerControlLease?.close();
       imageWorkflowCatalog?.close();
+      workflowGraphComposition?.close?.();
       systemObservationConversation?.close();
       publicReferenceConsent?.close();
       publicSkillSources.clear();
       feedsHost?.close();
       f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
-      workflowGraphComposition={tools:[],unavailable:['reset']};
+      workflowGraphComposition=undefined;
       f02Workflow=undefined;
       f16F17Cases=undefined;f16F17Workflow=undefined;
       f18ReviewCases?.close();f18ReviewCases=undefined;f18Workflow=undefined;f18ActiveRevision=undefined;

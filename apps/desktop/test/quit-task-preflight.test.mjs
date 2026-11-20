@@ -68,11 +68,14 @@ test('H6 close failure unlocks preflight drafts before retaining the original Ru
 test('connector watches stop before local Laya decisions and Runtime close',async()=>{
   const f=fixture();
   Object.assign(f.context,{connectorWatchHost:{async close(){f.calls.push('connector-watch-close');}},
-    connectorChangeHost:{async close(){f.calls.push('connector-change-close');}}});
+    connectorChangeHost:{async close(){f.calls.push('connector-change-close');}},
+    workflowGraphComposition:{close(){f.calls.push('workflow-graph-close');}}});
   f.app.quit();await tick();await tick();await tick();
   assert.equal(f.exited,true);
   assert.ok(f.calls.indexOf('connector-watch-close')<f.calls.indexOf('connector-change-close'));
   assert.ok(f.calls.indexOf('connector-change-close')<f.calls.indexOf('runtime-close'));
+  assert.ok(f.calls.indexOf('workflow-graph-close')>f.calls.indexOf('runtime-close'));
+  assert.equal(f.calls.filter(call=>call==='workflow-graph-close').length,1);
   assert.equal(f.calls.filter(call=>call==='connector-watch-close').length,1);
 });
 

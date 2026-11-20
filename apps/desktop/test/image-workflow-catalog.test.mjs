@@ -71,3 +71,56 @@ test('original user-work child discovers the real read schema, executes through 
     assert.equal(requests.filter(r=>r.taskId===child.taskId).length,2);
   }finally{host.close();app.close();}
 });
+
+test('dynamic workflow entry reader supports any F01-F28 graph when exact tool/version and adapters are registered, while keeping missing graphs unavailable (S531-L1)',async()=>{
+  const descriptors=[],workerEntries=[],signal=new AbortController().signal,deadline=new Date(Date.now()+60000).toISOString();
+  const application={tools:{list:()=>descriptors},readConversationToolCapabilities:()=>workerEntries,
+    runtime:{getTask:()=>({state:'running',cancelRequested:false}),loadCheckpoint:()=>deadline},readToolConversation:()=>'original-ui'};
+  let dynamicEntries={
+    F15:{name:'coding.repair.workflow',version:'1.0.0'},
+    F20:{name:'workflow.f20.api_check',version:'1.0.0'},
+    F17:{name:'workflow.f17.test_locate',version:'2.0.0'},
+    F99:{name:'invalid.workflow',version:'1.0.0'},
+    F01:{name:'bad name with spaces',version:'1.0.0'},
+  };
+  const host=createImageWorkflowCatalogHost({getApplication:()=>application,readWorkflowEntries:()=>dynamicEntries});
+  const context={taskId:'original',deadline,signal,authorizationRef:'read-grant',scopes:['workflow:catalog']};
+  try{
+    // Declared entry without matching registered tool stays unavailable (fail-closed).
+    let result=await host.tools[0].execute({workflowId:'F20'},context);
+    assert.equal(result.workflows[0].entry.name,'workflow.f20.api_check');
+    assert.equal(result.workflows[0].entry.state,'unavailable');
+    assert.equal(result.workflows[0].state,'unavailable');
+    assert.ok(result.workflows[0].unavailableReasons.includes('conversation_entry_not_registered'));
+
+    // The host registers a worker capability for F20 and separate tools for its nodes.
+    workerEntries.push({name:'workflow.f20.api_check',version:'1.0.0'});
+    descriptors.push(
+      {name:'workspace.read_text',version:'1.0.0'},
+      {name:'workspace.run_allowed_command',version:'1.0.0'},
+    );
+    result=await host.tools[0].execute({workflowId:'F20'},context);
+    assert.equal(result.workflows[0].entry.state,'entry_registered_requires_task_authorization');
+    assert.equal(result.workflows[0].state,'entry_registered_requires_task_authorization');
+    assert.deepEqual(result.workflows[0].unavailableReasons,[]);
+
+    // Wrong version on F17 entry tool does not satisfy registration.
+    descriptors.push({name:'workflow.f17.test_locate',version:'1.0.0'});
+    result=await host.tools[0].execute({workflowId:'F17'},context);
+    assert.equal(result.workflows[0].entry.name,'workflow.f17.test_locate');
+    assert.equal(result.workflows[0].entry.version,'2.0.0');
+    assert.equal(result.workflows[0].entry.state,'unavailable');
+    assert.ok(result.workflows[0].unavailableReasons.includes('conversation_entry_not_registered'));
+
+    // Invalid workflowId/tool names are silently dropped and never appear as entries.
+    result=await host.tools[0].execute({workflowId:'F01'},context);
+    assert.equal(result.workflows[0].entry.name,undefined);
+    assert.equal(result.workflows[0].entry.state,'unavailable');
+
+    // Removing F20 from dynamic entries immediately reverts F20 to unavailable.
+    dynamicEntries={F15:{name:'coding.repair.workflow',version:'1.0.0'}};
+    result=await host.tools[0].execute({workflowId:'F20'},context);
+    assert.equal(result.workflows[0].entry.name,undefined);
+    assert.equal(result.workflows[0].state,'unavailable');
+  }finally{host.close();}
+});
