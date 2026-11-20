@@ -1014,11 +1014,18 @@ test('live read-back labels the reported misresolutions and the hint that repair
   const sig = signal();
   const report = {};
 
-  for (const location of ['东京', '伦敦', '罗马', '丽江', '广东']) {
+  for (const location of ['东京', '伦敦', '罗马', '广东']) {
     const resolved = await provider.resolvePlace(location, undefined, sig);
     assert.equal(resolved.confidence, 'low', `${location} must be labelled weak`);
     report[location] = {name: resolved.name, admin1: resolved.admin1, timezone: resolved.timezone, confidence: resolved.confidence};
   }
+
+  // `丽江` falls back through the municipal retry (`丽江市`, PPLA2 in Yunnan) to high confidence.
+  const lijiangRecovered = await provider.resolvePlace('丽江', undefined, sig);
+  assert.equal(lijiangRecovered.admin1, '云南');
+  assert.equal(lijiangRecovered.timezone, 'Asia/Shanghai');
+  assert.equal(lijiangRecovered.confidence, 'high');
+  report['丽江'] = {name: lijiangRecovered.name, admin1: lijiangRecovered.admin1, timezone: lijiangRecovered.timezone, confidence: lijiangRecovered.confidence};
 
   const repairs = [['东京', 'Tokyo', 'Asia/Tokyo'], ['伦敦', 'London', 'Europe/London'], ['罗马', 'Rome', 'Europe/Rome'], ['丽江', 'Lijiang', 'Asia/Shanghai'], ['纽约', 'New York', 'America/New_York'], ['首尔', 'Seoul', 'Asia/Seoul']];
   for (const [location, hint, timezone] of repairs) {
