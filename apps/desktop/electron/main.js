@@ -2450,7 +2450,7 @@ function authorizeAgentArtsEgress(scope) {
     scope:{taskId:scope.taskId,requestId:scope.requestId,destination:scope.destination},
     summary:`将当前任务所列内容仅发送本次到 ${scope.destination}`,
     deadline:scope.deadline,signal:scope.signal,
-    isCurrent:()=>owner===runtimeApplication&&conversationToolAccess.resolveConversation(scope.taskId)===conversationId&&scope.isCurrent(),
+    isCurrent:()=>owner===runtimeApplication&&conversationToolAccess.resolveConversation(scope.taskId)===conversationId,
     egressReview:{conversationId,payload:scope.payload}});
 }
 

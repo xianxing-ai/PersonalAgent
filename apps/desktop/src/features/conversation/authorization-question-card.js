@@ -113,11 +113,11 @@ export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},on
       paint();
       // A failed snapshot refresh cannot undo the host's decision or invite a second answer.
       try {await onChanged();}catch {/* A confirmed card remains removed while snapshots catch up. */}
-    } catch {
+    } catch(error) {
       if(closed||!current.some(item=>key(item)===token))return;
       submissions.delete(token);paint();
       const node=[...root.querySelectorAll('[data-question-id]')].find(item=>item.dataset.questionId===id);
-      if(node)node.querySelector('[role="status"]').textContent='提交失败，请重试';
+      if(node)node.querySelector('[role="status"]').textContent=error instanceof Error?error.message:'提交授权失败';
     }
   }
   root.addEventListener('click',choose);
