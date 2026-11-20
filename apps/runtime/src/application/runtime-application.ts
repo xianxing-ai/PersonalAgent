@@ -5211,6 +5211,38 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return this.runtime.getTask(task.taskId);
   }
 
+  /** Trusted host entry point for a scheduler firing. Renderers use task.submit. */
+  submitScheduledTextTask(input:SubmitTaskInput, deadline:string):TaskSnapshot {
+    if(this.profile!=='huawei_ict_agentarts')
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Competition scheduling is unavailable');
+    const previous=this.runtime.findTaskByIdempotencyKey(input.idempotencyKey);
+    const origin=previous?this.runtime.loadCheckpoint(previous.taskId,'scheduled-text-origin:v1') as
+      {origin?:string;deadline?:string}|undefined:undefined;
+    if(previous&&origin?.origin!=='autonomous')
+      throw new ProtocolError('REVISION_CONFLICT','Original task was not admitted by the scheduler');
+    const originalDeadline=origin?.deadline??deadline;
+    if(!Number.isFinite(Date.parse(originalDeadline))||(!previous&&Date.parse(originalDeadline)<=this.now().getTime()))
+      throw new ProtocolError('TIMEOUT','Scheduled task deadline expired');
+    const task=this.runtime.submitTaskWithCheckpoint(input,'scheduled-text-origin:v1',{origin:'autonomous',deadline:originalDeadline});
+    this.dispatchAcceptedTextTask(task.taskId,input.goal,input.conversationId,originalDeadline);
+    return this.runtime.getTask(task.taskId);
+  }
+
+  readTaskUsageOrigin(taskId:string):'user'|'autonomous' {
+    const visited=new Set<string>();
+    while(!visited.has(taskId)) {
+      visited.add(taskId);
+      const task=this.runtime.getTask(taskId);
+      if(task.conversationId?.startsWith('desktop-proactive')
+        ||this.runtime.loadCheckpoint(taskId,'scheduled-text-origin:v1')!==undefined
+        ||this.runtime.loadCheckpoint(taskId,'desktop-proactive-workflow-v1')!==undefined)return 'autonomous';
+      const parent=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+      if(!parent?.parentTaskId)return 'user';
+      taskId=parent.parentTaskId;
+    }
+    throw new ProtocolError('UNAUTHORIZED','Task usage origin has a cyclic parent binding');
+  }
+
   private dispatchSubmittedTextTask(request: Request, response: SuccessfulResponse): void {
     const taskId = response.data && typeof response.data === 'object' && 'taskId' in response.data ? response.data.taskId : undefined;
     const goal = request.operation === 'task.submit' ? request.payload.goal : undefined;

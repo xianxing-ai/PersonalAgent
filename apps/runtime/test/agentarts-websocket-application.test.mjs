@@ -42,7 +42,7 @@ function syntheticToolOptions(execute) {
 }
 
 test('trusted Runtime runs WSS as Competition, clears its send intent, and disposes reusable sessions', async () => {
-  let application;
+  let application;const usage=[];
   const h = factory(':memory:', (frame, socket) => {
     if (frame.type !== 'invoke') return;
     const taskId = application.runtime.listTasks({}).items[0].taskId;
@@ -51,7 +51,7 @@ test('trusted Runtime runs WSS as Competition, clears its send intent, and dispo
     assert.equal(intent.payloadDigest, frame.payloadDigest);
     assert.equal('payload' in intent, false);
     socket.accepted(frame); socket.result(frame, 'Synthetic WSS analysis');
-  });
+  },{onWssRun:info=>usage.push(info)});
   application = h.app;
   const saveCheckpoint = h.app.runtime.saveCheckpoint.bind(h.app.runtime);
   let received = 0;
@@ -79,6 +79,9 @@ test('trusted Runtime runs WSS as Competition, clears its send intent, and dispo
     assert.equal(h.app.runtime.loadCheckpoint(taskId, 'competition-cloud-received'), null);
     assert.equal(received, 1);
     assert.equal(h.fetches.length, 0); assert.deepEqual(task.evidenceRefs, []);
+    assert.deepEqual(usage.map(({taskId,requestId,origin})=>({taskId,requestId,origin})),
+      [{taskId,requestId:h.sockets[0].sent.find(frame=>frame.type==='invoke').requestId,origin:'user'}]);
+    assert.ok(Number.isSafeInteger(usage[0].durationMs)&&usage[0].durationMs>0);
   } finally { h.app.close(); }
   assert.equal(h.sockets[0].terminations, 1);
 });
@@ -288,9 +291,10 @@ test('post-send disconnect enters waiting_reconciliation and persists only corre
 });
 
 test('cancelling after WSS dispatch keeps the unresolved invocation in reconciliation', async () => {
+  const usage=[];
   const h = factory(':memory:', (frame, socket) => {
     if (frame.type === 'invoke') socket.accepted(frame);
-  });
+  },{onWssRun:info=>usage.push(info)});
   try {
     const client = new Client(h.app); await client.connect();
     const {taskId} = await client.call('task.submit', {goal: 'Synthetic cancelled invocation', conversationId: 'wss'},
@@ -312,7 +316,27 @@ test('cancelling after WSS dispatch keeps the unresolved invocation in reconcili
     assert.equal(h.fetches.length, 0);
     for (let i = 0; i < 200 && h.app.activeTaskCount; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.equal(h.app.activeTaskCount, 0);
+    assert.equal(usage.length,1);
+    assert.equal(usage[0].requestId,unknown.requestId);
   } finally { h.app.close(); }
+});
+
+test('an over-budget trusted schedule never sends a WSS frame or records WSS duration', async()=>{
+  const usage=[];let app;
+  const h=factory(':memory:',()=>assert.fail('No frame expected'),{
+    beforeCompetitionSend:request=>{
+      if(app.readTaskUsageOrigin(request.taskId)==='autonomous')throw Error('Budget exhausted');
+    },
+    onWssRun:info=>usage.push(info),
+  });
+  app=h.app;
+  try{
+    const task=app.submitScheduledTextTask({goal:'Scheduled check',conversationId:'desktop-panel:budget',idempotencyKey:'wss-budget'},
+      new Date(Date.now()+30_000).toISOString());
+    assert.equal((await waitState(app,task.taskId,['failed','succeeded'])).state,'failed');
+    assert.equal(h.sockets.flatMap(socket=>socket.sent).filter(frame=>frame.type==='invoke').length,0);
+    assert.deepEqual(usage,[]);
+  }finally{app.close();}
 });
 
 test('a confirmed local tool receipt cannot resend an unknown cloud continuation, including an interrupted-send intent', async t => {

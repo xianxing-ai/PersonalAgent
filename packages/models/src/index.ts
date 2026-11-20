@@ -249,7 +249,8 @@ export class ModelCapabilityRegistry {
 export class ModelGateway implements ModelPort {
   readonly deployment: ModelDeployment;
 
-  constructor(private readonly provider: ModelProvider, deployment: ModelDeployment = provider.deployment) {
+  constructor(private readonly provider: ModelProvider, deployment: ModelDeployment = provider.deployment,
+    private readonly onTokenUsage?: (info:{modelId:string;usage:Readonly<ModelUsage>})=>void) {
     this.deployment = structuredClone(deployment);
   }
 
@@ -303,6 +304,10 @@ export class ModelGateway implements ModelPort {
     if (!Number.isFinite(result.latencyMs) || result.latencyMs < 0) throw new ProtocolError('EXTERNAL_FAILURE', 'Model provider returned an invalid latency');
     for (const count of Object.values(result.usage ?? {})) {
       if (!Number.isSafeInteger(count) || count < 0) throw new ProtocolError('EXTERNAL_FAILURE', 'Model provider returned invalid usage');
+    }
+    if(result.usage&&Object.keys(result.usage).length) {
+      try {this.onTokenUsage?.({modelId:this.deployment.model,usage:structuredClone(result.usage)});}
+      catch { /* A metering sink cannot invalidate a successfully completed call. */ }
     }
     return structuredClone(result);
   }
