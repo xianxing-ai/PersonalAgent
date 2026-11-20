@@ -124,6 +124,19 @@ export type {ConnectorChangeOrigin,ConnectorChangeDecisionTaskOptions} from './a
 export * from './application/notification-host.js';
 export * from './application/proactive-workflow-session.js';
 export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
+export {createRuntimeF03MemoryQueryHost,createRuntimeF04MemoryQueryHost,createRuntimeF05JointRecallHost} from './application/workflow-f04-f05-recall-host.js';
+export {createRuntimeF09ResearchEnqueue,readF09ResearchLaunch} from './application/workflow-f09-research-enqueue.js';
+export type {F09ResearchEnqueueOptions,F09ResearchLaunch} from './application/workflow-f09-research-enqueue.js';
+export {createRuntimeF10SupportedClaimsHost} from './application/workflow-f10-supported-claims-host.js';
+export {createF16CiFailurePorts} from './application/f16-ci-failure-ports.js';
+export type {F16CiFailurePortsOptions,F16HeadRequest,F16ReadStage} from './application/f16-ci-failure-ports.js';
+export {createRuntimeF16CiFailureHost} from './application/workflow-f16-ci-failure-host.js';
+export type {F16CiFailureOptions,F16FailureBinding,F16FailureResult} from './application/workflow-f16-ci-failure-host.js';
+export type {F16SourceRead} from './application/f16-source-receipts.js';
+export {createF17ReproductionPorts} from './application/f17-reproduction-ports.js';
+export type {F17Reproduction,F17ReproductionBinding,F17ReproductionPortsOptions} from './application/f17-reproduction-ports.js';
+export {createRuntimeF17FailureReportHost} from './application/workflow-f17-failure-report-host.js';
+export type {F10BoundFinding,F10ClaimReview,F10SupportedClaimsOptions} from './application/workflow-f10-supported-claims-host.js';
 export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions,
   RuntimeVoiceFinalTranscriptOptions} from './application/owned-workflow-application.js';
 export {createRuntimeCodingRepairDispatchTool,runRuntimeCodingRepairWorkflow,readRuntimeCodingVerificationEvidence,
