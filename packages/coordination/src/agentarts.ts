@@ -65,6 +65,7 @@ export interface AgentArtsWebSocketOptions {
   recoverAcceptedStatus?: true;
   factory?: AgentArtsWebSocketFactory;
   onState?: (state: AgentArtsTransportState) => void;
+  onRunDuration?: (info:{taskId:string;requestId:string;durationMs:number})=>void;
   /** Trusted local persistence, synchronously committed before send. Never a remote claim. */
   onDispatch?: (request: CoordinationRequest, receipt: AgentArtsUnknownReceipt) => void;
   /** Persist the server's acceptance before a later cancellation can lose that fact. */
@@ -180,7 +181,7 @@ export interface AgentArtsResponse {
 }
 
 /** Minimal fetch seam; the default implementation is the host's global fetch. */
-export type AgentArtsFetch = (url: string, init: AgentArtsFetchInit) => Promise<AgentArtsResponse>;
+export type AgentArtsFetch = (url: string, init: AgentArtsFetchInit, taskId?: string) => Promise<AgentArtsResponse>;
 
 type AbortCause = 'cancelled' | 'deadline';
 
@@ -1251,6 +1252,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly onWebSocketDispatch: AgentArtsWebSocketOptions['onDispatch'];
   private readonly onWebSocketAccepted: AgentArtsWebSocketOptions['onAccepted'];
   private readonly onWebSocketTerminal: AgentArtsWebSocketOptions['onTerminal'];
+  private readonly onWebSocketRunDuration: AgentArtsWebSocketOptions['onRunDuration'];
   private readonly identityObserver: AgentArtsRequestIdentityObserver | undefined;
   private readonly taskContinuationContext: ((taskId: string) => 'goal' | undefined) | undefined;
   private closed = false;
@@ -1321,6 +1323,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.onWebSocketDispatch = websocketOptions?.onDispatch;
     this.onWebSocketAccepted = websocketOptions?.onAccepted;
     this.onWebSocketTerminal = websocketOptions?.onTerminal;
+    this.onWebSocketRunDuration = websocketOptions?.onRunDuration;
     this.identityObserver = identityObserver;
     this.taskContinuationContext = taskContinuationContext;
     this.websocket = validated.websocketUrl === undefined ? undefined
@@ -1484,6 +1487,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       // WSS rechecks after its asynchronous Upgrade/ready handshake, immediately
       // before exporting a catalog or continuation. HTTPS fallback rechecks too.
       const guards: AgentArtsSendGuards = {
+      ...(this.onWebSocketRunDuration?{onRunDuration:durationMs=>this.onWebSocketRunDuration?.({taskId,requestId,durationMs})}:{}),
       ...(availableTools === undefined ? {} : {beforeCatalog: async () => {
         stage = 'catalog_guard';
         try {
@@ -1541,7 +1545,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         if (receipt === undefined) this.identityObserver?.(createAgentArtsUnknownReceipt(init), sendRequest);
         // The final synchronous guard and fetch share one uninterrupted stack.
         if (receipt !== undefined) { fallbackReceipt = receipt; fallbackStarted = true; }
-        const response = this.fetchImpl(url, init);
+        const response = this.fetchImpl(url, init, taskId);
         if (fallback) this.websocket!.reportFallback(sessionId, requestId, this.websocketDeploymentVersion);
         return response;
       };

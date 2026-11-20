@@ -2867,22 +2867,8 @@ async function initializeRuntime() {
         beforeCompetitionSend:request=> {
           const task=runtimeApplication.runtime.getTask(request.taskId);
           const conversationId=typeof task.conversationId==='string'?task.conversationId:'';
-          let proactive=conversationId.startsWith('desktop-proactive')
-            ||runtimeApplication.runtime.loadCheckpoint(request.taskId,'desktop-proactive-workflow-v1')!=null;
-          let cursorTaskId=request.taskId;
-          const visited=new Set([cursorTaskId]);
-          while(!proactive&&visited.size<16){
-            const parent=runtimeApplication.runtime.loadCheckpoint(cursorTaskId,'subtask-parent');
-            const parentId=typeof parent?.parentTaskId==='string'?parent.parentTaskId:'';
-            if(!parentId||visited.has(parentId))break;
-            visited.add(parentId);cursorTaskId=parentId;
-            try{
-              const ancestor=runtimeApplication.runtime.getTask(parentId);
-              const ancestorConv=typeof ancestor.conversationId==='string'?ancestor.conversationId:'';
-              if(ancestorConv.startsWith('desktop-proactive')||runtimeApplication.runtime.loadCheckpoint(parentId,'desktop-proactive-workflow-v1')!=null)proactive=true;
-            }catch{break;}
-          }
-          usageBudgetProduct?.beforeCloudSend({userInitiated:!proactive,modelId:request.executionModel?.modelId});
+          usageBudgetProduct?.beforeCloudSend({userInitiated:runtimeApplication.readTaskUsageOrigin(request.taskId)==='user',
+            modelId:request.executionModel?.modelId});
           if (!proactiveHost && conversationId.startsWith('desktop-proactive-goals:')) {
             throw Error('目标主动分析宿主尚未就绪');
           }
@@ -2986,6 +2972,7 @@ async function initializeRuntime() {
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
+        onWssRun:info=>usageBudgetProduct?.recordCloud(info),
         ...(agentArtsTransportConfig.transport==='wss'?{recoverAcceptedStatus:true}:{}),
         invokeMode: agentArtsInvokeMode,
         ...(agentArtsTransportConfig.transport === 'wss' ? {onTransportState: state => {
@@ -3454,8 +3441,8 @@ async function initializeRuntime() {
     getTools: () => connectorConversationTools?.tools ?? [],
     submitTask: async input => {
       const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
-      const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
-      return {taskId: result.taskId, state: result.state ?? 'created'};
+      const deadline=new Date(Date.now()+readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
+      return runtimeApplication.submitScheduledTextTask({...input,conversationId},deadline);
     },
     namespace: desktopHost.userNamespace,
     onUpdate: publish,
@@ -5207,7 +5194,8 @@ app.whenReady().then(async () => {
       .map(model => model.id)});
   costRouteBudget = usageBudgetProduct;
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage,
-    onCloudRun: info => usageBudgetProduct.recordCloud(info)});
+    onCloudRun: info => usageBudgetProduct.recordCloud({...info,
+      ...(info.taskId?{origin:runtimeApplication?.readTaskUsageOrigin(info.taskId)}:{})})});
   if(competitionMode&&!syntheticMvp) {
     try {
       const created=initializeDefaultWorkspace({userData:app.getPath('userData'),

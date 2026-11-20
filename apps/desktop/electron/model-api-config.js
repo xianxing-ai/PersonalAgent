@@ -164,7 +164,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
     const assertCurrent = () => {
       if (disposed || entries.get(id) !== entry || !entry.enabled) fail('模型配置已撤销或更改');
     };
-    const modelGateway = factory({profile, provider: entry.provider, baseUrl: entry.baseUrl,
+    const modelGateway = factory({profile, provider: entry.provider, baseUrl: entry.baseUrl, onTokenUsage:onModelUsage,
       model: entry.model, deployment: `${entry.id}@${entry.bindingId}`,
       ...(entry.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(entry.nativeReasoning)}),
       apiKey: () => {assertCurrent(); return entry.apiKey;},
@@ -197,7 +197,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
           if (decision?.modelId && decision.modelId !== entry.model) {
             const alt = [...entries.values()].find(item => item.enabled && item.model === decision.modelId);
             if (alt && alt !== entry) {
-              const opened = factory({profile, provider: alt.provider, baseUrl: alt.baseUrl, model: alt.model,
+              const opened = factory({profile, provider: alt.provider, baseUrl: alt.baseUrl, model: alt.model, onTokenUsage:onModelUsage,
                 deployment: `${alt.id}@${alt.bindingId}`,
                 ...(alt.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(alt.nativeReasoning)}),
                 apiKey: () => { if (disposed || !entries.get(alt.id)?.enabled) fail('模型配置已撤销或更改'); return alt.apiKey; }});
@@ -214,8 +214,6 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
           }
         }
         const result = await activeGateway.complete({...requestForCall, signal: controller.signal});
-        try { onModelUsage?.({modelId: activeEntry.model, usage: result?.usage, latencyMs: result?.latencyMs}); }
-        catch { /* A ledger failure must not rewrite a completed model result. */ }
         assertCurrent();
         if (sequence === latestRequest && !controller.signal.aborted) requestBudgets.set(id,publicRequestBudget(result.requestBudget,
           activeGateway.deployment?.capabilities?.requestTokenBudget,activeEntry.bindingId));

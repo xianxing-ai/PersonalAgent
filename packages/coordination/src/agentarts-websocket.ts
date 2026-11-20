@@ -191,6 +191,7 @@ interface Connection {
   serverInstanceId?: string;
 }
 export interface AgentArtsSendGuards {
+  onRunDuration?: (durationMs:number)=>void;
   beforeCatalog?(): Promise<void>;
   /** No await separates this guard from the invoke frame or HTTPS fetch. */
   beforeSend(receipt?: AgentArtsUnknownReceipt): void;
@@ -526,6 +527,7 @@ export class AgentArtsWebSocketTransport {
     }
     const selected = connection;
     selected.leases++;
+    let sentAt:number|undefined;
     try {
       await waitForReady(selected, init.signal);
       if (init.signal.aborted) throw new ProtocolError('CANCELLED', 'AgentArts request cancelled');
@@ -565,6 +567,7 @@ export class AgentArtsWebSocketTransport {
           if (init.signal.aborted) { abort(); return; }
           // Once send is attempted, delivery/acceptance may be unknown even if the callback fails.
           pending.sent = true;
+          if(guards.onRunDuration)sentAt=performance.now();
           selected.socket.send(frame, error => {
             if (error) this.breakConnection(selected, failProtocol());
           });
@@ -575,6 +578,10 @@ export class AgentArtsWebSocketTransport {
       });
     } finally {
       selected.leases--;
+      if(sentAt!==undefined){
+        try{guards.onRunDuration?.(Math.max(1,Math.ceil(performance.now()-sentAt)));}
+        catch{ /* Metering never changes the transport outcome. */ }
+      }
       if (!selected.negotiated && selected.leases === 0 && selected.pending.size === 0) {
         this.breakConnection(selected, new ProtocolError('CANCELLED', 'AgentArts connection setup abandoned'));
       }

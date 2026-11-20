@@ -63,6 +63,8 @@ export interface AgentArtsRuntimeApplicationOptions
   /** Offline/native socket injection, independent of the task transport protocol. */
   realtimeSocket?: RealtimeSocketConstructor;
   onTransportState?: (state: AgentArtsTransportState) => void;
+  /** Duration of WSS invocations that reached socket send, including unknown outcomes. */
+  onWssRun?: (info:{taskId:string;requestId:string;durationMs:number;origin:'user'|'autonomous'})=>void;
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
@@ -114,6 +116,7 @@ export function createAgentArtsRuntimeApplication(
     websocketFactory,
     realtimeSocket,
     onTransportState,
+    onWssRun,
     onDiagnostic,
     beforeCompetitionSend,
     readOwnedWorkflowReceiptSecret,
@@ -177,6 +180,7 @@ export function createAgentArtsRuntimeApplication(
         ...(websocketFactory === undefined ? {} : {factory: websocketFactory}),
         ...(recoverAcceptedStatus===true?{recoverAcceptedStatus:true as const}:{}),
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
+        ...(onWssRun===undefined?{}:{onRunDuration:info=>onWssRun({...info,origin:application.readTaskUsageOrigin(info.taskId)})}),
         onDispatch: (request, receipt) => {
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
           recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt,request);
