@@ -206,6 +206,16 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .cc-timeline i {width:7px;height:7px;flex-shrink:0;margin-top:4px;border:1px solid var(--cc-dim);border-radius:50%;background:var(--cc-solid)}
 .cc-timeline li[data-state="confirmed"] i,.cc-timeline li[data-state="succeeded"] i {background:var(--cc-muted)}
 .cc-timeline strong {display:block;font-size:11px;font-weight:400;color:var(--cc-text)}.cc-timeline small {display:block;margin-top:4px;font-size:9px;color:var(--cc-dim)}
+.cc-delegation-card {display:grid;gap:9px;padding:13px 15px;border:1px solid var(--cc-line);border-radius:9px;background:var(--cc-soft)}
+.cc-delegation-card header,.cc-delegation-card footer {display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cc-delegation-card header strong {font-size:12px;font-weight:550;color:var(--cc-text)}
+.cc-delegation-card header span,.cc-delegation-card small {color:var(--cc-muted);font-size:11px}
+.cc-delegation-card ul {display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.cc-delegation-card li {font-size:11px;color:var(--cc-text)}
+.cc-delegation-card summary {cursor:pointer;overflow-wrap:anywhere}
+.cc-delegation-card summary small {margin-left:8px}
+.cc-delegation-card details p {margin:5px 0 0 14px;color:var(--cc-muted)}
+.cc-delegation-card footer .turn-action {margin-left:auto}
 .command-center .conversation-inspector,.command-center .cc-history {position:absolute;z-index:35;right:0;top:0;bottom:0;width:330px;max-width:calc(100% - 10px);padding:18px;border:1px solid var(--cc-line);border-radius:12px;background:var(--cc-solid);color:var(--cc-text);box-shadow:0 10px 35px rgba(0,0,0,.18);overflow:auto;scrollbar-width:thin}
 .command-center .cc-history {left:0;right:auto}
 .cc-history>header {display:flex;align-items:center;justify-content:space-between}.cc-history h2 {font-size:13px;font-weight:500}

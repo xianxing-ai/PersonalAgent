@@ -6,8 +6,10 @@ import {canRetryConversationMigration,inspectPendingConversationMigration,openCo
 
 // Desktop-owned metadata. Runtime still owns task state and results.
 export class Conversations {
-  constructor(file) {
+  constructor(file, {sharedMain = false} = {}) {
     this.file = file;
+    this.sharedMain = sharedMain;
+    this.workspaceHistory = false;
     this.loadedVersion=4;
     this.store=undefined;
     this.legacyBytes=undefined;
@@ -63,27 +65,53 @@ export class Conversations {
     if(!value||typeof value!=='object'||Object.keys(value).some(k=>!['id','surface','title','archived','createdAt','draft'].includes(k))||!['panel','workspace'].includes(value.surface)||typeof value.id!=='string'||!(value.id==='desktop-'+value.surface||new RegExp('^desktop-'+value.surface+':[a-f0-9-]{36}$').test(value.id))||typeof value.title!=='string'||!value.title.trim()||value.title.length>100||/[\u0000-\u001f\u007f]/.test(value.title)||typeof value.archived!=='boolean'||!Number.isFinite(Date.parse(value.createdAt))||typeof value.draft!=='string'||value.draft.length>100000)throw Error('对话元数据无效');
     return value;
   }
-  activeConversationId(surface){if(!['panel','workspace'].includes(surface))throw Error('对话窗口无效');return this.activeSessions[surface];}
-  session(id,surface){const value=this.sessions.get(id);if(!value||surface&&value.surface!==surface)throw Error('对话不存在或不属于当前窗口');return {...value};}
+  activeConversationId(surface){
+    this.assertSurface(surface);
+    return this.activeSessions[this.sharedMain&&surface==='workspace'&&!this.workspaceHistory?'panel':surface];
+  }
+  assertSurface(surface){if(!['panel','workspace'].includes(surface))throw Error('对话窗口无效');}
+  showMain(){this.workspaceHistory=false;}
+  canAccessSurface(surface,owner){
+    return surface===owner || this.sharedMain&&surface==='workspace'&&owner==='panel';
+  }
+  session(id,surface){const value=this.sessions.get(id);if(!value||surface&&!this.canAccessSurface(surface,value.surface))throw Error('对话不存在或不属于当前窗口');return {...value};}
   conversationIdForTask(task){return this.turns.get(task.taskId)?.conversationId??(this.sessions.has(task.conversationId)?task.conversationId:taskSurfaceId(this.surface(task.taskId)));}
   containsConversation(id){return this.sessions.has(id);}
-  snapshot(surface){return {activeId:this.activeConversationId(surface),sessions:[...this.sessions.values()].filter(s=>s.surface===surface).map(({draft,...session})=>({...session})),draft:this.session(this.activeConversationId(surface)).draft};}
+  snapshot(surface){
+    const activeId=this.activeConversationId(surface);
+    const sessions=[...this.sessions.values()].filter(session=>this.canAccessSurface(surface,session.surface)).map(({draft,...session})=>{
+      if(!this.sharedMain)return session;
+      if(session.surface==='workspace')return {...session,legacyHistory:true};
+      return session.id==='desktop-panel'&&session.title==='原面板对话'?{...session,title:'主对话'}:session;
+    });
+    return {activeId,sessions,draft:this.session(activeId).draft};
+  }
   saveSessions(sessions,activeSessions=this.activeSessions,changes){this.save(this.turns,this.messages,this.preferences,sessions,activeSessions,changes);this.sessions=sessions;this.activeSessions=activeSessions;}
   create(surface,title='新对话'){
-    this.activeConversationId(surface);const value=this.validateSession({id:'desktop-'+surface+':'+randomUUID(),surface,title,archived:false,createdAt:new Date().toISOString(),draft:''});
-    const sessions=new Map(this.sessions);sessions.set(value.id,value);this.saveSessions(sessions,{...this.activeSessions,[surface]:value.id},
-      [{kind:'sessions',id:value.id,value},{kind:'active',id:surface,value:value.id}]);return {...value};
+    this.assertSurface(surface);const owner=this.sharedMain?'panel':surface;
+    const value=this.validateSession({id:'desktop-'+owner+':'+randomUUID(),surface:owner,title,archived:false,createdAt:new Date().toISOString(),draft:''});
+    const sessions=new Map(this.sessions);sessions.set(value.id,value);this.saveSessions(sessions,{...this.activeSessions,[owner]:value.id},
+      [{kind:'sessions',id:value.id,value},{kind:'active',id:owner,value:value.id}]);
+    if(surface==='workspace')this.showMain();
+    return {...value};
   }
-  switch(surface,id){const value=this.session(id,surface);if(value.archived)throw Error('请先恢复已归档对话');this.saveSessions(new Map(this.sessions),{...this.activeSessions,[surface]:id},
-    [{kind:'active',id:surface,value:id}]);return value;}
+  switch(surface,id){
+    const value=this.session(id,surface);if(value.archived)throw Error('请先恢复已归档对话');
+    const owner=value.surface;
+    if(this.activeSessions[owner]!==id)this.saveSessions(new Map(this.sessions),{...this.activeSessions,[owner]:id},
+      [{kind:'active',id:owner,value:id}]);
+    if(this.sharedMain&&surface==='workspace')this.workspaceHistory=owner==='workspace';
+    return value;
+  }
   rename(surface,id,title){const value=this.validateSession({...this.session(id,surface),title});const sessions=new Map(this.sessions);sessions.set(id,value);this.saveSessions(sessions,this.activeSessions,
     [{kind:'sessions',id,value}]);return {...value};}
   archive(surface,id,archived=true){
     const value={...this.session(id,surface),archived};const sessions=new Map(this.sessions);sessions.set(id,value);let active={...this.activeSessions};
-    if(archived&&active[surface]===id){let next=[...sessions.values()].find(s=>s.surface===surface&&!s.archived);if(!next){next=this.validateSession({id:'desktop-'+surface+':'+randomUUID(),surface,title:'新对话',archived:false,createdAt:new Date().toISOString(),draft:''});sessions.set(next.id,next);}active[surface]=next.id;}
+    const owner=value.surface;
+    if(archived&&active[owner]===id){let next=[...sessions.values()].find(s=>s.surface===owner&&!s.archived);if(!next){next=this.validateSession({id:'desktop-'+owner+':'+randomUUID(),surface:owner,title:'新对话',archived:false,createdAt:new Date().toISOString(),draft:''});sessions.set(next.id,next);}active[owner]=next.id;}
     const changes=[{kind:'sessions',id,value}];
     for(const [newId,newValue] of sessions)if(!this.sessions.has(newId))changes.push({kind:'sessions',id:newId,value:newValue});
-    if(active[surface]!==this.activeSessions[surface])changes.push({kind:'active',id:surface,value:active[surface]});
+    if(active[owner]!==this.activeSessions[owner])changes.push({kind:'active',id:owner,value:active[owner]});
     this.saveSessions(sessions,active,changes);return {...value};
   }
   setDraft(surface,id,draft){const value=this.validateSession({...this.session(id,surface),draft});if(this.sessions.get(id).draft===draft)return;const sessions=new Map(this.sessions);sessions.set(id,value);this.saveSessions(sessions,this.activeSessions,
@@ -124,10 +152,10 @@ export class Conversations {
   }
   add(taskId, surface, goal, conversationId=this.turns.get(taskId)?.conversationId??taskSurfaceId(surface)) {
     const previous=this.turns.get(taskId);
-    if(previous&&(previous.surface!==surface||(previous.conversationId??taskSurfaceId(previous.surface))!==conversationId))throw Error('任务对话归属不可更改');
-    this.session(conversationId,surface);
+    const owner=this.session(conversationId,surface).surface;
+    if(previous&&(previous.surface!==owner||(previous.conversationId??taskSurfaceId(previous.surface))!==conversationId))throw Error('任务对话归属不可更改');
     const turns = new Map(this.turns);
-    turns.set(taskId, {taskId, surface, goal, conversationId, createdAt:new Date().toISOString()});
+    turns.set(taskId, {taskId, surface:owner, goal, conversationId, createdAt:new Date().toISOString()});
     this.save(turns,this.messages,this.preferences,this.sessions,this.activeSessions,
       [{kind:'turns',id:taskId,value:turns.get(taskId)}]);
     this.turns = turns;

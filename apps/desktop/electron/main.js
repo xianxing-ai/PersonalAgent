@@ -20,7 +20,7 @@ import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
 import {projectMailStatus} from './mail-status-projection.js';
-import {projectSubagentActivity,scopeSubagentConversations, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
+import {projectChildProgress,projectChildToolActivity,projectSubagentActivity,scopeSubagentConversations,openTaskConversation,readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction,handleWorkspaceSubagentAction} from './subagent-window-actions.js';
 import {createMemoryWatchdog} from './memory-watchdog.js';
 import {createSnapshotPublisher} from './snapshot-publisher.js';
@@ -235,6 +235,9 @@ let panel;
 let draftQuitPreflight;
 let admin;
 let workspace;
+let workspaceChildActivity;
+let workspaceChildWatch;
+let taskActivitySequence=0;
 const subagentWindows=new Map();
 // Each child conversation owns a renderer process. Keeping every one alive across turns is what
 // made long sessions slow, so the host recycles the least recently used window past this bound.
@@ -754,7 +757,49 @@ function agentArtsSnapshot() {
     ...(observation ? {observation} : {})};
 }
 
-function visibleConversationTask(task,surface){return !(task.goal?.startsWith('判断是否告知用户：')&&connectorChangeHost?.ownsDecisionTask(task.taskId))&&(!surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface));}
+function visibleConversationTask(task,surface){
+  if(task.goal?.startsWith('判断是否告知用户：')&&connectorChangeHost?.ownsDecisionTask(task.taskId))return false;
+  if(!surface)return true;
+  const activeId=conversations?.activeConversationId(surface);
+  return typeof activeId==='string'&&task.conversationId===activeId&&conversations.canAccessSurface(surface,taskSurface(task));
+}
+function foregroundConversationTask(task,surface){
+  if(!visibleConversationTask(task,surface)||terminalTaskStates.has(task.state)||conversationDelivery.stopped(task))return false;
+  const runtime=competitionMode?runtimeApplication?.runtime:undefined;
+  const original=runtime?.loadCheckpoint(task.taskId,'required-subagent-delegation:v1');
+  if(original?.parentTaskId!==task.taskId||original.subtask?.subtaskId!=='user-work')return true;
+  const child=runtime?.findTaskByIdempotencyKey(`subagent-dispatch-${task.taskId}-user-work`);
+  if(!child||child.conversationId!==`desktop-subtask:${task.taskId}`)return true;
+  const binding=runtime.loadCheckpoint(child.taskId,'subtask-parent');
+  return binding?.parentTaskId!==task.taskId||binding.subtaskId!=='user-work'||binding.goal!==original.subtask.goal;
+}
+function safeDesktopTask(task){
+  return readSafeTaskProjection(task,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,delivery:conversationDelivery,cache:tasks,goals:taskGoals});
+}
+function compactSubagentTasks(children){
+  const runtime=runtimeApplication?.runtime;
+  const recent=children.slice(0,8);
+  const approvalOwners=new Map(recent.map(child=>[child.taskId,child.taskId]));
+  for(const child of recent){
+    if(child.state!=='waiting_approval')continue;
+    const host=runtimeApplication?.readPendingOwnedWorkflowHostTask?.(child.taskId);
+    if(host)approvalOwners.set(host.taskId,child.taskId);
+  }
+  const byChild=new Map();
+  for(const approval of approvals.values()){
+    const childId=approvalOwners.get(approval.taskId);
+    if(!childId||!['pending','allowed','denied'].includes(approval.state))continue;
+    const current=byChild.get(childId)??[];
+    current.unshift(approval);
+    byChild.set(childId,current);
+  }
+  return children.map((child,index)=>{
+    const task=safeDesktopTask(runtime.getTask(child.taskId));
+    const {goal,resultSummary,error,...identity}=child;
+    return {...identity,...(!task.bodyWithheld&&goal?{goal}:{}),...projectChildProgress(task,3),
+      ...(index<8&&!task.bodyWithheld?{toolActivity:projectChildToolActivity(runtime.readTranscript(task.taskId),byChild.get(task.taskId),3)}:{})};
+  });
+}
 function conversationProjection(surface) {
   const page=historyPages.get(surface);
   const pageTasks=new Set(page.entries.filter(entry=>entry.kind==='task').map(entry=>entry.id));
@@ -762,17 +807,18 @@ function conversationProjection(surface) {
   const ordered=orderedTasks();
   const scoped=ordered.filter(task=>visibleConversationTask(task,surface));
   const active=scoped.filter(task=>!terminalTaskStates.has(task.state));
+  const foreground=surface?active.filter(task=>foregroundConversationTask(task,surface)):[];
   const liveIds=new Set(active.slice(-8).map(task=>task.taskId));
   const projectedTasks=scoped.filter(task=>pageTasks.has(task.taskId)||liveIds.has(task.taskId));
   const workspaceChildren=surface==='workspace'&&!fakeMode?scopeSubagentConversations(runtimeApplication?.listSubagentConversations({limit:100,
     parentTaskIds:[...new Set(projectedTasks.map(task=>task.taskId))]}).items??[],
     taskId=>runtimeApplication.runtime.getTask(taskId),parent=>visibleConversationTask(parent,'workspace')):[];
-  return {
-    subagentTasks:fakeMode?[]:(surface==='workspace'?workspaceChildren:projectSubagentActivity({tasks:projectedTasks,surface,visible:visibleConversationTask,
+  const children=fakeMode?[]:(surface==='workspace'?workspaceChildren:projectSubagentActivity({tasks:projectedTasks,surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
-      readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
-    tasks: projectedTasks.map(original => {const task=readSafeTaskProjection(original,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,
-      delivery:conversationDelivery,cache:tasks,goals:taskGoals});return ({...structuredClone(task),
+      readTask:taskId=>runtimeApplication.runtime.getTask(taskId)}));
+  return {
+    subagentTasks:compactSubagentTasks(children),
+    tasks: projectedTasks.map(original => {const task=safeDesktopTask(original);return ({...structuredClone(task),
       ...(task.error?{error:{...task.error,...errorDisplay(task.error,'task')}}:{}),
       reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
       ...projectFailureRepair(task),
@@ -785,7 +831,7 @@ function conversationProjection(surface) {
     messages: page.entries.filter(entry=>entry.kind==='message').map(entry=>conversations?.messages.get(entry.id)).filter(Boolean).map(message=>({...message})),
     historyPage:{...historyPages.summary(surface),activeCount:active.length},
     conversationState:surface?conversations?.snapshot(surface):undefined,
-    surfaceBusy:surface?active.length>0:false,
+    surfaceBusy:foreground.length>0,
     conversation: surface ?? 'all',
     authorizationQuestions,
     authorizationSandbox:runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined,
@@ -964,14 +1010,41 @@ function publishAudioLevel(){
   const level=Number.isFinite(audioLevel)?Math.max(0,Math.min(1,audioLevel)):0;
   for(const win of [orb,panel,admin,workspace])if(win&&!win.isDestroyed()&&win.isVisible()&&!win.isMinimized())win.webContents.send('desktop:audio-level',level);
 }
+function publicConversationActivity(item){
+  if(item.kind==='user_injection'||item.kind==='user')return undefined;
+  const {argsSummary,resultSummary,...visible}=item;
+  if(['tool','tool_call','tool_result'].includes(item.kind))delete visible.text;
+  return {...visible,...(resultSummary!==undefined?{resultSummary:'已返回'}:{})};
+}
+function readConversationTranscript(task){
+  const transcript=runtimeApplication.runtime.readTranscript(task.taskId);
+  return {...transcript,activityThrough:taskActivitySequence,segments:task.bodyWithheld||task.outputTruncated?[]:
+    transcript.segments.map(publicConversationActivity).filter(Boolean)};
+}
+function workspaceChildIsCurrent(record){
+  if(!record||record.window!==workspace||workspace.isDestroyed())return false;
+  const parent=runtimeApplication?.runtime.getTask(record.binding.parentTaskId);
+  return parent!==undefined&&visibleConversationTask(parent,'workspace');
+}
 function pushTaskActivity(event) {
-  if (runtimeClosed || !event || typeof event.taskId !== 'string') return;
-  for (const win of [panel, workspace, admin]) {
-    if (win && !win.isDestroyed()) win.webContents.send('desktop:task-activity', event);
+  if(runtimeClosed||!event||typeof event.taskId!=='string')return;
+  taskActivitySequence=event.sequence;
+  const activity=publicConversationActivity(event);
+  if(!activity)return;
+  const runtime=runtimeApplication?.runtime;
+  const task=runtime?.getTask(event.taskId);
+  if(!task||runtime.loadCheckpoint(event.taskId,'private-copy-erasure')!==undefined||conversationDelivery.stopped(task))return;
+  const isAssistant=task.conversationId?.startsWith('desktop-assistant:');
+  for(const [win,surface] of [[panel,'panel'],[workspace,'workspace']]){
+    if(win&&!win.isDestroyed()&&(visibleConversationTask(task,surface)||isAssistant))
+      win.webContents.send('desktop:task-activity',activity);
   }
-  for (const record of subagentWindows.values()) {
-    if (record.window.isDestroyed()) continue;
-    record.window.webContents.send('desktop:task-activity', event);
+  if(admin&&!admin.isDestroyed())admin.webContents.send('desktop:task-activity',activity);
+  if(workspaceChildActivity?.taskIds.has(event.taskId)&&workspaceChildIsCurrent(workspaceChildActivity))
+    workspace.webContents.send('desktop:task-activity',activity);
+  for(const record of subagentWindows.values()){
+    if(!record.window.isDestroyed()&&record.activityTaskIds.has(event.taskId))
+      record.window.webContents.send('desktop:task-activity',activity);
   }
 }
 function publish(topics) {
@@ -1392,13 +1465,50 @@ async function openWorkspace() {
     {title: 'PersonalAgent · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
   bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
-  workspace.on('closed', () => { workspace = undefined; });
+  const window=workspace;
+  const clearWatch=()=>{if(workspace===window){workspaceChildActivity=undefined;workspaceChildWatch=undefined;}};
+  window.webContents.on('did-start-navigation',(_event,_url,_inPlace,mainFrame)=>{if(mainFrame)clearWatch();});
+  window.webContents.on('render-process-gone',clearWatch);
+  window.on('closed',()=>{if(workspace===window){clearWatch();workspace=undefined;}});
 }
 
-async function readChildConversation(payload){
-  const detail=await readSubagentConversation({payload,tasks:{get:id=>tasks.get(id)??runtimeApplication.runtime.getTask(id)},
+function assertActiveChildParent(binding,surface){
+  if(typeof binding?.parentTaskId!=='string'||!binding.parentTaskId||!runtimeApplication)throw Error('子对话参数无效');
+  if(!visibleConversationTask(runtimeApplication.runtime.getTask(binding.parentTaskId),surface))
+    throw Error('子任务不属于当前对话');
+}
+function readChildTurn(taskId){
+  const runtime=runtimeApplication.runtime;
+  const task=safeDesktopTask(runtime.getTask(taskId));
+  const transcript=readConversationTranscript(task);
+  const approvals=task.bodyWithheld?[]:runtime.listApprovals({taskId,limit:24}).items;
+  if(task.state==='waiting_approval'&&!task.bodyWithheld){
+    const host=runtimeApplication.readPendingOwnedWorkflowHostTask?.(taskId);
+    if(host)approvals.unshift(...runtime.listApprovals({taskId:host.taskId,state:'pending',limit:1}).items);
+  }
+  const injections=task.bodyWithheld?undefined:runtime.loadCheckpoint(taskId,'user-injection-log:v1');
+  return {transcript,...projectChildProgress(task),resultMetadata:taskResultMetadata(task),
+    toolActivity:projectChildToolActivity(transcript,approvals),
+    ...(Array.isArray(injections)?{injections:injections.filter(item=>item.source==='user').map(({text,at})=>({text,at}))}:{}),
+    ...(task.bodyWithheld?{bodyWithheld:true}:{})};
+}
+async function readChildIdentity(payload,surface){
+  if(!runtimeApplication)throw Error('当前没有可读取的子对话记录');
+  if(surface)assertActiveChildParent(payload,surface);
+  const detail=await readSubagentConversation({payload,tasks:{get:id=>runtimeApplication.runtime.getTask(id)},
     readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
     readTask:id=>runtimeApplication.runtime.getTask(id)});
+  if(surface)assertActiveChildParent(payload,surface);
+  return detail;
+}
+async function readChildDetail(payload,surface){
+  const detail=await readChildIdentity(payload,surface);
+  const turn=readChildTurn(detail.taskId);
+  return {...detail,...turn,transcriptAvailable:true,
+    ...(turn.bodyWithheld?{goal:undefined,resultSummary:undefined}:{})};
+}
+async function readChildConversation(payload,surface){
+  const detail=await readChildDetail(payload,surface);
   let conversation;
   try{conversation=runtimeApplication.readSubagentConversation(payload);}
   catch(error){
@@ -1406,28 +1516,54 @@ async function readChildConversation(payload){
     conversation={parentTaskId:detail.parentTaskId,taskId:detail.taskId,messages:[],canSubmit:false,
       submitUnavailableReason:'此历史子任务缺少可继续执行的绑定，保留原记录供查看'};
   }
+  const messages=conversation.messages.map(message=>{
+    const turn=readChildTurn(message.taskId);
+    return {...message,...turn,...(turn.bodyWithheld?{userText:'',replyText:undefined}:{})};
+  });
   const unavailable=!competitionMode||!agentArtsConfig.snapshot().configured?'AgentArts 尚未配置':model.enabled===false?'模型已停用':'';
-  return {...detail,...conversation,canSubmit:conversation.canSubmit&&!unavailable,
+  return {...detail,...conversation,messages,canSubmit:conversation.canSubmit&&!unavailable,
     ...(unavailable?{submitUnavailableReason:unavailable}:{})};
 }
-async function submitChildConversation(binding,payload){
+function childActivityTaskIds(detail){
+  return new Set([detail.taskId,...detail.messages.map(message=>message.taskId)]);
+}
+function sameChildBinding(first,second){
+  return first&&second&&first.parentTaskId===second.parentTaskId&&first.taskId===second.taskId;
+}
+function publishChildUpdates(changedIds){
+  const send=record=>{
+    if(record.window.isDestroyed())return;
+    const changed=changedIds.find(taskId=>record.activityTaskIds.has(taskId));
+    if(changed)record.window.webContents.send('desktop:subagent-task-updated',changed);
+  };
+  if(workspaceChildIsCurrent(workspaceChildActivity))
+    send({window:workspace,activityTaskIds:workspaceChildActivity.taskIds});
+  for(const record of subagentWindows.values())send(record);
+}
+async function submitChildConversation(binding,payload,surface){
   if(!competitionMode||!runtimeApplication||!agentArtsConfig.snapshot().configured)throw Error('请先配置 AgentArts');
   if(model.enabled===false)throw Error('模型已停用');
-  await readChildConversation(binding);
+  await readChildIdentity(binding,surface);
+  if(surface)assertActiveChildParent(binding,surface);
   installedSkillsHost?.assertTask(binding.taskId);
   const result=await runtimeApplication.submitSubagentConversationMessage({...binding,...payload});
   const task=runtimeApplication.runtime.getTask(result.acceptedTaskId);
+  const window=subagentWindows.get(JSON.stringify([binding.parentTaskId,binding.taskId]));
+  window?.activityTaskIds.add(task.taskId);
+  if(sameChildBinding(workspaceChildActivity?.binding,binding)&&workspaceChildIsCurrent(workspaceChildActivity))
+    workspaceChildActivity.taskIds.add(task.taskId);
   if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(task.conversationId, task.goal);
   tasks.set(task.taskId,structuredClone(task));rememberTaskGoal(task.taskId,task.goal);
   publish();return result;
 }
-async function cancelChildConversation(binding,executionTaskId){
-  await readChildConversation(binding);
+async function cancelChildConversation(binding,executionTaskId,surface){
+  await readChildIdentity(binding,surface);
+  if(surface)assertActiveChildParent(binding,surface);
   const result=await runtimeApplication.cancelSubagentConversationTask({...binding,executionTaskId});
   publish();return result;
 }
-async function openSubagentConversation(payload){
-  const detail=await readChildConversation(payload);
+async function openSubagentConversation(payload,surface){
+  const detail=await readChildConversation(payload,surface);
   const key=JSON.stringify([detail.parentTaskId,detail.taskId]);
   const previous=subagentWindows.get(key);
   if(previous&&!previous.window.isDestroyed()){previous.lastUsedAt=Date.now();previous.window.show();previous.window.focus();return {opened:true};}
@@ -1437,7 +1573,8 @@ async function openSubagentConversation(payload){
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
     {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
-  const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
+  const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},activityTaskIds:childActivityTaskIds(detail),
+    revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
   subagentWindows.set(key,record);
   window.on('focus',()=>{record.lastUsedAt=Date.now();});
   window.on('closed',()=>subagentWindows.delete(key));
@@ -1744,7 +1881,10 @@ async function pumpEvents() {
       if(!isCurrent())return;
     }
     if (progressError !== undefined) runtimeError = progressError;
-    if (accepted.length) publish(['tasks','approvals','notifications']);
+    if (accepted.length) {
+      publish(['tasks','approvals','notifications']);
+      publishChildUpdates([...new Set(accepted.flatMap(event=>event.taskId?[event.taskId]:[]))]);
+    }
     void connectorChangeHost?.flush();
   } catch (error) {
     if(!isCurrent())return;
@@ -3622,8 +3762,7 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
 
 async function interruptConversation(conversationId,surface,except,previous) {
   const pending=conversationDelivery.interruptPending(conversationId,except)??previous;
-  const running=[...tasks.values()].filter(task=>conversations.conversationIdForTask(task)===conversationId
-    &&taskSurface(task)===surface&&!terminalTaskStates.has(task.state));
+  const running=[...tasks.values()].filter(task=>task.conversationId===conversationId&&foregroundConversationTask(task,surface));
   // Acceptance may precede the first task.get. A stalled readback cannot hide this task from Stop.
   if(pending?.taskId&&!running.some(task=>task.taskId===pending.taskId))running.push({taskId:pending.taskId});
   for(const task of running){conversationDelivery.truncate(task);liveVoice?.cancelTextTask(task.taskId);}
@@ -3646,7 +3785,11 @@ async function action(event, name, payload) {
       list:input=>runtimeApplication.listSubagentConversations(input),open:openSubagentConversation,
       collapse:async()=>{const result=await collapseAllSubagentConversations(subagentListWindow);publish();return result;}});
   const child=[...subagentWindows.values()].find(record=>record.window.webContents===event.sender);
-  if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:readChildConversation,
+  if(child)return handleSubagentWindowAction({event,name,payload,record:child,readDetail:async binding=>{
+    const detail=await readChildConversation(binding);
+    child.activityTaskIds=childActivityTaskIds(detail);
+    return detail;
+  },
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
@@ -3730,7 +3873,22 @@ async function action(event, name, payload) {
   if(name.startsWith('workspace.subagent.')){
     if(sender!==workspace)throw Error('请从可信主工作区打开内嵌子对话');
     if(!runtimeApplication)throw Error('当前没有可读取的子对话记录');
-    return handleWorkspaceSubagentAction({event,name,payload,window:workspace,readDetail:readChildConversation,submit:submitChildConversation,cancel:cancelChildConversation});
+    const snapshot=name==='workspace.subagent.snapshot';
+    const watch=snapshot&&payload?.watch===true?{binding:payload.binding}:undefined;
+    if(watch){workspaceChildWatch=watch; workspaceChildActivity=undefined;}
+    if(snapshot&&payload?.watch===false){
+      if(sameChildBinding(workspaceChildWatch?.binding,payload.binding))workspaceChildWatch=undefined;
+      if(sameChildBinding(workspaceChildActivity?.binding,payload.binding))workspaceChildActivity=undefined;
+    }
+    const detail=await handleWorkspaceSubagentAction({event,name,payload,window:sender,
+      readDetail:binding=>snapshot?readChildConversation(binding,'workspace'):readChildIdentity(binding,'workspace'),
+      submit:(binding,input)=>submitChildConversation(binding,input,'workspace'),
+      cancel:(binding,id)=>cancelChildConversation(binding,id,'workspace')});
+    if(watch&&workspaceChildWatch===watch&&sender===workspace&&!sender.isDestroyed()){
+      assertActiveChildParent(detail,'workspace');
+      workspaceChildActivity={window:sender,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},taskIds:childActivityTaskIds(detail)};
+    }
+    return detail;
   }
   if(name==='authorization.question.respond'){
     if(sender!==panel&&sender!==workspace&&sender!==admin||!authorizationQuestionHost)throw Error('当前对话授权卡不可用');
@@ -3906,13 +4064,11 @@ async function action(event, name, payload) {
   }
   if (name === 'task.subagentConversation') {
     if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('子对话窗口不可信');
-    return readSubagentConversation({payload,tasks:{get:id=>tasks.get(id)??runtimeApplication?.runtime.getTask(id)},readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
-      readTask:id=>runtimeApplication.runtime.getTask(id),
-      readTranscript:id=>runtimeApplication.runtime.readTranscript(id)});
+    return readChildDetail(payload,sender===admin?undefined:sender===workspace?'workspace':'panel');
   }
   if(name==='task.openSubagentConversation'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
-    return openSubagentConversation(payload);
+    return openSubagentConversation(payload,sender===admin?undefined:sender===workspace?'workspace':'panel');
   }
   if(name==='subagentConversations.openAll'){
     if(sender!==workspace||payload!==undefined)throw Error('请从工作区打开全部子智能体');
@@ -4010,9 +4166,11 @@ async function action(event, name, payload) {
     const clean = requirePlainRecord(payload, ['taskId'], '查看执行过程参数无效');
     const taskId = requireCleanText(clean.taskId, '任务标识无效', 128).trim();
     if (taskId !== clean.taskId) throw Error('任务标识格式无效');
-    return runtimeApplication.runtime.readTranscript(taskId);
+    const task=runtimeApplication.runtime.getTask(taskId);
+    if(!visibleConversationTask(task,sender===workspace?'workspace':'panel'))throw Error('任务不属于当前对话');
+    return readConversationTranscript(safeDesktopTask(task));
   }
-  if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
+  if (name === 'workspace.open' && sender === panel) { conversations.showMain();await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
   if (name === 'workspace.minimize' && sender === workspace) { workspace.minimize(); return; }
   if (name === 'workspace.maximize' && sender === workspace) { if(workspace.isMaximized()) workspace.unmaximize(); else workspace.maximize(); return; }
@@ -4880,7 +5038,7 @@ async function action(event, name, payload) {
     if(!skillRun&&payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新发送');
     const injecting=!skillRun&&!compactCommand&&payload?.delivery==='inject';
     if(injecting){
-      const active=[...tasks.values()].find(task=>conversations.conversationIdForTask(task)===conversationId&&taskSurface(task)===surface&&!terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task));
+      const active=[...tasks.values()].find(task=>foregroundConversationTask(task,surface));
       if(!active){/* 没有正在跑的任务时，插话就是普通发送。 */}
       else {
         const injected=runtimeApplication?.runtime?.injectUserMessage?.(active.taskId,text.trim(),'user');
@@ -4890,7 +5048,7 @@ async function action(event, name, payload) {
     }
     const steering=!skillRun&&!compactCommand&&payload?.delivery==='steer';
     const previous=steering?conversationDelivery.interruptPending(conversationId):undefined;
-    if (!steering&&(submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task)))) throw Error('请等待当前回答完成，或先停止当前任务');
+    if (!steering&&(submitting.has(conversationId)||[...tasks.values()].some(task=>foregroundConversationTask(task,surface)))) throw Error('请等待当前回答完成，或先停止当前任务');
     const deliveryRequest=conversationDelivery.begin(conversationId);
     try {
     if(steering)await interruptConversation(conversationId,surface,deliveryRequest,previous);
@@ -4922,14 +5080,15 @@ async function action(event, name, payload) {
     return task;
     } finally { conversationDelivery.finish(deliveryRequest); }
   }
-  if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
+  if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,
+    taskSurface:task=>visibleConversationTask(task,sender===workspace?'workspace':'panel')?(sender===workspace?'workspace':'panel'):undefined,
     application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
     reportNative:result=>dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
       detail:(result.readbacks??[]).map(item=>`${item.taskId}：${({clear:'原宿主当前已空闲；这不证明未知试验成功',in_progress:'原宿主仍在执行',unknown:'原宿主状态仍无法确认'})[item.recovery.state]??'状态未知'}；证据 ${item.evidenceRef}`).join('\n')
         +'\n本次只读取原会话，没有重发试验或更改原 UNKNOWN。',buttons:['关闭'],noLink:true})});
   if (name === 'task.cancel') {
     if (typeof payload !== 'string' || !tasks.has(payload)) throw Error('Unknown task');
-    if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法停止其他工作区的任务');
+    if (sender !== admin && (![panel,workspace].includes(sender)||!visibleConversationTask(tasks.get(payload),sender===workspace?'workspace':'panel'))) throw Error('无法停止其他对话的任务');
     conversationDelivery.truncate(tasks.get(payload));liveVoice?.cancelTextTask(payload);publish();
     const result=await client.call('task.cancel',{taskId:payload,reason:'用户截断当前回答'});
     conversationDelivery.acceptStop(payload,result);
@@ -4938,7 +5097,7 @@ async function action(event, name, payload) {
   }
   if (name === 'task.refresh') {
     if (!tasks.has(payload)) throw Error('Unknown task');
-    if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法读取其他工作区的任务');
+    if (sender !== admin && (![panel,workspace].includes(sender)||!visibleConversationTask(tasks.get(payload),sender===workspace?'workspace':'panel'))) throw Error('无法读取其他对话的任务');
     return refresh(payload);
   }
   if (name === 'capability.list') { await syncCapabilities(); publish(); return {manifests: capabilities, health}; }
@@ -5335,7 +5494,7 @@ app.whenReady().then(async () => {
     if (sisPlaybackHost?.receive(event, message)) publish();
   });
   try {
-    conversations = new Conversations(dataPaths.conversations);
+    conversations = new Conversations(dataPaths.conversations,{sharedMain:true});
     // The cloud startup gate must not defer explicit local service management.
     // Constructing this owned host does not load weights or start a process.
     await initializeLocalLaya();

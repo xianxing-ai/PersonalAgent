@@ -65,15 +65,14 @@ export function assertUserTaskDelegationInvocation(runtime: TaskRuntime,
 }
 
 /** Reuses the original Competition loop and authorization path; no additional executor or scheduler. */
-export function userTaskDelegationPort(runtime: TaskRuntime, port: CoordinationPort,
-  binding: UserTaskDelegation): CoordinationPort {
+export function userTaskDelegationPort(runtime: TaskRuntime, binding: UserTaskDelegation): CoordinationPort {
   return {execute: async request => {
     const current = readUserTaskDelegation(runtime, request.taskId);
     if (!isDeepStrictEqual(current, binding) || request.goal !== binding.goal || request.deadline !== binding.deadline) {
       throw new ProtocolError('REVISION_CONFLICT', 'Original user task delegation scope changed');
     }
     const proposal = userTaskDelegationProposal(binding);
-    // The host, not a prompt or a model decision, requires a real child before any cloud summary.
+    // A delegated parent closes with status; its child conversation owns the answer.
     if (request.continuation === undefined) return proposal;
     const runId = `competition-tool-${request.taskId}-1`;
     const child = runtime.findTaskByIdempotencyKey(`subagent-dispatch-${request.taskId}-${binding.subtask.subtaskId}`);
@@ -84,10 +83,10 @@ export function userTaskDelegationPort(runtime: TaskRuntime, port: CoordinationP
       || !record || record.toolName !== proposal.toolName || record.toolVersion !== proposal.toolVersion
       || record.state !== 'confirmed' || !record.executionStarted || record.policyDecision !== 'allow'
       || !runtime.matchesToolExecutionInput(record, {arguments: proposal.arguments, scopeRef: runId})) {
-      throw new ProtocolError('UNAUTHORIZED', 'User summary requires its original confirmed child receipt');
+      throw new ProtocolError('UNAUTHORIZED', 'User result requires its original confirmed child receipt');
     }
-    const result = await port.execute(request);
-    if (result.kind !== 'text') throw new ProtocolError('SCOPE_DENIED', 'User conversation may only summarize delegated results');
-    return result;
+    assertUserTaskDelegationComplete(runtime, request.taskId);
+    const mock = child.resultSummary?.endsWith('\n[profile=huawei_ict_agentarts; verification=mock]');
+    return {kind: 'text', text: '子助手已完成。执行记录和结果在子对话中。', verification: mock ? 'mock' : 'unverified'};
   }};
 }

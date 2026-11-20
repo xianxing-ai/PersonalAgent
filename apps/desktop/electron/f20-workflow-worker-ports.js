@@ -5,10 +5,13 @@ const fail=()=>{throw new ProtocolError('UNAUTHORIZED','F20 原图、来源或�
 
 /** Main-only providers. The existing AgentArts composition supplies the pinned image. */
 export function createF20WorkflowWorkerPorts({getApplication,codingWorkspace,readHarnessVersions,readReviewerIdentity}) {
-  const identity=()=>({versions:readHarnessVersions(),reviewer:readReviewerIdentity()});
+  const identity=()=>{
+    const reviewer=readReviewerIdentity();
+    return {versions:readHarnessVersions(),...(reviewer===undefined?{}:{reviewer})};
+  };
   const current=scope=>{
     const now=identity();
-    if(!now.reviewer||now.versions?.executionKind!=='real_host'||!now.versions.workflowVersion?.startsWith('agentarts-deployment:')
+    if(now.versions?.executionKind!=='real_host'||!now.versions.workflowVersion?.startsWith('agentarts-deployment:')
       ||scope.signal.aborted||!Number.isFinite(Date.parse(scope.deadline))||Date.now()>=Date.parse(scope.deadline))fail();
     const app=getApplication(),task=app.runtime.getTask(scope.taskId);
     const saved=app.runtime.loadCheckpoint(scope.taskId,'f20-desktop-provider:v1');

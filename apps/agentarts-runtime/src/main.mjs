@@ -22,7 +22,7 @@ function integer(name, fallback) {
 const maasKeyFile=process.env.PA_AGENT_MAAS_KEY_FILE?.trim();
 const maasKey=process.env.PA_AGENT_MAAS_API_KEY?.trim();
 
-function model(role,entry) {
+function model(role,entry,structuredRole=false) {
   const prefix = `PA_AGENT_${role.toUpperCase()}`;
   const route=entry?.route??process.env.PA_AGENT_MODEL_ROUTE??(process.env.PA_AGENT_HOST_MODE==='agentarts'?'agentarts-proxy':'direct-validation');
   if(!['agentarts-proxy','runtime-bailian','runtime-huawei-maas','direct-validation'].includes(route)||process.env.PA_AGENT_HOST_MODE==='agentarts'&&route==='direct-validation')throw new Error('Explicit AgentArts model route required');
@@ -34,6 +34,7 @@ function model(role,entry) {
     :bailian?`https://${workspace}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`
     :process.env[`${prefix}_BASE_URL`]??process.env.PA_AGENT_MODEL_BASE_URL;
   const name = entry?.providerModelId ?? entry?.id ?? process.env[`${prefix}_MODEL`] ?? process.env.PA_AGENT_MODEL;
+  const jsonResponse=!maas||(structuredRole&&name==='deepseek-v4.1-flash-1017');
   if (!endpoint || !name) throw new Error('Agent model endpoint and model must be explicitly configured');
   const url = new URL(endpoint);
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Invalid trusted model endpoint');
@@ -49,7 +50,8 @@ function model(role,entry) {
   return createRequestDeadlineModel({baseUrl:endpoint,model:name,
     streaming:false,
     ...(route==='direct-validation'?{}:{onResponseModel:fetch.recordResponseModel}),
-    ...(maas?{}:{responseFormat:'json_object',requestFormat:ownedModelRequestFormat({endpoint,model:name})}),
+    ...(jsonResponse?{responseFormat:'json_object'}:{}),
+    ...(maas?{}:{requestFormat:ownedModelRequestFormat({endpoint,model:name})}),
     fetch,apiKey:readSecret},
     {timeoutMs:process.env.PA_AGENT_TIMEOUT_MS === undefined ? undefined : integer('PA_AGENT_TIMEOUT_MS')});
 }
@@ -70,9 +72,10 @@ try {
   if (!['agentarts','standalone-validation'].includes(mode)) throw new Error('Explicit host mode required');
   const models = Object.fromEntries(['fast','world','plan','review'].map(role => [role,model(role)]));
   const modelConfiguration=await loadExecutionModelConfiguration(process.env);
-  const executionModels=modelConfiguration===undefined?undefined:createExecutionModelRegistry({
-    configuration:modelConfiguration,createProvider:entry=>new ModelGateway(model('execution',entry)),
+  const createExecutionModels=structuredRole=>modelConfiguration===undefined?undefined:createExecutionModelRegistry({
+    configuration:modelConfiguration,createProvider:entry=>new ModelGateway(model('execution',entry,structuredRole)),
     unavailableRoutes:maasKeyFile||maasKey?[]:['runtime-huawei-maas']});
+  const executionModels=createExecutionModels(false),roleExecutionModels=createExecutionModels(true);
   const layaMode = process.env.PA_AGENT_LAYA_MODE;
   // User-selected deployment: local Laya returns signed host-tool receipts; no public local endpoint.
   if (!['local','legacy-without-laya'].includes(layaMode)
@@ -90,7 +93,7 @@ try {
     ...(receiptSecret === undefined ? {} : {receiptVerifier:createOwnedWorkflowReceiptVerifier({secret:receiptSecret})})}) : undefined;
   orchestrator = new OwnedAgentOrchestrator(models,integer('PA_AGENT_MAX_OUTPUT_TOKENS',32768),
     createRoleReceiptWriter({deploymentVersion:process.env.PA_AGENT_DEPLOYMENT_VERSION}),
-    undefined, workflowEngine,executionModels?{executionModels}:undefined);
+    undefined, workflowEngine,roleExecutionModels?{executionModels:roleExecutionModels}:undefined);
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
   const timeoutMode = process.env.PA_AGENT_TIMEOUT_MODE ?? 'request-deadline';

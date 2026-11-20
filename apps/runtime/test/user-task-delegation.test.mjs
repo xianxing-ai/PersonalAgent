@@ -35,9 +35,7 @@ function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,
         toolVersion:descriptor.version,arguments:{},verification:'unverified'};
       return {kind:'text',text:'Child independently returned 56',verification:'mock'};
     }
-    assert.ok(request.continuation,'root must never ask the cloud to decide whether to delegate');
-    assert.equal(request.continuation.result.succeeded,1);
-    return {kind:'text',text:'Summary of confirmed child result',verification:'mock'};
+    assert.fail('Required parent must deliver its child result locally');
   });
   app=createRuntimeApplication({path:storage,profile:'huawei_ict_agentarts',...(delegate?{delegateUserTasks:true}:{}),
     ...(coordination?{coordination:port}:{}),coordinationBinding:'fixed-fixture-config',tools,
@@ -76,8 +74,8 @@ test('mandatory user delegation creates a real child, preserves selection and sc
     assert.equal(app.runtime.loadCheckpoint(child.taskId,'subtask-parent').thinkingDepth,2);
     assert.equal(app.runtime.loadCheckpoint(child.taskId,'competition-max-steps'),4);
     assert.equal(app.runtime.loadCheckpoint(child.taskId,'subtask-thinking-binding').stepBudget.maxSteps,4);
-    assert.equal(port.requests.length,3);assert.equal(port.requests[0].taskId,child.taskId);
-    assert.equal(port.requests[2].taskId,parent.taskId);assert.ok(port.requests[2].continuation);
+    assert.deepEqual(port.requests.map(request=>request.taskId),[child.taskId,child.taskId]);
+    assert.match(parent.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
     assert.deepEqual(app.runtime.readToolExecutions(parent.taskId).map(record=>record.toolName),['subagent.dispatch']);
     assert.deepEqual(app.runtime.readToolExecutions(child.taskId).map(record=>record.toolName),[read.name]);
     const duplicate=await client.call('task.submit',{goal:'Do the requested work',conversationId:'user-chat'},
@@ -93,7 +91,7 @@ test('root business tools are rejected at ToolPort and Gateway even with an expl
     if(task.conversationId.startsWith('desktop-subtask:')) {
       entered();await new Promise(resolve=>{release=resolve;});return {kind:'text',text:'Child result',verification:'mock'};
     }
-    return {kind:'text',text:'Root summary',verification:'mock'};
+    assert.fail('Required parent must deliver its child result locally');
   }});
   try {
     const {client,task}=await submit(app);await enteredChild;
@@ -132,7 +130,7 @@ test('child approval restart keeps original delegation without enabling the opti
   const settle=async(app,taskId)=>{
     await app.waitForHostToolTask(taskId);
     for(const child of app.readSubagentTasks(taskId))await app.waitForHostToolTask(child.taskId);
-    // Child approval completion may resume the original parent summary.
+    // Child approval completion may resume delivery to the original parent.
     await app.waitForHostToolTask(taskId);
     assert.equal(app.activeTaskCount,0);
   };
@@ -156,32 +154,32 @@ test('child approval restart keeps original delegation without enabling the opti
     assert.deepEqual(restored.app.runtime.loadCheckpoint(task.taskId,'required-subagent-delegation:v1'),binding);
     assert.equal(restored.app.runtime.readToolExecutions(task.taskId).length,1);
     assert.equal(restored.app.runtime.readToolExecutions(child.taskId).length,1);
-    assert.equal(restored.port.requests.length,2);
+    assert.deepEqual(restored.port.requests.map(request=>request.taskId),[child.taskId]);
   } finally {first?.app.close();restored?.app.close();await rm(directory,{recursive:true,force:true});}
 });
 
-for(const summaryFailure of ['adapter','tool-proposal'])test(`failed root summary (${summaryFailure}) preserves its already executed child`,async()=>{
-  const {app,calls}=fixture({autoRead:true,reply:(request,task)=>{
+test('the required parent reports child status and keeps the original receipts',async()=>{
+  const {app,port,calls}=fixture({autoRead:true,reply:(request,task)=>{
     if(task.conversationId.startsWith('desktop-subtask:')) {
       if(!request.continuation)return {kind:'tool_proposal',proposalId:'work',toolName:read.name,toolVersion:read.version,arguments:{},verification:'unverified'};
       return {kind:'text',text:'Actual child result',verification:'mock'};
     }
-    if(summaryFailure==='adapter')throw Error('summary transport failed');
-    return {kind:'tool_proposal',proposalId:'root-work',toolName:read.name,toolVersion:read.version,arguments:{},verification:'mock'};
+    assert.fail('Required parent must deliver its child result locally');
   }});
   try {
     const {task}=await submit(app);await until(()=>app.activeTaskCount===0);
-    const [child]=app.readSubagentTasks(task.taskId);
-    assert.notEqual(app.runtime.getTask(task.taskId).state,'succeeded');assert.equal(child.state,'succeeded');assert.equal(calls.length,1);
-    assert.match(app.runtime.getTask(child.taskId).resultSummary,/Actual child result/);
+    const parent=app.runtime.getTask(task.taskId),[child]=app.readSubagentTasks(task.taskId);
+    assert.equal(parent.state,'succeeded');assert.equal(child.state,'succeeded');assert.equal(calls.length,1);
+    assert.match(child.resultSummary,/Actual child result/);assert.match(parent.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
+    assert.doesNotMatch(parent.resultSummary,/Actual child result/u);
+    assert.deepEqual(port.requests.map(request=>request.taskId),[child.taskId,child.taskId]);
     assert.equal(app.runtime.readToolExecutions(child.taskId)[0].state,'confirmed');
     assert.deepEqual(app.runtime.readToolExecutions(task.taskId).map(record=>record.toolName),['subagent.dispatch']);
   } finally {app.close();}
 });
 
-for(const childOutcome of ['failed','cancelled'])test(`a fluent success summary cannot complete a required ${childOutcome} child`,async()=>{
-  let summaryCalls=0;
-  const {app,calls}=fixture({autoRead:true,execute:async()=>{throw Error('SYNTHETIC_PRIVATE_CHILD_FAILURE_BODY');},
+for(const childOutcome of ['failed','cancelled'])test(`the required parent preserves a ${childOutcome} child outcome without a cloud send`,async()=>{
+  const {app,port,calls}=fixture({autoRead:true,execute:async()=>{throw Error('SYNTHETIC_PRIVATE_CHILD_FAILURE_BODY');},
     reply:(request,task,application)=>{
       if(task.conversationId.startsWith('desktop-subtask:')) {
         if(childOutcome==='cancelled') {
@@ -191,15 +189,15 @@ for(const childOutcome of ['failed','cancelled'])test(`a fluent success summary 
         return {kind:'tool_proposal',proposalId:'original-child-failure',toolName:read.name,toolVersion:read.version,
           arguments:{},verification:'unverified'};
       }
-      summaryCalls++;
-      return {kind:'text',text:'SYNTHETIC_FALSE_PARENT_GOAL_COMPLETED',verification:'mock'};
+      assert.fail('Required parent must not send a cloud request');
     }});
   try {
     const {task}=await submit(app);await until(()=>app.activeTaskCount===0);
     const parent=app.runtime.getTask(task.taskId),[child]=app.readSubagentTasks(task.taskId);
-    assert.equal(child.state,childOutcome);assert.notEqual(parent.state,'succeeded');assert.equal(summaryCalls,1);
+    assert.equal(child.state,childOutcome);assert.notEqual(parent.state,'succeeded');
+    assert.deepEqual(port.requests.map(request=>request.taskId),[child.taskId]);
     assert.match(parent.error.message,/任务执行未完成.*已确认的操作记录/);
-    assert.doesNotMatch(JSON.stringify(parent),/SYNTHETIC_PRIVATE_CHILD_FAILURE_BODY|SYNTHETIC_FALSE_PARENT_GOAL_COMPLETED/);
+    assert.doesNotMatch(JSON.stringify(parent),/SYNTHETIC_PRIVATE_CHILD_FAILURE_BODY|SYNTHETIC_FALSE_CHILD_SUCCESS/);
     assert.equal(calls.length,childOutcome==='failed'?1:0);
     assert.equal(app.runtime.readToolExecutions(task.taskId).length,1,'No new child or dispatch is attempted');
     assert.equal(app.runtime.readToolExecutions(task.taskId)[0].state,'confirmed','Original dispatch effects remain recorded');
@@ -283,22 +281,21 @@ test('ordinary preexisting subagents cannot inherit user conversation context',(
   } finally {app.close();}
 });
 
-test('private prepared root input cannot enter the delegated summary and does not erase the executed child',async()=>{
-  let app,rootPrepared=0,rootReleased=0;
+test('the parent reports child status without preparing root cloud input',async()=>{
+  let app,rootPrepared=0;
   const f=fixture({autoRead:true,coordinationInput:{
     prepareCoordinationGoal:async scope=>{
       if(app.runtime.getTask(scope.taskId).conversationId==='user-chat') {rootPrepared++;return 'PRIVATE BODY '+scope.publicGoal;}
       return scope.publicGoal;
-    },beforeCoordinationSend:()=>{},releaseTask:()=>{rootReleased++;},
+    },beforeCoordinationSend:()=>{},
   }});app=f.app;
   try {
     const {task}=await submit(app);await until(()=>app.activeTaskCount===0);
-    const [child]=app.readSubagentTasks(task.taskId);
-    assert.equal(child.state,'succeeded');assert.equal(f.calls.length,1);assert.equal(rootPrepared,1);assert.equal(rootReleased,1);
-    assert.notEqual(app.runtime.getTask(task.taskId).state,'succeeded');
-    assert.ok(f.port.requests.every(request=>request.taskId===child.taskId),'root private body must not be sent');
-    assert.doesNotMatch(JSON.stringify(app.runtime.getTask(task.taskId)),/PRIVATE BODY/);
-    assert.match(app.runtime.getTask(child.taskId).resultSummary,/56/);
+    const parent=app.runtime.getTask(task.taskId),[child]=app.readSubagentTasks(task.taskId);
+    assert.equal(child.state,'succeeded');assert.equal(f.calls.length,1);assert.equal(rootPrepared,0);
+    assert.equal(parent.state,'succeeded');assert.match(parent.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
+    assert.deepEqual(f.port.requests.map(request=>request.taskId),[child.taskId,child.taskId]);
+    assert.doesNotMatch(JSON.stringify(parent),/PRIVATE BODY/);
   } finally {app.close();}
 });
 
@@ -319,7 +316,7 @@ test('an unknown child write keeps original reconciliation and a duplicate user 
   } finally {app.close();}
 });
 
-test('public conversation history is compiled after required dispatch and reaches the actual child and root summary',async()=>{
+test('public conversation history is compiled for the original delegated child',async()=>{
   let app;const prepared=[];
   const f=fixture({autoRead:true,coordinationInput:{
     prepareCoordinationGoal:async scope=>{prepared.push(scope.taskId);return scope.publicGoal;},
@@ -336,9 +333,8 @@ test('public conversation history is compiled after required dispatch and reache
     const {task}=await submit(app);await until(()=>app.activeTaskCount===0);
     const [child]=app.readSubagentTasks(task.taskId);
     assert.equal(app.runtime.getTask(task.taskId).state,'succeeded');assert.equal(child.state,'succeeded');
-    assert.equal(prepared[0],child.taskId,'the root must not collect context before dispatch');
-    assert.equal(prepared.at(-1),task.taskId);
-    assert.equal(f.port.requests.length,3);
+    assert.deepEqual(prepared,[child.taskId,child.taskId]);
+    assert.deepEqual(f.port.requests.map(request=>request.taskId),[child.taskId,child.taskId]);
     for(const request of f.port.requests) {
       const compiled=JSON.parse(request.goal);
       assert.equal(compiled.conversationContext.messages[0].content,'Earlier public context');
@@ -347,16 +343,12 @@ test('public conversation history is compiled after required dispatch and reache
 });
 
 test('delegated execution cannot silently switch the original selected model catalog',async()=>{
-  const {app,port,calls}=fixture({selected:selection,resolvedSelection:{...selection,catalogRevision:'b'.repeat(64)},
-    reply:request=>{
-      assert.ok(request.continuation);assert.equal(request.continuation.result.failed,1);
-      return {kind:'text',text:'Original selected child configuration is unavailable',verification:'mock'};
-    }});
+  const {app,port,calls}=fixture({selected:selection,resolvedSelection:{...selection,catalogRevision:'b'.repeat(64)}});
   try {
     const {task}=await submit(app);await until(()=>app.activeTaskCount===0);
     const [child]=app.readSubagentTasks(task.taskId);
     assert.equal(child.state,'failed');assert.equal(app.runtime.getTask(child.taskId).error.code,'REVISION_CONFLICT');
-    assert.equal(calls.length,0);assert.equal(port.requests.length,1);assert.equal(port.requests[0].taskId,task.taskId);
+    assert.equal(calls.length,0);assert.equal(port.requests.length,0);
     assert.deepEqual(app.runtime.loadCheckpoint(task.taskId,'execution-model'),selection);
   } finally {app.close();}
 });
@@ -375,7 +367,7 @@ test('a short read-only weather request still executes only in the required user
     assert.deepEqual(calls.map(call=>call.taskId),[child.taskId]);
     assert.deepEqual(app.runtime.readToolExecutions(task.taskId).map(record=>record.toolName),['subagent.dispatch']);
     assert.deepEqual(app.runtime.readToolExecutions(child.taskId).map(record=>record.toolName),[read.name]);
-    assert.ok(port.requests.filter(request=>request.taskId===parent.taskId).every(request=>request.continuation),
-      'the root receives the confirmed child result and never plans the weather tool call');
+    assert.deepEqual(port.requests.map(request=>request.taskId),[child.taskId,child.taskId]);
+    assert.match(parent.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
   }finally{app.close();}
 });

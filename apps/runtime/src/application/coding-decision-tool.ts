@@ -3,14 +3,15 @@ import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
-import type {LayaActionChoiceService,LayaActionSelection} from '@personal-agent/cognition';
-import {actionArgumentsDigest} from '@personal-agent/cognition';
+import type {LayaActionSelection} from '@personal-agent/cognition';
+import {actionArgumentsDigest,LayaActionChoiceService} from '@personal-agent/cognition';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 
 /** Local diagnostic only; never part of the selectedId result or its cloud projection. */
 export const CODING_DECISION_CHECKPOINT='coding-repair:local-decision:v1:';
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
+const unavailableChooser=new LayaActionChoiceService();
 interface WorkflowTeacherDecision {selectedId:string;requestId:string;executionModel:ExecutionModelSelection}
 export interface RuntimeCodingDecisionReceipt {
   version:1;taskId:string;runId:string;requestId:string;argumentsDigest:string;contextDigest:string;candidateDigest:string;deadline:string;
@@ -36,7 +37,11 @@ export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaA
       description:candidate.description,sources:[],scopeRef:input.requestId,expiresAt:input.deadline,
       risk:'low' as const,argumentsDigest:actionArgumentsDigest({})}));
     const trustedContext=options.readContext?.(context,input.context)??input.context;
-    const value=await options.localChooser.choose({context:trustedContext,deadline:input.deadline,signal:input.signal,candidates});
+    const request={context:trustedContext,deadline:input.deadline,signal:input.signal,candidates};
+    const value=await options.localChooser.choose(request).catch(error=>{
+      if(!(error instanceof ProtocolError)||error.code!=='UNSUPPORTED_CAPABILITY')throw error;
+      return unavailableChooser.choose(request);
+    });
     if((options.readContext?.(context,input.context)??input.context)!==trustedContext)
       throw new ProtocolError('REVISION_CONFLICT','Original local review sources changed');
     const contextDigest=sha(trustedContext);

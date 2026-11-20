@@ -42,6 +42,7 @@ import {createMessageQueue} from '../features/conversation/message-queue.js';
 import {createSnapshotReceiver} from '../shared/snapshot-receiver.js';
 import {mountRenderBudget} from '../shared/render-budget.js';
 import {mountHistoryControls} from '../features/conversation/history-controls.js';
+import {mountPanelDelegatedTasks} from './panel-delegated-tasks.js';
 
 applyPreferences();
 mountDesktopShell();
@@ -157,7 +158,11 @@ else {
   // requested, so the composer is usable again without waiting for the runtime to unwind.
   const truncatedTaskIds=new Set();
   const truncatedOutput=new Map();
-  const activeTasks=()=>(current?.tasks??[]).filter(task=>!isTerminal(task)&&!task.outputTruncated&&!task.cancelRequested&&!truncatedTaskIds.has(task.taskId));
+  const activeTasks=()=>{
+    const delegatedParents=new Set(current?.subagentTasks?.map(child=>child.parentTaskId));
+    return (current?.tasks??[]).filter(task=>!isTerminal(task)&&!task.outputTruncated&&!task.cancelRequested
+      &&!truncatedTaskIds.has(task.taskId)&&!delegatedParents.has(task.taskId));
+  };
   let approvalExpiryTimer;
   let errorFeedbackRevision=0;
   const setFeedback=value=>{errorFeedbackRevision++;root.querySelector('#error').textContent=value;};
@@ -171,6 +176,7 @@ else {
   };
   const report=e=>setFeedback(typeof e==='string'?e:errorDisplayText(e));
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
+  const updateDelegatedTasks=mountPanelDelegatedTasks(tasksNode,{invoke,escape,report});
   const assistantRoster=document.createElement('section');tasksNode.before(assistantRoster);
   const roster=mountAssistantRoster(assistantRoster,{invoke,escape,report,onOpen:assistantId=>invoke('workspace.openAssistant',{assistantId}).catch(report)});
   const panelRuntimeStrip=document.createElement('div');panelRuntimeStrip.className='panel-runtime-strip';
@@ -602,11 +608,51 @@ else {
     stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持实时语音）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
     root.querySelector('.bubble').hidden=!emptyThread;quickStart.hidden=!emptyThread;
-    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);
+    const childrenByParent=new Map();
+    for(const child of data.subagentTasks??[]) {
+      if(!childrenByParent.has(child.parentTaskId)) childrenByParent.set(child.parentTaskId,[]);
+      childrenByParent.get(child.parentTaskId).push(child);
+    }
+    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label]),childrenByParent.has(t.taskId)]),data.messages,data.approvals]);
     const thinkingGrid='<span class="thinking-grid" aria-hidden="true">'+[0,1,2,3,4,5,6,7,8].map(index=>`<i data-cell="${index}"></i>`).join('')+'</span>';
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
     syncContainerAnswerDisclosures(tasksNode,liveTurns);
-    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button></div>`:'';const locateHtml=failure&&!answer?`<div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';const live=liveTurns.get(t.taskId);const hasLiveContent=Boolean(live&&(live.reasoning||live.answer||live.steps?.length||live.summary));const bodyHtml=!terminal&&t.state!=='waiting_reconciliation'&&!hasLiveContent?`<section class="answer-card" data-answer-for="${escape(t.taskId)}"><div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div></section>`:hasLiveContent?`${answerCardHtml(t.outputTruncated?{...t,error:undefined}:t,live,escape)}${answer?answerActions:''}${locateHtml}`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div>${locateHtml}`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${bodyHtml}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
+    function renderTaskAnswer(task, terminal) {
+      if(childrenByParent.has(task.taskId)) return `<div class="delegated-task-list" data-delegated-for="${escape(task.taskId)}"></div>`;
+      const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(task.state);
+      const activeStep=task.steps?.at(-1);
+      const activity=waiting?stateNames[task.state]:activeStep?.label??(task.state==='verifying'?'整理回答':task.state==='running'?'执行中':'思考中');
+      const answer=resultText(task.resultSummary,task.resultMetadata);
+      const failure=task.outputTruncated?undefined:task.error?.message;
+      const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(task.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button></div>`:'';
+      const locateHtml=failure&&!answer?`<div class="locate-block" data-locate-for="${escape(task.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(task.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';
+      const live=liveTurns.get(task.taskId);
+      if(live&&(live.reasoning||live.answer||live.steps?.length||live.summary))
+        return `${answerCardHtml(task.outputTruncated?{...task,error:undefined}:task,live,escape)}${answerActions}${locateHtml}`;
+      if(!terminal&&task.state!=='waiting_reconciliation')
+        return `<section class="answer-card" data-answer-for="${escape(task.taskId)}"><div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div></section>`;
+      if(answer) return `<div class="assistant-message">${escape(answer)}</div>${answerActions}`;
+      return failure?`<div class="assistant-error">${escape(failure)}</div>${locateHtml}`:'';
+    }
+    if(taskSignature!==lastTaskSignature) {
+      const html=conversationTimeline(data.tasks,data.messages).map(entry=>{
+        if(entry.kind==='message') {
+          const m=entry.value;
+          const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;
+          return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;
+        }
+        const t=entry.value;
+        const terminal=isTerminal(t)||t.outputTruncated;
+        return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}
+          <div class="assistant-turn">${renderTaskAnswer(t,terminal)}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}
+          ${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}
+          ${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>${childrenByParent.has(t.taskId)?'停止此任务':'停止'}</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;
+      }).join('');
+      updateConversationTurns(tasksNode,html,{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
+    }
+    updateDelegatedTasks(childrenByParent);
+    if(focused?.isConnected&&focused.closest('.delegated-task-card')&&document.activeElement===document.body)
+      focused.focus({preventScroll:true});
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;roster.paint(data.assistants,data);
     setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);

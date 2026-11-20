@@ -1,4 +1,4 @@
-/** Workspace is the host-wide activity view; panel stays scoped to its conversation. */
+/** Verify the parent of each persisted child conversation before projecting it. */
 export function scopeSubagentConversations(items, readParent, visibleParent) {
   return items.filter(child=>{
     try{return visibleParent(readParent(child.parentTaskId));}
@@ -32,6 +32,35 @@ function redact(value) {
   return typeof value === 'string' ? value.replace(SECRET, '[密钥已隐藏]') : value;
 }
 
+export function projectChildProgress(task, stepLimit = Infinity) {
+  return {
+    evidenceRefCount: task.evidenceRefs?.length ?? 0,
+    steps: task.bodyWithheld ? [] : (task.steps ?? []).slice(-stepLimit).map(step =>
+      ({stepId: step.stepId, label: redact(step.label), state: step.state})),
+  };
+}
+
+export function projectChildToolActivity(transcript, approvals = [], limit = 24) {
+  const byStep = new Map(approvals.map(item => [item.approvalId, item]));
+  const rows = [];
+  const addApproval = (approval, stepId, toolName) => {
+    rows.push({stepId, toolName, kind: 'approval_wait', state: 'waiting_approval', label: `等待授权 · ${toolName}`});
+    if (approval.state === 'allowed' || approval.state === 'denied') rows.push({stepId, toolName, kind: 'approval_result', state: approval.state,
+      label: `${approval.state === 'allowed' ? '已授权' : '授权未通过'} · ${toolName}`});
+  };
+  for (const segment of transcript?.segments ?? []) {
+    if (segment.kind !== 'tool' || typeof segment.toolName !== 'string') continue;
+    const {stepId, toolName} = segment;
+    rows.push({stepId, toolName, kind: 'tool_call', state: 'running', label: `调用 ${toolName}`, occurredAt: segment.startedAt});
+    const approval = byStep.get(stepId);
+    if (approval) {addApproval(approval, stepId, toolName);byStep.delete(stepId);}
+    if (segment.resultSummary !== undefined) rows.push({stepId, toolName, kind: 'tool_result',
+      state: 'returned', label: `${toolName} 已返回`, occurredAt: segment.updatedAt});
+  }
+  for (const approval of [...byStep.values()].reverse()) addApproval(approval, approval.approvalId, approval.action);
+  return rows.slice(-limit);
+}
+
 /** Read-only task detail. Transcript text is already redacted by the runtime. */
 export async function readSubagentConversation({payload, tasks, readChildren, readTask, readTranscript}) {
   const validId = value => typeof value === 'string' && value.trim().length > 0 && value.trim() === value;
@@ -61,8 +90,7 @@ export async function readSubagentConversation({payload, tasks, readChildren, re
     ...(typeof task.goal === 'string' ? {goal: task.goal} : {}),
     ...(typeof task.resultSummary === 'string' ? {resultSummary: task.resultSummary} : {}),
     ...(task.error ? {error: publicFailure(task.error)} : {}),
-    evidenceRefCount: Array.isArray(task.evidenceRefs) ? task.evidenceRefs.length : 0,
-    steps: (task.steps ?? []).map(step => ({label: redact(step.label), state: step.state})),
+    ...projectChildProgress(task),
     ...(typeof readTranscript === 'function' ? {transcript: await readTranscript(taskId), transcriptAvailable: true} : {transcriptAvailable: false}),
   };
 }

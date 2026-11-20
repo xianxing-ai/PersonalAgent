@@ -4456,7 +4456,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** Trusted host obtains only the task-selected public tool shape for cloud input construction. */
   private taskCoordination(taskId:string):CoordinationPort|undefined {
     const binding=readUserTaskDelegation(this.runtime,taskId);
-    return binding && this.coordination ? userTaskDelegationPort(this.runtime,this.coordination,binding) : this.coordination;
+    return binding && this.coordination ? userTaskDelegationPort(this.runtime,binding) : this.coordination;
   }
 
   private taskTools(taskId:string):AgentToolPort|undefined {
@@ -4631,6 +4631,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.cloudSkill.assertReceiptAllowed(selection as CloudSkillSelection,receipt as CloudSkillReceipt,
         {...context,proposalId:proposal.proposalId});
     },
+    canReuseReceipt:(proposal,original,receipt)=>this.ownedWorkflowWorker?.canReuseReceipt?.(proposal,original,receipt)===true,
   };
 
   private assertReferenceSkillEvidence(taskId:string,input:ReferenceSummaryInput,refs:readonly string[]):void {

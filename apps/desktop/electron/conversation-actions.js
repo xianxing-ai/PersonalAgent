@@ -15,7 +15,8 @@ export function handleConversationAction({name,payload,surface,conversations,tas
   else if(name==='conversation.switch')conversations.switch(surface,input.conversationId);
   else if(name==='conversation.rename')conversations.rename(surface,input.conversationId,input.title);
   else if(['conversation.archive','conversation.restore'].includes(name)){
-    if(name==='conversation.archive'&&[...tasks.values()].some(t=>taskSurface(t)===surface&&conversations.conversationIdForTask(t)===input.conversationId&&!['succeeded','failed','cancelled'].includes(t.state)))throw Error('任务尚未结束，请先停止或核实后归档');
+    const owner=conversations.session(input.conversationId,surface).surface;
+    if(name==='conversation.archive'&&[...tasks.values()].some(t=>taskSurface(t)===owner&&conversations.conversationIdForTask(t)===input.conversationId&&!['succeeded','failed','cancelled'].includes(t.state)))throw Error('任务尚未结束，请先停止或核实后归档');
     conversations.archive(surface,input.conversationId,name==='conversation.archive');
   }else throw Error('不支持的对话管理操作');
   publish();return conversations.snapshot(surface);

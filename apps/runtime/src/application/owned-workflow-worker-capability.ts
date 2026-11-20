@@ -23,6 +23,8 @@ import {assertF20CandidateSelection} from './f20-candidate-frontier.js';
 export const OWNED_WORKFLOW_WORKER_TOOL='workflow.image.execute';
 export const OWNED_WORKFLOW_WORKER_VERSION='1.0.0';
 const STATE_PREFIX='owned-workflow:f20:';
+const F20_STEPS=Object.entries({F20_N01:'读取源码与契约',F20_N02:'复核文档草稿',
+  F20_N03:'隔离编译 TypeScript 示例',F20_N04:'最终复核'});
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const plain=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 function fail(code:string,message:string):never {throw new ProtocolError(code,message);}
@@ -256,6 +258,12 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
     },readReceipt:host.readReceipt.bind(host)};
     const outcome=await runRuntimeOwnedWorkflowDriver(application,context,state,{workflowId:'F20',checkpointKey:key,mode:'main',
       image:options.image,bridge,catalog,requestId:sequence=>'f20-'+hash([scope.taskId,proposal.proposalId,sequence]),
+      progress:({sequence,result})=>{
+        const next=F20_STEPS.find(([id])=>result?.nodes[id]?.state==='waiting_receipt');
+        const previous=F20_STEPS.findLast(([id])=>result?.nodes[id]?.state==='completed');
+        const label=next?.[1]??(previous?'已完成'+previous[1]:'准备 API 文档检查');
+        return {stepId:'F20-'+sequence,label};
+      },
       authorizeProposal:async({proposal:item,state:graph})=>{
         if(!['F20_N01','F20_N02','F20_N03','F20_N04'].includes(item.nodeId)
           ||graph.result?.nodes[item.nodeId]?.state!=='waiting_receipt')
@@ -367,5 +375,9 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
       fail('UNAUTHORIZED','Original workflow result receipt changed');
   }};
   return {...capability,describe:()=>({name:OWNED_WORKFLOW_WORKER_TOOL,version:OWNED_WORKFLOW_WORKER_VERSION,inputSchema:ownedWorkflowWorkerInputSchema()}),
+    canReuseReceipt:(proposal,original,receipt)=>accepts(proposal)&&accepts(original)
+      &&proposal.verification==='unverified'&&original.verification==='unverified'
+      &&isDeepStrictEqual(proposal.arguments,original.arguments)
+      &&isDeepStrictEqual(receipt,{workflowId:'F20',state:'settled',published:false}),
     isActive,pendingHostTask,assertResumeAllowed};
 }
