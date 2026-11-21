@@ -12,6 +12,19 @@ const context=runId=>({taskId:'synthetic-remote-task',runId,authorizationRef:run
 const invocation=(runId,key='public')=>({...context(runId),toolName:descriptor.name,toolVersion:descriptor.version,arguments:{key}});
 const denied=code=>error=>error.code===code && !/private diagnostic|Bearer|synthetic-session/.test(error.message);
 
+test('a June protocol server requires the exact version pin before listing its tools',async()=>{
+  const f=await fixture({protocolVersion:'2025-06-18'});
+  const options={endpoint,server:{name:'synthetic-reference',version:'1.0.0'},tool:{remoteName:'reference',descriptor},enabled:true,fetch:f.fetch};
+  const strict=createRemoteReadonlyMcpHost(options);
+  const june=createRemoteReadonlyMcpHost({...options,server:{...options.server,protocolVersion:'2025-06-18'}});
+  try{
+    await assert.rejects(strict.start({signal:signal(),deadline:future()}),denied('PROTOCOL_MISMATCH'));
+    await june.start({signal:signal(),deadline:future()});
+    assert.equal(june.health().protocolVersion,'2025-06-18');
+    assert.equal(f.calls().length,0);
+  }finally{await strict.dispose();await june.dispose();await f.close();}
+});
+
 test('pinned Draft 2020-12 schemas validate through Gateway without broadening MCP execution scope',async()=>{
   const draft='https://json-schema.org/draft/2020-12/schema';
   const schema={$schema:draft,...descriptor.inputSchema,properties:{key:{$ref:'#/$defs/key'}},

@@ -28,7 +28,7 @@ export async function fixture(mode={}){
       if(message.id===undefined){res.writeHead(202).end();return;}
       let result;
       if(message.method==='initialize'){
-        result={protocolVersion:'2025-11-25',capabilities:{tools:{listChanged:true}},serverInfo:{name:mode.identity??'synthetic-reference',version:'1.0.0'}};
+        result={protocolVersion:mode.protocolVersion??'2025-11-25',capabilities:{tools:{listChanged:true}},serverInfo:{name:mode.identity??'synthetic-reference',version:'1.0.0'}};
       }else if(message.method==='tools/list'){
         result={tools:directory(mode),...(mode.cursor?{nextCursor:'next'}:{})};
       }else if(message.method==='tools/call'){

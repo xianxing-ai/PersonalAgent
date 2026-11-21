@@ -56,6 +56,19 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
     if(!origin || event.sender!==origin.window.webContents || event.senderFrame!==event.sender.mainFrame)reject();
     assertWindow(origin);
     if(name==='state'){if(payload!==undefined)reject();return state();}
+    if(name==='preset'){
+      if(!services || busy || !exact(payload,['id'])
+        || !['microsoft-learn','microsoft-samples','huggingface-hub'].includes(payload.id))reject();
+      const file=new URL('./mcp-presets/'+payload.id+'.json',import.meta.url);
+      const definition=JSON.parse(readFileSync(file,'utf8'));
+      if(services.list().some(item=>item.id===payload.id)){
+        const saved=services.get(payload.id).config.hostConfiguration();
+        if(saved?.endpoint!==definition.endpoint || saved.tool.remoteName!==definition.tool.remoteName)reject();
+        select(payload.id);return state();
+      }
+      newId=payload.id;configurationEpoch++;origin.draft=definition;
+      return state();
+    }
     if(name==='select'){
       if(!services || busy || !exact(payload,['id']) || typeof payload.id!=='string')reject();
       select(payload.id);return state();

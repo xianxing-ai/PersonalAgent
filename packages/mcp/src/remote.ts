@@ -19,7 +19,7 @@ const {StreamableHTTPClientTransport}=createRequire(import.meta.url)('@modelcont
 export interface RemoteReadonlyMcpOptions {
   /** Trusted host configuration and transport only; never Renderer or server declarations. */
   endpoint:string;
-  server:{name:string;version:string};
+  server:{name:string;version:string;protocolVersion?:'2025-06-18'|'2025-11-25'};
   tool:{remoteName:string;descriptor:Pick<ToolDescriptor,'name'|'version'|'inputSchema'|'outputSchema'|'requiredScopes'>};
   enabled?:boolean;
   fetch?:FetchLike;
@@ -60,6 +60,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       endpoint=new URL(options.endpoint);
       if(endpoint.protocol!=='https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !options.server.name || !options.server.version || !options.tool.remoteName || !descriptor?.requiredScopes.length || descriptor.inputSchema.type!=='object' || descriptor.outputSchema.type!=='object')fail('INVALID_ARGUMENT');
       validateContract('tool',descriptor);
+      if(options.server.protocolVersion!==undefined && !['2025-06-18','2025-11-25'].includes(options.server.protocolVersion))fail('INVALID_ARGUMENT');
       if(options.expectedDirectoryDigest!==undefined && !/^[a-f0-9]{64}$/.test(options.expectedDirectoryDigest))fail('INVALID_ARGUMENT');
       if(options.allowMissingOutputSchema!==undefined && typeof options.allowMissingOutputSchema!=='boolean')fail('INVALID_ARGUMENT');
       if(options.allowMissingOutputSchema && !options.expectedDirectoryDigest)fail('INVALID_ARGUMENT');
@@ -169,7 +170,8 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       next.setNotificationHandler(ToolListChangedNotificationSchema,()=>invalidate('REVISION_CONFLICT',epoch));
       diagnostic('handshake');await next.connect(nextTransport,{signal:operation!,timeout:Math.max(1,Math.min(30000,Date.parse(context.deadline)-Date.now()))});
       const server=next.getServerVersion();
-      if(server?.name!==configured.server.name || server.version!==configured.server.version || nextTransport.protocolVersion!=='2025-11-25' || !next.getServerCapabilities()?.tools)fail('PROTOCOL_MISMATCH');
+      if(server?.name!==configured.server.name || server.version!==configured.server.version
+        || nextTransport.protocolVersion!==(configured.server.protocolVersion??'2025-11-25') || !next.getServerCapabilities()?.tools)fail('PROTOCOL_MISMATCH');
       diagnostic('directory');const listed=await next.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
       if(listed.nextCursor)fail('PROTOCOL_MISMATCH');
       if(configured.expectedDirectoryDigest && remoteMcpDirectoryDigest(listed.tools)!==configured.expectedDirectoryDigest)fail('REVISION_CONFLICT');

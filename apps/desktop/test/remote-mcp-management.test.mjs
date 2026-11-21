@@ -10,6 +10,7 @@ import {remoteMcpDirectoryDigest} from '@personal-agent/mcp';
 import {createRemoteMcpConfig} from '../electron/remote-mcp-config.js';
 import {createDesktopRemoteMcpHost} from '../electron/remote-mcp-host.js';
 import {createRemoteMcpManagement} from '../electron/remote-mcp-management.js';
+import {createRemoteMcpRegistry} from '../electron/remote-mcp-registry.js';
 import {errorDisplayText} from '../src/shared/error-display.js';
 import {fixture,endpoint,descriptor,directory} from '../../../packages/mcp/test/remote-http-fixture.mjs';
 
@@ -33,7 +34,7 @@ function setup(extra={}){
   const host=createDesktopRemoteMcpHost({config,fetch:extra.fetch,confirmConnection:request=>management.confirmConnection(request)});
   management=createRemoteMcpManagement({BrowserWindow:Window,ipcMain,dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selected]}),showMessageBox:(...args)=>answer(...args)},
     owner:()=>({isDestroyed:()=>false}),config,host,application:()=>extra.app?.(),client:()=>extra.client?.(),namespace:'synthetic-management',
-    focusAuthorizationQuestion:extra.focusAuthorizationQuestion,
+    services:extra.services,focusAuthorizationQuestion:extra.focusAuthorizationQuestion,
     confirmAuthorization:async request=>{const result=await answer(request);return result.response===1&&request.isCurrent();}}); // Explicit Fake card decision.
   management.open();const window=Window.all.at(-1);
   const call=(name,payload,event={sender:window.webContents,senderFrame:window.webContents.mainFrame})=>handlers.get('desktop:remote-mcp')(event,name,payload);
@@ -42,6 +43,36 @@ function setup(extra={}){
 }
 async function until(app,id,state){for(let i=0;i<400;i++){if(app.runtime.getTask(id).state===state)return;await new Promise(r=>setTimeout(r,10));}assert.fail('task did not reach '+state);}
 async function idle(app){for(let i=0;i<400 && app.activeTaskCount;i++)await new Promise(r=>setTimeout(r,10));assert.equal(app.activeTaskCount,0);}
+
+test('public presets stage pinned tools, require approval and persist separately across restart',async()=>{
+  const parent=fileURLToPath(new URL('../../../.cache/mcp-management/',import.meta.url));
+  mkdirSync(parent,{recursive:true});
+  const userData=mkdtempSync(path.join(parent,'presets-'));
+  let registry=createRemoteMcpRegistry({userData,safeStorage});
+  const services={list:()=>registry.list(),get:id=>({config:registry.get(id)}),add:(id,input)=>registry.add(id,input)};
+  const s=setup({services});
+  try{
+    assert.equal((await s.call('preset',{id:'../private'})).ok,false);
+    for(const [id,name] of [['microsoft-learn','microsoft_docs_search'],['microsoft-samples','microsoft_code_sample_search'],['huggingface-hub','hf_fs']]){
+      const draft=await s.call('preset',{id});
+      assert.equal(draft.value.draft.tool.remoteName,name);
+      assert.equal(draft.value.configured,false);
+      s.setAnswer(async()=>({response:0}));
+      await s.call('save',{token:'',expiresAt:''});
+      assert.ok(!services.list().some(item=>item.id===id));
+      s.setAnswer(async()=>({response:1}));
+      assert.equal((await s.call('save',{token:'',expiresAt:''})).ok,true);
+      assert.equal(registry.get(id).snapshot().hasCredentials,false);
+    }
+    registry.dispose();
+    registry=createRemoteMcpRegistry({userData,safeStorage});
+    assert.equal(registry.list().length,4);
+    for(const entry of registry.list())assert.equal(entry.connected,false);
+    const selected=await s.call('preset',{id:'microsoft-learn'});
+    assert.equal(selected.value.definition.server.protocolVersion,'2025-06-18');
+    assert.equal(selected.value.draft,undefined);
+  }finally{await s.close();registry.dispose();}
+});
 
 test('management IPC is limited to its own main frame and keeps credentials out of state',async()=>{
   const s=setup({saved:true});try{

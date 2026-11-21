@@ -13,7 +13,8 @@ function fail(code){throw new ProtocolError(code,'远程 MCP 配置操作未完�
 function connection(value){
   if(!exact(value,['endpoint','server','tool','directoryDigest','allowMissingOutputSchema','publicExport'],['endpoint','server','tool','directoryDigest']) || !text(value.endpoint,2048)
     || (value.allowMissingOutputSchema!==undefined && typeof value.allowMissingOutputSchema!=='boolean')
-    || !exact(value.server,['name','version']) || !text(value.server.name,256) || !text(value.server.version,128)
+    || !exact(value.server,['name','version','protocolVersion'],['name','version']) || !text(value.server.name,256) || !text(value.server.version,128)
+    || (value.server.protocolVersion!==undefined && !['2025-06-18','2025-11-25'].includes(value.server.protocolVersion))
     || !exact(value.tool,['remoteName','descriptor']) || !text(value.tool.remoteName,256)
     || !exact(value.tool.descriptor,['name','version','inputSchema','outputSchema','requiredScopes'])
     || !/^mcp\.remote\.[a-z][a-z0-9_.-]*$/.test(value.tool.descriptor.name)
