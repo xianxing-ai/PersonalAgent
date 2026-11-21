@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {ProtocolError,isToolNotStartedError,validateContract,validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError,compileToolValueSchema,isToolNotStartedError,validateContract,validateToolValue} from '@personal-agent/contracts';
+import type {JsonSchemaType,JsonSchemaValidator} from '@modelcontextprotocol/sdk/validation';
 import type {RegisteredTool,ToolContext,ToolDescriptor,ToolHost} from '@personal-agent/contracts';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {CallToolResultSchema,ListToolsResultSchema,ToolListChangedNotificationSchema} from '@modelcontextprotocol/sdk/types.js';
@@ -156,7 +157,12 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
         try{await send(message,sendOptions);}
         finally{if(sending.get(body)===scope)sending.delete(body);}
       };
-      const next=new Client({name:'personal-agent-remote-readonly-host',version:'1.0.0'},{capabilities:{}});
+      const next=new Client({name:'personal-agent-remote-readonly-host',version:'1.0.0'},{capabilities:{},
+        jsonSchemaValidator:{getValidator<T>(schema:JsonSchemaType):JsonSchemaValidator<T>{
+          const valid=compileToolValueSchema(schema);
+          return value=>valid(value)?{valid:true,data:value as T,errorMessage:undefined}:
+            {valid:false,data:undefined,errorMessage:'Tool output violates its registered schema'};
+        }}});
       client=next;transport=nextTransport;
       next.onclose=()=>invalidate('EXTERNAL_FAILURE',epoch);
       next.onerror=error=>invalidate(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE',epoch);

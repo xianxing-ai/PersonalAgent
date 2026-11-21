@@ -12,6 +12,29 @@ const context=runId=>({taskId:'synthetic-remote-task',runId,authorizationRef:run
 const invocation=(runId,key='public')=>({...context(runId),toolName:descriptor.name,toolVersion:descriptor.version,arguments:{key}});
 const denied=code=>error=>error.code===code && !/private diagnostic|Bearer|synthetic-session/.test(error.message);
 
+test('pinned Draft 2020-12 schemas validate through Gateway without broadening MCP execution scope',async()=>{
+  const draft='https://json-schema.org/draft/2020-12/schema';
+  const schema={$schema:draft,...descriptor.inputSchema,properties:{key:{$ref:'#/$defs/key'}},
+    $defs:{key:{type:'string',const:'public'}}};
+  const outputSchema={$schema:draft,...descriptor.outputSchema};
+  const f=await fixture({schema,outputSchema}),policy=new InMemoryAuthorizationPolicy(),gateway=new ToolGateway({policy});
+  const host=createRemoteReadonlyMcpHost({endpoint,server:{name:'synthetic-reference',version:'1.0.0'},
+    tool:{remoteName:'reference',descriptor:{...descriptor,inputSchema:schema,outputSchema}},enabled:true,fetch:f.fetch,
+    expectedDirectoryDigest:remoteMcpDirectoryDigest(directory(f.mode))});
+  try{
+    await host.start({signal:signal(),deadline:future()});host.register(gateway);
+    await assert.rejects(gateway.invoke(invocation('draft-no-grant')),denied('UNAUTHORIZED'));
+    await assert.rejects(gateway.invoke(invocation('draft-invalid','private')),denied('INVALID_ARGUMENT'));
+    assert.equal(f.calls().length,0);
+    const run=invocation('draft-approved');
+    policy.grant({authorizationRef:run.runId,taskId:run.taskId,toolName:run.toolName,scopes:descriptor.requiredScopes,
+      argumentsDigest:toolArgumentsDigest(run.arguments),maxUses:1,expiresAt:run.deadline});
+    assert.deepEqual(await gateway.invoke(run),{text:'public synthetic reference'});
+    await assert.rejects(gateway.invoke(run),denied('UNAUTHORIZED'));
+    assert.equal(f.calls().length,1);
+  }finally{await host.dispose();await f.close();}
+});
+
 test('missing remote output schema requires explicit host policy and still validates structured output',async()=>{
   const f=await fixture({omitOutputSchema:true});
   const options={endpoint,server:{name:'synthetic-reference',version:'1.0.0'},tool:{remoteName:'reference',descriptor},enabled:true,fetch:f.fetch,

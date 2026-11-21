@@ -5392,12 +5392,25 @@ app.whenReady().then(async () => {
     onReload: info => {console.warn('[memory] reloaded an oversized renderer', {pid: info.pid, megabytes: Math.round(info.bytes / 1024 / 1024)});},
   });
   memoryWatchdog.start();
+  let remoteMcpPendingQuit;
   app.on('before-quit', event => {
     if (runtimeStartup.snapshot().state === 'starting') {
       event.preventDefault(); reportQuitFailure('Runtime 正在连接，请稍后退出'); return;
     }
     if ((runtimeApplication?.activeTaskCount ?? 0) > 0 || submitting.size > 0) {
       event.preventDefault();
+      if(remoteMcpPendingQuit)return;
+      if(submitting.size===0 && remoteMcpManagement && !mailMonitorPreparation?.configurationPending()){
+        try {
+          const settling=runtimeApplication?.finishPendingRemoteMcpForExit(()=>draftQuitPreflight.allow());
+          if(settling===false)return;
+          if(settling){
+            remoteMcpPendingQuit=settling.then(()=>{remoteMcpPendingQuit=undefined;app.quit();})
+              .catch(()=>{remoteMcpPendingQuit=undefined;reportQuitFailure('远程 MCP 待批任务尚未停止，请稍后退出');});
+            return;
+          }
+        } catch { /* Fall through to the existing busy response. */ }
+      }
       app.isQuitting = false;
       reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
       return;

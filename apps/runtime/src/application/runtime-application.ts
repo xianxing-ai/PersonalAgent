@@ -1374,6 +1374,27 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   get deployment(): TextApplication['deployment'] { this.requireLocalText(); return structuredClone(this.textApplication.deployment); }
   get activeTaskCount(): number { return this.activeTextTasks.size; }
+
+  /** Host-only shutdown. Never interrupt another worker or a read already dispatched. */
+  finishPendingRemoteMcpForExit(prepareExit:()=>boolean):Promise<void>|false|undefined {
+    const tasks=[...this.activeTextTasks];
+    if(!tasks.length||tasks.some(([taskId])=>{
+      const marker=this.runtime.loadCheckpoint(taskId,'desktop-remote-mcp-v1') as {toolName?:string;toolVersion?:string}|undefined;
+      if(!marker?.toolName?.startsWith('mcp.remote.'))return true;
+      const read=this.readHostToolTask(taskId);
+      return read.task.state!=='waiting_approval'||read.task.cancelRequested||read.approval?.state!=='pending'
+        ||read.toolName!==marker.toolName||read.toolVersion!==marker.toolVersion
+        ||this.hostToolDescriptor(read.toolName,read.toolVersion).sideEffect!=='read'
+        ||this.runtime.readToolExecutions(taskId).some(record=>record.executionStarted
+          ||record.state==='started'||record.state==='confirmed'||record.state==='unknown');
+    }))return undefined;
+    if(!prepareExit())return false;
+    for(const [taskId] of tasks)this.runtime.requestCancel(taskId,'Desktop exited before remote MCP approval');
+    return Promise.allSettled(tasks.map(([,work])=>work)).then(()=>{
+      if(tasks.some(([taskId])=>this.runtime.getTask(taskId).state!=='cancelled'))
+        throw new ProtocolError('REVISION_CONFLICT','Remote MCP cancellation not confirmed');
+    });
+  }
   get harnessExperience():ReturnType<typeof createRuntimeHarnessExperienceApplication>|undefined {return this.harnessExperienceState?.application;}
 
   /** Existing Main composition entry; createHarnessExperienceApplication is its compatible returning alias. */

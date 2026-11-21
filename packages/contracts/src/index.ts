@@ -1,4 +1,6 @@
 import { Ajv } from 'ajv';
+import {Ajv2020} from 'ajv/dist/2020.js';
+import {default as addFormats} from 'ajv-formats';
 import schema from './schema.js';
 import type { ProtocolContracts } from './generated.js';
 export type { ProtocolContracts } from './generated.js';
@@ -17,7 +19,12 @@ export const MAX_FRAME_BYTES = 1024 * 1024;
 export const MAX_COORDINATION_GOAL_CHARACTERS = 128_000;
 export const MAX_COORDINATION_INITIAL_QUERY_BYTES = 1_100_000;
 const ajv = new Ajv({allErrors: true, strict: false});
+const draft2020 = new Ajv2020({allErrors:true,strict:false,addUsedSchema:false,ownProperties:true});
+const toolAjv = new Ajv({allErrors:true,strict:false,addUsedSchema:false,ownProperties:true});
+for(const instance of [draft2020,toolAjv])
+  (addFormats as unknown as (instance:Ajv|Ajv2020)=>void)(instance);
 ajv.addSchema(schema);
+toolAjv.addSchema(schema);
 const referenceValidators = new Map<string, ReturnType<typeof ajv.compile>>();
 const validator = (path: string) => {
   let valid = referenceValidators.get(path);
@@ -77,8 +84,19 @@ export function parseEvent(value: unknown): Event {
 export function validateContract(name: 'snapshot' | 'tool' | 'connector' | 'evidence' | 'connectorItem' | 'connectorAction', value: unknown): void {
   check(validator(name), value);
 }
+function isDraft2020ToolSchema(schema:object):boolean {
+  const dialect=(schema as {$schema?:unknown}).$schema;
+  return dialect==='https://json-schema.org/draft/2020-12/schema'||dialect==='https://json-schema.org/draft/2020-12/schema#';
+}
+
+export function compileToolValueSchema(schema:object) {
+  if((schema as {$async?:unknown}).$async)throw new ProtocolError('INVALID_ARGUMENT','Tool schema validation must be synchronous');
+  try{return (isDraft2020ToolSchema(schema)?draft2020:toolAjv).compile(schema);}
+  catch{throw new ProtocolError('INVALID_ARGUMENT','Tool schema could not be compiled');}
+}
+
 export function validateToolValue(schema: object, value: unknown): void {
-  const valid=ajv.compile(schema);
+  const valid=compileToolValueSchema(schema);
   if(valid(value))return;
   const issue=valid.errors?.[0];
   const allowedKeywords=new Set(['required','type','enum','const','minimum','maximum','minLength','maxLength','pattern','format','additionalProperties','minItems','maxItems','oneOf','anyOf']);
