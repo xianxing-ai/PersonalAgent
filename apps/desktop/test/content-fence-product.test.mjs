@@ -103,7 +103,9 @@ test('main startup wraps tools and preload still carries the desktop action chan
   assert.match(main, /contentFence=createContentFenceProduct/);
   assert.match(main, /beforeToolAuthorize:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*contentFence\?\.beforeAuthorize\(input\)|[^\n;]*contentFence\?\.beforeAuthorize\(input\))/);
   assert.match(main, /onTaskTerminal: taskId => contentFence\?\.clearTask\(taskId\)/);
-  assert.match(main, /conversationTools=contentFence\.wrapTools\(conversationTools\)/);
+  assert.ok(main.includes("conversationTools=conversationTools.map(tool=>tool.descriptor.name==='calendar.update'"));
+  assert.ok(main.includes('?contentFence.wrapTools(dryRun.wrapTools([tool]))[0]'));
+  assert.ok(main.includes(':dryRun.wrapTools(contentFence.wrapTools([tool]))[0]'));
   assert.match(main, /name === 'contentFence\.state'/);
   assert.match(main, /contentFence:contentFence\?\.snapshot\(\)/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action'/);
