@@ -6,7 +6,7 @@ export const AUTHORIZATION_INTENT_ACTIONS=Object.freeze([
   'memory.save','memory.erase','memory.withdraw','memory.consume','experience.activate',
   'skill.install','skill.enable','skill.uninstall','skill.run','plugin.install','plugin.enable','plugin.uninstall','reference.catalog','reference.source',
   'knowledge.session','knowledge.configure','knowledge.read','knowledge.catalog','workflow.enable','workflow.delete','facts.erase','feeds.classify',
-  'mail.review.configure','computer.observation.configure',
+  'mail.review.configure','computer.observation.configure','computer.observation.export',
   'remoteMcp.configure','knowledge.pair','voice.capture','developer.export','harness.export',
 ]);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');

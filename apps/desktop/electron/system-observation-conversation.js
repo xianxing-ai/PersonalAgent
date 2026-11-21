@@ -64,14 +64,25 @@ export function createSystemObservationConversation({getApplication,resolveUserC
         const scope=current(input.taskId,input.signal);if(!empty(input.arguments))return false;
         if(input.phase==='preflight'){proposal(scope,input.proposalId);return true;}
         const permit=permits.get(key(input.taskId,input.proposalId));
-        return !!permit&&!permit.signal.aborted&&permit.deadline===scope.deadline
+        return !!permit&&permit.application===scope.application&&!permit.signal.aborted&&permit.deadline===scope.deadline
           &&permit.conversationId===scope.conversationId&&isDeepStrictEqual(input.projection,permit.payload)
+          &&permit.destination===scope.application.readAuthorizationQuestionDestination(scope.taskId)
           &&isDeepStrictEqual(original(scope,permit.runId),permit.payload);
       }catch{return false;}
     },
     project:async({taskId,proposalId,result,signal})=>{
       const scope=current(taskId,signal),{runId}=proposal(scope,proposalId),payload=original(scope,runId);
       if(!isDeepStrictEqual(payload,result))fail();
+      const destination=scope.application.readAuthorizationQuestionDestination(taskId);
+      if(typeof destination!=='string'||!destination)fail();
+      const isCurrent=()=>{
+        try {
+          const checked=current(taskId,signal,scope.deadline);
+          return checked.application===scope.application&&checked.conversationId===scope.conversationId
+            &&checked.application.readAuthorizationQuestionDestination(taskId)===destination
+            &&proposal(checked,proposalId).runId===runId&&isDeepStrictEqual(original(checked,runId),payload);
+        }catch{return false;}
+      };
       const controller=new AbortController();let timer,onAbort;
       const interrupted=new Promise((_,reject)=>{
         onAbort=()=>{controller.abort();reject(new ProtocolError('UNAUTHORIZED','System observation export was cancelled or expired'));};
@@ -82,16 +93,15 @@ export function createSystemObservationConversation({getApplication,resolveUserC
       pending.add(onAbort);
       try {
         const allowed=await Promise.race([Promise.resolve().then(()=>{
-          current(taskId,signal,scope.deadline);if(controller.signal.aborted)fail();
+          if(!isCurrent()||controller.signal.aborted)fail();
           return confirmExport({kind:'system_observation',taskId,conversationId:scope.conversationId,proposalId,
-            payload:structuredClone(payload),deadline:scope.deadline,signal:controller.signal});
+            payload:structuredClone(payload),deadline:scope.deadline,signal:controller.signal,isCurrent});
         }),interrupted]);
-        if(allowed!==true)fail();
-        const checked=current(taskId,signal,scope.deadline);
-        if(checked.conversationId!==scope.conversationId||!isDeepStrictEqual(original(checked,runId),payload))fail();
+        if(allowed!==true||!isCurrent())fail();
         for(const [id,permit]of permits)try{current(permit.taskId,permit.signal,permit.deadline);}catch{permits.delete(id);}
         if(permits.size>=128&&!permits.has(key(taskId,proposalId)))fail();
-        permits.set(key(taskId,proposalId),{taskId,runId,signal,deadline:scope.deadline,conversationId:scope.conversationId,payload});
+        permits.set(key(taskId,proposalId),{application:scope.application,taskId,runId,signal,deadline:scope.deadline,
+          conversationId:scope.conversationId,payload,destination});
         return structuredClone(payload);
       } finally {clearTimeout(timer);signal.removeEventListener('abort',onAbort);pending.delete(onAbort);}
     }};

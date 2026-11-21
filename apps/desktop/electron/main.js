@@ -2397,7 +2397,13 @@ async function initializeRuntime() {
         const observation=productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe');
         if(observation)systemObservationConversation=createSystemObservationConversation({tool:observation,
           getApplication:()=>runtimeApplication,resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
-          confirmExport:confirmDeveloperExport});
+          confirmExport:({taskId,conversationId,proposalId,payload,deadline,signal,isCurrent})=>
+            confirmApplicationAuthorization('computer.observation.export',payload,{
+              scope:{taskId,conversationId,proposalId,deadline,destination:runtimeApplication.readAuthorizationQuestionDestination(taskId),
+                purpose:'system-observation',readScope:'computer:system:read'},
+              summary:'允许将本次任务读取的 CPU、内存与运行时长聚合数据发送给当前配置的模型吗？',
+              deadline,signal,isCurrent,
+            })});
       }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();

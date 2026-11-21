@@ -4,6 +4,7 @@ import {Client} from '@personal-agent/client';
 import {createSystemObservationTool} from '@personal-agent/windows-client';
 import {createAgentArtsRuntimeApplication,createRuntimeApplication,createRuntimeSubagentDispatchTool} from '@personal-agent/runtime/application';
 import {createSystemObservationConversation} from '../electron/system-observation-conversation.js';
+import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
 
 const until=async predicate=>{for(let n=0;n<600;n++){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}throw Error('Observation conversation did not settle');};
 function injectedTool() {
@@ -12,42 +13,65 @@ function injectedTool() {
     totalMemoryBytes:()=>1000,freeMemoryBytes:()=>400,uptimeSeconds:()=>120}});
   return {tool,reads:()=>count};
 }
-async function scenario({realLocal=false,delegated=false,decision=true,configured=true,closeAtPrompt=false}={}) {
+async function scenario({realLocal=false,delegated=false,decision=true,configured=true,closeAtPrompt=false,changeDestination=false,replaceApplication=false,wss=false}={}) {
   const fixture=realLocal?{tool:createSystemObservationTool(),reads:()=>undefined}:injectedTool();
-  const {tool}=fixture,requests=[],confirmations=[],approvals=new Set();let app,host,confirmationTask;
+  const {tool}=fixture,requests=[],confirmations=[],approvals=new Set();let app,host,confirmationTask,replacement;
   const conversationId='desktop-panel:22222222-2222-4222-8222-222222222222';
-  host=createSystemObservationConversation({tool,getApplication:()=>app,resolveUserConversation:id=>{
+  host=createSystemObservationConversation({tool,getApplication:()=>replacement??app,resolveUserConversation:id=>{
     const task=app?.runtime.getTask(id);return app?.readDelegatedUserTaskParent(id)?.conversationId??task?.conversationId;
   },...(configured?{confirmExport:async scope=>{
     confirmationTask=scope.taskId;confirmations.push(scope);
     assert.equal(scope.kind,'system_observation');assert.equal(scope.conversationId,conversationId);
     assert.equal(scope.payload.source,realLocal?'node:os':'injected');assert.equal(scope.signal.aborted,false);
+    assert.equal(scope.isCurrent(),true);
+    if(changeDestination){
+      app.readAuthorizationQuestionDestination=()=> 'changed-destination';
+      assert.equal(scope.isCurrent(),false);
+    }
     if(closeAtPrompt){host.close();return new Promise(()=>{});}
     return decision;
   }}:{})});
   assert.equal(host.tools[0],tool,'Reuses the original RegisteredTool object');
   const dispatch=createRuntimeSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
+  const respond=query=>{
+    requests.push(query);
+    return query.continuation?{kind:'text',text:'Synthetic observation received; unavailable metrics remain unavailable'}
+      :{kind:'tool_proposal',proposalId:'synthetic-system-observe',toolName:'computer.system.observe',toolVersion:'1.0.0',arguments:{}};
+  };
   app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'synthetic-system-observation',
     gatewayUrl:'https://synthetic-observation.invalid',runtimeName:'synthetic-no-cloud',
+    ...(wss?{transport:'wss',websocketUrl:'wss://synthetic-observation.invalid/runtimes/synthetic-no-cloud/ws',
+      websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-wss'},
+      websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
+        if(frame.type!=='invoke')return;
+        const intent=app.runtime.loadCheckpoint(confirmationTask??app.runtime.listTasks({}).items[0].taskId,'competition-cloud-inflight');
+        assert.equal(frame.requestId,intent.requestId);
+        socket.accepted(frame);socket.result(frame,JSON.stringify(respond(JSON.parse(frame.payload.query))));
+      })}:{}),
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',competitionMaxSteps:4,
     ...(delegated?{delegateUserTasks:true}:{}),tools:[tool,...(delegated?[dispatch]:[])],
     competitionToolAvailability:[...host.competitionToolAvailability,...(delegated?[{toolName:'subagent.dispatch',toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort']}]:[])],
     competitionToolExports:[...host.competitionToolExports,...(delegated?[{toolName:'subagent.dispatch',toolVersion:'1.0.0',
       exportPolicyVersion:'synthetic-system-summary',accepts:()=>true,project:({result})=>({total:result.total,summary:result.summary})}]:[])],
-    authorizationProvider:{read:async()=>'Bearer synthetic-never-sent'},
+    authorizationProvider:{read:async()=>{
+      if(replaceApplication&&confirmationTask)replacement={
+        runtime:app.runtime,readAuthorizationQuestionDestination:app.readAuthorizationQuestionDestination.bind(app),
+      };
+      return 'Bearer synthetic-never-sent';
+    }},
     fetchImpl:async(_url,init)=>{
       // Explicit in-process model transport. No outbound request is made, including the node:os case.
-      const query=JSON.parse(JSON.parse(init.body).query);requests.push(query);
+      assert.equal(wss,false,'WSS must not fall back to HTTPS');
+      const query=JSON.parse(JSON.parse(init.body).query);
       if(query.continuation?.proposalId==='synthetic-system-observe') {
         const policy=host.competitionToolExports[0],scope=confirmations.at(-1);
         const base={taskId:confirmationTask,proposalId:scope.proposalId,arguments:{},phase:'final',signal:scope.signal};
         assert.equal(policy.accepts({...base,projection:query.continuation.result}),true);
         assert.equal(policy.accepts({...base,projection:{...query.continuation.result,uptimeSeconds:0}}),false);
       }
-      const value=query.continuation?{kind:'text',text:'Synthetic observation received; unavailable metrics remain unavailable'}
-        :{kind:'tool_proposal',proposalId:'synthetic-system-observe',toolName:'computer.system.observe',toolVersion:'1.0.0',arguments:{}};
+      const value=respond(query);
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(value)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
     }});
@@ -90,11 +114,21 @@ test('Actual local node:os sampling uses original Policy; only explicit Syntheti
 });
 
 test('Denied exact egress or host closure retains one confirmed local read without cloud continuation',async()=>{
-  for(const options of [{decision:false},{closeAtPrompt:true}]) {
+  for(const options of [{decision:false},{closeAtPrompt:true},{changeDestination:true},{replaceApplication:true}]) {
     const result=await scenario(options);assert.equal(result.state,'waiting_reconciliation');
     assert.equal(result.requests.length,1);assert.equal(result.confirmations.length,1);assert.equal(result.reads,2);
     assert.equal(result.executions.filter(value=>value.state==='confirmed').length,1);
   }
+});
+
+test('Synthetic WSS continues exactly once on the original task after observation export confirmation',async()=>{
+  const result=await scenario({wss:true});
+  assert.equal(result.state,'succeeded');
+  assert.equal(result.requests.length,2);
+  assert.deepEqual(result.requests[1].continuation.result,result.confirmations[0].payload);
+  const denied=await scenario({wss:true,decision:false});
+  assert.equal(denied.state,'waiting_reconciliation');
+  assert.equal(denied.requests.length,1);
 });
 
 test('Missing native export callback never publishes or samples the original system tool',async()=>{
