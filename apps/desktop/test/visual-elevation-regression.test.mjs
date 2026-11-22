@@ -8,10 +8,13 @@ test('solid-glass keeps primary/danger/hover button specificity above base contr
   const css = readCss('../src/app/solid-glass.css');
   assert.match(css, /\.admin \.main :where\(\.btn,input:not\(\[type="checkbox"\]\)/);
   assert.doesNotMatch(css, /\.admin \.main :is\(\.btn,input:not\(\[type="checkbox"\]\)/);
-  assert.match(css, /\.admin \.main \.btn-primary\s*\{/);
+  assert.match(css, /\.admin \.main \.btn-primary(?:\s*,[^{]+)?\s*\{/);
   assert.match(css, /\.admin \.main \.btn-danger\s*\{/);
   assert.match(css, /--sg-ground:#111215/);
   assert.match(css, /--sg-ground:#e9ebee/);
+  assert.match(css, /--sg-canvas:/);
+  assert.match(css, /\.admin \.main \.settings-form > \.btn,\s*\.admin \.main \.settings-form > button\s*\{[^}]*justify-self:start/);
+  assert.match(css, /\.admin \.main \.sheet\.usage-budget\s*\{[^}]*border:0/);
   assert.match(css, /\*::-webkit-scrollbar\s*\{width:6px;height:6px\}/);
   assert.match(css, /\*::-webkit-scrollbar-button\s*\{display:none/);
   assert.match(css, /@supports selector\(::-webkit-scrollbar\)/);
