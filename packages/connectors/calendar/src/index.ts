@@ -12,6 +12,8 @@ export { ICalSubscriptionProvider, parseIcalEvents, unfoldLines, unescapeIcalTex
 export type { FetchLike, FetchResponseLike, ICalSubscriptionOptions } from './ical-subscription.js';
 export { CalDavProvider, parseCalDavEvents, zonedWallToUtc } from './caldav.js';
 export type { CalDavFetchLike, CalDavFetchResponseLike, CalDavReadProviderOptions, CalDavChangeSnapshot } from './caldav.js';
+export { WindowsSystemCalendarProvider } from './windows-system.js';
+export type { WindowsAppointmentRaw, WindowsCalendarRequest, WindowsCalendarTransport, WindowsSystemCalendarOptions, WindowsSystemCalendarSummary } from './windows-system.js';
 export { CalendarService, eventToItem } from './service.js';
 export { FakeCalendarProvider, defaultCalendarFixtures } from './fake-provider.js';
 export type { CalendarEventRecord, CalendarFetchPage, CalendarProvider, CalendarReadContext, CalendarRespondInput, CalendarRespondResult, CalendarSummary, CalendarWindow } from './provider.js';

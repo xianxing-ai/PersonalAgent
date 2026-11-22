@@ -118,3 +118,31 @@ test('unavailable encryption and corrupt storage fail safely; explicit revoke re
   assert.equal(readFileSync(other, 'utf8'), 'synthetic-other-config');
   assert.throws(() => corrupt.readAuthorization(binding));
 });
+
+test('windows-system configuration persists locally without credentials and still starts sessionLocked', t => {
+  const f = fixture(t);
+  const saved = f.config.configure({providerKind: 'windows-system', calendarName: '我的本地日程'});
+  assert.equal(saved.configured, true);
+  assert.equal(saved.providerKind, 'windows-system');
+  assert.equal(saved.calendarName, '我的本地日程');
+  assert.equal(saved.hasCredentials, true);
+  assert.equal(saved.sessionAllowed, false);
+
+  const binding = f.config.binding();
+  assert.equal(binding.providerKind, 'windows-system');
+  assert.equal(binding.calendarUrl, undefined);
+  assert.equal(f.config.readAuthorization(binding), 'windows-system:local');
+
+  const reloaded = createCalendarConfig(f.options);
+  assert.equal(reloaded.snapshot().providerKind, 'windows-system');
+  assert.equal(reloaded.snapshot().hasCredentials, true);
+  assert.equal(reloaded.binding().accountRef, binding.accountRef);
+
+  const resaved = reloaded.configure({providerKind: 'windows-system'});
+  assert.equal(resaved.calendarName, 'Windows 系统日历');
+  assert.equal(reloaded.binding().accountRef, binding.accountRef);
+  assert.equal(reloaded.binding().revision, 2);
+
+  assert.equal(reloaded.revoke().status, 'unconfigured');
+  assert.equal(existsSync(f.target), false);
+});

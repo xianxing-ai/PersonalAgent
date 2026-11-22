@@ -71,3 +71,13 @@ test('Synthetic calendar retains credentials and read/cancel entry, with no sett
   assert.equal(field('read').disabled,true);assert.equal(field('cancel').disabled,false);
   await field('cancel').onclick();assert.equal(f.calls[2].name,'calendar.cancel');assert.equal(f.calls[2].input,'original');
 });
+
+test('Calendar controls support one-click Windows system calendar configuration without URL or password',async t=>{
+  const f=fixture(t,mountCalendarControls,{configured:false});
+  const field=name=>f.root.querySelector(`[data-calendar="${name}"]`);
+  assert.ok(field('use-system'));
+  await field('use-system').onclick();
+  assert.deepEqual(f.calls[0],{name:'calendar.configure',input:{providerKind:'windows-system',calendarName:'Windows 系统日历'}});
+  f.controls.render({configured:true,providerKind:'windows-system',calendarName:'Windows 系统日历',reason:'已保存'});
+  assert.match(field('status').textContent,/Windows 系统日历/);
+});

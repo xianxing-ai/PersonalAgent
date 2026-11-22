@@ -68,7 +68,7 @@ export function createConversationEnvironmentContext({now = () => new Date(),
       state:calendar.configured === true ? 'check_task_catalog' : 'configuration_required',callable:false,
       guidance:calendar.configured === true
         ? '日历已有本机配置；这不证明账号连接、写入或出机已获许可。按当前任务工具目录和原授权提问卡处理，不能自动创建事件。'
-        : '日历工具已装配，但尚缺有效的 CalDAV 账号配置。请用户在设置→连接→CalDAV 日历配置填写本人已有配置；不要索取聊天中的密码，授权提问卡不能替代账号配置。',
+        : '日历工具已装配，但尚缺有效的日历配置。在 Windows 上可在设置→连接与提醒中一键启用系统本地日历，或在 CalDAV 栏填写本人已有配置；不要索取聊天中的密码，授权提问卡不能替代账号配置。',
     });
     const inputRef = readF20InputRef(scope);
     if (typeof inputRef === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(inputRef)) {
