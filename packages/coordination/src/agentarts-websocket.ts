@@ -536,8 +536,11 @@ export class AgentArtsWebSocketTransport {
       const receipt = {...createAgentArtsUnknownReceipt(init), serverInstanceId: selected.serverInstanceId!};
       const payloadDigest = receipt.payloadDigest;
       const deadline = init.headers['X-PA-Deadline']!;
-      const frame = encodeAgentArtsTransportFrame({protocolVersion: AGENTARTS_TRANSPORT_VERSION,
-        type: 'invoke', sessionId, requestId, idempotencyKey: requestId, payloadDigest, deadline, payload});
+      const invocation:AgentArtsTransportFrame={protocolVersion:AGENTARTS_TRANSPORT_VERSION,type:'invoke',
+        sessionId,requestId,idempotencyKey:requestId,payloadDigest,deadline,payload};
+      if(Buffer.byteLength(JSON.stringify(invocation))>MAX_FRAME_BYTES)
+        throw new ProtocolError('INVALID_ARGUMENT','AgentArts WebSocket frame exceeds 1,200,000 UTF-8 bytes; compact or reduce the context');
+      const frame=encodeAgentArtsTransportFrame(invocation);
       return await new Promise<AgentArtsResponse>((resolve, reject) => {
         let stopStatusRecovery: (() => void) | undefined;
         const abort = (): void => {

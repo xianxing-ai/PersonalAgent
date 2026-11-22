@@ -58,6 +58,19 @@ function port(fetchImpl, authorizationProvider = provider(), config = {}) {
   }, authorizationProvider, fetchImpl);
 }
 
+test('a million ASCII characters fit; UTF-8 and outer JSON byte limits reject before fetch', async()=>{
+  let sends=0;
+  const cloud=port(async (_url,init)=>{
+    sends++;
+    assert.equal(JSON.parse(init.body).query.length,1_000_000);
+    return jsonResponse(message('ok'));
+  });
+  await cloud.invoke(request({goal:'a'.repeat(1_000_000)}));
+  await assert.rejects(cloud.invoke(request({goal:'中'.repeat(400_000)})),/1,100,000 UTF-8 bytes/);
+  await assert.rejects(cloud.invoke(request({goal:'"'.repeat(620_000)})),/1,200,000 UTF-8 bytes/);
+  assert.equal(sends,1);
+});
+
 for (const transport of ['iterator', 'reader']) {
   test(`${transport} response preserves chunks when transport reuses its byte buffer`, async () => {
     const chunks = ['A', 'B'].map(text => new TextEncoder().encode(`data: ${JSON.stringify(message(text))}\n\n`));

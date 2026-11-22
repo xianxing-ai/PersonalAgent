@@ -23,6 +23,58 @@ function fixture(patch={}) {
   return {options,source,policy,saved,control,calls:()=>calls};
 }
 
+test('four complete turns and an active turn survive incremental summary and revalidation',async()=>{
+  let cache;
+  const f=fixture({force:true,remember:value=>{cache=value;}});delete f.options.loadCheckpoint;
+  Object.assign(f.policy,{retainTurns:4,maxSourceMessages:40,maxCharacters:20000,targetCharacters:12000,triggerCharacters:16000,segmentCharacters:1000});
+  const turn=i=>['user','assistant','assistant'].map((role,j)=>({id:`m-${i}-${j}`,role,taskId:'t-'+i,content:'Source material '.repeat(12)}));
+  f.source.messages=Array.from({length:7},(_,i)=>turn(i)).flat();
+  f.source.messages.at(-3).taskState='running';
+  const first=await compactConversationContext(f.options);
+  assert.deepEqual(first.messages.slice(-15),f.source.messages.slice(-15));
+  assert.equal(f.calls(),2);
+  delete f.source.messages.at(-3).taskState;
+  f.source.messages.push(...turn(7));
+  const second=await compactConversationContext({...f.options,previous:cache});
+  assert.deepEqual(second.messages.slice(-12),f.source.messages.slice(-12));
+  assert.equal(f.calls(),4,'only the two newly eligible turns are summarized');
+  f.source.messages.shift();
+  await compactConversationContext({...f.options,previous:cache});
+  assert.ok(f.calls()>4,'withdrawal invalidates the cached prefix');
+});
+
+test('UTF-8 byte pressure triggers compaction before the character threshold without inventing tokens',async()=>{
+  const f=fixture();
+  Object.assign(f.policy,{retainTurns:4,maxSourceMessages:48,maxCharacters:1000000,targetCharacters:800000,
+    triggerCharacters:900000,segmentCharacters:32000});
+  f.source.messages=Array.from({length:39},(_,i)=>({id:'utf8-'+i,role:'user',content:'中'.repeat(10000)}));
+  const result=await compactConversationContext(f.options);
+  assert.equal(result.state,'compacted');
+  assert.ok(result.receipt.budget.before.characters<900000);
+  assert.ok(result.receipt.budget.before.queryBytes>1100000);
+  assert.deepEqual(result.receipt.budget.after.tokens,{state:'unmeasured'});
+  assert.deepEqual(result.messages.slice(-4),f.source.messages.slice(-4));
+  f.saved.value=undefined;
+  f.source.messages=[{id:'large-active',role:'user',taskState:'running',content:'中'.repeat(400000)}];
+  await assert.rejects(compactConversationContext(f.options),/UTF-8 query byte limit/);
+});
+
+test('the million-character preset begins compaction at exactly three quarters',async()=>{
+  const f=fixture({compile:messages=>messages.map(message=>message.content).join('')});
+  Object.assign(f.policy,{retainTurns:4,maxSourceMessages:64,maxCharacters:1_000_000,targetCharacters:500_000,
+    triggerCharacters:750_000,segmentCharacters:32_000});
+  f.source.messages=Array.from({length:60},(_,i)=>({id:'quarter-'+i,role:'user',content:'x'.repeat(i===0?12499:12500)}));
+  assert.equal((await compactConversationContext(f.options)).state,'unchanged');
+  assert.equal(f.calls(),0);
+  f.source.messages[0].content+='x';
+  const result=await compactConversationContext(f.options);
+  assert.equal(result.state,'compacted');
+  assert.equal(result.receipt.budget.before.characters,750_000);
+  assert.ok(result.receipt.budget.after.characters<=500_000);
+  assert.deepEqual(result.messages.slice(-4),f.source.messages.slice(-4));
+  assert.ok(f.calls()<56,'adjacent complete turns share a bounded summary request');
+});
+
 test('Synthetic compaction preserves the exact tail, segments only history, and saves detached digests',async()=>{
   const f=fixture();const original=structuredClone(f.source.messages);
   const result=await compactConversationContext(f.options);
@@ -173,7 +225,7 @@ test('Synthetic summary cannot invent a final guard, exceed output, make no prog
 
 test('Synthetic token budget can trigger a pass below the character trigger and measures the final wrapper',async()=>{
   const seen=[];const f=fixture({goalTokenBudget:{tokenizerRef:'synthetic:exact',contextTokens:100,reservedOutputTokens:10,
-    countTokens:text=>{seen.push(text);return text.includes('context-summary:')?50:100;}}});
+    countTokens:text=>{seen.push(text);return text.includes('context-summary:')?50:Math.ceil(text.length/40);}}});
   f.policy.triggerCharacters=4000;
   const result=await compactConversationContext(f.options);
   assert.equal(result.state,'compacted');assert.equal(result.receipt.budget.after.tokens.inputTokens,50);

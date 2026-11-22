@@ -27,6 +27,21 @@ const {_electron}=require('playwright');
     console.log('picker: panel opened');
     const panel=app.windows().find(p=>p.url().includes('mode=panel'));await panel.locator('.model-thinking-trigger').waitFor();
     await panel.waitForFunction(async()=>Boolean((await window.desktop.invoke('snapshot')).value?.agentArtsModels?.catalog));
+    if(process.env.PA_CONTEXT_WINDOW_SMOKE==='1'){
+      for(let index=0;index<6;index++){
+        const text='context-window-fixture-'+index+' '+('public '.repeat(3300));
+        const count=(await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries.length));
+        await invoke(panel,'task.submit',{text});
+        await panel.waitForFunction(async goal=>(await window.desktop.invoke('snapshot')).value
+          .tasks.some(task=>task.userMessage===goal&&task.state==='succeeded'),text);
+        await panel.waitForFunction(()=>document.querySelector('#send')?.disabled===false);
+        assert.ok((await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries.length))>count);
+      }
+      const lastGoal=await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries.at(-1).goal);
+      assert.ok(lastGoal.length>128000&&lastGoal.length<=1000000);
+      console.log(JSON.stringify({assembledCharacters:lastGoal.length,utf8Bytes:Buffer.byteLength(lastGoal),tokens:'unmeasured'}));
+      return;
+    }
     assert.match(panel.url(),/mode=panel/);assert.match(await panel.title(),/PersonalAgent/);
     assert.equal((await read(panel)).connectionError,undefined,'Root Main has no connection error');
     assert.equal(await panel.locator('input[type=range]').count(),1);

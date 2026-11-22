@@ -3,7 +3,7 @@ export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckRes
   RuntimeHarnessCandidatesOptions,RuntimeHarnessExperienceHostOptions} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
 export type {CoordinationGoalTokenBudget} from './application/context-binding.js';
-export {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT} from './application/context-compaction.js';
+export {compactConversationContext,retainedContextBoundary,CONTEXT_COMPACTION_CHECKPOINT} from './application/context-compaction.js';
 export type {ContextCompactionPolicy,ContextCompactionScope,ContextSummaryRequest,ContextCompactionReceipt,
   RuntimeContextCompactionOptions} from './application/context-compaction.js';
 export {createContextModelSummarizer} from './application/context-compaction-model.js';
