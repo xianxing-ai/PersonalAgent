@@ -27,12 +27,14 @@ export {
   DEFAULT_REPAIR_BASE_DELAY_MS, DEFAULT_REPAIR_MAX_DELAY_MS, DEFAULT_REPAIR_MAX_ELAPSED_MS,
 } from './repair-policy.js';
 export {
-  TASK_FAILURE_REPAIR_CHECKPOINT, TASK_FAILURE_READONLY_RETRY_CHECKPOINT, goalContainsWriteIntent,
+  TASK_FAILURE_REPAIR_CHECKPOINT, TASK_FAILURE_READONLY_RETRY_CHECKPOINT, TASK_FAILURE_PARENT_REPLAN_CHECKPOINT,
+  goalContainsWriteIntent,
   planRuntimeTaskFailure, confirmF13HostRecovery, applyRepairOperatorChoice,
   repairCardView, attachRepairTraceToReplay,
 } from './task-failure-repair.js';
 export type {
-  RuntimeTaskFailureNotice, TaskFailureRepairRecord, TaskFailureReadonlyRetryBinding, HostRecoveryReceipt,
+  RuntimeTaskFailureNotice, TaskFailureRepairRecord, TaskFailureReadonlyRetryBinding,
+  TaskFailureParentReplanBinding, HostRecoveryReceipt,
   RepairOperatorResult, RepairCardView, RepairReplayAttachment, TaskFailureEffect, HostRecoveryState,
 } from './task-failure-repair.js';
 export type {
@@ -55,6 +57,14 @@ export * from './ordinary-competition-sampling.js';
 export * from './ordinary-competition-sampling-summary.js';
 export * from './platform-evaluation-binding.js';
 export * from './owned-image-build.js';
+export * from './front-desk-worker.js';
+export type {
+  WorkerDefinition,
+  WorkerDriverPreference,
+  WorkerRole,
+  WorkerView,
+  FrontDeskSurface,
+} from './front-desk-worker.js';
 export * from './workflow-voice-final-transcript.js';
 export {createProactiveHostProofs} from './proactive-host-proofs.js';
 export type {ProactiveHostProofBinding,ProactiveHostProofKind} from './proactive-host-proofs.js';

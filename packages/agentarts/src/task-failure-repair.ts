@@ -7,6 +7,8 @@ import type {RepairFailureSummary, RepairTrace} from './repair-policy.js';
 export const TASK_FAILURE_REPAIR_CHECKPOINT = 'repair-decision:v1';
 /** Checkpoint key bound to a follow-up read-only retry task to restrict its capability and operation identity. */
 export const TASK_FAILURE_READONLY_RETRY_CHECKPOINT = 'repair-readonly-retry:v1';
+/** Checkpoint key bound to a parent-replan follow-up after the operator chooses replan. */
+export const TASK_FAILURE_PARENT_REPLAN_CHECKPOINT = 'repair-parent-replan:v1';
 
 export type TaskFailureEffect = 'read' | 'write' | 'none';
 export type HostRecoveryState = 'recovered' | 'needs_reconcile' | 'refused' | 'awaiting_approval';
@@ -18,6 +20,14 @@ export interface TaskFailureReadonlyRetryBinding {
   readonly toolName?: string;
   readonly toolVersion?: string;
   readonly inputDigest?: string;
+}
+
+export interface TaskFailureParentReplanBinding {
+  readonly version: 1;
+  readonly sourceTaskId: string;
+  readonly parentReplan: true;
+  readonly strategy: 'request_parent_replan';
+  readonly classification: 'transient' | 'correctable' | 'unrecoverable';
 }
 
 const WRITE_GOAL_PATTERN = /(更新|修改|写入|删除|移除|发送|提交|创建|新建|保存|覆盖|替换|付款|转账|发布|安装|卸载|\b(?:write|update|delete|remove|send|create|save|patch|modify|publish|pay)\b)/i;

@@ -6,6 +6,7 @@ import {correlatePinnedReadonlyTool,bindPlatformEvaluationToOutputs,recordCompet
 import {createPlatformServices} from './platform-services.mjs';
 import {createWorkflowShadowController} from './shadow-controller.mjs';
 import {createProactiveWorkflowController} from './proactive-controller.mjs';
+import {createFrontDeskWorkerController} from './front-desk-worker-controller.mjs';
 
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const bad=()=>{throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted image service configuration');};
@@ -35,6 +36,7 @@ export function createImageServices({receiptSecret,platform={},shadowPolicy,proa
   const shadow=shadowPolicy?createWorkflowShadowController({receiptSecret,policyConfig:shadowPolicy}):undefined;
   if(!plain(proactive)||Object.keys(proactive).some(key=>key!=='decisionContracts'))bad();
   const proactiveController=receiptSecret?createProactiveWorkflowController({receiptSecret,decisionContracts:proactive.decisionContracts??[],onStage}):undefined;
+  const frontDeskWorker=createFrontDeskWorkerController();
   const exact=(value,keys)=>plain(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
   const unavailable=(message)=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY',message);};
   const surfaceStatus=()=>{const status=services.status();return {knowledge:status.knowledge,mcp:status.mcp,trace:status.observation,evaluation:status.evaluation};};
@@ -75,8 +77,10 @@ export function createImageServices({receiptSecret,platform={},shadowPolicy,proa
     }
     return {platformVersion:1,verification:'unverified',result:await services.execute(operation,context)};
   };
-  return {controllers:{platformVersion:platformController,...(shadow?{shadowVersion:shadow}:{}),...(proactiveController?{proactiveVersion:proactiveController}:{})},
+  return {controllers:{platformVersion:platformController,...(shadow?{shadowVersion:shadow}:{}),...(proactiveController?{proactiveVersion:proactiveController}:{}),
+      frontDeskWorkerVersion:frontDeskWorker},
     status:()=>({platform:services.status(),shadow:shadow?'configured_not_verified':'unavailable_missing_trusted_policy',
-      proactive:proactiveController?'host_receipts_required':'unavailable_missing_host_secret'}),
+      proactive:proactiveController?'host_receipts_required':'unavailable_missing_host_secret',
+      frontDeskWorker:'builtin_unverified'}),
     close:()=>services.close()};
 }

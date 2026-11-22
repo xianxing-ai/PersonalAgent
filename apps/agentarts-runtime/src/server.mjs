@@ -40,7 +40,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   }
   const bindings = createBindingDispatcher({orchestrator,getBindings,defaultControllerId});
   if (!serviceControllers || typeof serviceControllers !== 'object' || Array.isArray(serviceControllers)
-    || Object.keys(serviceControllers).some(key=>!['shadowVersion','platformVersion','proactiveVersion','wikiVersion','evaluationVersion'].includes(key)
+    || Object.keys(serviceControllers).some(key=>!['shadowVersion','platformVersion','proactiveVersion','wikiVersion','evaluationVersion','frontDeskWorkerVersion'].includes(key)
       || typeof serviceControllers[key]!=='function')) throw new ProtocolError('INVALID_ARGUMENT','Invalid service controller configuration');
   let active = 0;
   let closing = false;
@@ -86,7 +86,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       if(parsed && typeof parsed==='object' && !Array.isArray(parsed)) {
         parsedQuery=parsed;
         if(Object.hasOwn(parsed,'modelCatalogVersion'))catalogValue=parsed;
-        const names=['shadowVersion','platformVersion','proactiveVersion','wikiVersion','evaluationVersion','testVersion'].filter(key=>Object.hasOwn(parsed,key));
+        const names=['shadowVersion','platformVersion','proactiveVersion','wikiVersion','evaluationVersion','frontDeskWorkerVersion','testVersion'].filter(key=>Object.hasOwn(parsed,key));
         if(names.length>1) throw new ProtocolError('INVALID_ARGUMENT','Multiple service protocols');
         if(names[0]==='testVersion')testValue=parsed;
         else if(names.length){serviceName=names[0];serviceValue=parsed;}

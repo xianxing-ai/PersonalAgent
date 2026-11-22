@@ -35,7 +35,7 @@ function harness({recover = receipt => status(receipt), enabled = true, supports
     calls.push({receipt, controls});
     return await recover(receipt, controls, calls.length);
   } : undefined);
-  const invoke = ({controller = new AbortController(), deadline = new Date(Date.now() + 180_000).toISOString()} = {}) => {
+  const invoke = ({controller = new AbortController(), deadline = new Date(Date.now() + 180_000).toISOString(), renewIdleConnection} = {}) => {
     const init = {method: 'POST', redirect: 'error', signal: controller.signal,
       body: JSON.stringify({query: 'Public synthetic recovery fixture'}), headers: {
         Authorization: 'Bearer original-outer', 'X-PA-Agent-Token': 'Bearer original-inner',
@@ -43,6 +43,7 @@ function harness({recover = receipt => status(receipt), enabled = true, supports
         'X-PA-Deadline': deadline, 'X-Invoke-Mode': 'sync',
       }};
     const pending = transport.invoke(init, {
+      renewIdleConnection,
       beforeSend: receipt => { dispatched.push(receipt); },
       afterAccepted: receipt => { accepted.push(receipt); onAccepted?.(receipt); },
       afterTerminal: receipt => { terminal.push(receipt); onTerminal?.(receipt); },
@@ -85,6 +86,22 @@ function portHarness({respondToStatus = true} = {}) {
   return {port, sockets, connects, queries, dispatched, accepted, terminal, outerReads, innerReads, invoke,
     rotateCredentials: () => { token = 'refreshed'; }, get http() { return http; }};
 }
+
+test('a graph returning from a local approval renews its idle socket before sending the next receipt', async t => {
+  mockClock(t);
+  const h = harness();
+  try {
+    const first = h.invoke({renewIdleConnection: true}); await flush();
+    h.sockets[0].result(h.invokes()[0]); await first.pending;
+    await advance(t, 58_000);
+    const next = h.invoke({renewIdleConnection: true}); await flush();
+    assert.equal(h.sockets.length, 2);
+    assert.equal(h.sockets[0].sent.length, 1);
+    const [frame] = h.sockets[1].sent;
+    assert.equal(frame.requestId, next.init.headers['X-Request-Id']);
+    h.sockets[1].result(frame); await next.pending;
+  } finally { h.transport.close(); }
+});
 
 test('opted-in recovery refreshes credentials and uses the original parser, callbacks and dispatch identity', async t => {
   mockClock(t);

@@ -9,6 +9,7 @@ import {
 } from '@personal-agent/contracts/agentarts-transport';
 import {createHash} from 'node:crypto';
 import {Buffer} from 'node:buffer';
+import {setTimeout as delay} from 'node:timers/promises';
 import WebSocket from 'ws';
 import type {AgentArtsFetchInit, AgentArtsResponse} from './agentarts.js';
 import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
@@ -167,6 +168,8 @@ interface Pending {
   sent: boolean;
   accepted: boolean;
   settling: boolean;
+  recoverOnDisconnect: boolean;
+  beforeStatusRead?(): void;
   resolve(response: AgentArtsResponse): void;
   reject(error: unknown): void;
   afterAccepted(receipt: AgentArtsUnknownReceipt): void;
@@ -186,11 +189,18 @@ interface Connection {
   opened: boolean;
   negotiated: boolean;
   supportsStatus: boolean;
+  heartbeatMs: number;
+  lastResponseAt: number;
   closed: boolean;
   leases: number;
   serverInstanceId?: string;
 }
 export interface AgentArtsSendGuards {
+  /** A workflow returning from local work can renew an idle socket before its single send. */
+  renewIdleConnection?: boolean;
+  /** On disconnect, read this invocation on its original image instance. */
+  recoverDisconnectedResult?: boolean;
+  beforeStatusRead?(): void;
   beforeCatalog?(): Promise<void>;
   /** No await separates this guard from the invoke frame or HTTPS fetch. */
   beforeSend(receipt?: AgentArtsUnknownReceipt): void;
@@ -231,6 +241,7 @@ export class AgentArtsWebSocketTransport {
   private readonly connections = new Map<string, Connection>();
   private readonly statusQueries = new Set<(error: ProtocolError) => void>();
   private disposed = false;
+  private readonly closedSignal = new AbortController();
   constructor(private readonly url: string,
     private readonly factory: AgentArtsWebSocketFactory = socketFactory,
     private readonly observe?: (state: AgentArtsTransportState) => void,
@@ -357,6 +368,14 @@ export class AgentArtsWebSocketTransport {
       pending.reject(new AgentArtsTerminalError({...pending.receipt, accepted: pending.accepted}, frame.code));
     }
   }
+  private async readOriginalStatus(receipt: AgentArtsUnknownReceipt, signal: AbortSignal, deadline: string) {
+    const frame = parseAgentArtsTransportFrame(await this.recoverAcceptedStatus!(receipt, {signal, deadline}));
+    if (frame.type !== 'status' || !('state' in frame) || frame.serverInstanceId !== receipt.serverInstanceId
+      || frame.sessionId !== receipt.sessionId || frame.requestId !== receipt.requestId
+      || frame.idempotencyKey !== receipt.idempotencyKey || frame.payloadDigest !== receipt.payloadDigest) return;
+    return frame;
+  }
+
   private watchAcceptedStatus(connection: Connection, pending: Pending): () => void {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -379,15 +398,10 @@ export class AgentArtsWebSocketTransport {
       readTimer = timeout;
       timeout.unref?.();
       try {
+        pending.beforeStatusRead?.();
         const receipt = snapshotAgentArtsUnknownReceipt({...pending.receipt, accepted: true});
-        const response = await this.recoverAcceptedStatus(receipt,
-          {deadline: new Date(deadlineMs).toISOString(), signal: controller.signal});
-        if (!active() || controller.signal.aborted) return;
-        const frame = parseAgentArtsTransportFrame(response);
-        if (frame.type !== 'status' || !('state' in frame)
-          || frame.serverInstanceId !== receipt.serverInstanceId || frame.sessionId !== receipt.sessionId
-          || frame.requestId !== receipt.requestId || frame.idempotencyKey !== receipt.idempotencyKey
-          || frame.payloadDigest !== receipt.payloadDigest) return;
+        const frame = await this.readOriginalStatus(receipt, controller.signal, new Date(deadlineMs).toISOString());
+        if (!active() || controller.signal.aborted || !frame) return;
         const identity = {protocolVersion: frame.protocolVersion, sessionId: frame.sessionId,
           requestId: frame.requestId, idempotencyKey: frame.idempotencyKey,
           payloadDigest: frame.payloadDigest, serverInstanceId: frame.serverInstanceId};
@@ -423,7 +437,7 @@ export class AgentArtsWebSocketTransport {
     for (const [requestId, pending] of connection.pending) {
       this.dropPending(connection, requestId);
       if (pending.sent) {
-        this.report({state: 'result_unknown', sessionId: connection.sessionId, requestId});
+        if (!pending.recoverOnDisconnect) this.report({state: 'result_unknown', sessionId: connection.sessionId, requestId});
         pending.reject(new AgentArtsResultUnknownError({...pending.receipt, accepted: pending.accepted}, diagnostic));
       } else pending.reject(error);
     }
@@ -441,6 +455,7 @@ export class AgentArtsWebSocketTransport {
     } catch { throw new BeforeInvokeConnectionError(); }
     const connection: Connection = {sessionId, fingerprint, socket, ready, resolveReady, rejectReady,
       pending: new Map(), tombstones: new Set(), opened: false, negotiated: false, supportsStatus: false,
+      heartbeatMs: 0, lastResponseAt: 0,
       closed: false, leases: 0};
     this.connections.set(sessionId, connection);
     this.report({state: 'connecting', sessionId});
@@ -469,11 +484,13 @@ export class AgentArtsWebSocketTransport {
       if (connection.closed) return;
       try {
         const frame = parseAgentArtsTransportFrame(JSON.parse(frameText(data, binary)));
+        connection.lastResponseAt = Date.now();
         if (frame.type === 'ready') {
           if (!connection.opened || connection.negotiated || connection.pending.size
             || !frame.capabilities.includes('invoke') || !frame.capabilities.includes('cancel')) throw failProtocol();
           connection.serverInstanceId = frame.serverInstanceId;
           connection.supportsStatus = frame.capabilities.includes('status');
+          connection.heartbeatMs = frame.heartbeatMs;
           connection.negotiated = true;
           connection.resolveReady();
           this.report({state: 'wss_ready', sessionId});
@@ -516,6 +533,11 @@ export class AgentArtsWebSocketTransport {
       this.breakConnection(connection, new ProtocolError('UNAUTHORIZED', 'AgentArts connection credentials changed'));
       connection = undefined;
     }
+    if (guards.renewIdleConnection && connection?.negotiated && !connection.leases && !connection.pending.size
+      && Date.now() - connection.lastResponseAt >= connection.heartbeatMs) {
+      this.breakConnection(connection, new BeforeInvokeConnectionError());
+      connection = undefined;
+    }
     if (!connection) {
       if (this.connections.size + this.statusQueries.size >= MAX_CONNECTIONS) {
         const idle = [...this.connections.values()].find(item => item.leases === 0 && item.pending.size === 0);
@@ -552,6 +574,8 @@ export class AgentArtsWebSocketTransport {
         };
         const pending: Pending = {receipt, deadline, signal: init.signal,
           sent: false, accepted: false, settling: false, resolve, reject,
+          recoverOnDisconnect: !!guards.recoverDisconnectedResult && !!this.recoverAcceptedStatus && selected.supportsStatus,
+          ...(guards.beforeStatusRead ? {beforeStatusRead: guards.beforeStatusRead} : {}),
           afterAccepted: receipt => guards.afterAccepted?.(receipt),
           afterTerminal: receipt => guards.afterTerminal?.(receipt),
           startStatusRecovery: () => { stopStatusRecovery = this.watchAcceptedStatus(selected, pending); },
@@ -573,6 +597,32 @@ export class AgentArtsWebSocketTransport {
           else { this.dropPending(selected, requestId); reject(error); }
         }
       });
+    } catch (error) {
+      if (!(error instanceof AgentArtsResultUnknownError) || !guards.recoverDisconnectedResult
+        || !this.recoverAcceptedStatus || !selected.supportsStatus) throw error;
+      const receipt = error.receipt;
+      const expiresAt = Date.parse(init.headers['X-PA-Deadline']!);
+      const signal = AbortSignal.any([init.signal, this.closedSignal.signal]);
+      while (!signal.aborted && Date.now() < expiresAt) {
+        guards.beforeStatusRead?.();
+        const readDeadline = new Date(Math.min(expiresAt, Date.now() + ACCEPTED_STATUS_TIMEOUT_MS)).toISOString();
+        const frame = await this.readOriginalStatus(receipt, signal, readDeadline).catch(() => undefined);
+        if (signal.aborted || Date.now() >= expiresAt) break;
+        if (!frame || frame.state === 'unknown') break;
+        if (frame.state === 'running') {
+          await delay(Math.min(ACCEPTED_STATUS_INTERVAL_MS, expiresAt - Date.now()), undefined, {signal})
+            .catch(() => undefined);
+          continue;
+        }
+        const confirmed = {...receipt, accepted: true};
+        if (!receipt.accepted) guards.afterAccepted?.(confirmed);
+        guards.afterTerminal?.(confirmed);
+        if (frame.state !== 'completed') throw new AgentArtsTerminalError(confirmed, frame.code);
+        return {status: 200, headers: {get: () => 'application/json'}, text: async () => JSON.stringify(frame.events)};
+      }
+      if (init.signal.aborted) throw new ProtocolError('CANCELLED', 'AgentArts request cancelled');
+      this.report({state: 'result_unknown', sessionId, requestId});
+      throw error;
     } finally {
       selected.leases--;
       if (!selected.negotiated && selected.leases === 0 && selected.pending.size === 0) {
@@ -596,6 +646,7 @@ export class AgentArtsWebSocketTransport {
   close(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.closedSignal.abort();
     for (const fail of this.statusQueries) fail(new ProtocolError('CANCELLED', 'AgentArts transport closed'));
     for (const connection of this.connections.values()) {
       this.breakConnection(connection, new ProtocolError('CANCELLED', 'AgentArts transport closed'));
