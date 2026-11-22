@@ -11,7 +11,6 @@ export interface PinnedDownload {
 }
 
 const FILE_LIMIT = 262144;
-const BUNDLE_LIMIT = 1_048_576;
 
 function fail(code: string, message: string): never {
   throw new ProtocolError(code, message);
@@ -38,12 +37,9 @@ export async function materializePinnedSkill(entry: PluginManifest, download: Pi
   const root = mkdtempSync(path.join(tmpdir(), 'plugin-catalog-'));
   const directory = path.join(root, entry.skillName);
   mkdirSync(directory);
-  let total = 0;
   try {
     for (const file of entry.archive.files) {
       const bytes = Buffer.from(await readBytes(download, githubFileUrl(entry, file), FILE_LIMIT));
-      total += bytes.byteLength;
-      if (total > BUNDLE_LIMIT) fail('INVALID_ARGUMENT', '下载内容超过现有技能安装上限');
       const target = path.resolve(directory, file);
       if (target !== directory && !target.startsWith(directory + path.sep)) fail('INVALID_ARGUMENT', '技能下载路径无效');
       mkdirSync(path.dirname(target), {recursive: true});

@@ -5,7 +5,7 @@ import path from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 
 const {load,JSON_SCHEMA}=createRequire(import.meta.url)('js-yaml') as {load:(text:string,options:{schema:unknown})=>unknown;JSON_SCHEMA:unknown};
-const MAX_BUNDLE=1_048_576,MAX_FILES=128,MAX_INSTALLED=16;
+const MAX_STORE_BYTES=24*1024*1024,MAX_FILES=128,MAX_INSTALLED=16;
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const fail=(message:string):never=>{throw new ProtocolError('INVALID_ARGUMENT',message);};
 const namePattern=/^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -42,7 +42,7 @@ function metadata(text:string,directoryName:string) {
 }
 function bundle(files:LocalSkillFile[],directoryName:string):LocalSkillBundle {
   if(!Array.isArray(files) || !files.length || files.length>MAX_FILES) return fail('Skill file count is invalid');
-  let size=0;const paths=new Set<string>();
+  const paths=new Set<string>();
   for(const file of files) {
     if(!file || typeof file.path!=='string' || typeof file.content!=='string'
       || file.path.length>1024 || /[\\\u0000-\u001f<>:"|?*]/.test(file.path)
@@ -51,9 +51,8 @@ function bundle(files:LocalSkillFile[],directoryName:string):LocalSkillBundle {
       || paths.has(file.path.toLowerCase())) return fail('Skill contains an unsafe resource path');
     const bytes=Buffer.from(file.content,'base64');
     if(bytes.toString('base64')!==file.content || bytes.length>262144 || hash(bytes)!==file.digest) return fail('Skill resource digest is invalid');
-    paths.add(file.path.toLowerCase());size+=bytes.length;
+    paths.add(file.path.toLowerCase());
   }
-  if(size>MAX_BUNDLE) return fail('Skill bundle exceeds 1 MiB');
   const main=files.find(file=>file.path==='SKILL.md');if(!main) return fail('SKILL.md is required');
   const bytes=Buffer.from(main.content,'base64');
   let text:string;try {text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);} catch {return fail('SKILL.md must be UTF-8');}
@@ -68,7 +67,7 @@ export function readLocalSkillDirectory(selected:string):LocalSkillBundle {
   if(typeof selected!=='string' || !path.isAbsolute(selected) || selected.startsWith('\\\\')
     || lstatSync(selected).isSymbolicLink() || !statSync(selected).isDirectory()) return fail('Select a local ordinary Skill directory');
   const root=realpathSync.native(selected),identity=statSync(root,{bigint:true});
-  const files:LocalSkillFile[]=[];let bytes=0,entriesVisited=0;
+  const files:LocalSkillFile[]=[];let entriesVisited=0;
   const visit=(directory:string,depth:number)=>{
     if(depth>8) return fail('Skill directory is too deep');
     for(const entry of readdirSync(directory,{withFileTypes:true})) {
@@ -84,7 +83,6 @@ export function readLocalSkillDirectory(selected:string):LocalSkillBundle {
       try {
         const opened=fstatSync(fd,{bigint:true});
         if(['dev','ino','birthtimeNs','size','mtimeNs','ctimeNs'].some(key=>opened[key as keyof typeof opened]!==before[key as keyof typeof before])) return fail('Skill source changed');
-        bytes+=Number(opened.size);if(bytes>MAX_BUNDLE) return fail('Skill bundle exceeds 1 MiB');
         const content=readFileSync(fd);
         const after=lstatSync(target,{bigint:true});
         if(after.isSymbolicLink() || realpathSync.native(target)!==target
@@ -103,7 +101,7 @@ export function readLocalSkillDirectory(selected:string):LocalSkillBundle {
 export function openLocalSkillStore(file:string) {
   let entries:InstalledSkill[]=[];
   if(existsSync(file)) {
-    if(lstatSync(file).isSymbolicLink() || statSync(file).size>24*MAX_BUNDLE) return fail('Skill store is unsafe');
+    if(lstatSync(file).isSymbolicLink() || statSync(file).size>MAX_STORE_BYTES) return fail('Skill store is unsafe');
     const saved=JSON.parse(readFileSync(file,'utf8')) as {version:number;entries:InstalledSkill[]};
     if(saved.version!==1 || !Array.isArray(saved.entries) || saved.entries.length>MAX_INSTALLED) return fail('Skill store version is unsupported');
     const names=new Set<string>();
@@ -118,7 +116,9 @@ export function openLocalSkillStore(file:string) {
   function commit(next:InstalledSkill[]) {
     mkdirSync(path.dirname(file),{recursive:true});
     if((existsSync(file) && lstatSync(file).isSymbolicLink()) || (existsSync(file+'.tmp') && lstatSync(file+'.tmp').isSymbolicLink())) return fail('Skill store is unsafe');
-    writeFileSync(file+'.tmp',JSON.stringify({version:1,entries:next}),'utf8');renameSync(file+'.tmp',file);entries=next;
+    const serialized=JSON.stringify({version:1,entries:next});
+    if(Buffer.byteLength(serialized)>MAX_STORE_BYTES)return fail('Skill store exceeds its storage limit');
+    writeFileSync(file+'.tmp',serialized,'utf8');renameSync(file+'.tmp',file);entries=next;
   }
   const find=(name:string,digest:string)=>{
     const entry=entries.find(entry=>entry.name===name && entry.digest===digest);

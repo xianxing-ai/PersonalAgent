@@ -28,6 +28,13 @@ test('local installation pins a snapshot, defaults disabled, survives reopen and
   store.install(candidate);assert.notEqual(store.read(candidate.name,candidate.digest).installationId,enabled.installationId);
   assert.equal(store.list()[0].enabled,false);
 });
+test('a directory over one MiB installs and reopens with its original digest',t=>{
+  const f=fixture(t);
+  for(let i=0;i<5;i++)writeFileSync(path.join(f.source,'reference-'+i),Buffer.alloc(240000,i));
+  const candidate=readLocalSkillDirectory(f.source);
+  openLocalSkillStore(f.file).install(candidate);
+  assert.deepEqual(openLocalSkillStore(f.file).read(candidate.name,candidate.digest).files,candidate.files);
+});
 test('invalid standard metadata, duplicate YAML keys and malformed UTF-8 reject before installation',t=>{
   const f=fixture(t);
   for(const body of [f.body.replace('meeting-outline','Other'),f.body.replace('name: meeting-outline','name: meeting--outline'),
