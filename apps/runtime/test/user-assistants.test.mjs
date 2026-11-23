@@ -70,9 +70,10 @@ test('a running user assistant accepts an interruption and still waits for tool 
     tools: [{descriptor, execute: async () => { executions += 1; return {value: 'synthetic'}; }}],
     competitionToolExports: [{toolName: descriptor.name, toolVersion: descriptor.version, exportPolicyVersion: 'public-v1', accepts: () => true, project: ({result}) => result}],
     competitionToolAvailability: [{toolName: descriptor.name, toolVersion: descriptor.version, available: () => true}],
-    coordination: {execute: async () => {
+    coordination: {execute: async request => {
       await gate;
-      return {kind: 'tool_proposal', proposalId: 'user-assistant-1', toolName: descriptor.name, toolVersion: descriptor.version, arguments: {path: 'notes.md'}, verification: 'unverified'};
+      return {kind: 'tool_proposal', proposalId: 'user-assistant-1', toolName: descriptor.name, toolVersion: descriptor.version,
+        arguments: {path: 'notes.md'}, verification: 'unverified', executionEpoch: request.executionEpoch};
     }},
   });
   try {
