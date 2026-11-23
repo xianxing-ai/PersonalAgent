@@ -48,8 +48,8 @@ test('denying a conversation tool keeps the task recoverable and feeds not_perfo
   const directory = await mkdtemp(new URL('case-', base));
   let executions = 0;
   const port = new FakeCoordinationPort(request => request.continuation
-    ? {kind: 'text', text: '已根据拒绝改用已有信息作答', verification: 'unverified'}
-    : proposal);
+    ? {kind: 'text', text: '已根据拒绝改用已有信息作答', verification: 'unverified', executionEpoch: request.executionEpoch}
+    : {...proposal, executionEpoch: request.executionEpoch});
   const app = createRuntimeApplication({
     path: directory + '/runtime.sqlite', profile: 'huawei_ict_agentarts', coordination: port,
     competitionToolExports: [{

@@ -31,6 +31,7 @@ function fixture({unknown=false,mutateConfiguration=false,revokeGrant=false,hold
     const unused={descriptor:{name:'synthetic.unused',version:'1.0.0',inputSchema:{type:'object',properties:{}},outputSchema:{type:'object'},
       sideEffect:'read',requiredScopes:['synthetic:unused'],requiresPresence:false,idempotencySupport:true,recoverySupport:true},execute:()=>assert.fail('Unused catalog fixture')};
     const options={path,hostUserNamespace:'synthetic-teacher-context',proactiveWorkflows:true,tools:[unused],
+      resolveExecutionModel:selection=>({modelId:selection.modelId,catalogRevision:'a'.repeat(64),...(selection.reasoningEffort?{reasoningEffort:selection.reasoningEffort}:{})}),
       gatewayUrl:'https://synthetic-teacher.invalid',runtimeName:'synthetic-no-network',
       responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',
       competitionToolAvailability:[{toolName:unused.descriptor.name,toolVersion:'1.0.0',available:()=>false}],

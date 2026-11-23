@@ -17,6 +17,30 @@ const COORDINATION_FAILURE_CODES = new Set([
   'UNSUPPORTED_CAPABILITY', 'REVISION_CONFLICT', 'RATE_LIMITED', 'TIMEOUT',
   'EXTERNAL_FAILURE', 'RESULT_UNKNOWN', 'CURSOR_EXPIRED', 'CANCELLED',
 ]);
+const USER_TOOL_DENIAL_MESSAGES = new Set([
+  'User denied this operation',
+  'Tool approval was denied',
+]);
+
+/** 用户拒绝单次工具授权：不得当整段对话失败，回灌后由模型改路或交已有结果。 */
+export function isUserToolAuthorizationDenied(error: unknown): boolean {
+  return error instanceof ProtocolError && error.code === 'UNAUTHORIZED'
+    && typeof error.message === 'string' && USER_TOOL_DENIAL_MESSAGES.has(error.message);
+}
+
+export function userDeniedToolContinuationResult(proposal: CoordinationToolProposalResult): {
+  kind: 'not_performed'; reason: 'user_denied'; code: 'UNAUTHORIZED'; toolName: string; toolVersion: string;
+  message: string;
+} {
+  return {
+    kind: 'not_performed',
+    reason: 'user_denied',
+    code: 'UNAUTHORIZED',
+    toolName: proposal.toolName,
+    toolVersion: proposal.toolVersion,
+    message: 'User denied this tool authorization. Do not claim success. Propose a different published tool, or answer with already confirmed results and end this turn.',
+  };
+}
 
 /** Diagnostic data only: never copy provider messages, causes, stacks or arbitrary codes. */
 export function coordinationFailureDiagnostic(error: unknown, continuation: boolean) {
@@ -573,6 +597,10 @@ export async function runCoordinationWorker(
           const prior=priorReceipt;
           if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'Competition result export cancelled');
           if (Date.now() >= Date.parse(context.deadline)) throw new ProtocolError('TIMEOUT', 'Competition result export expired');
+          const denied = prior.continuation?.result;
+          if (denied && typeof denied === 'object' && !Array.isArray(denied)
+            && (denied as {kind?: unknown}).kind === 'not_performed'
+            && (denied as {reason?: unknown}).reason === 'user_denied') continue;
           try {
             if(options.workerCapabilities?.accepts(prior.proposal)) {
               options.workerCapabilities.assertReceiptAllowed(prior.proposal,prior.workerSelection,prior.continuation.result,
@@ -687,16 +715,31 @@ export async function runCoordinationWorker(
       const toolArgs = (() => { try { const text = JSON.stringify(result.arguments); return text.length > 180 ? text.slice(0, 179) + '…' : text; } catch { return '[无法显示]'; } })();
       context.noteActivity?.({kind: 'tool_call', stepId: runId, toolName: result.toolName, argsSummary: toolArgs, label: `正在调用 ${result.toolName}`});
       context.reportProgress({stepId: runId, label: `正在调用 ${result.toolName}`, completedUnits: step, totalUnits: maxSteps});
-      const toolResult: ToolInvocationResult = workerResult??await tools.invoke({
-        toolName: result.toolName,
-        toolVersion: result.toolVersion,
-        arguments: result.arguments,
-        taskId,
-        runId,
-        authorizationRef: runId,
-        deadline: context.deadline,
-        signal: context.signal,
-      });
+      let toolResult: ToolInvocationResult;
+      try {
+        toolResult = workerResult??await tools.invoke({
+          toolName: result.toolName,
+          toolVersion: result.toolVersion,
+          arguments: result.arguments,
+          taskId,
+          runId,
+          authorizationRef: runId,
+          deadline: context.deadline,
+          signal: context.signal,
+        });
+      } catch (error) {
+        if (!isUserToolAuthorizationDenied(error)) throw error;
+        if (runtime.getTask(taskId).state === 'waiting_approval') runtime.transitionTask(taskId, 'running');
+        const denial = userDeniedToolContinuationResult(result);
+        const denialText = (() => { try { const text = JSON.stringify(denial); return text.length > 180 ? text.slice(0, 179) + '…' : text; } catch { return 'user_denied'; } })();
+        context.noteActivity?.({kind: 'tool_result', stepId: runId, toolName: result.toolName, resultSummary: denialText,
+          durationMs: Date.now() - toolStarted, label: `${result.toolName} 已拒绝`});
+        continuation = {proposalId: result.proposalId, state: 'confirmed', result: denial};
+        receipts.push({proposal: result, continuation, runId});
+        pending = undefined;
+        context.saveCheckpoint('competition-loop', {executionEpoch, step: step + 1, continuation, evidenceRefs, receipts});
+        continue;
+      }
       evidenceRefs = [...new Set([...evidenceRefs, ...toolResult.evidenceRefs])];
       if (toolResult.state !== 'pending') {
         const toolText = (() => { try { const text = JSON.stringify(toolResult.result ?? toolResult.state); return text.length > 180 ? text.slice(0, 179) + '…' : text; } catch { return toolResult.state; } })();

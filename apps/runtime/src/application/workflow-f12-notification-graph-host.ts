@@ -148,7 +148,7 @@ export function createRuntimeF12ConfiguredReadHosts(options?:{
       :spec.nodeId==='F12_N02'?options.readPolicy(scope):options.readDigest(scope);
     active(spec,context,args);return result;
   };
-  const tools=specs.map(spec=>createOwnedWorkflowAdapter({...spec,sideEffect:'read',requiredScopes:['notifications:read'],
+  const tools=specs.map(spec=>createOwnedWorkflowAdapter({...spec,sideEffect:spec.nodeId==='F12_N05'&&spec.kind==='host'?'local_write':'read',requiredScopes:['notifications:read'],
     inputSchema:spec.kind==='guard'?{type:'object',additionalProperties:false,required:['workflowId','nodeId','input','predecessorOutputs','predecessorStates'],
       properties:{workflowId:{const:'F12'},nodeId:{const:spec.nodeId},input:{type:'object'},predecessorOutputs:{type:'object'},predecessorStates:{type:'object'}}}
       :{type:'object',additionalProperties:false,oneOf:selectionRequired,properties:selectionProperties},outputSchema:{type:'object'},

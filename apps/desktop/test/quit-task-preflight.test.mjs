@@ -412,14 +412,14 @@ test('unknown SIS release stays blocked and does not repeat permanent disposal',
 
 // Original initialization/config/record functions; replace only dynamic imports with explicit Fake factories.
 function reconfigurationFixture() {
-  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}}, admin = {};
+  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, isMinimized: () => false, webContents: {id: 9}}, admin = {};
   const oldDispose = f.voiceInput.dispose;
   let oldDisposed = false;
   f.voiceInput.dispose = async () => {if (oldDisposed) return;oldDisposed = true;
     await oldDispose();f.context.runtimeApplication.activeTaskCount = 1;};
   f.wakeVoice.disable = async () => {};
   let configuration = {region: 'cn-north-4', projectId: 'synthetic-old'}, failInitialization = false;
-  Object.assign(f.context, {panel, admin, competitionMode: true, client: {}, voiceConfigurationPending: false,
+  Object.assign(f.context, {panel, admin, workspace: undefined, competitionMode: true, client: {}, voiceConfigurationPending: false,
     voicePcmSource: undefined, sisPlaybackHost: undefined, panelHiding: false, voiceInitializationFailure: null,
     sisConfigHost: {snapshot: () => ({configured: true}), currentAccessKey:()=>undefined, current: () => configuration,
       configure(value) {configuration = value;f.calls.push('configure');}},

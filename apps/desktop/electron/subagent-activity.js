@@ -32,11 +32,11 @@ function redact(value) {
   return typeof value === 'string' ? value.replace(SECRET, '[密钥已隐藏]') : value;
 }
 
-export function projectChildProgress(task, stepLimit = Infinity) {
+export function projectChildProgress(task, stepLimit = Infinity, {includeStepId = true} = {}) {
   return {
     evidenceRefCount: task.evidenceRefs?.length ?? 0,
     steps: task.bodyWithheld ? [] : (task.steps ?? []).slice(-stepLimit).map(step =>
-      ({stepId: step.stepId, label: redact(step.label), state: step.state})),
+      (includeStepId ? {stepId: step.stepId, label: redact(step.label), state: step.state} : {label: redact(step.label), state: step.state})),
   };
 }
 
@@ -90,7 +90,7 @@ export async function readSubagentConversation({payload, tasks, readChildren, re
     ...(typeof task.goal === 'string' ? {goal: task.goal} : {}),
     ...(typeof task.resultSummary === 'string' ? {resultSummary: task.resultSummary} : {}),
     ...(task.error ? {error: publicFailure(task.error)} : {}),
-    ...projectChildProgress(task),
+    ...projectChildProgress(task, Infinity, {includeStepId: false}),
     ...(typeof readTranscript === 'function' ? {transcript: await readTranscript(taskId), transcriptAvailable: true} : {transcriptAvailable: false}),
   };
 }

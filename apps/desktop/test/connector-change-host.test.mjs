@@ -288,9 +288,9 @@ test('existing connector mail silent policy stops reminder inference without dis
 
 test('production conversation projection hides persisted connector decisions including legacy user-conversation tasks',()=>{
   const source=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8');
-  const declaration=source.match(/function visibleConversationTask\(task,surface\)\{[^\r\n]+/)[0];
+  const declaration=source.match(/function visibleConversationTask\(task,surface\)\{[\s\S]*?\r?\n\}/)[0];
   const visible=new Function('connectorChangeHost','taskSurface','conversations','return '+declaration)(
-    {ownsDecisionTask:id=>id==='internal'},()=> 'panel',{conversationIdForTask:()=> 'desktop-panel',activeConversationId:()=> 'desktop-panel'});
+    {ownsDecisionTask:id=>id==='internal'},()=> 'panel',{conversationIdForTask:()=> 'desktop-panel',activeConversationId:()=> 'desktop-panel',canAccessSurface:()=>true});
   assert.equal(visible({taskId:'internal',goal:'判断是否告知用户：收到一封新邮件'},'panel'),false);assert.equal(visible({taskId:'question',goal:'普通问题'},'panel'),true);
   const wiring=source.slice(source.indexOf('connectorChangeHost=createDesktopConnectorChangeHost'),source.indexOf('if(competitionMode && memoryLearningHost'));
   assert.doesNotMatch(wiring,/conversations\.add|onDecisionTask/);

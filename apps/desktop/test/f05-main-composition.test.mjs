@@ -12,6 +12,7 @@ test('actual Main F05 reads the current original public Fact host and original k
     sourceId:'public-vault',configRevision:1,publicQueries:['public query']};
   const policy={toolName:'knowledge.search',toolVersion:'1.0.0',exportPolicyVersion:'original-public'};
   const context={syntheticMvp:false,agentArtsPinned:true,namespace:'original-user',runtimeApplication:{},proactiveHost:undefined,
+    productTools:{tools:[]},
     knowledgeTools:{competitionToolExports:[policy]},knowledgeSourceConfig:{snapshot:()=>configuration,
       acquire:()=>({assertCurrent(){},release(){},read:{readCitation(){},assertCitationCurrent(){}}})},
     createDesktopF05WorkflowWorkerPorts,runtimeModule:{createF05WorkflowWorkerPorts:options=>options},
@@ -30,12 +31,13 @@ test('actual Main F05 reads the current original public Fact host and original k
   await assert.rejects(ports.memory.listCurrent(request),/unavailable/);assert.equal(queries,1);
 });
 test('actual Main gives F05 and business hosts precedence over duplicate optional generic hosts',()=>{
-  const begin=source.indexOf('const configuredHostNames='),end=source.indexOf('let conversationTools=',begin);
-  assert.ok(begin>=0&&end>begin);
+  const configuredLine=source.match(/const configuredHostNames=[^\r\n]+/)?.[0];
+  const genericLine=source.match(/const genericWorkflowTools=[^\r\n]+/)?.[0];
+  assert.ok(configuredLine&&genericLine);
   const tool=name=>({descriptor:{name}}),f05=['f05_n02','f05_n05','f05_n06','f05_n07'].map(id=>tool('workflow.host.'+id));
   f05.push(tool('workflow.guard.f05_n04'),tool('workflow.guard.f05_n06'));
   const business=tool('workflow.host.f08_n09'),other=tool('workflow.host.unrelated');
-  const result=runInNewContext(source.slice(begin,end)+'\ngenericWorkflowTools;',{
-    syntheticMvp:true,f01Workflow:undefined,f03Workflow:undefined,f04Workflow:undefined,f05Workflow:{tools:f05},businessWorkflow:{tools:[business]},workflowGraphComposition:{tools:[...f05,business,other]}});
+  const result=runInNewContext(`${configuredLine}\n${genericLine}\ngenericWorkflowTools;`,{
+    f01Workflow:undefined,f03Workflow:undefined,f04Workflow:undefined,f05Workflow:{tools:f05},businessWorkflow:{tools:[business]},workflowGraphComposition:{tools:[...f05,business,other]}});
   assert.deepEqual([...result],[other]);
 });

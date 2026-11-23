@@ -38,7 +38,7 @@ async function fixture(t) {
     terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']), notifications: new Map(), structuredClone,
     eventBusy: false, eventCursor, taskReadbackAt:Date.now()+2000, runtimeConnection: {readEvents: after => app.readEvents(after),readEventBatch:input=>app.readEventBatch(input)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
-    publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
+    publish: () => published.push([...tasks.values()].map(task => ({...task}))), publishChildUpdates() {}, Error});
   for (const name of ['clearInactiveTaskExitWarning', 'observeTaskConflict', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
     vm.runInContext(declaration(name), context);
   }

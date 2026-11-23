@@ -63,13 +63,18 @@ test('a project-only helper recipe can read its exact pinned Node without a node
   const scope={taskId:'synthetic-project-task',runId:'synthetic-project-run',toolName:'workspace.npm_test',
     argumentsDigest:'a'.repeat(64),deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal};
   let bindingId='synthetic-workspace-generation';
+  const checkpoints=new Map();
   const host=createDesktopNativeExecutionHost({systemRoot:locations.system,localAppData:directory,probeRootPath:directory,
     readConfiguration:()=>({rootPath:locations.workspace,nodeExecutable:canonicalNode,bindingId}),
     ensureHelper:async()=>canonicalHelper,coding:{
       readWindowsNativeHelperAttestation:helperPath=>({helperPath,helperSha256:'b'.repeat(64)}),
       verifyWindowsNativeSandbox:async()=>({available:true,enforced:true,helperSha256:'b'.repeat(64)}),
       createWorkspaceCommandTool:options=>options},
-    getApplication:()=>({readAuthorizationQuestionInvocation:()=>({}),runtime:{getTask:()=>({state:'running'})}}),
+    getApplication:()=>({readAuthorizationQuestionInvocation:()=>({}),
+      readF20TrialBinding:req=>req.toolName==='workspace.npm_test'&&checkpoints.get('enable-f20')?{sourceDigest:'c'.repeat(64),candidateId:'synthetic-f20'}:undefined,
+      runtime:{getTask:()=>({state:'running'}),
+        saveCheckpointOnce:(taskId,key,value)=>{if(!checkpoints.has(taskId+key))checkpoints.set(taskId+key,structuredClone(value));},
+        loadCheckpoint:(taskId,key)=>checkpoints.get(taskId+key)}}),
     question:{prepare(){},readExecutionPolicy:()=>policy,currentRequirement:()=>({})}});
   try {
     await host.prepare(scope);
@@ -80,11 +85,13 @@ test('a project-only helper recipe can read its exact pinned Node without a node
     assert.deepEqual(profile.executableAllowlist,[canonicalHelper,canonicalNode]);
     assert.ok(profile.readRoots.includes(locations.node));assert.deepEqual(profile.writeRoots,[]);
     assert.equal(profile.network.mode,'deny');assert.ok(!profile.readRoots.includes(directory),'Do not grant the common parent');
+    checkpoints.set('enable-f20',true);
     const compiler=host.createCommandTool({rootPath:locations.workspace,recipes:[{id:'f20-typescript-sample',executable:canonicalNode,args:['fixed-check.cjs']}],
       trustedReadRoots:[locations.compiler]});
     const compiledProfile=compiler.trustedSandbox.bind(context,scope.deadline).profile;
     assert.ok(compiledProfile.readRoots.includes(locations.compiler));assert.deepEqual(compiledProfile.writeRoots,[]);
     assert.deepEqual(compiledProfile.executableAllowlist,[canonicalNode]);
+    checkpoints.delete('enable-f20');
     assert.throws(()=>host.createCommandTool({rootPath:locations.workspace,recipes:[recipe],trustedReadRoots:[locations.workspace]}),{code:'UNSUPPORTED_CAPABILITY'});
     rmSync(locations.compiler,{recursive:true});mkdirSync(locations.compiler);
     assert.throws(()=>compiler.trustedSandbox.bind(context,scope.deadline),{code:'UNSUPPORTED_CAPABILITY'});

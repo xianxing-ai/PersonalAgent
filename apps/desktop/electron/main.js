@@ -905,7 +905,7 @@ function visibleConversationTask(task,surface){
   if(task.goal?.startsWith('判断是否告知用户：')&&connectorChangeHost?.ownsDecisionTask(task.taskId))return false;
   if(!surface)return true;
   const activeId=conversations?.activeConversationId(surface);
-  return typeof activeId==='string'&&task.conversationId===activeId&&conversations.canAccessSurface(surface,taskSurface(task));
+  return typeof activeId==='string'&&(conversations.turns?.get(task.taskId)?.conversationId??task.conversationId??conversations.conversationIdForTask(task))===activeId&&conversations.canAccessSurface(surface,taskSurface(task));
 }
 function foregroundConversationTask(task,surface){
   if(!visibleConversationTask(task,surface)||terminalTaskStates.has(task.state)||conversationDelivery.stopped(task))return false;

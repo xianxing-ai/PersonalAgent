@@ -1209,7 +1209,12 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           requestId: approvalId, taskId: approval.taskId, toolName: approval.toolName, toolVersion: 'approval',
           startedAt: this.timestamp(), finishedAt: this.timestamp(), state: 'failed', errorCode: 'SCOPE_DENIED', policyDecision: 'deny', executionStarted: false};
         this.db.prepare('INSERT INTO tool_execution_records (evidence_id, task_id, record_json) VALUES (?, ?, ?)').run(evidenceId, approval.taskId, JSON.stringify(record));
-        this.updateTask(approval.taskId, 'cancelled', {evidenceRefs: [...this.getTask(approval.taskId).evidenceRefs, evidenceId]}, true);
+        const refs = [...this.getTask(approval.taskId).evidenceRefs, evidenceId];
+        const hostTool = this.loadCheckpoint(approval.taskId, 'host-tool-intent') !== undefined;
+        const subtask = this.loadCheckpoint(approval.taskId, 'subtask-parent') !== undefined;
+        const conversationTask = !hostTool && !subtask && this.loadCheckpoint(approval.taskId, 'competition-loop') !== undefined;
+        if (conversationTask) this.updateTask(approval.taskId, 'waiting_approval', {evidenceRefs: refs}, false);
+        else this.updateTask(approval.taskId, 'cancelled', {evidenceRefs: refs}, true);
       }
       return {accepted: true, approvalState: state};
     });

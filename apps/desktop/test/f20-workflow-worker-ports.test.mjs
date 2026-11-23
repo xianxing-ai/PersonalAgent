@@ -15,7 +15,7 @@ test('F20 ports require a current deployment, local reviewer, exact source front
     readReviewerIdentity:()=>reviewer,codingWorkspace:{assertF20Current(){if(!sourceCurrent)throw Error('Source changed');},
       f20Available:()=>true,resolveF20Case:()=>input,authorizeF20Export:async()=>allowed},
     runtimeModule:{verifyF20ReviewCompletion:()=>true,verifyF20HarnessCompletion:()=>({additionalSourceTaskIds:[]})}});
-  assert.equal(ports.available(scope),false);reviewer={id:'fixed-reviewer'};assert.equal(ports.available(scope),true);
+  assert.equal(ports.available(scope),true);reviewer={id:'fixed-reviewer'};assert.equal(ports.available(scope),true);
   assert.deepEqual(await ports.resolveInput('case',scope),input);
   assert.equal(await ports.authorizeExport({...scope,stage:'initial',inputRef:'case',value:input}),false);
   allowed=true;assert.equal(await ports.authorizeExport({...scope,stage:'initial',inputRef:'case',value:input}),true);

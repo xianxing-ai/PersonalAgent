@@ -191,12 +191,12 @@ test('the workspace line confirms or cancels the pending preview without showing
 test('startup wraps tools and preload still carries desktop actions', () => {
   const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
   const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
-  assert.match(main, /dryRun=createDryRunProduct/);
-  assert.match(main, /beforeToolAuthorize:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*dryRun\?\.beforeAuthorize\(input\)|[^\n;]*dryRun\?\.beforeAuthorize\(input\))/);
-  assert.match(main, /assertToolPrechecked:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*dryRun\?\.assertAuthorized\(input\)|[^\n;]*dryRun\?\.assertAuthorized\(input\))/);
-  assert.match(main, /dryRun\.wrapTools\(conversationTools\)/);
-  assert.match(main, /name === 'dryRun\.confirm' \|\| name === 'dryRun\.cancel'/);
-  assert.match(main, /dryRun:dryRun\?\.snapshot\(\)/);
+  assert.match(main, /contentFence=createContentFenceProduct/);
+  assert.match(main, /beforeToolAuthorize:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*contentFence\?\.beforeAuthorize\(input\)|[^\n;]*contentFence\?\.beforeAuthorize\(input\))/);
+  assert.match(main, /contentFence\.wrapTools\(conversationTools\)/);
+  assert.match(main, /permissionAudit\.observeTools\(conversationTools\)/);
+  assert.match(main, /name === 'shadowPreview\.configure'/);
+  assert.match(main, /shadowPreview:/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action'/);
 });
 
@@ -361,9 +361,10 @@ test('CalDAV calendar.update succeeds through dryRun and RuntimeApplication in b
               toolVersion: '0.1.0-alpha.1',
               arguments: {externalId: uid, summary: '终版交互走查'},
               verification: 'unverified',
+              executionEpoch: request.executionEpoch,
             };
           }
-          return {kind: 'text', text: '已更新日程为终版交互走查', verification: 'mock'};
+          return {kind: 'text', text: '已更新日程为终版交互走查', verification: 'mock', executionEpoch: request.executionEpoch};
         },
       },
     });

@@ -219,6 +219,13 @@ const WORKER_LIST_TOOL_NAME = 'worker.list';
 const WORKER_LIST_TOOL_VERSION = '1.0.0';
 const WORKER_INSTRUCT_TOOL_NAME = 'worker.instruct';
 const WORKER_INSTRUCT_TOOL_VERSION = '1.0.0';
+const INTERNAL_CONVERSATION_TOOL_NAMES = new Set([
+  ASSISTANT_MESSAGE_TOOL_NAME,
+  ASSISTANT_LIST_TOOL_NAME,
+  ASSISTANT_CREATE_TOOL_NAME,
+  WORKER_LIST_TOOL_NAME,
+  WORKER_INSTRUCT_TOOL_NAME,
+]);
 const EXTERNAL_FENCE_NEGATION = /(?:不要|别|请勿|禁止|不能|不可|取消|停止|切勿|无需|不用).{0,12}(?:发送|发邮件|删除|移除|清空|付款|支付|转账|写入|修改|更改|覆盖|提交|执行)|(?:do\s+not|don't|never|stop)\s+(?:send|delete|remove|pay|write|modify|submit|execute)/iu;
 const HOST_TOOL_CHECKPOINT = 'host-tool-intent';
 const HOST_TOOL_PREPARATION_CHECKPOINT = 'host-tool-preparation';
@@ -1212,7 +1219,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         if (this.localRepair) gateway.register(createLocalRepairTool(() => this.runtime, this.localRepair));
         return {list:()=>gateway!.list(),
-          listPublic:()=>gateway!.list().filter(tool=>tool.name!==ASSISTANT_MESSAGE_TOOL_NAME),
+          listPublic:()=>gateway!.list().filter(tool=>!INTERNAL_CONVERSATION_TOOL_NAMES.has(tool.name)),
           invoke:invocation=>{
           this.assertPlanExecutionCurrent(invocation.taskId,invocation);
           assertWorkflowBusinessToolInvocation(this,invocation);
@@ -1853,7 +1860,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Public schema metadata, with no task readiness check, checkpoint or grant. */
-  readConversationToolCapabilities(){return this.competitionToolCatalog?.describe()??[];}
+  readConversationToolCapabilities(){return (this.competitionToolCatalog?.describe()??[]).filter(tool=>!INTERNAL_CONVERSATION_TOOL_NAMES.has(tool.name));}
 
   private developerWorkflowsFor(scope:RuntimeDeveloperWorkflowScope):RuntimeDeveloperWorkflowsOptions|undefined {
     if(scope.signal.aborted||this.runtime.getTask(scope.taskId).cancelRequested)return undefined;
@@ -3628,6 +3635,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const approval = this.runtime.getApproval(request.payload.approvalId);
       void Promise.resolve(this.activeTextTasks.get(approval.taskId))
         .then(() => this.refreshSubagentParent(approval.taskId)).catch(() => {});
+      if (!this.activeTextTasks.has(approval.taskId)
+        && this.runtime.getTask(approval.taskId).state === 'waiting_approval'
+        && this.runtime.loadCheckpoint(approval.taskId, 'competition-loop') !== undefined) {
+        try { this.resumeTask(approval.taskId); }
+        catch { /* 已拒绝；续跑失败不重开授权或伪造成功 */ }
+      }
     }
     if (request.operation === 'authorization.respond' && response.outcome === 'ok' && request.payload.decision === 'allow_once') {
       const approval = this.runtime.getApproval(request.payload.approvalId);
@@ -5794,10 +5807,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           &&this.runtime.matchesToolExecutionInput(confirmedRecord,{arguments:nested.arguments,scopeRef:approvalRef});
         if(!routineReplay) {
           const competitionApproval = this.runtime.getApproval(approvalRef);
-          if (competitionApproval.state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Task approval has not been allowed');
-          if(nested&&(competitionApproval.toolName!==nested.toolName||competitionApproval.argumentsDigest!==toolArgumentsDigest(nested.arguments)))
-            throw new ProtocolError('UNAUTHORIZED','Original nested worker approval changed');
-          if(!confirmedRecord && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');
+          if (competitionApproval.state === 'denied') {
+            /* recover via coordination denial continuation */
+          } else {
+            if (competitionApproval.state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Task approval has not been allowed');
+            if(nested&&(competitionApproval.toolName!==nested.toolName||competitionApproval.argumentsDigest!==toolArgumentsDigest(nested.arguments)))
+              throw new ProtocolError('UNAUTHORIZED','Original nested worker approval changed');
+            if(!confirmedRecord && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');
+          }
         }
       }
       if(readSubagentConversationMessage(this.runtime,taskId)) {this.dispatchSubagentConversationMessage(taskId,true);return;}

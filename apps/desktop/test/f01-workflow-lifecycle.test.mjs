@@ -131,7 +131,7 @@ test('F01 unknown actual CAS reads only the original operation after SQLite reop
 });
 test('F01 original context reads actual AgentArts catalog declarations and refuses changed task or deployment bindings',async t=>{
   let deployment={gatewayUrl:'https://synthetic.invalid',runtimeName:'synthetic',deploymentVersion:'fixed'};
-  const models=createAgentArtsModelSettings({configuration:{snapshot:()=>deployment},readCatalog:async()=>({version:'1.0',revision:'a'.repeat(64),
+  const models=createAgentArtsModelSettings({configuration:{snapshot:()=>deployment},allowUnverified:true,readCatalog:async()=>({version:'1.0',revision:'a'.repeat(64),
     defaultModelId:'original-text',models:[{id:'original-text',displayName:'Original',type:'text',availability:'unverified',
       requestProfile:'standard',reasoningEfforts:['high'],route:'agentarts-proxy'}]})});
   await models.refresh();const f=await fixture(t,{unknown:true,models}),child=await f.run();assert.equal(child.state,'waiting_reconciliation');

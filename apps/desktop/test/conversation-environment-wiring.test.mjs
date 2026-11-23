@@ -67,12 +67,11 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
   for(let n=0;n<200 && app.activeTaskCount;n++) await new Promise(resolve => setTimeout(resolve,5));
   assert.equal(app.runtime.getTask(task.taskId).state,'succeeded');
   const [child] = app.readSubagentTasks(task.taskId); assert.equal(child.state,'succeeded');
-  assert.equal(captured.length,3);
+  assert.equal(captured.length,2);
   assert.equal(captured[0].data.time.localDateTime,'2030-10-21T23:59:59');
   assert.equal(captured[1].data.time.localDateTime,'2030-10-22T00:00:00');
-  assert.equal(captured[2].data.time.localDateTime,'2030-10-22T00:00:01');
-  assert.equal(captured[2].request.taskId,task.taskId);
   assert.equal(captured[0].request.taskId,child.taskId);
+  assert.equal(captured[1].request.taskId,child.taskId);
   for(const {request,data} of captured) {
     const capabilityLine=request.goal.split('\n').find(line=>line.startsWith('{"capabilityStatus":'));
     assert.ok(capabilityLine,'actual Main environment callback carries Runtime capability diagnostics');
@@ -90,11 +89,11 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
     {idempotencyKey:'synthetic-calendar-context',timeoutMs:60000});
   for(let n=0;n<200 && app.activeTaskCount;n++) await new Promise(resolve => setTimeout(resolve,5));
   assert.equal(app.runtime.getTask(calendar.taskId).state,'succeeded');
-  assert.equal(captured.length,6);
-  assert.match(captured[3].request.goal,/明天上午10点/);
-  assert.equal(captured[3].data.time.timeZone,'Asia/Shanghai');
-  assert.match(captured[3].data.time.localDateTime,/^2030-10-22T/);
-  assert.equal(captured[3].data.capabilityGuidance.find(item=>item.capability==='calendar').state,'configuration_required');
+  assert.equal(captured.length,4);
+  assert.match(captured[2].request.goal,/明天上午10点/);
+  assert.equal(captured[2].data.time.timeZone,'Asia/Shanghai');
+  assert.match(captured[2].data.time.localDateTime,/^2030-10-22T/);
+  assert.equal(captured[2].data.capabilityGuidance.find(item=>item.capability==='calendar').state,'configuration_required');
   assert.equal(host.snapshot().items.length,0,'no todo or calendar is created by context or a guide');
   assert.deepEqual(host.readConversationGuidance(),{registered:true,availability:'consent_required',reasonCode:'TODO_CONSENT_REQUIRED'});
   assert.equal(readRequestContext({taskId:'unknown-scope'}),undefined,'unknown/internal scope does not receive chat environment data');

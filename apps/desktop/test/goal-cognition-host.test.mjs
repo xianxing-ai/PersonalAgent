@@ -711,7 +711,7 @@ async function originalGoalTaskSurface() {
   }
   visit(ast);filter=declaration('conversationProjection').match(/const scoped=([^;]+);/)?.[1];assert.ok(notify&&filter);
   const conversations=new Conversations(undefined),taskGoals=new Map(),tasks=new TaskProjectionCache();
-  const context=vm.createContext({conversations,taskGoals,tasks,Date});
+  const context=vm.createContext({conversations,connectorChangeHost:undefined,taskGoals,tasks,Date});
   vm.runInContext(text.match(/const TASK_GOAL_LIMIT = \d+;/)[0]+'\n'+declaration('rememberTaskGoal')+'\n'+declaration('orderedTasks')+'\n'+declaration('taskSurface')+'\n'+declaration('visibleConversationTask'),context);
   return {conversations,taskGoals,tasks,notify:vm.runInContext('('+notify+')',context),
     panelTasks:()=>{context.surface='panel';context.ordered=context.orderedTasks();return vm.runInContext(filter,context);},

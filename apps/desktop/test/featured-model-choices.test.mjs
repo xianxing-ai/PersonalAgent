@@ -8,6 +8,6 @@ test('reviewed vendors have explicit two-tier choices, with no invented Xiaomi f
 import {readFileSync} from 'node:fs';
 test('main presents the same published choices as the model settings',()=>{
   const source=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8');
-  assert.match(source,/agentArtsModels: modelSettings,/);
+  assert.match(source,/agentArtsModels:\s*modelSettings,/);
   assert.match(source,/modelChoices:\s*modelSettings\?\.catalog\?\.models\?\?\[\],/);
 });

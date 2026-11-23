@@ -32,8 +32,8 @@ test('actual Main deduplicates only identical F18/F19 shared reads and preserves
   const names=['github.issue_snapshot','github.merged_pr_readback','github.issue_close_readback'];
   const tool=name=>({descriptor:{name,version:'1.0.0',sideEffect:'read'},execute(){}});
   const left=names.map(tool),right=names.map(tool),merge=tool('github.registered_merge'),close=tool('github.registered_close_issue');
-  const code=block('const sharedF19Reads=','if(computerControlLease)');
-  const context={f18Workflow:{tools:[...left,merge]},f19Workflow:{tools:[...right,close]},conversationTools:[...left,merge],isDeepStrictEqual};
+  const code=block('const sharedF19Reads=','const shadowPreview=');
+  const context={syntheticMvp:false,f18Workflow:{tools:[...left,merge]},f19Workflow:{tools:[...right,close]},conversationTools:[...left,merge],isDeepStrictEqual};
   runInNewContext(code,context);assert.deepEqual(context.conversationTools,[...left,merge,close]);
   right[0].descriptor.version='other';assert.throws(()=>runInNewContext(code,{...context}),/原部署只读工具描述不一致/);
   const single={...context,f18Workflow:undefined,conversationTools:[]};runInNewContext(code,single);

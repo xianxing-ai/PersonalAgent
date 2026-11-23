@@ -298,23 +298,23 @@ test('S531-P2 wires F12 quiet hours, real OS show/click receipts, and notificati
   });
   assert.equal(configured.state, 'confirmed');
 
-  const hosts = createDesktopBusinessWorkflowHosts({
-    getApplication: () => app,
-    getNotificationHost: () => notifAppHost,
-  });
-  const deadline = new Date(Date.now() + 60_000).toISOString();
-  const makeCtx = input => ({
-    input,
-    taskId: 'f12-task-1',
-    signal: new AbortController().signal,
-    deadline,
-    requestId: 'req-f12-1',
-    mode: 'main',
-    predecessorStates: {},
-    predecessorOutputs: {},
-  });
-
   try {
+    const hosts = createDesktopBusinessWorkflowHosts({
+      getApplication: () => app,
+      getNotificationHost: () => notifAppHost,
+    });
+    const deadline = new Date(Date.now() + 60_000).toISOString();
+    const makeCtx = input => ({
+      input,
+      taskId: 'f12-task-1',
+      signal: new AbortController().signal,
+      deadline,
+      requestId: 'req-f12-1',
+      mode: 'main',
+      predecessorStates: {},
+      predecessorOutputs: {},
+    });
+
     // 1. F12_N02 reads effective policy cleanly
     const policyPort = hosts.findPort('policy.quiet_hours');
     const policyRes = await policyPort.read(makeCtx({scope: {kind: 'global'}}));
@@ -483,24 +483,24 @@ test('P-06 wires F16/F19 CI failure log binding, test intent guard, issue repair
     tools: [],
     riskAutonomy: false,
   });
-  const hosts = createDesktopBusinessWorkflowHosts({
-    getApplication: () => app,
-    getGithubPort: () => ghService,
-  });
-
-  const deadline = new Date(Date.now() + 60_000).toISOString();
-  const makeCtx = input => ({
-    input,
-    taskId: 'p06-task-1',
-    signal: new AbortController().signal,
-    deadline,
-    requestId: 'req-p06-1',
-    mode: 'main',
-    predecessorStates: {},
-    predecessorOutputs: {},
-  });
-
   try {
+    const hosts = createDesktopBusinessWorkflowHosts({
+      getApplication: () => app,
+      getGithubPort: () => ghService,
+    });
+
+    const deadline = new Date(Date.now() + 60_000).toISOString();
+    const makeCtx = input => ({
+      input,
+      taskId: 'p06-task-1',
+      signal: new AbortController().signal,
+      deadline,
+      requestId: 'req-p06-1',
+      mode: 'main',
+      predecessorStates: {},
+      predecessorOutputs: {},
+    });
+
     // 1. F16_N01 bound CI failure readback + F16_N04 test intent guard
     const ciPort = hosts.findPort('github.bound_ci_failure');
     const ciRes = await ciPort.read(makeCtx({owner: 'octo', repo: 'app', commitSha: 'a'.repeat(40)}));

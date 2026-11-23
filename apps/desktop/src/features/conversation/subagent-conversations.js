@@ -233,7 +233,7 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     mainButton.disabled = closeButton.disabled = busy;
     sendButton.setAttribute('aria-busy', String(Boolean(sending)));
     stopButton.setAttribute('aria-busy', String(Boolean(cancelling)));
-    availability.textContent = activeTaskId && canSubmit
+    availability.textContent = activeTaskId
       ? '正在工作，现在发送会插到下一步。'
       : canSubmit ? '' : submitUnavailableReason || '当前子对话暂不能发送新消息。';
   }
@@ -255,13 +255,24 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     }
     for(const entry of record.injections??[])container.append(node('p',entry.text,'subagent-conversation-user'));
     const progress=record.steps?.at(-1)?.label;
-    if(!task.resultSummary&&!task.error)container.append(node('p',progress||stateLabel(task.state),'subagent-conversations-metadata'));
-    const output=node('div');
-    output.innerHTML=answerCardHtml(task,live,escapeHtml);
-    if(output.firstElementChild){
-      answerSlots.set(task.taskId,output.firstElementChild);
-      container.append(output.firstElementChild);
+    if(!task.resultSummary)container.append(node('p',progress||'回答尚未记录','subagent-conversations-metadata'));
+    const card=node('section','','answer-card');
+    card.setAttribute('data-answer-for',task.taskId);
+    if(live.reasoning||live.steps.length){
+      const details=node('details','','answer-trace');
+      details.append(node('summary',live.steps.length?`已执行 ${live.steps.length} 步`:'思考过程'));
+      if(live.reasoning)details.append(node('pre',live.reasoning,'answer-reasoning'));
+      if(live.steps.length){
+        const list=node('ol','','subagent-conversations-steps');
+        for(const step of live.steps)list.append(node('li',text(step.label)||text(step.toolName)||'步骤'));
+        details.append(list);
+      }
+      card.append(details);
     }
+    if(task.resultSummary)card.append(node('div',task.resultSummary,'assistant-message'));
+    else if(task.error)card.append(node('p',errorText(task.error),'subagent-conversations-error'));
+    answerSlots.set(task.taskId,card);
+    container.append(card);
     if(Number.isSafeInteger(record.evidenceRefCount)&&record.evidenceRefCount>0)
       container.append(node('p',record.evidenceRefCount+' 条执行证据','subagent-conversations-metadata'));
     if(record.toolActivity?.length)container.append(renderToolActivity(record.toolActivity));
@@ -364,7 +375,7 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
       } else throw Error('未收到可核实的受理记录，请刷新后使用同一消息重试');
       if (draftVersion === sentDraftVersion && input.value === value) input.value = '';
       if (retryRequest === request) retryRequest = null;
-      composerStatus.textContent = result?.injected===true?'已发送给当前执行的子智能体':'消息已受理';
+      composerStatus.textContent = result?.injected===true?'已发送给当前执行的子智能体':(text(result?.acceptedTaskId)?'消息已受理：'+result.acceptedTaskId:'消息已受理');
     } catch (error) {
       if (current(version)) {
         // The host refuses a new message while the stopped turn is still unwinding.
@@ -493,6 +504,9 @@ function renderRecord(content, record) {
   }
   if (Number.isSafeInteger(record.evidenceRefCount) && record.evidenceRefCount >= 0) {
     content.append(node('p', '执行记录引用 ' + record.evidenceRefCount + ' 条', 'subagent-conversations-metadata'));
+  }
+  if (record.transcriptAvailable === false) {
+    content.append(node('p', '完整逐轮会话暂不可读，当前仅显示已保存摘要与步骤。', 'subagent-conversations-metadata'));
   }
   content.append(node('p', '执行回执不等于独立验证。', 'subagent-conversations-metadata'));
 }

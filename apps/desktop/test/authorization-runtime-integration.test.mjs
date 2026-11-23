@@ -251,9 +251,9 @@ test('actual Runtime passes registered external write risk to the exact content 
       accepts:()=>true,project:({result})=>result}],
     requiresToolAuthorization:scope=>question.requiresAuthorization(scope),
     requestToolAuthorization:scope=>question.requestToolAuthorization(scope),
-    coordination:{async execute(request){return request.continuation?{kind:'text',text:'Synthetic done',verification:'mock'}:
+    coordination:{async execute(request){return request.continuation?{kind:'text',text:'Synthetic done',verification:'mock',executionEpoch:request.executionEpoch}:
       {kind:'tool_proposal',proposalId:'proposal-'+request.taskId,toolName:descriptor.name,toolVersion:descriptor.version,
-       arguments:{target:'/synthetic/target',body:'exact content'},verification:'unverified'};}}});
+       arguments:{target:'/synthetic/target',body:'exact content'},verification:'unverified',executionEpoch:request.executionEpoch};}}});
   t.after(async()=>{question.close();await wait(()=>app.activeTaskCount===0);app.close();});
   const client=new Client(app);await client.connect();
   const submitted=await client.call('task.submit',{goal:'Synthetic external operation',conversationId:'Synthetic external conversation'},

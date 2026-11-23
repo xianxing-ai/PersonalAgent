@@ -57,12 +57,14 @@ test('workspace settings retain real configuration and revocation but cannot gra
 });
 
 test('API document settings invoke native selection with the fixed sample recipe and no paths or authority',async t=>{
-  const calls=[],ui=harness(t,async(action,input)=>{calls.push({action,input});return {coding:{configured:true,nodeConfigured:true,f20:{configured:true,inputRef:'api-case'}}};});
-  ui.render();ui.fields['f20-ref'].value='api-case';ui.fields['f20-template'].value='Describe only supported parameters';
+  const calls=[],ui=harness(t,async(action,input)=>{calls.push({action,input});return {coding:{configured:true,nodeConfigured:true,f20:{configured:true,inputRef:'api-case',schemaFile:'api.d.ts',codeFile:'api.ts',targetDoc:'README.md'}}};});
+  ui.render({f20:{configured:false,inputRef:'api-case'}});
   await ui.click('f20-configure');
-  assert.deepEqual(calls,[{action:'coding.f20.configure',input:{inputRef:'api-case',docTemplate:'Describe only supported parameters',recipeId:'f20-typescript-sample'}}]);
-  assert.match(ui.fields['f20-state'].textContent,/api-case/);
-  ui.render({nodeConfigured:false});assert.equal(ui.fields['f20-configure'].disabled,true);
+  assert.equal(calls.length,1);assert.equal(calls[0].action,'coding.f20.configure');
+  assert.equal(calls[0].input.inputRef,'api-case');assert.equal(calls[0].input.recipeId,'f20-typescript-sample');
+  assert.match(ui.fields['f20-status'].textContent,/已选好资料/);
+  assert.match(ui.fields['f20-files'].textContent,/api\.d\.ts.*api\.ts.*README\.md/);
+  ui.render({nodeConfigured:false,f20:{configured:false}});assert.equal(ui.fields['f20-configure'].disabled,true);
 });
 
 test('F16/F17 case controls consume host selectionRef and availability without accepting paths or granting execution',async t=>{

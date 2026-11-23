@@ -40,7 +40,7 @@ export function mountWorkspaceRuntimeControls(root,invoke,report){
     const count=(data.authorizationQuestions??[]).filter(q=>q.state==='pending').length+(data.approvals??[]).filter(q=>q.state==='pending').length;
     approval.hidden=count===0;approval.textContent=`待批准 · ${count}`;
     live.disabled=pending;live.setAttribute('aria-pressed',String(data.live?.active===true));
-    live.querySelector('span').textContent=data.live?.active?'结束':'Live';
+    live.querySelector('span').textContent=data.live?.active?'结束':'实时语音';
     renderContentFence(fence,data.contentFence);
     renderCostRoute(costRouteStatus,data.costRoute,invoke,report);
     live.title=data.live?.active?'结束当前实时语音通话':data.live?.configured?'在原语音面板开启实时语音':'打开语音设置，确认音频用途后启用实时语音';

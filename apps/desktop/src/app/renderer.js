@@ -412,7 +412,8 @@ else {
   };
   const stopTask=task=>{
     if(pendingCancelIds.has(task.taskId))return;
-    const isOnlyCurrent=!pending&&activeTasks().length===1&&activeTasks()[0].taskId===task.taskId;
+    const stoppable=typeof stoppableTasks==='function'?stoppableTasks():activeTasks();
+    const isOnlyCurrent=!pending&&stoppable.length===1&&stoppable[0].taskId===task.taskId;
     if(isOnlyCurrent){messageQueue.pause();window.speechSynthesis?.cancel();void invoke('voice.stop').catch(()=>{});}
     truncatedTaskIds.add(task.taskId);if(!truncatedOutput.has(task.taskId))truncatedOutput.set(task.taskId,structuredClone(task));
     const request={},conversationId=current?.conversationState?.activeId,feedbackRevision=errorFeedbackRevision;
@@ -485,14 +486,9 @@ else {
   // with nothing running it only stops playback.
   stopButton.onclick=async()=>{
     window.speechSynthesis?.cancel();
-    const running=activeTasks();
+    const running=typeof stoppableTasks==='function'?stoppableTasks():activeTasks();
     if(running.length||pending){
       await stopActiveTasks(running);
-      return;
-    }
-    const delegated=typeof stoppableTasks==='function'?stoppableTasks():[];
-    if(delegated.length){
-      for(const task of delegated)stopTask(task);
       return;
     }
     try{const result=await invoke('voice.stop');if(!result?.stopped)report(result?.reason??'语音供应商尚未连接');}catch(err){report(err);}

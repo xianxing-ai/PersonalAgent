@@ -37,7 +37,7 @@ test('actual local authorization startup loads its directory and projects origin
     initializeAuthorizationHosts(){},authorizationIntentHost:{tool:{descriptor,async execute(){executions++;assert.fail('Reading the directory must not execute a tool');}},
       prepareQuestion(){assert.fail('Reading the directory must not request tool authorization');}},
     authorizationQuestionHost:{requestToolAuthorization(){assert.fail('Reading the directory must not create an approval');}},
-    AUTHORIZATION_INTENT_TOOL:descriptor.name,register,readCapabilityDirectory,publish(){},EventCursor};
+    AUTHORIZATION_INTENT_TOOL:descriptor.name,register,readCapabilityDirectory,publish(){},publishChildUpdates(){},EventCursor};
   t.after(()=>{context.runtimeConnection?.dispose();context.runtimeApplication?.close();});
   const start=compileFunction('return (async()=>{with(context){'+[...functions.values()].join('\n')
     +'\nawait initializeLocalAuthorizationControlPlane();await initializeLocalAuthorizationControlPlane();return {pumpEvents};}})();',['context'],

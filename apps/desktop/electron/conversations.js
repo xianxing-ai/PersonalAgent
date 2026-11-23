@@ -82,9 +82,10 @@ export class Conversations {
   snapshot(surface){
     const activeId=this.activeConversationId(surface);
     const sessions=[...this.sessions.values()].filter(session=>this.canAccessSurface(surface,session.surface)).map(({draft,...session})=>{
-      if(!this.sharedMain)return session;
-      if(session.surface==='workspace')return {...session,legacyHistory:true};
-      return session.id==='desktop-panel'&&session.title==='原面板对话'?{...session,title:'主对话'}:session;
+      const copy=structuredClone(session);
+      if(!this.sharedMain)return copy;
+      if(copy.surface==='workspace')return {...copy,legacyHistory:true};
+      return copy.id==='desktop-panel'&&copy.title==='原面板对话'?{...copy,title:'主对话'}:copy;
     });
     return {activeId,sessions,draft:this.session(activeId).draft};
   }
