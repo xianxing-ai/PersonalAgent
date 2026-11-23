@@ -127,7 +127,7 @@ import {createBrowserControlHost} from './browser-control-host.js';
 import {prepareNativeDesktopComponent,nativeDesktopExecutable} from './native-desktop-component.js';
 import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
-import {createInstalledSkillsHost} from './installed-skills-host.js';
+import {checkInstalledSkillInput,createInstalledSkillsHost} from './installed-skills-host.js';
 import {createRemoteMcpCompetitionComposition} from './remote-mcp-competition.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createRemoteMcpRegistry} from './remote-mcp-registry.js';
@@ -1995,11 +1995,13 @@ async function initializeInstalledSkills() {
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
       validateRunInput:async publicGoal=>{
         const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
+        const compileSkillGoal=(goal,prepared,messages)=>
+          checkInstalledSkillInput(compileCoordinationGoal(goal,prepared,messages));
         const limit=harnessContextHost?.runtimeHooks?.policy.maxSourceMessages;
         const context=readDesktopConversationContext({conversationId:conversations.activeConversationId('workspace'),
           deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal},limit);
-        if(harnessContextHost?.runtimeHooks)harnessContextHost.preflight(publicGoal,publicGoal,context,compileCoordinationGoal);
-        else compileCoordinationGoal(publicGoal,publicGoal,context);
+        if(harnessContextHost?.runtimeHooks)harnessContextHost.preflight(publicGoal,publicGoal,context,compileSkillGoal);
+        else compileSkillGoal(publicGoal,publicGoal,context);
       },
       selectDirectory:async()=>{
         const result=await dialog.showOpenDialog(admin,{title:'选择包含 SKILL.md 的 Skill 文件夹',properties:['openDirectory']});
@@ -2804,7 +2806,7 @@ async function initializeRuntime() {
             cloudRequestFailureNotice = '';
             const conversationOrigin=runtimeApplication.readSubagentConversationOrigin?.(request.taskId);
             if(conversationOrigin)installedSkillsHost?.assertTask(conversationOrigin.taskId);
-            installedSkillsHost?.assertTask(request.taskId);
+            installedSkillsHost?.assertTask(request.taskId,request.goal);
             const parent=runtimeApplication.readDelegatedUserTaskParent?.(request.taskId);
             const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!conversations?.containsConversation(conversationId)) return;

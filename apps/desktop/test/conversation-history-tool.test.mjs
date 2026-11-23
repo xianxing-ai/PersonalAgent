@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {MAX_COORDINATION_GOAL_CHARACTERS} from '@personal-agent/contracts';
 import {createConversationHistoryTool} from '../electron/conversation-history-tool.js';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
 import {Client} from '@personal-agent/client';
@@ -45,7 +46,8 @@ test('actual Runtime consumer retrieves an omitted assistant source through Poli
     reply={kind:'text',text:'取回的原文结尾是：结尾条件必须保留。'};}
    return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify(reply),index:0}}),{headers:{'content-type':'application/json'}});
   }});
- const earlier=app.runtime.submitTask({goal:'旧问题'.repeat(40000),conversationId:'history',idempotencyKey:'earlier'});
+ const earlier=app.runtime.submitTask({goal:'x'.repeat(MAX_COORDINATION_GOAL_CHARACTERS-4096),
+  conversationId:'history',idempotencyKey:'earlier'});
  app.runtime.transitionTask(earlier.taskId,'planning');app.runtime.transitionTask(earlier.taskId,'running');app.runtime.transitionTask(earlier.taskId,'verifying');
  app.runtime.transitionTask(earlier.taskId,'succeeded',{resultSummary:original});
  try{

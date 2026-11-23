@@ -2397,7 +2397,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           :'当前历史较短，保留近期原文后没有需要压缩的内容。'};
       }
       const context=compacted?.messages??sourceContext;
-      const goal=compileCoordinationGoal(request.goal,prepared,context);
+      const goal=compaction
+        ? compileCoordinationGoal(request.goal,prepared,context)
+        : this.compileTaskConversationGoal(task.taskId,request.goal,prepared,context);
       const binding=bindCompiledContext({taskId:task.taskId,conversationId:task.conversationId ?? '',
         deadline:request.deadline,configurationRef:this.coordinationBinding,publicGoal:request.goal,
         preparedGoal:prepared,compiledGoal:goal,messages:context,
