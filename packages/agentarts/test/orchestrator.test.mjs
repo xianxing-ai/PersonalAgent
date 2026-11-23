@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {MAX_COORDINATION_GOAL_CHARACTERS, MAX_COORDINATION_INITIAL_QUERY_BYTES} from '@personal-agent/contracts';
 import {OwnedAgentOrchestrator,parseAgentInput,getOwnedWorkflowTemplate} from '../dist/index.js';
 import {FakeModelProvider} from '@personal-agent/models';
 import {GOAL_PREFIX} from '../dist/input.js';
@@ -26,7 +27,14 @@ test('every continuation can carry the guarded original goal and full prior user
  assert.match(models.fast.requests[0].messages[0].content,/逐项覆盖/);
  assert.match(models.fast.requests[0].messages[0].content,/直接、自然、沉稳地回答原问题本身/);
  assert.match(models.fast.requests[0].messages[0].content,/说明依据的时间与范围/);
- for(const bad of [null,'',42,'x'.repeat(128001)])assert.throws(()=>parseAgentInput(JSON.stringify({goal:bad,continuation})),{code:'INVALID_ARGUMENT'});
+ const maximumGoal='x'.repeat(MAX_COORDINATION_GOAL_CHARACTERS);
+ const query=goal=>JSON.stringify({goal,continuation});
+ assert.equal(parseAgentInput(query(maximumGoal)).goal,maximumGoal);
+ const oversizedBytes='青'.repeat(Math.floor(MAX_COORDINATION_INITIAL_QUERY_BYTES/3)+1);
+ assert.ok(oversizedBytes.length<MAX_COORDINATION_GOAL_CHARACTERS);
+ assert.ok(Buffer.byteLength(query(oversizedBytes),'utf8')>MAX_COORDINATION_INITIAL_QUERY_BYTES);
+ for(const bad of [null,'',42,maximumGoal+'x',oversizedBytes])
+  assert.throws(()=>parseAgentInput(query(bad)),{code:'INVALID_ARGUMENT'});
 });
 test('confirmed reply keeps user intent and diagnostics separate without dispatching again',async()=>{
  for(const [userRequest,answer,state] of [['哈喽','哈喽！有什么我可以帮你的吗？','succeeded'],['只回答已记住','已记住','succeeded'],['查询天气','天气查询失败，暂时无法提供结果。','failed'],['写入完成了吗','写入结果尚未核实。','waiting_reconciliation'],['汇报执行情况','一个子任务已完成。','succeeded']]){
