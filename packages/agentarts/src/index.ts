@@ -727,9 +727,13 @@ export class OwnedAgentOrchestrator {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
     const result = record(value);
     if (Object.keys(result).sort().join(',') !== 'exitCode,passed,recipeId') return undefined;
-    const names: Record<string, string> = {'node-check':'语法检查','npm-build':'构建','npm-test':'测试'};
-    if (typeof result.recipeId !== 'string' || !Object.hasOwn(names, result.recipeId)
-      || !Number.isSafeInteger(result.exitCode) || typeof result.passed !== 'boolean'
+    const names: Record<string, string> = {
+      'node-check':'语法检查','npm-build':'构建','npm-test':'测试','git-diff-check':'差异检查',
+    };
+    // Host-confirmed coding results share this shape. Only the known command
+    // recipes are deterministic receipts; an unknown recipe must not abort the turn.
+    if (typeof result.recipeId !== 'string' || !Object.hasOwn(names, result.recipeId)) return undefined;
+    if (!Number.isSafeInteger(result.exitCode) || typeof result.passed !== 'boolean'
       || result.passed !== (result.exitCode === 0)) throw new ProtocolError('INVALID_ARGUMENT', 'Inconsistent confirmed command result');
     // A valid check receipt can be one step in a larger user request. Only the
     // new explicitly goal/catalog-bound route asks the model what remains.

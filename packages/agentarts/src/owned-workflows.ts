@@ -123,6 +123,12 @@ export interface OwnedWorkflowAdvanceResult {
 const plain = (value:unknown):value is Record<string,unknown> => !!value&&typeof value==='object'&&!Array.isArray(value);
 const digest = (value:unknown):string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const f20DraftDigest=(draft:F20DocumentCandidate)=>digest([draft.docMarkdown.trim(),draft.sampleSnippet.trim()]);
+/** Rejection memory applies only to real document drafts. Other node values are not drafts and must not abort the turn. */
+function f20DocumentDraft(value:unknown):F20DocumentCandidate|undefined {
+  if(!value||typeof value!=='object'||Array.isArray(value))return undefined;
+  if(!Object.hasOwn(value,'docMarkdown')||!Object.hasOwn(value,'sampleSnippet'))return undefined;
+  return parseF20DocumentCandidate(value);
+}
 const invalid = (message='Invalid owned workflow request'):never => {throw new ProtocolError('INVALID_ARGUMENT',message);};
 const safeId = (value:unknown):value is string => typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
 const control = (request:Pick<OwnedWorkflowAdvanceRequest,'signal'|'deadline'>):void => {
@@ -410,7 +416,9 @@ export class OwnedWorkflowEngine {
         if(plan)step.shadow={plan:evaluation?copy(evaluation.plan):{...plan,mode:'ordinary'},selectionDigest:workflowShadowSelectionDigest(result),...(evaluation?{evaluation:copy(evaluation)}:{})};
         step.state='pending';
         if(state.workflowId==='F20'&&receipt.nodeId==='F20_N02'&&selected!.abstain) {
-          const drafts=step.pendingSelection.filter(candidate=>!candidate.abstain).map(candidate=>parseF20DocumentCandidate(candidate.value));
+          const drafts=step.pendingSelection.filter(candidate=>!candidate.abstain).flatMap(candidate=>{
+            const draft=f20DocumentDraft(candidate.value);return draft?[draft]:[];
+          });
           if(!drafts.length)invalid('F20 review requires an original draft');
           step.f20DraftReview={lastDraft:drafts[0]!,rejectedDigests:[...new Set([
             ...(step.f20DraftReview?.rejectedDigests??[]),...drafts.map(f20DraftDigest)])]};
@@ -507,7 +515,11 @@ export class OwnedWorkflowEngine {
         ||!Object.hasOwn(item,'value'))) throw new ProtocolError('EXTERNAL_FAILURE','Invalid executor candidates');
     if(context.template.workflowId==='F20'&&context.node.id==='F20_N02') {
       const rejected=new Set(state.nodes[context.node.id]!.f20DraftReview?.rejectedDigests??[]);
-      candidates=candidates.filter(candidate=>candidate.abstain||!rejected.has(f20DraftDigest(parseF20DocumentCandidate(candidate.value))));
+      candidates=candidates.filter(candidate=>{
+        if(candidate.abstain)return true;
+        const draft=f20DocumentDraft(candidate.value);
+        return !draft||!rejected.has(f20DraftDigest(draft));
+      });
       if(candidates.every(candidate=>candidate.abstain))return {state:'failed',reason:'F20 review rejected the original draft and no revised draft was produced'};
     }
     for(const candidate of candidates)if(candidate.metadata)parseWorkflowSelectionResult({selectedId:candidate.id,metadata:candidate.metadata},candidates.map(item=>item.id));

@@ -184,7 +184,7 @@ test('28-graph wiring includes F20 coding.repair.trial and F24 recovery order be
   const f20 = getOwnedWorkflowTemplate('F20');
   const f20n03 = f20.nodes.find(node => node.id === 'F20_N03');
   assert.ok(f20n03);
-  assert.deepEqual(f20n03.capabilities.map(cap => cap.name), ['coding.repair.trial']);
+  assert.deepEqual(f20n03.capabilities.map(cap => cap.name), ['workspace.run_allowed_command']);
 
   const f24 = getOwnedWorkflowTemplate('F24');
   for (const target of ['F24_N02', 'F24_N09']) {
@@ -418,7 +418,7 @@ test('Z-10 priority graphs F09/F13/F14/F15/F20/F22/F26/F28 execute end-to-end ag
           else if (nodeId === 'F20_N02') {
             value = {version: 1, docMarkdown: '# Z10 Doc', sampleSnippet: 'const example: Record<string, string> = {};'};
           } else if (nodeId === 'F20_N03') {
-            value = {toolName: 'coding.repair.trial', toolVersion: '1.0.0', arguments: {trialId: 'trial-f20-1'}};
+            value = {toolName: 'workspace.run_allowed_command', toolVersion: '1.0.0', arguments: {trialId: 'trial-f20-1'}};
           } else if (nodeId === 'F20_N04') {
             value = {version: 1, docMarkdown: '# Z10 Doc Verified', sampleSnippet: 'const verified: Record<string, string> = {};'};
           }
@@ -592,7 +592,7 @@ test('Z-10 priority graphs F09/F13/F14/F15/F20/F22/F26/F28 execute end-to-end ag
     },
     {
       descriptor: {
-        name: 'coding.repair.trial',
+        name: 'workspace.run_allowed_command',
         version: '1.0.0',
         sideEffect: 'local_write',
         requiredScopes: ['coding:trial'],
