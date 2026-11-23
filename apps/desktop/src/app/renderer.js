@@ -25,7 +25,7 @@ import {createFollowLock} from '../features/conversation/follow-lock.js';
 import {mountAdmin} from '../features/admin/view.js';
 import {mountBriefingPanel} from '../features/admin/daily-briefing.js';
 import {mountWorkspace} from '../features/workspace/view.js';
-import {applyPreferences} from '../ui/preferences.js';
+import {applyPreferences,orbVariantPreference,orbStateOverride} from '../ui/preferences.js';
 import {mountConversationRail} from '../features/conversation/rail.js';
 import {resultText} from '../features/conversation/result-text.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
@@ -81,8 +81,16 @@ async function invoke(action,payload) {
 let render, orb, reportSnapshotFailure, clearSnapshotFailure;
 if(mode==='orb') {
   root.innerHTML='<button class="orb-button" aria-label="打开 PersonalAgent"><canvas aria-hidden="true"></canvas></button>';
-  orb=new Orb(root.querySelector('canvas'),{variant:'matrix',layout:'shell',count:170});
-  const syncMotion=()=>{if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');};syncMotion();
+  orb=new Orb(root.querySelector('canvas'),{variant:orbVariantPreference(),layout:'shell',count:170});
+  let lastOrbData={};
+  const syncMotion=()=>{
+    const variant=typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix');
+    const override=typeof orbStateOverride==='function'?orbStateOverride():((document.documentElement?.dataset?.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null);
+    orb.setVariant?.(variant);
+    if(override){orb.setState(override);if(override==='listening')orb.setLevel(Math.max((typeof lastOrbData!=='undefined'?lastOrbData?.audioLevel:0)??0,0.68));}
+    else if(typeof lastOrbData!=='undefined'&&lastOrbData&&(lastOrbData.tasks||lastOrbData.live))orb.setState(visualOrbState(lastOrbData));
+    if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');
+  };syncMotion();
   window.addEventListener('preferences-changed',syncMotion);
   document.addEventListener('visibilitychange',syncMotion);
   window.addEventListener('unload',()=>{window.removeEventListener('preferences-changed',syncMotion);document.removeEventListener('visibilitychange',syncMotion);},{once:true});
@@ -109,7 +117,7 @@ if(mode==='orb') {
   button.addEventListener('lostpointercapture',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();orbOperation('orb.open');}});
   button.addEventListener('click',e=>{if(e.detail===0)orbOperation('orb.open');});
-  render=data=>{orb.setLevel(data.audioLevel??0);orb.setState(visualOrbState(data));if(document.hidden)orb.stop();orbLabel=`PersonalAgent · ${orbStatusLabel(data)}`;syncOperationFeedback();};
+  render=data=>{if(typeof lastOrbData!=='undefined')lastOrbData=data??{};const variant=typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix');const override=typeof orbStateOverride==='function'?orbStateOverride():((document.documentElement?.dataset?.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null);orb.setVariant?.(variant);orb.setLevel(override==='listening'?Math.max(data.audioLevel??0,0.68):(data.audioLevel??0));orb.setState(override??visualOrbState(data));if(document.hidden)orb.stop();orbLabel=`PersonalAgent · ${orbStatusLabel(data)}`;syncOperationFeedback();};
 } else if(mode==='admin') render=mountAdmin(root,invoke,escape);
 else if(mode==='workspace') render=mountWorkspace(root,invoke,escape,{flushBeforeClose:bridge?.flushDrafts});
 else if(mode==='subagent') {const page=mountSubagentConversationPage(root,invoke);render=()=>page.refresh();}
@@ -605,7 +613,9 @@ else {
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;roster.paint(data.assistants,data);
     setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
-    if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    if(emptyThread){followLock.markProgrammatic();thread.scrollTop=0;}
+    else if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    if(emptyThread&&taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();}
     applyOperatorBrake({button:operatorBrakeButton,status:operatorBrakeStatus,state:root.querySelector('#state'),snapshot:data.operatorBrake});
 };
 }

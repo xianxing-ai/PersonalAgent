@@ -58,7 +58,8 @@ export function mountLiveVoicePlayback(bridge, AudioContextClass = globalThis.Au
     }
     if (type === 'drain') {
       record.drain = true;
-      if (!record.sources.size) bridge.report({token, type: 'drained'});
+      record.drainId=typeof message.drainId==='string'?message.drainId:undefined;
+      if (!record.sources.size) bridge.report({token, type: 'drained',...(record.drainId?{drainId:record.drainId}:{})});
       return;
     }
     if (type !== 'audio') return;
@@ -72,7 +73,8 @@ export function mountLiveVoicePlayback(bridge, AudioContextClass = globalThis.Au
       const source = record.context.createBufferSource();
       source.buffer = audio; source.connect(record.context.destination); record.sources.add(source); record.drain = false;
       source.onended = () => {try {source.disconnect();} catch {} record.sources.delete(source);
-        if (current === record && !record.stopping && !disposed && record.drain && !record.sources.size) bridge.report({token, type: 'drained'});};
+        if (current === record && !record.stopping && !disposed && record.drain && !record.sources.size)
+          bridge.report({token, type: 'drained',...(record.drainId?{drainId:record.drainId}:{})});};
       const at = Math.max(record.nextAt, record.context.currentTime + 0.015);
       source.start(at); record.nextAt = at + audio.duration;
     } catch {bridge.report({token, type: 'error'}); await stop(record);}
