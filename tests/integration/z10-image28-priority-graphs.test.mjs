@@ -457,6 +457,7 @@ test('Z-10 priority graphs F09/F13/F14/F15/F20/F22/F26/F28 execute end-to-end ag
               value: {plan: true},
             }, abstain];
           } else if (nodeId === 'F28_N03') value = {arguments: {check: 'models-z10'}};
+          else if (['F28_N06', 'F28_N07', 'F28_N08'].includes(nodeId)) value = {arguments: {role: nodeId}};
           else if (nodeId === 'F28_N10') value = {arguments: {workspaceDigest: 'ws-z10'}};
           else if (nodeId === 'F28_N05') {
             return [{id: 'accept', description: 'Verify final completion', value: {accept: true}}, abstain];
@@ -703,6 +704,33 @@ test('Z-10 priority graphs F09/F13/F14/F15/F20/F22/F26/F28 execute end-to-end ag
       inputSchema: {type: 'object'},
       outputSchema: obj({state: {const: 'selected'}}),
       execute: async () => ({state: 'selected'}),
+    }),
+    createOwnedWorkflowAdapter({
+      nodeId: 'F28_N06',
+      kind: 'host',
+      sideEffect: 'read',
+      requiredScopes: ['workflow:native'],
+      inputSchema: obj({role: str}),
+      outputSchema: obj({candidate: str}),
+      execute: async () => ({candidate: 'research-z10'}),
+    }),
+    createOwnedWorkflowAdapter({
+      nodeId: 'F28_N07',
+      kind: 'host',
+      sideEffect: 'read',
+      requiredScopes: ['workflow:native'],
+      inputSchema: obj({role: str}),
+      outputSchema: obj({candidate: str}),
+      execute: async () => ({candidate: 'analysis-z10'}),
+    }),
+    createOwnedWorkflowAdapter({
+      nodeId: 'F28_N08',
+      kind: 'host',
+      sideEffect: 'read',
+      requiredScopes: ['workflow:native'],
+      inputSchema: obj({role: str}),
+      outputSchema: obj({candidate: str}),
+      execute: async () => ({candidate: 'coder-z10'}),
     }),
     createOwnedWorkflowAdapter({
       nodeId: 'F28_N10',
