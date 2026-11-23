@@ -18,7 +18,7 @@ export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
   if (compact) return mountCompactLiveVoiceControls(root, invoke);
   const settings = document.createElement('details');
   settings.className = 'sis-settings';
-  settings.innerHTML = '<summary>Live 实时语音设置</summary><div class="sis-fields"><p class="notice">千问负责实时听说；工作由同一个 AgentArts 主智能体执行。使用百炼北京业务空间。</p><label>业务空间 ID<input id="live-workspace" autocomplete="off" maxlength="128"></label><label>百炼 API Key<input id="live-key" type="password" autocomplete="off" maxlength="4096" placeholder="仅在本机加密保存"></label><label>启停快捷键<select id="live-hotkey">'+Array.from({length:24},(_,i)=>`<option value="F${i+1}"${i===7?' selected':''}>F${i+1}</option>`).join('')+'</select></label><label><input id="live-consent" type="checkbox">开启 Live 时将麦克风音频和对话上下文发送到阿里云，用于实时对话</label><button id="live-save" type="button">保存 Live 配置</button><p class="notice" id="live-config-result" role="status"></p></div>';
+  settings.innerHTML = '<summary>实时语音设置</summary><div class="sis-fields"><p class="notice">千问负责实时听说；工作由同一个 AgentArts 主智能体执行。使用百炼北京业务空间。</p><label>业务空间 ID<input id="live-workspace" autocomplete="off" maxlength="128"></label><label>百炼 API Key<input id="live-key" type="password" autocomplete="off" maxlength="4096" placeholder="仅在本机加密保存"></label><label>启停快捷键<select id="live-hotkey">'+Array.from({length:24},(_,i)=>`<option value="F${i+1}"${i===7?' selected':''}>F${i+1}</option>`).join('')+'</select></label><label><input id="live-consent" type="checkbox">开启实时语音时将麦克风音频和对话上下文发送到阿里云，用于实时对话</label><button id="live-save" type="button">保存实时语音配置</button><p class="notice" id="live-config-result" role="status"></p></div>';
   settings.querySelector('#live-save').insertAdjacentHTML('beforebegin',
     '<label><input id="live-startup-greeting" type="checkbox">应用启动时问候（使用 Windows 中文语音）</label>'+
     '<label><input id="live-continuous-listening" type="checkbox">应用启动及休眠恢复后持续监听（需上方音频同意；关闭面板或语音按钮可停止本次监听）</label>');
@@ -48,7 +48,7 @@ export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
       toggleErrorOwner = undefined;
       result.textContent = editing ? '已保存本次提交；新修改尚未保存。'
         : request.startupGreeting || request.continuousListening ? '已保存启动偏好；请查看启动与监听状态。'
-          : '已保存；点圆形语音按钮或按快捷键开始 Live。';
+          : '已保存；点圆形语音按钮或按快捷键开始实时语音。';
       if (!editing) settings.open = false;
     }
     catch (error) {toggleErrorOwner = undefined; result.textContent = error.message;}
@@ -78,13 +78,13 @@ export function mountLiveVoiceControls(root, invoke, {compact = false} = {}) {
       liveActive = live.active === true;
       const viaAgentArts=live.provider==='agentarts';const workspaceLabel=workspace.closest?.('label'),keyLabel=key.closest?.('label');if(workspaceLabel)workspaceLabel.hidden=viaAgentArts;if(keyLabel)keyLabel.hidden=viaAgentArts;
       const routeNotice=settings.querySelector('.notice');if(routeNotice)routeNotice.textContent=viaAgentArts?'实时听说经 AgentArts WSS 转发至百炼；工作由同一个 AgentArts 主智能体执行。旧独立 API 配置保留。':'千问负责实时听说；工作由同一个 AgentArts 主智能体执行。使用百炼北京业务空间。';
-      if(consent.parentElement?.lastChild)consent.parentElement.lastChild.textContent=viaAgentArts?'开启 Live 时将麦克风音频和对话上下文经 AgentArts 发送到百炼，用于实时对话':'开启 Live 时将麦克风音频和对话上下文发送到阿里云，用于实时对话';
-      settings.querySelector('summary').textContent=live.configured?'Live 实时语音设置 · 已配置':'Live 实时语音设置';
+      if(consent.parentElement?.lastChild)consent.parentElement.lastChild.textContent=viaAgentArts?'开启实时语音时将麦克风音频和对话上下文经 AgentArts 发送到百炼，用于实时对话':'开启实时语音时将麦克风音频和对话上下文发送到阿里云，用于实时对话';
+      settings.querySelector('summary').textContent=live.configured?'实时语音设置 · 已配置':'实时语音设置';
       key.placeholder=live.configured?'已安全保存；留空保留现有密钥':'仅在本机加密保存';
       if (!editing) {workspace.value = live.workspaceId ?? ''; hotkey.value = live.hotkey ?? 'F8'; consent.checked = live.audioConsent??Boolean(live.configured);
         startupGreeting.checked=live.startupGreeting===true;continuousListening.checked=live.continuousListening===true;}
       const names = {connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'主智能体正在处理任务',stopping:'正在关闭',idle:live.configured?'已就绪，未开启麦克风':'未配置',error:live.audioSendFailure?'音频发送失败':'连接失败'};
-      status.textContent = `Live：${names[live.status] ?? '未配置'} · ${live.shortcut?.key ?? 'F8'} 开启 / 关闭`;
+      status.textContent = `实时语音：${names[live.status] ?? '未配置'} · ${live.shortcut?.key ?? 'F8'} 开启 / 关闭`;
       if(live.route)status.textContent+=' · '+live.route;
       const audioFailure=liveAudioFailureText(live);if(audioFailure)status.textContent+=' · '+audioFailure;
       const textOutput=liveTextOutputFeedback(live);if(textOutput)status.textContent+=' · '+textOutput;
@@ -120,7 +120,7 @@ function mountCompactLiveVoiceControls(root, invoke) {
       liveActive=live.active===true;
       const names={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'主智能体正在处理任务',stopping:'正在关闭',
         idle:live.configured?'配置已保存，未开启麦克风':'未配置',error:live.audioSendFailure?'音频发送失败':'连接失败'};
-      status.textContent=`Live：${names[live.status]??'状态未报告'} · ${live.shortcut?.key??live.hotkey??'F8'} 开启 / 关闭`;
+      status.textContent=`实时语音：${names[live.status]??'状态未报告'} · ${live.shortcut?.key??live.hotkey??'F8'} 开启 / 关闭`;
       if(live.route)status.textContent+=' · '+live.route;
       const audioFailure=liveAudioFailureText(live);if(audioFailure)status.textContent+=' · '+audioFailure;
       const textOutput=liveTextOutputFeedback(live);if(textOutput)status.textContent+=' · '+textOutput;

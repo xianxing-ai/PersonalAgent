@@ -78,8 +78,7 @@ PR #78 的 loopback MCP 桥不在本 PR 中整体引入。历史桥只支持预�
 
 ## 2026-10-07 消费完成矩阵
 
-main `4b5ec61` 已有下列实现；[PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302)
-尚未合并，本节分开登记。没有新 wire DTO、授权协议或存储迁移；本轮没有真实云验收。
+2026-11-10 核对：下表写于 main `4b5ec61`。[PR #302](https://github.com/xianxing-ai/PersonalAgent/pull/302) 已以 `cc64ebdf` 进入当前 main，右列当时的未合并增量现已在主线。没有新 wire DTO、授权协议或存储迁移；合并本身没有真实云验收。
 
 | 边界 | main 已有实现 | #302 未合并增量 |
 | --- | --- | --- |

@@ -16,9 +16,13 @@ export {
   type CrewMessageRecord,
   type CrewMessageKind,
   type CrewDriverId,
+  type CrewHandoffRegistration,
+  type CrewHandoffRecord,
+  type CrewParentNotificationRecord,
   type CrewConsentLoginKind,
   type CrewConsentRecord,
 } from './store.js';
+export {MAX_HANDOFF_FILE_BYTES} from './handoff.js';
 export {
   parseCrewReceipt,
   isPureAcknowledgement,
@@ -42,7 +46,25 @@ export {
   type CrewKernelInterruptInput,
   type CrewKernelReceiptInput,
   type CrewKernelReplyInput,
+  type CrewWorkspaceInfo,
+  type CrewHandoffDelivery,
+  type CrewKernelWorkspaceInput,
+  type CrewKernelResolveWorkspacePathInput,
+  type CrewKernelPublishHandoffInput,
+  type CrewKernelReplanInput,
+  type CrewParentReplanResult,
 } from './kernel.js';
+export {
+  parentReplanIntent,
+  parseParentReplanDecision,
+  type CrewParentReplanDecision,
+  type CrewParentReplanIntent,
+  type CrewReplanClass,
+  type CrewReplanEffect,
+  type CrewReplanRisk,
+  type CrewReplanStrategy,
+  type CrewWriteStatus,
+} from './parent-replan.js';
 export {
   CrewStoreConsentProvider,
   type CrewConsentProvider,
@@ -86,3 +108,16 @@ export {
   type CrewRuntimeApiDriverOptions,
   type CrewRuntimeEvent,
 } from './runtime.js';
+export {
+  createCrewRuntimeTools,
+  CREW_DISPATCH_TOOL_NAME,
+  CREW_SEND_MESSAGE_TOOL_NAME,
+  CREW_LIST_AGENTS_TOOL_NAME,
+  CREW_INTERRUPT_TOOL_NAME,
+  CREW_TOOL_VERSION,
+  type CrewRegisteredTool,
+  type CrewRuntimeTools,
+  type CrewRuntimeToolsOptions,
+  type CrewToolContext,
+  type CrewToolDescriptor,
+} from './runtime-tools.js';

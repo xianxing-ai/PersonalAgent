@@ -123,7 +123,9 @@ test('failed Runtime read returns original error/Evidence; migration never inven
   last=await f.engine.advance({...next,checkpoint:last.checkpoint,migration:f.bridge.migration(identity(f.request),identity(next),[proposal.nodeId])});
   assert.equal(last.state,'failed');assert.equal(last.nodes[proposal.nodeId].proposal.operationId,proposal.operationId);
   assert.deepEqual(last.nodes[proposal.nodeId].value.failure.error,readback.task.error);
-  assert.match(last.nodes[proposal.nodeId].reason,/Repair algorithm unavailable/);
+  assert.match(last.nodes[proposal.nodeId].reason,/unrecoverable: attestation is not a retry/);
+  assert.equal(last.nodes[proposal.nodeId].repairTrace.attempts.some(attempt=>attempt.strategy==='backoff_retry'),false);
+  assert.equal(last.nodes[proposal.nodeId].repairTrace.attempts.every(attempt=>attempt.sideEffectsEmitted===0),true);
   assert.equal(f.calls.length,1);assert.deepEqual(last.proposals,[]);
 });
 

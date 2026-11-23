@@ -8,3 +8,6 @@ await mkdir(output, {recursive:true});
 for (const filename of ['index.mjs', 'index.d.mts', 'reader.mjs', 'reader.d.mts']) {
   await copyFile(new URL(filename, source), new URL(filename, output));
 }
+for (const filename of ['trace-replay.mjs', 'trace-replay.d.mts']) {
+  await copyFile(new URL('../src/'+filename, import.meta.url), new URL('../dist/'+filename, import.meta.url));
+}

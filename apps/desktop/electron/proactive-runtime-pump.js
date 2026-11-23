@@ -1,12 +1,14 @@
 const terminal=new Set(['succeeded','failed','cancelled','cancelling']);
 
 /** Called by the existing Desktop poll. No timer, model, grant or second scheduler lives here. */
-export function createDesktopProactiveRuntimePump({getApplication,getWorkflow,resolveUserConversation,recoverSources,afterNativeMaintenance,now=Date.now}) {
+export function createDesktopProactiveRuntimePump({getApplication,getWorkflow,resolveUserConversation,recoverSources,afterNativeMaintenance,isPaused,now=Date.now}) {
   if([getApplication,getWorkflow,resolveUserConversation].some(value=>typeof value!=='function'))
     throw Error('Original Runtime, proactive host and structural conversation resolver required');
   if(afterNativeMaintenance!==undefined&&typeof afterNativeMaintenance!=='function')throw Error('Native maintenance callback must be a function');
+  if(isPaused!==undefined&&typeof isPaused!=='function')throw Error('Operator pause check must be a function');
   const recovered=new Set(),reentered=new Set();let pending,scanCursor;
   async function run() {
+    if(isPaused?.())return {state:'paused',sessions:[]};
     const application=getApplication(),workflow=getWorkflow();
     if(!application?.runtime||!workflow||workflow.snapshot().state!=='configured_not_verified')return {state:'unavailable',sessions:[]};
     const runtime=application.runtime,status=[],conversations=new Set();let beforeSequence=scanCursor?.beforeSequence,

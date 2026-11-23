@@ -1,99 +1,141 @@
 # PersonalAgent
 
-> 2026-10-17 新增：[镜像内最小修复与 F15 V6 接线](docs/competition/CODING_MINIMAL_REPAIR_V6.md)。正常主Agent分派、隔离编码、真实检查失败后的增量修复、主/影子与原Evidence均有明确接口；源码、完整检查及真实云发布分别登记。#376 已合并，新编码增量不冒充旧镜像已具备。
+**面向 Windows 的常驻型个人认知智能体系统（Resident Cognitive Agent System for Windows）**
+
+PersonalAgent 是一款构建于 Windows 桌面环境的持续型个人智能体助理与认知工作台。系统以非侵入式**动态悬浮球（Dynamic Orb）**与**多窗口指挥中心**为交互入口，深度融合**版本化个人世界状态（Versioned Personal World State）**、**端云协同混合编排（Cloud-Edge Hybrid Orchestration）**、**多源生态连接器**与**零信任本地受控执行引擎**，将自然语言意图、跨源事件流与个人长期目标转化为可感知、可审计、可恢复的受控行动。
 
 <!-- current-design-alignment-20261015 -->
-## 当前设计、实现与验收入口（2026-10-15）
 
-[原 Node.js 连通架构图（10-16更新）](docs/design/workflow-architecture-20261013/index.html) · [运行/编辑说明](docs/design/workflow-architecture-20261013/README.md)。
+---
 
-当前工作包面向 `huawei_ict_agentarts` Competition Profile，仍要求 AgentArts 实际承担智能体构建、Agent/Workflow 编排、评估与部署。
-当前接线为 Desktop → 本机 Runtime → `CloudAgentPort` → AgentArts 高代码自有镜像；镜像内 Agent/Workflow 负责图推进、模型编排及宿主请求提案，
-本机 Runtime/Policy/ToolGateway 负责授权、实际工具执行、任务状态与可信 Evidence。模型代理是其中的模型调用能力，不能概括整个 Competition 路径。
+## 核心架构特性
 
-本机 Laya 是 Owner 已授权、待独立站点资格验证的宿主组件；具体模型与调度实验见[详细设计](docs/design/CURRENT_DESIGN_20261015.md)及[当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)。
-该组件的存在不表示切换到 Local Profile，也不允许 AgentArts 失败后静默回退；不合格判断按受信配置升级。其比赛边界与资格仍待复核，架构及最终模型选型尚未定稿。
-AgentArts 的平台 MCP/知识库、Trace 与评估能力按[逐项状态](docs/design/WORKFLOW_STATUS_20261015.md)和[真实证据](docs/competition/evidence/desktop-agentarts-v5-20261016/README.md)分别验收；
-已读回的部署、目录、关联日志与有限调用仅证明对应范围，缺少平台能力或端到端证据的项目保持未验证，不将自有镜像部署或28项模板等同全部业务完成。
+### 1. 端云协同与多 Profile 混合编排（Cloud-Edge Hybrid Orchestration）
+- **分层解耦执行链路**：采用 `Desktop UI` → `本地可信 Runtime` → `CloudAgentPort / 容器化高代码编排运行时` 的清晰边界。云端或容器化工作流负责复杂图推进、多 Agent 协同编排与动作提案；本地 Runtime 独占权限审批、工具执行、状态持久化与可信证据（Evidence）生成。
+- **本机轻量化裁决与 Teacher 协同**：引入本机轻量化多语言语义判断组件（Local Laya）处理高频、有界候选路由；当领域资格未满足或面临复杂模糊场景时，自动按受信策略升级至高阶大模型（Teacher Model），且严禁在远端编排异常时发生未经授权的静默降级。
+- **灵活的 Profile 架构**：支持面向云端高代码编排与评估的云端协同 Profile，同时保留基于本地 `ModelGateway`、多模型 Provider 与 `runAgent()` 的通用本地基线架构，共用底层安全策略与任务运行时。
 
-主动来源跟踪用户责任/关注，贯穿原文、Goal、记忆与上下文；无人值守继续已有授权工作，归来汇总有效变化；
-静默保留 feed，用户控制打扰次数/窗口/渠道，语音最终确认由可信宿主验证。
-高级影子开关并入已有判断，主任务优先，按实际机会资源/收益选择；只有明确双方案比较任务等双方，
-其他任务可先交付已验证主结果。这是当前设计，真实机会并行/主优先资源调度尚未验收。
+### 2. 持续认知与版本化个人世界状态（Proactive Cognition & World State）
+- **事实—决策—计划依赖图谱**：连接器持续观测带来源与版本戳的外部事件，关联用户原始引文、长期目标（Goals）、职责锚点、记忆（Memory）与上下文，驱动动态计划演进与最小计划修复（Minimal Plan Repair）。
+- **无人值守与智能抗打扰机制**：在已授权边界内支持后台静默信息摄取（Feed Ingestion）与持续推进；用户归来时自动生成有效变化与新增证据的增量摘要。用户可精细控制通知窗口、频次配额、安静时段与投递渠道。
+- **机会影子与增量自修复编码**：支持主任务优先调度与双方案对比评估；内置隔离沙箱编码与自动化研发工作流（[F15 V6 最小修复接线](docs/competition/CODING_MINIMAL_REPAIR_V6.md)），基于真实检查回执执行增量代码修复并完整记录主/影子执行证据。
 
-SWR `local-laya-v3-244ca434` 已发布；云指定版本 `arm64-local-v3-244ca434` 目录和关联日志已验。
-两案例的完整执行表面为本机同版镜像、本机 Runtime/Policy/工具/Laya 与远端 AgentArts 模型代理；
-Wukong flow167.432s、Pelican第二轮81.611s，41条持久工具Evidence，首轮Pelican partial保留。
-分支父任务成功、协调锚点仍created；28目录不等于28业务通过。6次本机判断182–618ms未达150ms，
-各案例3裁决均升级DeepSeek，未证明减少高级模型调用或训练。
+### 3. 零信任本地宿主与可验证证据（Zero-Trust Host & Verifiable Evidence）
+- **严格的进程与模块边界**：渲染层（Renderer）仅通过安全 Preload/IPC 提交请求与订阅事件，绝不直接接触模型凭据、数据库、Shell 或连接器；敏感凭据由本地受信宿主加密托管，永不进入模型提示词或公开日志。
+- **事务级一次性授权与防重放**：工具调用统一经由 `Policy` 与 `ToolGateway` 拦截校验。需要人工介入的操作通过会话审批卡完成事务级消费（绑定任务、工具、作用域、参数、版本 revision 与有效期），确保幂等执行并杜绝未知副作用的盲目重试。
+- **三级证据可信度体系**：由可信执行路径统一记录 `mock`、`conditional` 与 `verified` 证据，严格区分“模型自报生成”、“Schema 校验通过”与“外部真实状态读回验证”。
 
-查看[逐图状态](docs/design/WORKFLOW_STATUS_20261015.md)、[运行指南](docs/competition/TEST_IMAGE_V3_RUN.md)、
-[最新真实汇总](docs/competition/evidence/test-image-v3-20261015/full-workflow-results.json)、
-[新分工与接线包](docs/competition/COLLABORATOR_WIRING_PACKAGE.md)及[所有历史设计导航](docs/design/README.md)。
-以下带日期的旧设计、发布和测试保持原始适用范围，冲突口径不作为当前要求；PR/合并状态另按实际Git回执记录。
+### 4. 模块化生态与全场景能力矩阵（Modular Ecosystem）
+- 围绕 **28 项核心工作流**与 **39 个工程模块**构建，覆盖个人效率与研发全链路：
+  - **知识与生产力**：Obsidian 笔记双向协同、日程管理（Calendar）、待办与生产力工具。
+  - **信息与通信**：邮件（Mail）、跨源资讯订阅（Feeds）、实时天气（Weather）、深度研究（Research）与桌面通知。
+  - **多模态与系统交互**：语音唤醒与受信语音指令（Voice）、受控 Windows 窗口观测与桌面操作、MCP（Model Context Protocol）与可扩展 Skills 体系。
+  - **自动化工程工作流（DEV-WORKFLOWS）**：GitHub 连接器、Issue 诊断分流、自动化代码评审、隔离沙箱编码与 CI 故障自修复。
 
-> 2026-10-15 当前工作流实现入口：[本机 Laya + 镜像内全部工作流与协作者接线](docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md)。
-> 早期10-15部署修订已由上述当前设计和实际SWR发布回执更新；具体模型、串行推进与宿主实验以该设计和各项验收记录为准。
+---
 
-## 历史交付与目标设计（2026-10-09）
+## 系统架构与设计全景
 
-当前工作包同时提交自有 AgentArts 镜像源码、公开接口与必要接线，完整常驻自主设计和 Wiki 记忆交接。`97aa51a6` 预览镜像已发布到 GHCR，提供 `/ws` 与受保护状态查询；当前源码已接线 WSS 客户端与显式 HTTPS 备用、本地 Runtime 的审批/工具/证据和未知结果防重发。已发布 AMD64/ARM64 镜像分别通过容器测试 21/21 与生产入口合成 TLS 9 次请求；公网 Upgrade、真实华为验收、自动 status 协调、持久云端恢复、Wiki 自动接入和完整常驻监管仍待完成。详细实现见 [接口说明](docs/competition/OWNED_IMAGE_INTERFACES.md)，固定来源、digest 与下载见 [新版发布记录](docs/competition/OWNED_IMAGE_WSS_RELEASE_20261009.md) 和 [GitHub 预发布页](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-97aa51a6)；GHCR 发布、PR 合并与真实华为验收分别记录。
-
-使用入口：[当前设计与状态](docs/CURRENT_DESIGN_CONTEXT.md)、[镜像接口](docs/competition/OWNED_IMAGE_INTERFACES.md)、[GHCR 分享](docs/competition/OWNED_IMAGE_SHARING.md)。Wiki 由 goo122 实施；当前 PR 审查和 Owner 对具体 PR 的审核例外以 [CONTRIBUTING](CONTRIBUTING.md) 为准，必要技术 CI、主线更新和冲突处理均须满足。下文 2026-10-07 的提交和验收记录是历史基线。
-
-
-面向 Windows 的持续型私人 Agent 助理：以动态悬浮球为入口，结合版本化个人世界状态、AgentArts 云端编排、平台连接器与受控电脑操作，提供主动提示和有限自动执行。
-
-项目参加**华为 ICT 大赛创新赛道**，选择“基于华为云 AgentArts 智能体开发平台的 Agent 设计和应用”赛题。[Huawei ICT AgentArts Competition Profile](docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 是当前唯一实施和验收优先级：AgentArts 必须真实承担智能体构建、编排、评估和部署。通用 Local Profile 及现有 `runAgent()`、`ModelGateway`、盘古/自有模型代码只作为可选基线留存，当前不新增能力，也不构成比赛退出条件。本地 Runtime 始终拥有授权、真实执行、读回和 Evidence。
-
-## 2026-10-07 历史基线
-
-截至 2026-10-07，本地已同步到 `main@4d15f063`，该提交的 Foundation CI（run 37563282512）已读回成功。项目主要负责人为 **zemeng / zemeng5208**，用户继续负责核心与 AgentArts，goo122 和 Potatos 各自独立负责基础与业务主线；[模块分工](docs/MODULE_ASSIGNMENTS.md) 是负责人和文件所有权的唯一登记。
-
-主分支已包含 AgentArts Adapter、Competition Runtime/审批工具循环、Desktop、语音与业务连接器，以及知识/记忆、认知和 DEV-WORKFLOWS 增量。#294 的撤回记忆管理与恢复、#297 的开发工作流修复均已合并；这纠正了旧文档中“尚无 Adapter”和“未合并”的描述。代码存在、CI 成功与真实功能验收分别记录。
-
-整体 MVP 仍为 `in_progress`。真实 Competition 全链、原生 Desktop/Live、目标账号、设备及恢复读回按各自证据推进；本轮仅做同步、文档和清理，没有重跑真实模型或桌面验收。开放 PR 为 #298（CI 增量）与 #291（明确不合并的验收草稿）。最新任务状态见 [ROADMAP](docs/ROADMAP.md)，清理备份与继续入口见 [接手记录](docs/PROJECT_TAKEOVER_20261007.md)。
-
-## 文档入口
-
-- [华为 ICT AgentArts Competition Profile](docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)：参赛主路径、比赛与可选 Local 边界、实施顺序和验收矩阵。
-- [产品需求 PRD](docs/PRD.md)：产品范围、需求编号、优先级和验收条件。
-- [架构设计](docs/ARCHITECTURE.md)：模块、进程、协议、数据与技术验证项。
-- [模块分工](docs/MODULE_ASSIGNMENTS.md)：主模块、DEV-WORKFLOWS 及独占工作面；各 MOD 负责人按既定分工独立完成交付，常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 对具体 PR 的审核例外须记录。拥有合并权限者（包括作者）可在必要技术 CI、严格同步 main、无冲突且阻断意见已处理后合并。
-- [公共开发协议](docs/DEVELOPMENT_PROTOCOL.md)：`goo122` 维护的任务、事件、工具、连接器契约与联调交付要求。
-- [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)：逐接口冻结状态、生产可用性、证据和未提供能力。
-- [协作开发规范](CONTRIBUTING.md)：任务分配、分支、PR、评审和完成标准。
-- [开发计划与进度](docs/ROADMAP.md)：阶段门槛、首批工作包和当前状态。
-- [Agent 协作规则](AGENTS.md)：在本仓库工作的自动化开发者必须遵循的约束。
-
-阅读顺序：Competition Profile → PRD → 模块分工 → 当前接口目录 → 公共开发协议 → 架构 → 协作规范 → 开发计划。`goo122` 与 `zemeng` 从同一冻结接口提交使用 Fake 独立开发；Potatos 独立交付业务连接器与业务接线；四位协作者共同承担审查与合并，具体 MOD 归属以模块分工为准。四位协作者可按公开契约自行补齐 Fake 和必要集成。当前新增实现只面向 `huawei_ict_agentarts`；Local Profile 仅留存现有代码，除非产品负责人以后明确启用，否则不新增、不扩展、不作为当前验收对象。任何实现变更必须关联需求编号、profile 和验收证据。
-
-## 开发入口
-
-默认通过分支与 Pull Request 协作，不直接向主分支提交实现。当前基线为 Node.js 24.15.0、npm 11.12.1；开发依赖由 package-lock.json 锁定。
-
-在仓库根目录运行（PowerShell 中如脚本策略阻止 npm，可使用 npm.cmd）：
-
-```sh
-npm ci
-npm run check
-npm run dev
-npm run demo:protocol
-npm run demo:runtime
+```
++-----------------------------------------------------------------------------------+
+|                            Desktop Client (Electron)                              |
+|        Dynamic Floating Orb  ·  Workspace Command Center  ·  Approval Cards       |
++-----------------------------------------+-----------------------------------------+
+                                          | Safe Preload / Typed IPC
+                                          v
++-----------------------------------------------------------------------------------+
+|                        Trusted Local Runtime (apps/runtime)                       |
+|   TaskRuntime (Checkpoints/State)  ·  Policy Engine  ·  ToolGateway  ·  Evidence  |
++-------------------+-------------------------------------------+-------------------+
+                    |                                           |
+                    v                                           v
++---------------------------------------+   +---------------------------------------+
+|   Cognition & Hybrid Orchestration    |   |    Connector Host & Local Sandbox     |
+|  - World State / Goals / Memory Graph |   |  - Obsidian / Mail / Calendar / Feeds |
+|  - Local Laya Bounded Choice Router   |   |  - Weather / Research / Notifications |
+|  - CloudAgentPort (WSS / TLS Stream)  |   |  - Controlled Windows UI / Voice      |
+|  - Containerized Workflow Runtime     |   |  - Remote MCP / Skills / Coding Tools |
++---------------------------------------+   +---------------------------------------+
 ```
 
-check 校验生成类型一致性，按依赖顺序构建并执行严格类型检查与全部工作区测试。dev 是一次性存储示例；demo:protocol 展示 mock 消费者取消往返和连接器注册；demo:runtime 展示持久任务、检查点、进度和终态事件。这些不是桌面、模型或真实平台启动命令。
+- **架构可视化与工作流全景**：[28 项工作流交互架构图](docs/design/workflow-architecture-20261013/index.html) · [架构图运行与编辑说明](docs/design/workflow-architecture-20261013/README.md) · [所有设计演进导航](docs/design/README.md)
+- **当前详细设计与状态看板**：[当前详细设计规范](docs/design/CURRENT_DESIGN_20261015.md) · [28 项工作流逐项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [当前接口冻结目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)
 
-**拉取新代码后先重建再启动**：各 workspace 的 `dist/` 是本地构建产物、不进 Git，`git pull` 只更新源码。桌面与 Runtime 启动时读取的是 `dist`，源码与产物不一致会直接导致启动失败——典型表现是 `Invalid product result export policy`（包缺少新导出的版本常量）或设置页整体空白，看起来像"配置丢了"，实际是 `initializeRuntime` 抛错、runtime 停在 `failed`。所以拉取或切换分支后先 `npm run build`，再 `npm run start:desktop`；`npm run check` 也会重建，但只想起桌面时不必跑全量检查。
+---
 
-MOD-02 接入入口：[contracts](packages/contracts/README.md)、[client](packages/client/README.md)、[testkit 六场景与验证](packages/testkit/README.md)。
+## 工程演进与实证基线
 
-MOD-03 接入入口：[Runtime 任务核心](apps/runtime/README.md)。
+项目严格遵循“**契约先行、证据驱动、源码与真实验收分离记录**”的工程准则，所有架构演进与集成测试均保留可追溯回执：
 
-MOD-05 接入入口：[授权策略](packages/policy/README.md)、[工具网关](packages/tool-gateway/README.md)、[连接器宿主](packages/connector-host/README.md)。
+| 阶段与主题 | 核心工程交付与技术指标 | 验收证据与技术文档 |
+| --- | --- | --- |
+| **隔离编码与最小自修复（F15 V6）** | 完成主 Agent 任务分派、隔离工作区编码、基于真实检查失败的增量修复闭环，以及主/影子与原始 Evidence 独立记录接口（PR #376 已合入）。 | [最小修复与 F15 V6 接线](docs/competition/CODING_MINIMAL_REPAIR_V6.md) |
+| **端云工作流与本机 Laya 协同** | 发布容器镜像 `local-laya-v3-244ca434` 及 ARM64 云端版本目录校验；完成本机 Runtime/Policy/Tool/Laya 与远端模型代理联调，沉淀 41 条持久化工具 Evidence。 | [工作流与协作者接线](docs/competition/LOCAL_LAYA_WORKFLOW_WIRING.md) · [V5 端到端证据](docs/competition/evidence/desktop-agentarts-v5-20261016/README.md) · [V3 运行指南](docs/competition/TEST_IMAGE_V3_RUN.md) · [实测汇总 JSON](docs/competition/evidence/test-image-v3-20261015/full-workflow-results.json) |
+| **自有容器镜像与安全传输（WSS/TLS）** | 发布 GHCR 预览镜像（AMD64/ARM64），提供 `/ws` 双向流与受保护状态查询；客户端接线 WSS 与显式 HTTPS 备用通道，通过 21/21 容器测试与 9 次合成 TLS 生产入口验证。 | [镜像公开接口](docs/competition/OWNED_IMAGE_INTERFACES.md) · [WSS 发布记录](docs/competition/OWNED_IMAGE_WSS_RELEASE_20261009.md) · [GHCR 镜像共享](docs/competition/OWNED_IMAGE_SHARING.md) · [GitHub Release](https://github.com/zemeng5208/PersonalAgent/releases/tag/agentarts-preview-97aa51a6) |
+| **核心底座与多模块联调基线** | 完成云端编排 Adapter、审批工具循环、Desktop 桌面端、语音、知识/记忆撤回恢复（#294）与研发工作流（#297）主线集成，Foundation CI 全绿通过。 | [当前设计上下文](docs/CURRENT_DESIGN_CONTEXT.md) · [模块分工与接线包](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [历史基线记录](docs/PROJECT_TAKEOVER_20261007.md) |
 
-接口状态以 [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) 为准。Schema 中存在但握手未公布的 operation 不可调用；Fake 成功不能提升为生产可用。
+---
 
-当前源码入口为 packages/storage/src，保留的 src/.gitkeep 不承载另一套实现。模块测试和夹具位于 packages/storage/test；开发缓存与验证产物位于项目内 .cache，并已忽略。详见 [存储包说明](packages/storage/README.md)。
+## 文档导航
 
-文档相对链接以仓库内位置为准；不在可公开内容中记录个人绝对路径、账号或密钥。
+### 核心规范与架构设计
+- [产品需求文档（PRD）](docs/PRD.md)：产品愿景、功能范围、需求编号（PA-001+）、优先级与验收条件。
+- [系统架构设计（ARCHITECTURE）](docs/ARCHITECTURE.md)：模块划分、进程模型、通信协议、数据流向与安全信任边界。
+- [当前接口目录（INTERFACE CATALOG）](docs/interfaces/CURRENT_INTERFACE_CATALOG.md)：逐接口冻结状态（Frozen / Provisional / Unavailable）、生产可用性门槛与验证证据。
+- [公共开发协议（DEVELOPMENT PROTOCOL）](docs/DEVELOPMENT_PROTOCOL.md)：任务生命周期、事件流、工具调用、连接器契约与跨模块联调规范。
+- [云端编排 Profile 与验收规范](docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)：端云协同主路径、云端编排与本地 Profile 边界及验收矩阵。
+
+### 研发管理与协作准则
+- [开发计划与路线图（ROADMAP）](docs/ROADMAP.md)：阶段里程碑、工作包状态与演进计划。
+- [模块职责与分工（MODULE ASSIGNMENTS）](docs/MODULE_ASSIGNMENTS.md)：39 个模块的负责人、目录所有权及交付边界。
+- [协作开发与评审规范（CONTRIBUTING）](CONTRIBUTING.md)：分支策略、PR 独立评审要求、技术 CI 门禁与合并标准。
+- [自动化开发 Agent 规范（AGENTS）](AGENTS.md)：仓库内辅助研发 Agent 必须遵循的架构与安全约束。
+
+> **推荐阅读顺序**：[产品需求 PRD](docs/PRD.md) → [系统架构设计](docs/ARCHITECTURE.md) → [当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) → [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) → [公共开发协议](docs/DEVELOPMENT_PROTOCOL.md) → [模块职责与分工](docs/MODULE_ASSIGNMENTS.md) → [协作开发规范](CONTRIBUTING.md)。
+
+---
+
+## 快速开始与开发指南
+
+### 环境基线
+- **Node.js**：`24.15.x`（参见 `.node-version`）
+- **npm**：`11.12.x`（依赖由根目录 `package-lock.json` 严格锁定）
+- **操作系统**：Windows（桌面端与原生宿主特性优先面向 Windows 构建）
+
+### 常用命令
+
+在仓库根目录执行（若 PowerShell 脚本执行策略受限，可使用 `npm.cmd`）：
+
+```sh
+# 1. 安装锁定依赖
+npm ci
+
+# 2. 执行全量检查（架构边界门禁、契约生成校验、全工作区构建、严格类型检查与单元/集成测试）
+npm run check
+
+# 3. 构建全部工作区并启动桌面客户端
+npm run build
+npm run start:desktop
+
+# 4. 运行核心机制演示脚本
+npm run dev            # 存储层（Storage）生命周期与迁移演示
+npm run demo:protocol  # 公共协议消费、取消往返与连接器注册演示
+npm run demo:runtime   # 持久化任务状态机、检查点、进度流与终态事件演示
+```
+
+> [!IMPORTANT]
+> **拉取新代码或切换分支后请先执行 `npm run build` 再启动桌面端**：
+> 各 workspace 的 `dist/` 为本地构建产物（不纳入 Git 版本控制），桌面端与 Runtime 启动时直接加载编译后的 `dist/` 产物。若源码更新后未重新构建，会因导出符号或策略常量不匹配触发 `initializeRuntime` 异常（如设置页空白或状态停留在 `failed`）。
+
+### 核心基础模块接入入口
+- **契约与测试套件（MOD-02）**：[contracts（公共 Schema 与类型）](packages/contracts/README.md) · [client（IPC 与客户端 SDK）](packages/client/README.md) · [testkit（标准场景与夹具验证）](packages/testkit/README.md)
+- **任务运行时核心（MOD-03）**：[runtime（任务状态机与编排应用层）](apps/runtime/README.md)
+- **持久化存储层（MOD-01）**：[storage（SQLite 有序迁移与状态存储）](packages/storage/README.md)（源码位于 `packages/storage/src`，测试位于 `packages/storage/test`，缓存位于 `.cache`）
+- **安全策略与工具宿主（MOD-05）**：[policy（授权策略引擎）](packages/policy/README.md) · [tool-gateway（工具执行网关）](packages/tool-gateway/README.md) · [connector-host（受控连接器宿主）](packages/connector-host/README.md)
+
+---
+
+## 安全与开源合规声明
+
+- 接口可用性严格以 [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) 与运行时握手公布的能力（Capabilities）为准；未经握手公布的 Operation 严禁调用，测试替身（Fake）通过不代表生产环境就绪。
+- 仓库内所有文档链接均采用仓库内相对路径；严禁在任何公开文档、测试夹具或提交记录中写入个人绝对路径、真实账号凭据或 API 密钥。

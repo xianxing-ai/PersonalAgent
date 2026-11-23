@@ -217,3 +217,5 @@ node packages/windows-client/scripts/capture-windows-evidence.mjs $evidence
 仅在本机保存并分享经审核的脱敏内容。脚本只保存来源、采样时间、
 Schema 校验与不可用项等脱敏元数据，不保存 CPU/内存数值、用户名或设备标识。
 这次调用直达 provider，**不验证**终端是否已提权、生产授权、capability 握手、AgentArts 或 Desktop。
+非 Windows 运行该脚本时在加载 provider 之前退出，stderr 为 `UNSUPPORTED_PLATFORM`，并且不创建输出文件。
+`test/mod16-17-offline-gates.test.mjs` 锁定该拒绝，并在 Windows 上构建运行 Host 时序 fixture。其他平台跳过时序用例，跳过不算 UIA 或设备通过。

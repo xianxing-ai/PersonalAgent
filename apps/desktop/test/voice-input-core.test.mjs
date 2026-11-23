@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createDesktopVoiceInputCore} from '../electron/voice-input-core.js';
-import {VoiceSessionManager, createVoicePcmBuffer, createVoicePcmFrameSourcePort} from '@personal-agent/voice';
+import {VoiceSessionManager, createVoiceEchoGuard, createVoicePcmBuffer, createVoicePcmFrameSourcePort} from '@personal-agent/voice';
 
 function deferred() {
   let resolve, reject;
@@ -9,7 +9,7 @@ function deferred() {
   return {promise, resolve, reject};
 }
 
-function fixture({recognizeError, speakError, autoPlay = false} = {}) {
+function fixture({recognizeError, speakError, autoPlay = false, echoGuard} = {}) {
   const calls = [];
   const fixedNow = Date.parse('2026-09-25T00:00:00.000Z');
   const ready = deferred();
@@ -51,7 +51,7 @@ function fixture({recognizeError, speakError, autoPlay = false} = {}) {
     },
     VoiceSessionManager: Manager, createConsumer: () => ({kind: 'consumer'}),
     createSpeechPorts: () => ({recognition: {}, output: {}, dispose: async () => { calls.push('dispose-ports'); }}),
-    enabled: true, autoPlay, now: () => fixedNow});
+    enabled: true, autoPlay, now: () => fixedNow, ...(echoGuard ? {echoGuard} : {})});
   return {input, calls, ready, closed, get options() { return options; }};
 }
 
@@ -420,3 +420,53 @@ test('explicit shared cancellation during final cleanup discards a draft without
 });
 
 for(const shared of [false,true])test('delayed '+(shared?'shared wake':'manual')+' dictation retains capture conversation',async()=>{let subscribed,owner='conversation-a',draft;const closed=deferred(),recognized=deferred(),started=deferred();const input=createDesktopVoiceInputCore({source:{subscribe(options){subscribed=options;return {ready:Promise.resolve(),closed:closed.promise,unsubscribe:()=>closed.resolve()};}},microphoneHost:{authorize(){},snapshot:()=>({authorized:true,subscriberCount:shared?1:0}),revoke:async()=>{}},client:{call:()=>assert.fail('no Runtime task')},createConsumer:()=>({consume:()=>assert.fail('no consumer')}),createBuffer:createVoicePcmBuffer,VoiceSessionManager,createSpeechPorts:()=>({recognition:{recognize:()=>{started.resolve();return {result:recognized.promise,stop:async()=>{}};}},output:{speak:()=>assert.fail('no speech')},dispose:async()=>{}}),enabled:true,inputMode:'dictation',readConversationId:()=>owner,onTranscript:result=>{draft=result;}});if(shared)await input.beginSharedCapture(9,{signal:new AbortController().signal,deadline:new Date(Date.now()+5000)});else await input.beginCapture(9);subscribed.onFrame({data:new Uint8Array(3200)});const finishing=input.finishCapture(9);await started.promise;owner='conversation-b';recognized.resolve({text:'原对话听写',locale:'zh-CN'});await finishing;assert.equal(draft.conversationId,'conversation-a');assert.equal(draft.senderId,9);assert.ok(draft.dictationId);assert.equal(input.hasActive(),false);await input.dispose();});
+
+test('echo guard drops dictation and does not deliver a user transcript during speech output', async () => {
+  let clock = Date.now();
+  const echoGuard = createVoiceEchoGuard({tailMs: 350, now: () => clock});
+  echoGuard.beginSpeechOutput('assistant-reply');
+  let draft = 'untouched';
+  let subscribed;
+  const closed = deferred();
+  const input = createDesktopVoiceInputCore({
+    source: {subscribe(options) { subscribed = options; return {ready: Promise.resolve(), closed: closed.promise,
+      unsubscribe: () => closed.resolve()}; }},
+    microphoneHost: {authorize() {}, snapshot: () => ({subscriberCount: 0}), revoke: async () => {}},
+    client: {call: () => assert.fail('echo must not submit a task')},
+    createConsumer: () => ({consume: () => assert.fail('echo must not consume through Runtime')}),
+    createBuffer: createVoicePcmBuffer, VoiceSessionManager,
+    createSpeechPorts: () => ({recognition: {recognize: () => ({
+      result: Promise.resolve({text: '这是扬声器回声', locale: 'zh-CN'}), stop: async () => {},
+    })}, output: {speak: () => assert.fail('dictation must not speak')}, dispose: async () => {}}),
+    enabled: true, inputMode: 'dictation', now: () => clock, echoGuard,
+    onTranscript: result => {draft = result;},
+  });
+  await input.beginCapture(9);
+  subscribed.onFrame({data: new Uint8Array(3200)});
+  const result = await input.finishCapture(9);
+  assert.equal(result.suppressed, true);
+  assert.equal(result.reason, 'during_speech_output');
+  assert.equal(result.text, undefined);
+  assert.equal(draft, 'untouched');
+  assert.equal(input.hasActive(), false);
+  await input.dispose();
+});
+
+test('playback opens and closes the echo guard even when speech fails', async () => {
+  const events = [];
+  const echoGuard = {
+    beginSpeechOutput(replyId) {events.push(['begin', replyId]); return {replyId};},
+    endSpeechOutput(replyId) {events.push(['end', replyId]); return true;},
+    inspect() {return {deliverable: true, echoSuspected: false, guardRemainingMs: 0, reason: 'no_active_output'};},
+  };
+  const f = fixture({speakError: Object.assign(Error('hidden'), {code: 'TIMEOUT'}), echoGuard});
+  const pending = f.input.beginCapture(5);
+  f.ready.resolve();
+  await pending;
+  f.options.onFrame({data: Uint8Array.of(1)});
+  const finished = f.input.finishCapture(5);
+  f.closed.resolve();
+  await finished;
+  await assert.rejects(f.input.playReply(5), /超时/);
+  assert.deepEqual(events, [['begin', 'reply-1'], ['end', 'reply-1']]);
+});

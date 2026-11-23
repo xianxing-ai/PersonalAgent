@@ -327,3 +327,67 @@ test('recovery refuses mismatched readback and never retries or exposes private 
   ui.controls.render({configured:false,canRestoreDefaultConnection:false});assert.equal(ui.restore.disabled,true);
   await ui.recover();assert.equal(calls,8,'unconfigured state cannot invent a default destination');
 });
+
+test('AgentArts observation controls save AK/SK securely and revoke without leaking secrets', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  t.after(() => { if (previous) Object.defineProperty(globalThis, 'document', previous); else delete globalThis.document; });
+  const makeNode = () => ({value: '', checked: false, disabled: false, textContent: '', listeners: new Map(), attributes: new Map(),
+    insertAdjacentHTML(_p, html) { this.insertedHtml = (this.insertedHtml ?? '') + html; },
+    isConnected: true, getClientRects: () => [{}], focus() {},
+    addEventListener(name, fn) { this.listeners.set(name, fn); },
+    setAttribute(name, value) { this.attributes.set(name, value); }});
+  const fields = Object.fromEntries(['gatewayUrl', 'runtimeName', 'deploymentVersion', 'authorization', 'transport', 'websocketUrl', 'appToken', 'allowHttpsFallback'].map(k => [k, makeNode()]));
+  const submit = makeNode(), revoke = makeNode(), restore = makeNode(), status = makeNode(), form = makeNode(), tokenHint = makeNode(), buttonGroup = makeNode(), transportState = makeNode(), wss = makeNode(), advanced = makeNode();
+  Object.assign(form, {elements: fields, querySelector: () => submit, querySelectorAll: () => [...Object.values(fields), submit, revoke, restore], reset() {}, contains: () => true});
+
+  const obsFields = Object.fromEntries(['accessKey', 'secretKey', 'securityToken', 'applicationId'].map(k => [k, makeNode()]));
+  const obsRevoke = makeNode(), obsState = makeNode(), obsStatus = makeNode(), obsForm = makeNode();
+  Object.assign(obsForm, {
+    elements: obsFields,
+    querySelectorAll: () => [...Object.values(obsFields), obsRevoke],
+    reset() { Object.values(obsFields).forEach(f => { f.value = ''; }); },
+  });
+  const obsBox = {
+    querySelector: sel => ({'[data-observation-form]': obsForm, '[data-observation-state]': obsState, '[data-observation-status]': obsStatus, '[data-observation-revoke]': obsRevoke}[sel]),
+  };
+  const section = {
+    isConnected: true, hidden: false, getClientRects: () => [{}],
+    insertAdjacentHTML(_p, html) { this.insertedHtml = (this.insertedHtml ?? '') + html; },
+    querySelector: sel => ({
+      'form': form, '[data-status]': status, '[data-wss]': wss, '[data-token-hint]': tokenHint,
+      '[data-revoke]': revoke, '[data-restore-default]': restore, '.btn-group': buttonGroup,
+      '[data-transport-state]': transportState, '[data-connection-advanced]': advanced, '[data-observation-controls]': obsBox,
+    }[sel]),
+  };
+  globalThis.document = {body: {}, activeElement: null, createElement: () => section, addEventListener() {}, removeEventListener() {}};
+
+  const calls = [];
+  const controls = mountAgentArtsControls({append() {}}, async (action, payload) => {
+    calls.push({action, payload: payload ? {...payload} : undefined});
+    if (action === 'agentarts.observation.configure') {
+      return {configured: true, applicationIdConfigured: true, applicationId: payload.applicationId, reason: '观测凭据已加密保存'};
+    }
+    if (action === 'agentarts.observation.revoke') {
+      return {configured: false, applicationIdConfigured: false, applicationId: '', reason: '已清除本机观测 AK/SK'};
+    }
+    return {};
+  });
+  assert.match(section.insertedHtml, /data-observation-form/);
+  controls.render({configured: false, observation: {configured: false, applicationIdConfigured: false, reason: '未配置观测 AK/SK'}});
+  assert.equal(obsRevoke.disabled, true);
+  obsFields.accessKey.value = 'SYNTHETICAK123456';
+  obsFields.secretKey.value = 'synthetic-secret-key-0123456';
+  obsFields.applicationId.value = 'app-sync-01';
+  await obsForm.listeners.get('submit')({preventDefault() {}});
+  assert.equal(calls[0].action, 'agentarts.observation.configure');
+  assert.equal(calls[0].payload.accessKey, 'SYNTHETICAK123456');
+  assert.equal(calls[0].payload.applicationId, 'app-sync-01');
+  assert.equal(obsFields.secretKey.value, '');
+  assert.match(obsStatus.textContent, /已加密保存/);
+  assert.doesNotMatch(obsStatus.textContent, /synthetic-secret-key/);
+  assert.equal(obsRevoke.disabled, false);
+  await obsRevoke.listeners.get('click')();
+  assert.deepEqual(calls[1], {action: 'agentarts.observation.revoke', payload: undefined});
+  assert.match(obsStatus.textContent, /已清除/);
+  assert.equal(obsRevoke.disabled, true);
+});

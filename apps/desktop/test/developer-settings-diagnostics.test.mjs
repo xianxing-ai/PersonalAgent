@@ -71,7 +71,7 @@ test('Synthetic Main distinguishes an unselected workspace from a saved selectio
   for(const [configured,code]of [[false,'DEV_SETTINGS_WORKSPACE_REQUIRED'],[true,'DEV_SETTINGS_WORKSPACE_RESTART_REQUIRED']]){
     f.setWorkspace(false,configured);
     const reply=await f.ipc({sender:f.admin},'developer.settings.configure',f.request());
-    assert.equal(reply.ok,false);assert.equal(reply.diagnostic.code,code);assert.match(reply.error,/开发 → 环境 \/ Worktrees/);
+    assert.equal(reply.ok,false);assert.equal(reply.diagnostic.code,code);assert.match(reply.error,/设置 → 工作文件夹/);
     assert.equal(f.settings.snapshot().workspace.requiresRestart,configured);noPrivateData(reply,f);
   }
   assert.equal(existsSync(path.join(f.userData,'developer-settings.json')),false);
@@ -121,7 +121,7 @@ test('Synthetic actual admin form receives the safe Main diagnosis, clears crede
   t.after(()=>{if(original===undefined)delete globalThis.document;else globalThis.document=original;});
   const control=mountDeveloperControls({append(){}},f.invoke);t.after(()=>control.close());
   control.render({configuration:f.configuration,workspace:{selected:false,requiresRestart:true}});
-  assert.match(element('[data-developer-workspace]').textContent,/开发 → 环境 \/ Worktrees/);
+  assert.match(element('[data-developer-workspace]').textContent,/设置 → 工作文件夹/);
   element('[data-developer-enabled]').checked=true;element('allowedPaths').value='not-there.md';element('token').value=f.secret;
   await handlers.get('form:submit')({preventDefault(){}});
   assert.match(element('[data-developer-feedback]').textContent,/DEV_SETTINGS_ALLOWED_FILE_UNAVAILABLE/);

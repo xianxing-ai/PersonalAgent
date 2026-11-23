@@ -201,7 +201,10 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
       return true;
     } catch (error) {
       if (!current(scope) || request !== listVersion) return false;
-      setAvailable(false, `持续目标尚未接通：${message(error)}`);
+      const raw = message(error);
+      const hint = /尚未启动|未配置|不可用|CONFIGURATION|EXTERNAL_FAILURE/.test(raw)
+        ? '请先在「设置 -> 模型」配置并连接 AgentArts 主智能体后再管理持续目标。' : raw;
+      setAvailable(false, `持续目标尚未接通：${hint}`);
       return false;
     }
   }

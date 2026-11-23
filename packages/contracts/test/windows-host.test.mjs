@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {FrameDecoder, MAX_FRAME_BYTES} from '../dist/index.js';
 import {encodeWindowsHostFrame, parseWindowsHostFrame, validateWindowsHostHandshake,
   validateWindowsHostObservation, validateWindowsHostRecoveredResult, validateWindowsHostResult,
-  validateWindowsHostStatus} from '../dist/windows-host.js';
+  validateWindowsHostStatus, validateWindowsHostTargetReady} from '../dist/windows-host.js';
 
 const t0 = '2026-09-25T12:00:00.000Z';
 const t1 = '2026-09-25T12:01:00.000Z';
@@ -104,6 +104,35 @@ test('malformed and capability-forged frames fail closed', () => {
     {...result, finishedAt: '2026-09-25T11:59:00.000Z'},
   ]) assert.throws(() => parseWindowsHostFrame(frame));
   assert.deepEqual(parseWindowsHostFrame({...result, state: 'result_unknown', errorCode: 'RESULT_UNKNOWN'}).state, 'result_unknown');
+});
+
+test('target readiness stays correlated and fail-closed before approval', () => {
+  const request = {kind: 'target_ready', ...base, sessionId: ack.sessionId,
+    targetRef: observed.targetRef, deadline: t1};
+  const fresh = {kind: 'target_ready_result', ...base, sessionId: ack.sessionId,
+    targetRef: observed.targetRef, ready: true, expiresAt: t1};
+  const stale = {kind: 'target_ready_result', ...base, sessionId: ack.sessionId,
+    targetRef: observed.targetRef, ready: false, errorCode: 'TARGET_STALE'};
+  const expired = {...stale, errorCode: 'TIMEOUT'};
+  validateWindowsHostTargetReady(request, fresh);
+  validateWindowsHostTargetReady(request, stale);
+  validateWindowsHostTargetReady(request, expired);
+  assert.deepEqual(parseWindowsHostFrame(fresh).ready, true);
+  assert.equal(parseWindowsHostFrame(stale).errorCode, 'TARGET_STALE');
+  for (const changed of [{requestId: 'other'}, {sessionId: 'other'},
+    {targetRef: 'opaque-notepad-2'}, {protocolVersion: '0.0.0'}]) {
+    assert.throws(() => validateWindowsHostTargetReady(request, {...fresh, ...changed}),
+      {code: 'INVALID_ARGUMENT'});
+  }
+  for (const forged of [
+    {...fresh, errorCode: 'TARGET_STALE'},
+    {...stale, expiresAt: t1},
+    {...fresh, ready: 'true'},
+    {...stale, errorCode: 'SUCCESS'},
+    {...request, hwnd: 1},
+    {...fresh, text: 'private-window'},
+    {...request, deadline: '2026-02-30T12:00:00.000Z'},
+  ]) assert.throws(() => parseWindowsHostFrame(forged), {code: 'INVALID_ARGUMENT'});
 });
 
 test('private action frame enforces the common 1 MiB JSONL bound', () => {

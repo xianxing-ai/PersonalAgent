@@ -13,8 +13,27 @@ export function projectSubagentActivity({tasks, surface, visible, readChildren, 
     .sort((a,b)=>String(b.updatedAt??'').localeCompare(String(a.updatedAt??'')));
 }
 
-/** Read-only task detail. The public Runtime snapshot is not a complete model transcript. */
-export async function readSubagentConversation({payload, tasks, readChildren, readTask}) {
+const SECRET = /(?:bearer\s+)[a-z0-9._\-]{8,}|(?:sk|rk|pk)-[a-z0-9_\-]{8,}|(?:api[_-]?key|token|secret|password)\s*[:=]\s*\S+/gi;
+const FAILURES = {
+  TIMEOUT: '这一步超时了，可以稍后再试。',
+  CANCELLED: '已停止。',
+  UNAUTHORIZED: '没有通过授权，这次没有继续执行。',
+  SCOPE_DENIED: '当前权限不够，这次没有执行。',
+  UNSUPPORTED_CAPABILITY: '当前环境还不支持这一步。',
+  EXTERNAL_FAILURE: '外部服务没有成功返回，可以稍后再试。',
+  RESULT_UNKNOWN: '结果还不能确定，需要先核对，不会自动重做。',
+  REVISION_CONFLICT: '原来的记录已经变了，请刷新后再试。',
+};
+function publicFailure(error) {
+  const code = error?.code;
+  return {code, retryable: Boolean(error?.retryable), message: FAILURES[code] ?? '这次没有完成，请稍后再试。'};
+}
+function redact(value) {
+  return typeof value === 'string' ? value.replace(SECRET, '[密钥已隐藏]') : value;
+}
+
+/** Read-only task detail. Transcript text is already redacted by the runtime. */
+export async function readSubagentConversation({payload, tasks, readChildren, readTask, readTranscript}) {
   const validId = value => typeof value === 'string' && value.trim().length > 0 && value.trim() === value;
   if (!payload || Array.isArray(payload) || typeof payload !== 'object'
     || Object.keys(payload).some(key => !['parentTaskId', 'taskId'].includes(key))
@@ -41,11 +60,10 @@ export async function readSubagentConversation({payload, tasks, readChildren, re
     ...(child.reasoningEffort ? {reasoningEffort: child.reasoningEffort} : {}), state: task.state,
     ...(typeof task.goal === 'string' ? {goal: task.goal} : {}),
     ...(typeof task.resultSummary === 'string' ? {resultSummary: task.resultSummary} : {}),
-    ...(task.error ? {error: {code: task.error.code, retryable: task.error.retryable,
-      message: '子任务返回错误，详细错误信息已隐藏'}} : {}),
+    ...(task.error ? {error: publicFailure(task.error)} : {}),
     evidenceRefCount: Array.isArray(task.evidenceRefs) ? task.evidenceRefs.length : 0,
-    steps: (task.steps ?? []).map(step => ({label: step.label, state: step.state})),
-    transcriptAvailable: false,
+    steps: (task.steps ?? []).map(step => ({label: redact(step.label), state: step.state})),
+    ...(typeof readTranscript === 'function' ? {transcript: await readTranscript(taskId), transcriptAvailable: true} : {transcriptAvailable: false}),
   };
 }
 

@@ -12,10 +12,10 @@ function deferred() {
 function fixture(t,invoke) {
   const original=Object.getOwnPropertyDescriptor(globalThis,'document');
   t.after(()=>{if(original)Object.defineProperty(globalThis,'document',original);else delete globalThis.document;});
-  const fields=Object.fromEntries(['open','disable','status'].map(key=>[key,{
-    disabled:false,textContent:'',attributes:new Map(),setAttribute(name,value){this.attributes.set(name,value);},
+  const fields=Object.fromEntries(['open','disable','status','plan','decompose'].map(key=>[key,{
+    disabled:false,hidden:false,textContent:'',attributes:new Map(),setAttribute(name,value){this.attributes.set(name,value);},
   }]));
-  const section={setAttribute(){},querySelector(selector){return fields[/data-goal-cloud="([^"]+)"/.exec(selector)[1]];}};
+  const section={setAttribute(){},querySelector(selector){const match=/data-goal-cloud="([^"]+)"/.exec(selector);return match?fields[match[1]]:undefined;}};
   globalThis.document={createElement:()=>section};
   const host=createDesktopGoalCloudHost({goalHost:createGoalHost('synthetic-cloud-ui'),namespace:'synthetic-cloud-ui'});
   host.bindApplication({profile:'huawei_ict_agentarts',runtime:{}});

@@ -1,6 +1,6 @@
 # IMAGE28 协作者待办清单（2026-10-31）
 
-> **临时接管**：依 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 文首的用户授权，下列所有开发缺口统一由 Codex 接手；原分区用于保留来源和交接上下文。#531 仍须完成全部接线及真实验收才可合并，未满足项不得勾选为完成。
+> **已恢复按模块分工**。下列开发缺口按 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 的各模块负责人交付。#531 仍须完成全部接线及真实验收才可合并，未满足项不得勾选为完成。
 
 > Profile：`huawei_ict_agentarts`。归属与开放缺口登记（可随分工文档合入 main）。  
 > 接线代码在 [#531](https://github.com/xianxing-ai/PersonalAgent/pull/531) / `codex/image28-full-wiring`，**接线未完成前勿合并该 PR**。  

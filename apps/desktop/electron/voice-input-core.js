@@ -1,3 +1,5 @@
+import {createVoiceEchoGuard} from '@personal-agent/voice';
+
 const CAPTURE_MS = 60_000;
 const SESSION_MS = 10 * 60_000;
 const VOICE_ERROR_CODES = new Set(['INVALID_ARGUMENT', 'INVALID_STATE', 'UNSUPPORTED_CAPABILITY',
@@ -14,9 +16,10 @@ function safeFailure(error) {
 export function createDesktopVoiceInputCore({source, microphoneHost, client, createBuffer,
   VoiceSessionManager, createConsumer, createSpeechPorts, onUpdate = () => {},
   enabled = false, autoPlay = false, inputMode = 'conversation', onTranscript = () => {}, readConversationId,
-  onTaskSubmitted = () => {}, now = Date.now}) {
+  onTaskSubmitted = () => {}, now = Date.now, echoGuard}) {
   if (!['conversation', 'dictation'].includes(inputMode)) throw Error('无效的语音输入模式');
   if(readConversationId!==undefined&&typeof readConversationId!=='function')throw Error('语音会话归属读取器无效');
+  const guard = echoGuard ?? createVoiceEchoGuard({now});
   const ports = createSpeechPorts();
   const manager = new VoiceSessionManager({recognition: ports.recognition, output: ports.output});
   const voiceClient = {async call(operation, payload, options) {
@@ -219,6 +222,14 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       stage = 'recognition';
       const transcript = await manager.recognizeAudio(record.sessionId, clip);
       clip.data.fill(0);
+      const echo = guard.inspect(now());
+      if (!echo.deliverable) {
+        await cleanup(record);
+        lastError = '播报期间的语音不作为用户输入';
+        lastFailure = {stage: 'echo_guard', code: 'INVALID_STATE', message: lastError};
+        publish();
+        return {suppressed: true, reason: echo.reason, voice: snapshot()};
+      }
       if (inputMode === 'dictation') {
         let text;
         stage = 'dictation';
@@ -270,6 +281,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
     record.replyId = undefined;
     record.phase = 'speaking';
     publish();
+    const speech = guard.beginSpeechOutput(replyId);
     try {
       const result = await manager.speakReply(record.sessionId, replyId);
       await cleanup(record);
@@ -281,6 +293,8 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       try { await cleanup(record); }
       catch (releaseError) { recordFailure('cleanup', releaseError, '语音资源释放未确认'); }
       throw Error(lastError);
+    } finally {
+      guard.endSpeechOutput(speech.replyId);
     }
   }
 

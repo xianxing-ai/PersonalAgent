@@ -92,6 +92,7 @@ async function launchDesktop(userData, diagnostics) {
       PANGU_API_KEY: undefined,
     },
   });
+  try {
   trackOwnedDesktop(app,{executablePath,mainProcessId:await evaluateBounded(app,()=>process.pid)},attempt,started);
   app.context().setDefaultTimeout(15_000);
   if(process.env.PA_DESKTOP_TRACE_WINDOW_LIFECYCLE==='1'){
@@ -117,6 +118,10 @@ async function launchDesktop(userData, diagnostics) {
   const panel = await pageFor(app, 'panel');
   await panel.waitForSelector('#send');
   return {app, orb, panel,attempt};
+  }catch(error){
+    try{await closeDesktop(app);}catch(cleanupError){throw new AggregateError([error,cleanupError],'Owned Desktop startup and cleanup failed');}
+    throw error;
+  }
 }
 
 async function openAdmin(app, panel) {

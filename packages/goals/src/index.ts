@@ -149,3 +149,6 @@ export type {
   PlanPrivacyDeletionAcceptanceOptions,
   RealPrivacyAcceptanceEvidence,
 } from './privacy-deletion-acceptance-plan.js';
+
+export {decomposeGoal} from './decompose.js';
+export type {PlannedSubtask} from './decompose.js';

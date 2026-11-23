@@ -132,6 +132,8 @@ export interface SubagentHostOptions {
   runDefaultWorker?: ((subtask: SubtaskDefinition, worker: WorkerContext, tools: AgentToolPort) => Promise<WorkerResult>) | undefined;
   /** Trusted host may narrow tools per role/child; this never creates authorization. */
   getToolsForSubtask?: ((subtask: SubtaskDefinition, worker: WorkerContext) => AgentToolPort | undefined) | undefined;
+  /** Confirmed preference text for this child. Empty or absent leaves the role prompt unchanged. */
+  readPromptPreferences?: (input: {goal: string; audience: 'primary' | 'subagent'}) => string | undefined;
   /** Trusted worker capability resolves its original nested input; the common approval guard below still runs. */
   resolveWorkerApproval?:(taskId:string,proposal:unknown)=>{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined;
   now?: (() => number) | undefined;
@@ -263,8 +265,13 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
       reason: identity.nativeReasoning !== undefined ? 'Version-bound native configuration is independent of the step budget'
         : reasoningEffort !== undefined ? 'Trusted host explicitly configured this reasoning_effort'
         : requestedEffort === undefined ? 'No native reasoning effort selected' : 'Selected effort is not configured for this model'}});
+  let preferenceText = '';
+  try {
+    const value = options.readPromptPreferences?.({goal: subtask.goal, audience: 'subagent'});
+    if (typeof value === 'string' && value.trim() && value.trim().length <= 2_000) preferenceText = value.trim();
+  } catch { preferenceText = ''; }
   const rolePrompt: ModelMessage = {role: 'system',
-    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。`};
+    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。${preferenceText ? `\n\n${preferenceText}` : ''}`};
   const outcome = await runAgent(childWorker, {goal: subtask.goal, initialMessages: [rolePrompt], model,
     tools,
     maxSteps,
@@ -709,6 +716,7 @@ export interface DesktopSubagentDispatchToolOptions {
   runDefaultWorker?: SubagentHostOptions['runDefaultWorker'];
   getToolsForSubtask?: SubagentHostOptions['getToolsForSubtask'];
   getModelConfigurationRef?:SubagentHostOptions['getModelConfigurationRef'];
+  readPromptPreferences?: SubagentHostOptions['readPromptPreferences'];
   modelConfig?: {
     baseUrl?: string;
     model?: string;
@@ -733,6 +741,7 @@ export function createDesktopSubagentDispatchTool(options: DesktopSubagentDispat
     runDefaultWorker: fakeModelMode ? undefined : options.runDefaultWorker,
     getToolsForSubtask: options.getToolsForSubtask,
     getModelConfigurationRef:options.getModelConfigurationRef,
+    ...(options.readPromptPreferences ? {readPromptPreferences: options.readPromptPreferences} : {}),
     getModelGateway: (modelName?: string) => {
       if (fakeModelMode) {
         return new ModelGateway(new FakeModelProvider(

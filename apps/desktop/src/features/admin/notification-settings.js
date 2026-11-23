@@ -6,9 +6,9 @@ export function mountNotificationSettings(root, invoke) {
     <form data-notifications="form" class="settings-form">
     <label>通知范围<select name="scope"><option value="global">所有应用</option><option value="connector">指定应用</option><option value="responsibility">指定任务（高级）</option></select></label>
     <label data-notifications="connector-field" hidden>选择应用<select name="connector"><option value="mail">邮件</option><option value="calendar">日历</option><option value="productivity">待办</option><option value="feeds">订阅</option><option value="weather">天气</option></select></label>
-    <label data-notifications="responsibility-field" hidden>任务标识<input name="responsibility" maxlength="256"></label>
+    <label data-notifications="responsibility-field" hidden>哪一项任务<input name="responsibility" maxlength="256"></label>
     <label>提醒方式<select name="mode" required><option value="normal">正常提醒</option><option value="silent">静默收集</option></select></label>
-    <label>提醒通道<select name="channel" required><option value="banner">系统横幅</option><option value="auto">自动选择</option><option value="voice">语音（待设备接线）</option></select></label>
+    <label>提醒通道<select name="channel" required><option value="banner">系统横幅</option><option value="auto">自动选择</option><option value="voice" disabled>语音（暂不可用）</option></select></label>
     <p class="notice">默认启用系统横幅，不限制提醒次数。高级参数已填好，可直接保存。</p>
     <details style="grid-column:1/-1"><summary>高级设置：频率、摘要与安静时段</summary><div class="settings-form">
     <button type="button" data-notifications="load">重新读取当前设置</button>

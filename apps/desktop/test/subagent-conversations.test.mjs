@@ -79,7 +79,7 @@ test('workspace retains caller recency order, shows at most six entries and keep
   assert.match(ui.entry(0).attrs.title, /子任务 task-0/);
   assert.match(ui.entry(5).attrs.title, /子任务 task-5/);
   assert.equal(ui.entry(0).type, 'button'); // Native Enter/Space activation.
-  assert.equal(ui.section.children.length, 4); // Entries + status + history link + collapse, no inline detail.
+  assert.equal(ui.section.children.length, 2); // Entries and status. Extra refresh and window controls are gone.
   assert.equal(ui.calls.length, 0);
   assert.equal(ui.document.head.children.length, 1);
 });
@@ -188,7 +188,7 @@ test('refreshes ignore older replies and reject a different child identity', asy
   await settle();
   assert.match(ui.content().textContent, /新快照/);
   assert.ok(!ui.content().textContent.includes('旧快照'));
-  await ui.button('刷新子对话').onclick();
+  await ui.refresh();
   assert.match(ui.status().textContent, /当前窗口不匹配/);
   assert.ok(!ui.content().textContent.includes('其他子任务回答'));
 });
@@ -230,7 +230,6 @@ test('page read and navigation errors stay visible and permit retry', async t =>
   assert.match(ui.content().textContent, /保存的回答/);
   await ui.button('返回主对话').onclick();
   assert.match(ui.status().textContent, /无法返回主对话：主对话不可用/);
-  assert.equal(ui.button('刷新子对话').disabled, false);
   assert.equal(ui.button('关闭子对话').disabled, false);
   failNavigation = false;
   await ui.button('返回主对话').onclick();
@@ -398,17 +397,16 @@ test('availability reasons and active-task notices preserve failed-send feedback
   active = true;
   await ui.refresh();
   assert.equal(ui.sendStatus().textContent, feedback);
-  assert.match(ui.root.textContent, /当前任务正在执行或等待结果/);
+  assert.match(ui.root.textContent, /正在工作，现在发送会插到下一步/);
   assert.equal(ui.input().value, '需要保留的草稿');
 });
 
-test('more opens all historical children without payload even when the current cache is empty', async t => {
+test('the workspace list no longer opens a second all-children window', t => {
   const ui = fixture(t);
-  ui.update([]);
-  assert.equal(ui.section.hidden, false);
-  assert.equal(ui.button('更多').attrs['aria-label'], '查看全部子智能体');
-  await ui.button('更多').onclick();
-  assert.deepEqual(ui.calls, [{name: 'subagentConversations.openAll', payload: undefined}]);
+  ui.update([child('a')]);
+  assert.equal(ui.button('更多'), undefined);
+  assert.equal(ui.button('收起'), undefined);
+  assert.equal(ui.calls.length, 0);
 });
 
 test('stop truncates locally: send is usable before the host confirms and survives a stale refresh', async t => {
@@ -447,10 +445,9 @@ test('a stop message with nothing running says so without calling the host', asy
   assert.match(ui.sendStatus().textContent, /当前没有正在执行的任务/);
 });
 
-test('workspace collapse closes every child window in one action', async t => {
+test('workspace collapse is not a separate control beside the assistant list', t => {
   const ui = fixture(t, 'workspace', () => ({closed: 3}));
   ui.update([child('a')]);
-  await ui.button('收起').onclick();
-  assert.deepEqual(ui.calls.at(-1), {name: 'subagentConversations.collapseAll', payload: undefined});
-  assert.match(ui.status().textContent, /已收起 3 个子对话窗口/);
+  assert.equal(ui.button('收起'), undefined);
+  assert.equal(ui.calls.length, 0);
 });

@@ -28,7 +28,8 @@ function parserSnapshot() {
   const source = readFileSync(new URL('../../../../packages/coordination/dist/agentarts.js', import.meta.url), 'utf8');
   const diagnosticCodeStart = source.indexOf('function diagnosticProviderErrorCode');
   const start = diagnosticCodeStart >= 0 ? diagnosticCodeStart : source.indexOf('class TextCollector');
-  const end = source.indexOf('function defaultFetch', start);
+  const exportedParser = source.indexOf('export async function parseAgentArtsResponseText', start);
+  const end = exportedParser >= 0 ? exportedParser : source.indexOf('function defaultFetch', start);
   const objectStart = source.indexOf('function asPlainObject');
   const objectEnd = source.indexOf('function validateRequest', objectStart);
   const limit = source.match(/const MAX_TEXT_CHARS = (\d[\d_]*);/);

@@ -179,7 +179,7 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
     getLegacyPolicy: scope => current().getLegacyPolicy(scope),
     acknowledgeRead(input) {const result = current().acknowledgeRead(input); publish(); return result;},
     getDigest(input) {return current().getDigest(input);},
-    async deliverBatch({batchId, scope, expiresAt, title, body, source}) {
+    async deliverBatch({batchId, scope, expiresAt, title, body, source, navigation}) {
       const service = current(), policy = service.getInterruptionPolicy(scope);
       const channelName = policy.effective?.preferredChannel === 'voice' ? 'voice' : 'banner';
       const roundId = 'desktop-batch-' + digest(batchId);
@@ -190,9 +190,9 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       const round = previous ?? service.reserveInterruption({roundId, batchIds: [batchId], scope,
         channels: [channelName], expiresAt});
       if (!round.counted) return round;
-      return api.deliverRound({roundId, channel: channelName, title, body, source});
+      return api.deliverRound({roundId, channel: channelName, title, body, source, navigation});
     },
-    async deliverRound({roundId, channel: channelName, title, body, source}) {
+    async deliverRound({roundId, channel: channelName, title, body, source, navigation}) {
       if (channelName !== 'banner') return {state: 'unavailable', reason: 'notification_voice_delivery_unavailable'};
       if (typeof title !== 'string' || !title.trim() || title.length > 200
         || typeof body !== 'string' || !body.trim() || body.length > 2000) throw Error('通知展示内容无效');
@@ -203,7 +203,7 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       if (!begun.maySend) return begun.round;
       const id = channelId(roundId); deliveries.set(id, roundId);
       try {
-        await channel.sendAdvisoryNotification({id, title, body, source, roundId});
+        await channel.sendAdvisoryNotification({id, title, body, source, roundId, ...(navigation ? {navigation} : {})});
         const outcome = channel.readDeliveryOutcome(id);
         if (outcome && ['delivered', 'failed'].includes(outcome.deliveryState)) return recordOutcome(roundId);
       } catch { /* The OS may already have accepted it. Persist unknown and read the original port. */ }

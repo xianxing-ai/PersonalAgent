@@ -137,3 +137,34 @@ test('direct product entry todo.create and todo.update persist to storage and re
   assert.equal(target.status, 'done');
 });
 
+
+
+test('Runtime and Policy preserve the changed reminder when an approved update carries a stale revision',async t=>{
+  const f=await fixture(t);
+  await f.tool('todo.create',{title:'Original',remindUtc:'2026-09-27T10:01:00.000Z'});
+  const original=f.host.snapshot().items[0];
+  await f.tool('todo.update',{id:original.id,expectedRevision:original.revision,title:'User edit',remindUtc:'2026-09-27T10:02:00.000Z'});
+  const changed=f.host.snapshot().items[0];
+  const before=structuredClone(f.app.runtime.listSchedules('desktop-todo-reminders:test-user'));
+  assert.ok(before.length>0);
+  f.host.authorize({readAndCloudConsent:true});
+  const tool=f.host.tools.find(item=>item.descriptor.name==='todo.update'),commandId=crypto.randomUUID();
+  const task=f.app.prepareHostToolTask({commandId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+    deadline:'2026-09-27T10:00:30.000Z'});
+  f.app.finalizeHostToolTask({commandId,taskId:task.taskId,expectedTaskRevision:task.revision,
+    arguments:{id:original.id,expectedRevision:original.revision,clearReminder:true}});
+  await until(()=>f.app.readHostToolTask(task.taskId).approval?.state==='pending');
+  const approval=f.app.readHostToolTask(task.taskId).approval,client=new Client(f.app,()=>Date.parse('2026-09-27T10:00:00.000Z'));
+  await client.connect();
+  await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+  await until(()=>['failed','succeeded','waiting_reconciliation'].includes(f.app.runtime.getTask(task.taskId).state));
+  // Runtime conservatively treats any exception after a write starts as unknown.
+  assert.equal(f.app.runtime.getTask(task.taskId).state,'waiting_reconciliation');
+  assert.equal(f.app.runtime.getTask(task.taskId).error.code,'RESULT_UNKNOWN');
+  const executions=f.app.runtime.readToolExecutions(task.taskId);
+  assert.equal(executions.length,1);
+  assert.equal(executions[0].state,'unknown');
+  assert.equal(executions[0].executionStarted,true);
+  assert.deepEqual(f.host.snapshot().items[0],changed);
+  assert.deepEqual(f.app.runtime.listSchedules('desktop-todo-reminders:test-user'),before);
+});

@@ -87,7 +87,7 @@ node tests/manual/agentarts/support/fixed-synthetic-batch.mjs --deadline $evalua
 - 不提供基线对照、重复统计、模型质量结论、AgentArts deployment/API/trace/usage 或成本证据。
 - `CoordinationPort` 仍为 provisional；离线 Fake 通过不改变 AgentArts 的真实可用性状态。
 
-### 固定合成最小修复评估（2026-10-07，PR #302 未合并增量）
+### 固定合成最小修复评估（2026-10-07 增量；#302 已于 `cc64ebdf` 进入 main）
 
 新增 [修复 runner](../../tests/manual/agentarts/support/fixed-synthetic-repair-batch.mjs)
 `runFixedSyntheticRepairBatch(port, {deadline, signal, repetitions})`，不改变上方分类 runner。
@@ -119,7 +119,7 @@ Fact/Goal/Decision/Plan 世界与一般最小修复规则：依赖链、并列�
 正式夹具集成后，新 runner 的定向测试 12/12 通过，无跳过；仅运行本批 runner，
 未重复旧分类/配对绿色测试，也未运行真实平台、整仓检查或 GUI。
 
-### 有界配对修复质量对照（2026-10-07，PR #302 未合并增量）
+### 有界配对修复质量对照（2026-10-07 增量；#302 已于 `cc64ebdf` 进入 main）
 
 [配对修复入口](../../tests/manual/agentarts/support/paired-synthetic-repair-batch.mjs)
 `runPairedSyntheticRepairBatch({candidate, baseline}, {deadline, signal, repetitions})`

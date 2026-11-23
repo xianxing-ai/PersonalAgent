@@ -48,6 +48,8 @@ MOD-20 · 待办与提醒（PA-009，P0）。负责人 `Potatos498`，评审者 
 
 `register(host, options)`：`options.storage`（StoragePort，必填）与 `options.conversationId`（必填）缺失时抛 `INVALID_ARGUMENT`，不静默降级。时间入参三选一规则：`xxxCtc` 与 `xxxLocal + xxxTimeZone` 恰好提供一组。
 
+`TodoUpdateInput` / `todo.update` 的可选 `expectedRevision` 为正整数。现有同步更新先核对原 revision，再写入；不匹配返回 `REVISION_CONFLICT`，不会清除或改变当前提醒。省略时保持原更新行为。使用此条件的已确认调用仍由原 Runtime 结果读回；不能通过删去条件或更换 ID 重发未知操作。这是本机单进程同步读写边界，不声明跨进程存储事务。
+
 ### 时间语义（DST 边界）
 
 - Z、数值偏移与本地时间输入均先校验公历年月日及闰年，不将 2 月 30 日等非法日期静默正规化为下月；非法创建或修改返回 `INVALID_ARGUMENT`，保留原条目与提醒触发定义。已被旧版本保存为其他日期的提醒无法反推原意，须由用户明确改期，不自动迁移。

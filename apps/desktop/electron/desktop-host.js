@@ -193,7 +193,15 @@ export function createDesktopHost() {
   screen.on('display-removed', reposition);
   screen.on('display-metrics-changed', reposition);
   try { shortcut(state.value.settings.shortcut); } catch { state.update({shortcut:false}); log('shortcut-unavailable','desktop-settings'); }
-  return {attach, restore, openSettings, logAgentArtsFailure,
+  function updateAppearance(patch) {
+    const settings = state.update({theme: patch.theme, calm: patch.calm === true});
+    for (const {win} of windows.values()) {
+      if (!win.isDestroyed()) win.webContents.send('desktop:preferences', {settings, locale: app.getLocale()});
+    }
+    log('appearance-saved', 'admin');
+    return settings;
+  }
+  return {attach, restore, openSettings, updateAppearance, logAgentArtsFailure,
     loginItemSnapshot:loginItem.snapshot,readLoginItem:loginItem.read,configureLoginItem:loginItem.configure,
     hasSavedBounds: mode => Boolean(state.value.windows[mode]),
     logVoicePlayback(phase) {

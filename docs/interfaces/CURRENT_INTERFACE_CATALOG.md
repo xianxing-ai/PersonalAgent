@@ -1,5 +1,35 @@
 # 当前接口目录与冻结登记
 
+> 待办条件更新（provisional）：MOD-20 的 todo.update 与 TodoUpdateInput 接受可选正整数 expectedRevision；与当前条目 revision 不一致时返回 REVISION_CONFLICT，保留原条目及提醒。未提供时保留旧行为。该检查仅覆盖现有单进程同步存储边界，不声明跨进程事务；F11 的工作流接线与真实服务验收另行交付。
+
+## 2026-11-11 失败自愈决策（provisional）
+
+`@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
+
+## 2026-11-11 用户风险档（provisional）
+
+`@personal-agent/autonomy` 提供保守 / 平衡 / 自主三档。Runtime 默认使用自主档；传入 `riskAutonomy: false` 时仍只按 `automaticTools`。分类表中的低风险直接做，有补偿的中风险在成功后经现有桌面通知端口投递，点击通知才执行已保存的补偿。未列入分类表的工具继续沿用 `automaticTools`。设置写入桌面加密记录，不新增 wire 或数据库迁移。设置页只有档位、两类覆盖、一个撤销按钮和最近记录。这不提升 Policy 或通知渠道的冻结状态。说明见 [MOD-28-RISK-AUTONOMY-01](../modules/MOD-28-RISK-AUTONOMY-01.md) 和 [ADR-0043](../adr/0043-user-risk-autonomy.md)。
+
+## 2026-11-11 活动时间线（provisional）
+
+`@personal-agent/activity` 提供 CW-05 的只追加活动记录。每条有时间、来源、动作摘要、风险、结果，以及触发原因和决策依据。摘要不收录消息正文或参数明文。撤销只在记录了补偿动作、且该来源的补偿执行器已经接入时可用；撤销另写一条结果，不改原行。当前生产接线只有插件目录的安装、启用、停用和卸载。自动执行（#630）、主动触发（#631）和失败自愈（#633）使用同包适配函数，不依赖尚未合入的实现。这不提升 Policy、Runtime、插件目录或 AgentArts 的冻结等级。说明见 [活动时间线](../modules/CW-05-ACTIVITY-TIMELINE.md)。
+
+## 2026-11-11 来源变化触发层（provisional）
+
+`@personal-agent/cognition` 新增可选工厂 `createProactiveSourceTrigger`。它只消费公开 `calendar.events` / `mail.inbox` 的 `ConnectorItem` 页，以及用户显式授权目录的只读枚举；首次成功读取只建基线。去重、限流和静默时段之后，把任务提案交给现有 Laya 动作选择。低风险且选择结果允许进入运行时的，调用注入的任务 `submit`；高风险只创建待审批请求，匹配的 `allowed` 决定才按原幂等键提交。`submitted` 不是任务完成。
+
+Desktop 宿主在启动后按用户设置轮询，并把低风险提案交给现有 `task.submit`。改期和写操作使用现有 `requestToolApproval` 审批卡；批准时的 revision 与参数摘要必须和提案一致才提交。`resumeTask` 对检查点 `proactive-source-gate` 直接返回，避免审批载体被当成普通对话重跑。这是 Runtime Application 的最小钩子，Policy 核心未改。PR #630 的自主档包尚未进入 main，这里只留 `risk.decide()` 适配点，不复制其实现。设置页在「连接与提醒」，没有新导航。离线测试不提升冻结等级，也不证明真实日历、邮箱、本机目录或 Laya 模型可用。边界见 [CW-03 来源触发](../modules/CW-03-PROACTIVE-SOURCE-TRIGGER.md)。
+
+## 隔离修复只读补丁范围核对（provisional）
+
+隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
+
+## 2026-11-11 插件精选目录（provisional）
+
+`@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
+
+同一目录上的权限清单和运行时沙箱仍是 `provisional`。每个条目用 `permissionManifest` 声明网络主机、插件数据路径、连接器标识和密钥名；当前精选条目的四类清单都为空。安装沿用一次授权确认，文案列出这四项白话说明。Desktop 启动时创建的插件宿主在主进程执行沙箱：只放行安装记录与当前目录的交集，拒绝未声明的网络、文件、连接器和密钥，并把违规写入本地日志。密钥值不进入日志、快照或 preload 返回值。这不新增 Core wire，也不把沙箱通过写成插件脚本已执行或连接器已调用。见 [插件沙箱说明](../modules/MOD-30-PLUGIN-SANDBOX-20261111.md)。
+
 ## 2026-10-29 MCP 管理任务读回（provisional）
 
 Desktop 远程 MCP 管理窗口的任务读回只显示原任务状态、工具身份、审批状态和 Evidence 引用，不向 Renderer 返回原始参数或工具结果；原 Runtime 持久记录和原对话审批卡保留。受信配置可显式允许缺少远端 outputSchema，仍固定服务/目录并用本地 Schema 校验 structuredContent；默认严格匹配不变，策略纳入任务授权绑定。真实 Context7 仅完成握手及目录读取，未发起工具调用，不证明其结果兼容；不提升接口冻结或真实验收状态。测试及缺口见 [MOD-06 工作记录](../modules/MOD-06-MCP-SAFETY-20261029.md)。
@@ -49,6 +79,8 @@ Competition 可信宿主可显式启用 `competitionExecution:{mode:'progressive
 ## 2026-10-25 同对话文字结果语音输出（provisional）
 
 ModelGateway 的可选 host-only `RealtimeSession.speakText(text)` 由用户已开启 Live 的同对话新文字任务消费；原 Runtime 成功终态触发，有界排队、task/revision 去重、切换对话/停止/打断丢弃晚到结果。未开启 Live 或 provider 缺端口明确 unavailable；无新公开 voice wire、授权、provider 或任务循环。accepted 不代表音频/播放已验证；实际 response 参数及 item 删除的云兼容性和实体设备仍未验收，不提升冻结状态。见 [接线及本地验证](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
+
+> F12 语音关联（provisional）：Qwen 本地输出事件及 speakText accepted 可携带可选 renditionId，输出可携带 responseId；旧消费者可忽略。它们只关联本次输出，不证明逐字发声、播放或用户听见。通知宿主、原回执、物理设备及真实云验收仍另行交付。
 
 ## 2026-10-23 会话自动压缩与命令（provisional）
 
@@ -133,6 +165,8 @@ Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Con
 `RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
 
 ## 2026-10-20 日历写能力消费接线（provisional，离线接线已验）
+
+> 日历窗口内容摘要（provisional）：calendar.events 仅在无 cursor 且结果完整时附带 sourceVersion；分页结果不提供完整窗口摘要。它不是账号身份、全账号修订或条件写令牌；特别是空窗口不包含账号信息，调用方须另外绑定并核验来源。真实日历及 F07 流程验收另行记录。
 
 复用#442@3b1e6d6c已包含的#439可选CalendarProvider.writes与calendar.create/update/cancel接线，沿原Runtime/Policy/ToolGateway保留逐任务批准、配置撤销和完整metadata/result原生出机门禁。#458补充条件写入、实际资源地址校验、删除读回及额外消费验证，见[工作包](../competition/CALENDAR_CONVERSATION_WRITES_20261020.md)。依赖尚未合并主线，真实账号/平台验收未执行，不提升冻结或真实可用等级。无Core wire/数据库迁移，CalDAV响应只增加兼容的可选headers.get端口。
 
@@ -346,6 +380,8 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 
 ### DEV-WORKFLOWS 开发增量（2026-10-03）
 
+> 测试失败定位（provisional）：已有定位器可识别完整的 Node 语法检查诊断，结果 reporter 增加 node-check。Desktop 公开解析入口继续去除源码片段；日志解析不提供执行或额外读取权限。F17 图及真实仓库验收另行交付。
+
 历史上 PR #276 的 MOD-33/34/36/38 Local Profile 增量由 zemeng 启动；2026-10-07 最新分工为 goo122 负责 MOD-33/36/37，Potatos498 负责 MOD-34/35/38，接口范围和历史证据不因交接改变。
 公开 `@personal-agent/github`、`@personal-agent/coding-tools` 的开发修复与受控 Git 工厂、
 `@personal-agent/cognition` 的 Review/Issue 工厂以及 `@personal-agent/runtime/dev-workflows`
@@ -525,7 +561,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | AgentArts | 平台原生知识、MCP/Skill 及未验真实业务 | main 已有 provisional CloudAgentPort、Workflow 输入及 HTTPS/WSS 工具提案循环；固定版本文件读取/审批续答和有限主子模型委派已取得独立证据。平台原生知识、MCP/Skill、全域多 Agent 质量和其余业务场景仍未由这些证据验收 | MOD-29～31 `zemeng` |
 | AgentArts | 完整平台 Trace、评估、成本、回滚和比赛端到端证据 | 已有 SWR/部署/精确版本目录、有限平台关联日志、公开文件读取及特定 F15 主图/隔离图的本地 Policy/ToolGateway/Evidence 闭环；只证明对应版本与公开场景，不代表完整 Trace/成本/平台评估、回滚、全部 28 图或比赛验收完成；禁止静默 Local 回退 | MOD-32 `zemeng` |
 | Windows | Named Pipe、DesktopActionPort、资源锁、用户接管 | 内部帧及受限 Host/Client 有 provisional 接线；统一 DesktopActionPort、全部真实应用与用户接管验收仍未完成，见本页 2026-10-24 原生电脑增量 | MOD-16 `zemeng` |
-| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；公共 Artifact 端口未提供，真实用户工作区、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
+| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；包内 `assembleArtifactServiceTools` 可选包含 create/get/list/read/expire/release，默认不注册 ToolHost，公共 Runtime Artifact 端口仍未公布；真实用户工作区、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
 | 分发 | 生产装配、安装、升级、卸载生命周期契约 | 无安装包与隔离安装证据 | MOD-19 `zemeng`、根装配 `goo122` |
 
 生产 Runtime 对 Schema 已知但未公布的 operation 必须返回 `UNSUPPORTED_CAPABILITY`。管理界面可以展示规划项，但必须显示“不可用”，不能通过读取配置文件、私有数据库或启用 Fake 来伪装能力。

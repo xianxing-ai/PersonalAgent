@@ -20,11 +20,12 @@ test('the actual Main poll keeps task events and reminders responsive while admi
   }
   visit(initializer);assert.ok(callback,'actual Runtime maintenance poll');
   let clock=0,release;
-  const counts={events:0,todos:0,proactive:0,mail:0,notepad:0,knowledge:0,watch:0,runtime:0,wiki:0};
+  const counts={events:0,todos:0,dashboard:0,proactive:0,mail:0,notepad:0,knowledge:0,watch:0,runtime:0,wiki:0};
   const blocked=new Promise(resolve=>{release=resolve;});
   const context=vm.createContext({runtimeClosed:false,
     maintenancePoll:createMaintenancePoll({now:()=>clock}),
     pumpEvents:()=>{counts.events++;},todoHost:{tick:()=>{counts.todos++;}},
+    personalDashboardHost:{tick:()=>{counts.dashboard++;}},
     tickProactiveP5:()=>{counts.proactive++;},refreshMail:()=>{counts.mail++;},
     notepadHost:{refresh:()=>{counts.notepad++;}},tickKnowledgeSchedules:()=>{counts.knowledge++;},
     connectorWatchHost:{tick:()=>{counts.watch++;return Promise.resolve();}},
@@ -33,10 +34,10 @@ test('the actual Main poll keeps task events and reminders responsive while admi
     proactiveMaintenanceFailure:'',publish:()=>assert.fail('unchanged maintenance cannot publish a snapshot')});
   const poll=vm.runInContext('('+callback+')',context);
   for(let index=0;index<9;index++){clock=index*120;poll();await settle();}
-  assert.equal(counts.events,9);assert.equal(counts.todos,9);
+  assert.equal(counts.events,9);assert.equal(counts.todos,9);assert.equal(counts.dashboard,9);
   for(const name of ['proactive','mail','notepad','knowledge','watch','runtime','wiki'])assert.equal(counts[name],1,name);
   clock=1080;poll();await settle();
-  assert.equal(counts.events,10);assert.equal(counts.todos,10);
+  assert.equal(counts.events,10);assert.equal(counts.todos,10);assert.equal(counts.dashboard,10);
   assert.equal(counts.runtime,1,'no listener or work backlog behind a slow original maintenance promise');
   for(const name of ['proactive','mail','notepad','knowledge','watch','wiki'])assert.equal(counts[name],2,name);
   release({state:'processed',sessions:[]});await settle();

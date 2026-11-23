@@ -124,6 +124,9 @@ button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cu
 .agentarts-settings input[type="checkbox"] {margin:0;accent-color:var(--accent)}
 .main[data-section="models"][data-cloud-config="true"] #content {min-height:0}
 .error {color:var(--danger);font-size:12px;overflow-wrap:anywhere}.status {font-size:11px;color:var(--accent)}
+.status.paused {color:var(--danger)}
+.operator-brake {height:24px;padding:0 8px;border:1px solid var(--glass-border);border-radius:999px;background:transparent;color:var(--fg);font:inherit;font-size:11px}
+.operator-brake[aria-pressed="true"] {color:var(--danger);border-color:var(--danger)}
 :root[data-theme="light"] .icon-btn:hover:not(:disabled),:root[data-theme="light"] .model-select:hover {background:rgba(0,0,0,.06)}
 :root[data-theme="light"] .send-btn {background:#15181b;color:#fff}
 :root[data-theme="light"] .send-btn:disabled {opacity:.5}

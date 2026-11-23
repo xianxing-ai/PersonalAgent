@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     return () => ipcRenderer.removeListener('desktop:preferences', receive);
   },
   invoke: (action, payload) => ipcRenderer.invoke('desktop:action', action, payload),
+  setOperatorBrake: paused => ipcRenderer.invoke('desktop:action', 'operator.brake', {paused: paused === true}),
+  pluginAccess: request => ipcRenderer.invoke('desktop:action', 'plugin.guard', request),
   ackSnapshot: token => ipcRenderer.send('desktop:snapshot-ack', token),
   flushDrafts: entries => {
     // Only the final close boundary is synchronous; normal editing stays debounced.
@@ -38,6 +40,17 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     const receive = (_event, value) => listener(value);
     ipcRenderer.on('desktop:update', receive);
     return () => ipcRenderer.removeListener('desktop:update', receive);
+  },
+  onTaskActivity: listener => {
+    if (typeof listener !== 'function') throw Error('Activity listener required');
+    const receive = (_event, value) => listener(value);
+    ipcRenderer.on('desktop:task-activity', receive);
+    return () => ipcRenderer.removeListener('desktop:task-activity', receive);
+  },
+  onOpenAssistant: listener => {
+    const receive = (_event, value) => listener(value);
+    ipcRenderer.on('desktop:open-assistant', receive);
+    return () => ipcRenderer.removeListener('desktop:open-assistant', receive);
   },
   microphone: Object.freeze({
     onCommand: listener => {

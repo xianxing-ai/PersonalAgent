@@ -635,9 +635,89 @@ function discardUnreadResponse(response: AgentArtsResponse): void {
   } catch { /* Even a malformed transport may expose throwing body accessors. */ }
 }
 
-async function readResponseText(response: AgentArtsResponse, combined: CombinedSignal, maxBytes = MAX_RESPONSE_BYTES): Promise<string> {
+const activityHandlers = new Map<string, (event: AgentArtsActivity) => void>();
+
+/** Display-only. Not part of the coordination request, which rejects unknown fields. */
+export function bindAgentArtsActivity(taskId: string, handler: ((event: AgentArtsActivity) => void) | undefined): void {
+  if (handler) activityHandlers.set(taskId, handler);
+  else activityHandlers.delete(taskId);
+}
+
+export interface AgentArtsActivity {
+  kind: 'reasoning' | 'answer_delta' | 'status';
+  label: string;
+  text?: string;
+}
+
+function activityText(data: Record<string, unknown> | undefined, names: readonly string[]): string {
+  if (!data) return '';
+  for (const name of names) {
+    const value = data[name];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return '';
+}
+
+/** Public fields only. AgentArts has no confirmed reasoning channel; these names are forwarded when present. */
+export function describeAgentArtsActivities(value: unknown): AgentArtsActivity[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const event = value as Record<string, unknown>;
+  const data = event.data && typeof event.data === 'object' && !Array.isArray(event.data)
+    ? event.data as Record<string, unknown> : undefined;
+  const name = typeof event.event === 'string' ? event.event : typeof event.type === 'string' ? event.type : '';
+  const activities: AgentArtsActivity[] = [];
+  const reasoning = activityText(data, ['reasoning_content', 'reasoning', 'thinking']);
+  if (reasoning) activities.push({kind: 'reasoning', label: '思考', text: reasoning});
+  if (name === 'message' && typeof data?.text === 'string' && data.text.length > 0) {
+    activities.push({kind: 'answer_delta', label: '回答', text: data.text});
+  }
+  if (name === 'workflow_start') activities.push({kind: 'status', label: '工作流已开始'});
+  if (name === 'workflow_end') activities.push({kind: 'status', label: '工作流已结束'});
+  if (/node/i.test(name)) {
+    const node = activityText(data, ['node_name', 'name', 'node_id', 'title']) || name;
+    const finished = /end|finish|complete/i.test(name);
+    activities.push({kind: 'status', label: finished ? `节点完成：${node}` : `节点开始：${node}`});
+  }
+  return activities;
+}
+
+/** Pull complete SSE blocks out of a growing decode buffer. Incomplete trailing text stays in rest. */
+export function takeAgentArtsFrames(buffer: string): {events: AgentArtsActivity[]; rest: string} {
+  const events: AgentArtsActivity[] = [];
+  let rest = buffer;
+  while (true) {
+    const split = rest.indexOf('\n\n');
+    if (split < 0) break;
+    const block = rest.slice(0, split);
+    rest = rest.slice(split + 2);
+    const data = block.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => {
+      let value = line.slice('data:'.length);
+      if (value.startsWith(' ')) value = value.slice(1);
+      return value;
+    }).join('\n');
+    if (!data || data.trim() === '[DONE]') continue;
+    try { events.push(...describeAgentArtsActivities(JSON.parse(data))); }
+    catch { /* The strict parser still owns malformed frames. */ }
+  }
+  return {events, rest};
+}
+
+async function readResponseText(response: AgentArtsResponse, combined: CombinedSignal, maxBytes = MAX_RESPONSE_BYTES,
+  onActivity?: (event: AgentArtsActivity) => void): Promise<string> {
   const chunks: Uint8Array[] = [];
   const total = {value: 0};
+  const decoder = onActivity ? new TextDecoder('utf-8', {fatal: false}) : undefined;
+  let pending = '';
+  const observe = (chunk?: Uint8Array, end = false): void => {
+    if (!decoder || !onActivity) return;
+    if (chunk) pending += decoder.decode(chunk, {stream: !end});
+    if (end) pending += decoder.decode();
+    const taken = takeAgentArtsFrames(pending + (end ? '\n\n' : ''));
+    pending = end ? '' : taken.rest;
+    for (const event of taken.events) {
+      try { onActivity(event); } catch { /* A display callback cannot change the cloud result. */ }
+    }
+  };
   const body = response.body;
   if (body !== undefined && body !== null) {
     const readerBody = body as Partial<AgentArtsReaderBody>;
@@ -655,6 +735,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
           }
           if (result.value === undefined) external('AgentArts response body is malformed');
           appendResponseChunk(chunks, result.value, total, maxBytes);
+          observe(result.value);
         }
       } finally {
         if (!consumed) closeWithoutWaiting(() => reader.cancel?.());
@@ -676,6 +757,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
             break;
           }
           appendResponseChunk(chunks, result.value, total, maxBytes);
+          observe(result.value);
         }
       } finally {
         if (typeof iterator.return === 'function') {
@@ -690,7 +772,9 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
   } else if (typeof response.arrayBuffer === 'function') {
     const buffer = await callWithAbort(() => response.arrayBuffer!(), combined);
     if (!(buffer instanceof ArrayBuffer)) external('AgentArts response body is malformed');
-    appendResponseChunk(chunks, new Uint8Array(buffer), total, maxBytes);
+    const bytes = new Uint8Array(buffer);
+    appendResponseChunk(chunks, bytes, total, maxBytes);
+    observe(bytes);
   } else if (typeof response.text === 'function') {
     const value = await callWithAbort(() => response.text!(), combined);
     if (typeof value !== 'string') external('AgentArts response body is malformed');
@@ -707,6 +791,7 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
     }
     if (roundTrip !== value) external('AgentArts response is not valid UTF-8');
     appendResponseChunk(chunks, encoded, total, maxBytes);
+    observe(encoded);
   } else {
     external('AgentArts response body is unavailable');
   }
@@ -718,7 +803,9 @@ async function readResponseText(response: AgentArtsResponse, combined: CombinedS
     offset += chunk.byteLength;
   }
   try {
-    return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+    const text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+    observe(undefined, true);
+    return text;
   } catch {
     external('AgentArts response is not valid UTF-8');
   }
@@ -1527,7 +1614,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       stage = 'response_body';
       try {
         unreadResponse = undefined;
-        payload = await readResponseText(response, combined);
+        payload = await readResponseText(response, combined, MAX_RESPONSE_BYTES, activityHandlers.get(taskId));
       } catch (error) {
         schemaCategory = diagnosticSchemaCategory(error);
         throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts response validation failed');

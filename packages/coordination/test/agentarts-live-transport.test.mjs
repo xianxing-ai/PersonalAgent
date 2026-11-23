@@ -11,12 +11,30 @@ const configuration = {gatewayUrl: 'https://agentarts.example.test', runtimeName
   transport: 'wss', websocketUrl: 'wss://agentarts.example.test/runtimes/synthetic/ws', allowHttpsFallback: true};
 const request = (signal = new AbortController().signal, ms = 1500) => ({taskId: 'loopback-session', revision: 1,
   goal: 'Public loopback transport verification', deadline: new Date(Date.now() + ms).toISOString(), signal});
+const IGNORED_CLOSE_ERROR_CODES = new Set(['ECONNRESET', 'ECONNABORTED', 'EPIPE']);
+
+function isIgnorableCloseError(error, socket, closing) {
+  const isClosing = closing || (socket !== undefined && socket.readyState >= WebSocket.CLOSING);
+  return isClosing && Boolean(error && typeof error === 'object' && 'code' in error && IGNORED_CLOSE_ERROR_CODES.has(error.code));
+}
+
 async function websocketFixture(t, respond) {
   const server = new WebSocketServer({host: '127.0.0.1', port: 0});
+  let closing = false;
+  let serverError;
+  const sockets = new Set();
+  server.on('error', error => {
+    if (!isIgnorableCloseError(error, undefined, closing)) serverError ??= error;
+  });
   await once(server, 'listening');
   let invokes = 0, fallbacks = 0;
   const diagnostics = [];
   server.on('connection', socket => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    socket.on('error', error => {
+      if (!isIgnorableCloseError(error, socket, closing)) serverError ??= error;
+    });
     socket.send(JSON.stringify({protocolVersion: version, type: 'ready', serverInstanceId: 'synthetic-instance',
       capabilities: ['invoke', 'status', 'cancel', 'ephemeral-replay'], restartRecovery: false, heartbeatMs: 15000}));
     socket.on('message', raw => {
@@ -31,8 +49,21 @@ async function websocketFixture(t, respond) {
   const port = new AgentArtsCloudAgentPort(configuration, {read: async () => 'Bearer synthetic'},
     async () => { fallbacks++; throw Error('Unexpected HTTPS replay'); }, undefined, undefined,
     receipt => diagnostics.push(receipt), {factory: () => new WebSocket(`ws://127.0.0.1:${server.address().port}`)});
-  t.after(async () => { port.close(); for (const socket of server.clients) socket.terminate();
-    await new Promise(resolve => server.close(resolve)); });
+  t.after(async () => {
+    closing = true;
+    const closePromises = [...sockets].map(socket => socket.readyState === WebSocket.CLOSED
+      ? Promise.resolve()
+      : new Promise(resolve => socket.once('close', resolve)));
+    port.close();
+    for (const socket of sockets) {
+      if (socket.readyState !== WebSocket.CLOSED) {
+        try { socket.terminate(); } catch { /* Best-effort socket cleanup after client port close. */ }
+      }
+    }
+    await Promise.all(closePromises);
+    await new Promise(resolve => server.close(resolve));
+    if (serverError) throw serverError;
+  });
   return {port, diagnostics, counts: () => ({invokes, fallbacks})};
 }
 
@@ -93,12 +124,18 @@ test('real HTTP stall respects original deadline and earlier caller cancellation
   for (const cancel of [false, true]) await t.test(cancel ? 'caller cancellation' : 'deadline', async t => {
     let entered;
     const arrival = new Promise(resolve => { entered = resolve; });
-    const server = createServer((req, res) => { req.resume(); entered(); });
+    const server = createServer((req, res) => { req.on('error', () => {}); req.resume(); entered(); });
+    let httpError;
+    server.on('error', error => { httpError ??= error; });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
     const port = new AgentArtsCloudAgentPort({gatewayUrl: configuration.gatewayUrl, runtimeName: configuration.runtimeName},
       {read: async () => 'Bearer synthetic'}, (_url, init) => fetch(`http://127.0.0.1:${server.address().port}`, init));
-    t.after(() => port.close());
+    t.after(async () => {
+      port.close();
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+      if (httpError) throw httpError;
+    });
     const controller = new AbortController();
     const result = assert.rejects(port.invoke(request(controller.signal, cancel ? 2000 : 200)), {code: cancel ? 'CANCELLED' : 'TIMEOUT'});
     await arrival;

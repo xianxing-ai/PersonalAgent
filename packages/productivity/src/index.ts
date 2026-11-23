@@ -203,6 +203,7 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
         additionalProperties: false,
         properties: {
           id: {type: 'string', minLength: 1},
+          expectedRevision: {type: 'integer', minimum: 1, description: '仅在原 revision 未改变时修改；不匹配则保留当前条目与提醒。'},
           title: {type: 'string', minLength: 1, maxLength: 200},
           notes: {type: 'string', maxLength: 2000},
           status: {enum: ['open', 'done', 'cancelled'], description: 'open→done/cancelled 单向；终态不可再改。'},
@@ -233,6 +234,7 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
     execute: async (input: unknown) => {
       const raw = input as Record<string, unknown>;
       const patch: TodoUpdateInput = {};
+      if (raw.expectedRevision !== undefined) patch.expectedRevision = raw.expectedRevision as number;
       if (typeof raw.id !== 'string' || raw.id.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'id is required');
       if (typeof raw.title === 'string') patch.title = raw.title;
       if (typeof raw.notes === 'string') patch.notes = raw.notes;

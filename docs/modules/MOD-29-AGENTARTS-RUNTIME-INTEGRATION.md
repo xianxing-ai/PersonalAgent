@@ -48,9 +48,7 @@ Evidence 是后续独立契约增量。
 
 ## 2026-10-07 源码完成矩阵
 
-只读基线为 main `4b5ec61`；[PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302)
-的新增补丁尚未合并，不计入该 main 的能力。历史云回执不变，本轮没有账户绑定、云调用、
-部署修改或真实云验收。
+2026-11-10 核对：下表写于 main `4b5ec61`。[PR #302](https://github.com/xianxing-ai/PersonalAgent/pull/302) 已以 `cc64ebdf` 进入当前 main，右列增量已在主线；历史云回执不变。该合并没有账户绑定、云调用、部署修改或真实云验收。
 
 | 接线 | main 已有实现 | #302 未合并增量 |
 | --- | --- | --- |

@@ -83,3 +83,13 @@ test('Live host conversation switch drops queued results and rejects late submis
   host.observeTextTask({...task,revision:2});assert.deepEqual(spoken,[]);
   await host.stop();
 });
+
+
+test('existing text delivery accepts an optional rendition identity without claiming playback',()=>{
+  const f=fixture();f.record.session.speakText=text=>{f.spoken.push(text);return {accepted:true,renditionId:'synthetic-rendition'};};
+  f.track();f.output.observe(f.task);
+  assert.deepEqual(f.spoken,[f.task.resultSummary]);
+  assert.equal(f.output.snapshot().state,'accepted');assert.equal(f.output.snapshot().playbackVerified,false);
+  assert.equal(JSON.stringify(f.output.snapshot()).includes('synthetic-rendition'),false);
+  f.output.drained();assert.equal(f.output.snapshot().state,'ended');assert.equal(f.output.snapshot().playbackVerified,false);
+});
