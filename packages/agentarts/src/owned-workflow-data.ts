@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 061b30fd197338f25c21bc5dd77e68b1e9e508055e25c0ea3d31696c899d2ec9
+// Source projection sha256: 3c3ef616cd9a6c5b137f17672bcc24a41ba206f2b81de03d681a7f46cf162ad0
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -189,7 +189,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F01_N09",
-        "label": "明确已授权责任直接激活并留来源",
+        "label": "记录责任来源；发信删除发布仍要走内容确认",
         "kind": "checkpoint",
         "dependencies": [
           "F01_N04"
@@ -297,7 +297,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     "nodes": [
       {
         "id": "F02_N01",
-        "label": "可信操作摘要：对象、参数、问题ID与revision",
+        "label": "只签危险参数：对象、正文或路径；不签整份revision",
         "kind": "deterministic_check",
         "dependencies": [],
         "required": true,
@@ -1697,7 +1697,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N10",
-        "label": "宿主核对原来源与完整显式参数；准备进入原Policy",
+        "label": "宿主核对原来源与完整显式参数；发信另需确认这份正文和收件人",
         "kind": "deterministic_check",
         "dependencies": [
           "F08_N05"
@@ -1730,7 +1730,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N07",
-        "label": "授权通过：稳定操作ID发送",
+        "label": "内容已确认：稳定操作ID发送",
         "kind": "tool_exec",
         "dependencies": [
           "F08_N10",
@@ -1744,7 +1744,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原发送operation/effect ID",
           "工具实际状态"
         ],
-        "condition": "完整显式回复或补问明确采用已绑定原来源；拒绝跳过发送并保留归档，采用仍经独立原Policy审批",
+        "condition": "完整显式回复或补问明确采用已绑定原来源；用户已确认这份正文、收件人和发布位置，仍经独立原Policy审批；拒绝跳过发送并保留归档",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "joinMode": "selected"
       },
@@ -1767,7 +1767,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N12",
-        "label": "结果未知：后台核实，禁止盲目重发",
+        "label": "结果未知：停下来问人，不重发",
         "kind": "checkpoint",
         "dependencies": [
           "F08_N11"
@@ -5140,7 +5140,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F27_N03",
-        "label": "长日志按需由执行模型摘要",
+        "label": "只摘要普通叙述；否定、期限、禁止项整句保留",
         "kind": "execution_model",
         "dependencies": [
           "F27_N02"
