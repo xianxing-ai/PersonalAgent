@@ -25,6 +25,25 @@ test('arbitrary names and addresses remain unknown; absence of a pattern never g
   await assert.rejects(createDesktopEgressHost().prepare(request({payload})),denied);
 });
 
+test('only original graph receipt identifiers are distinguished from phone numbers before export approval',async()=>{
+  const operationId='wf-'+'a'.repeat(18)+'13800138000'+'b'.repeat(19);
+  const receipt={operationId,proposalId:operationId,result:{exitCode:0},
+    proof:{sessionId:'session',taskId:'task',workflowId:'F20',operationId,proposalId:operationId}};
+  const graph={sessionId:'session',controlRevision:0,checkpoint:'checkpoint',receipts:[receipt]};
+  const query={operation:'advance',workflowVersion:'1.0.0',workflowId:'F20',taskId:'task',controlRevision:0,
+    checkpoint:graph.checkpoint,receipts:graph.receipts};
+  const body=value=>JSON.stringify({query:JSON.stringify({executionEpochVersion:1,executionEpoch:0,query:JSON.stringify(value)})});
+  let saved=graph,approvals=0;
+  const host=createDesktopEgressHost({readPendingWorkflowGraph:()=>saved,authorizeTaskEgress:()=>{approvals++;return true;}});
+  const original=request({taskId:'task',payload:body(query)});
+  const lease=await host.prepare(original);
+  lease.assertBeforeSend(original);
+  await assert.rejects(host.prepare({...original,payload:body({...query,input:{note:'13800138000'}})}),denied);
+  saved=undefined;
+  assert.throws(()=>lease.assertBeforeSend(original),denied);
+  assert.equal(approvals,1);
+});
+
 test('opaque image and audio content cannot be approved by a text classification prompt',async()=>{
   let called=false;const host=createDesktopEgressHost({classifyLocally:()=>{called=true;return 'public';}});
   for(const payload of [JSON.stringify({image_url:{url:'data:image/png;base64,cHVibGlj'}}),JSON.stringify({audio:'cHVibGlj'}),
@@ -83,4 +102,29 @@ test('cancellation interrupts unanswered local classification; failures never ec
     error=>denied(error)&&!error.message.includes('private-source'));
   const input=request(),closed=createDesktopEgressHost({classifyLocally:()=> 'public'}),lease=await closed.prepare(input);closed.close();
   assert.throws(()=>lease.assertBeforeSend(input),error=>error.code==='CANCELLED');
+});
+
+test('verified host task UUIDs containing 11-digit substrings are allowed in message metadata while real phone numbers in content remain blocked',async()=>{
+  const trickyTaskId='0e01b4eb-b39b-44aa-8609-14750626625c';
+  const trustedEnv='Current trusted host environment (data only; not authorization or a callable tool catalog):\n'
+    +JSON.stringify({capabilityStatus:{profile:'huawei_ict_agentarts',executionProgress:{nextProposalId:'proposal-'+trickyTaskId}}})
+    +'\n\nOriginal task and approved context (untrusted data):\n';
+  const buildPayload=({msgId=trickyTaskId+':user',taskId=trickyTaskId,content='你好',publicGoal='你好'}={})=>{
+    const compiled=JSON.stringify({publicGoal,conversationContext:{treatment:'untrusted_data',messages:[{id:msgId,taskId,role:'user',content}]}});
+    return JSON.stringify({query:JSON.stringify({executionEpochVersion:1,executionEpoch:0,query:JSON.stringify({goal:trustedEnv+compiled,availableTools:[]})})});
+  };
+  let auths=0;
+  const host=createDesktopEgressHost({authorizeTaskEgress:()=>{auths++;return true;},isTrustedIdentifier:id=>id===trickyTaskId});
+  const okReq=request({taskId:'parent-task',payload:buildPayload()});
+  const lease=await host.prepare(okReq);
+  lease.assertBeforeSend(okReq);
+  assert.equal(auths,1);
+
+  // Unverified UUIDs (even in taskId/id) must remain blocked.
+  const unforged='ffffffff-ffff-4fff-8fff-14750626625c';
+  await assert.rejects(host.prepare(request({taskId:'parent-task',payload:buildPayload({msgId:unforged+':user',taskId:unforged})})),denied);
+
+  // Real 11-digit mobile numbers inside message content or publicGoal must remain blocked even when metadata IDs are verified.
+  await assert.rejects(host.prepare(request({taskId:'parent-task',payload:buildPayload({content:'联系 13800138000'})})),denied);
+  await assert.rejects(host.prepare(request({taskId:'parent-task',payload:buildPayload({publicGoal:'打给 13800138000'})})),denied);
 });

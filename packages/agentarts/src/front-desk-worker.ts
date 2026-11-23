@@ -68,20 +68,28 @@ export const DEFAULT_WORKERS: readonly WorkerDefinition[] = [
   },
 ];
 
-/** Main / front-desk conversation: chat, light reads, and dispatch to workers. */
+/**
+ * Shared assistant surface for front-desk and every peer assistant.
+ * Assistants chat, do light reads, manage peers/workers, and dispatch work.
+ * Heavy connectors / work tools stay on the worker surface only (unrestricted).
+ */
 export const FRONT_DESK_TOOL_NAMES: ReadonlySet<string> = new Set([
   'conversation.read_history',
   'weather.forecast',
+  'calendar.events',
+  'feeds.subscriptions',
+  'feeds.collect',
   'notifications.status',
+  'assistant.list',
+  'assistant.create',
   'assistant.message',
   'subagent.dispatch',
+  'worker.list',
+  'worker.instruct',
 ]);
 
-/** Peer assistants: talk to user / main / each other only. */
-export const ASSISTANT_CHAT_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'conversation.read_history',
-  'assistant.message',
-]);
+/** Alias of FRONT_DESK_TOOL_NAMES — all assistants expose the same interfaces. */
+export const ASSISTANT_CHAT_TOOL_NAMES: ReadonlySet<string> = FRONT_DESK_TOOL_NAMES;
 
 export type FrontDeskSurface = 'front_desk' | 'assistant_chat' | 'worker';
 
@@ -95,8 +103,8 @@ export function classifyToolSurface(input: {
 }
 
 export function allowedToolNamesForSurface(surface: FrontDeskSurface): ReadonlySet<string> | undefined {
-  if (surface === 'front_desk') return FRONT_DESK_TOOL_NAMES;
-  if (surface === 'assistant_chat') return ASSISTANT_CHAT_TOOL_NAMES;
+  // front_desk and assistant_chat share one allow-list; worker is unrestricted (all tools/connectors).
+  if (surface === 'front_desk' || surface === 'assistant_chat') return FRONT_DESK_TOOL_NAMES;
   return undefined;
 }
 

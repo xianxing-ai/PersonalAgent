@@ -1,10 +1,10 @@
 import {createDesktopEgressHost} from './egress-host.js';
 
 /** Native, local-only classification. Sandbox grants never answer these questions. */
-export function createNativeEgressHost({dialog,authorizeTaskEgress}) {
+export function createNativeEgressHost({dialog,authorizeTaskEgress,readPendingWorkflowGraph,isTrustedIdentifier}) {
   const current=scope=>!scope.signal.aborted&&Date.parse(scope.deadline)>Date.now()&&scope.isCurrent();
   return createDesktopEgressHost({
-    authorizeTaskEgress,
+    authorizeTaskEgress,readPendingWorkflowGraph,isTrustedIdentifier,
     async classifyLocally(scope){
       if(!current(scope))return 'unknown';
       const answer=await dialog.showMessageBox({type:'question',title:'检查即将发送的内容',signal:scope.signal,

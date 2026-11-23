@@ -228,6 +228,7 @@ export function createAgentArtsRuntimeApplication(
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
     ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,preparePayload,
+      ...(recoverAcceptedStatus===true?{queryOriginalStatus:cloud.queryStatus.bind(cloud)}:{}),
       onInvocationReadback:receipt=>{if(receipt.workflowId!=='F26')return;
         const key='f26:image-readback:'+receipt.requestId,previous=application.runtime.loadCheckpoint(receipt.taskId,key);
         if(previous!==undefined&&JSON.stringify(previous)!==JSON.stringify(receipt))throw new ProtocolError('REVISION_CONFLICT','Original F26 image receipt changed');

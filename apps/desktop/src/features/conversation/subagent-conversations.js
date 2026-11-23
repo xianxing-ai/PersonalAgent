@@ -127,6 +127,7 @@ export function mountSubagentConversations(root, invoke, escape) {
 export function mountSubagentConversationPage(root, invoke, {embedded=false}={}) {
   ensureStylesheet();
   const page = node('section', '', 'subagent-conversation-page');
+  page.dataset.presentation = embedded ? 'embedded' : 'window';
   page.setAttribute('aria-label', '独立子对话');
   const header = node('div', '', 'subagent-conversation-page-header');
   const title = node('h1', '子智能体对话');
@@ -153,10 +154,10 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
   const composerActions = node('div', '', 'subagent-conversation-compose-actions');
   const sendButton = action('发送', () => submit());
   const stopButton = action('停止', () => cancel());
-  const headerStopButton = action('停止子智能体', () => cancel());
-  headerStopButton.className='subagent-conversation-stop';
-  const bindingLabel=embedded?node('span','','subagent-conversation-model'):null;
-  if(embedded){sendButton.textContent='↑';sendButton.setAttribute('aria-label','发送');sendButton.className='subagent-conversation-send';input.placeholder='给这个子智能体发送消息…';composerActions.append(bindingLabel);}
+  const bindingLabel=node('span','','subagent-conversation-model');
+  sendButton.setAttribute('aria-label','发送');sendButton.className='subagent-conversation-send';
+  if(embedded)sendButton.textContent='↑';
+  input.placeholder='给这个子智能体发送消息…';composerActions.append(bindingLabel);
   composerActions.append(stopButton, sendButton);
   composer.append(input, composerStatus, availability, composerActions);
   composer.onsubmit = event => { event.preventDefault(); return submit(); };
@@ -169,13 +170,19 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     }
   };
 
-  const footer = node('div', '', 'subagent-conversations-actions');
   const refreshButton = action('刷新子对话', () => refresh());
+  original.append(refreshButton);
   const mainButton = action('返回主对话', () => navigate('subagentConversation.main', '无法返回主对话'));
   const closeButton = action('关闭子对话', () => navigate('subagentConversation.close', '无法关闭子对话'));
-  header.append(title, closeButton);
-  footer.append(mainButton);
-  page.append(header, status, content, composer, footer);
+  header.append(title);
+  if (!embedded) header.append(mainButton);
+  header.append(closeButton);
+  page.append(header, status, content, composer);
+  if (embedded) {
+    const footer = node('div', '', 'subagent-conversations-actions');
+    footer.append(mainButton);
+    page.append(footer);
+  }
   root.append(page);
 
   let identity = null, readVersion = 0, draftVersion = 0, navigating = false, closed = false;
@@ -222,12 +229,10 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     // A stop request never blocks the composer: the local truncation already released the task.
     sendButton.disabled = busy || Boolean(sending) || !canSubmit || !input.value.trim();
     stopButton.disabled = busy || Boolean(sending || cancelling) || !activeTaskId;
-    headerStopButton.disabled=stopButton.disabled;
     refreshButton.disabled = busy || Boolean(sending || cancelling);
     mainButton.disabled = closeButton.disabled = busy;
     sendButton.setAttribute('aria-busy', String(Boolean(sending)));
     stopButton.setAttribute('aria-busy', String(Boolean(cancelling)));
-    headerStopButton.setAttribute('aria-busy',String(Boolean(cancelling)));
     availability.textContent = activeTaskId && canSubmit
       ? '正在工作，现在发送会插到下一步。'
       : canSubmit ? '' : submitUnavailableReason || '当前子对话暂不能发送新消息。';
@@ -280,7 +285,8 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
       submitUnavailableReason = text(record.submitUnavailableReason);
       if (!reportedActive) truncated = false;
     }
-    title.textContent = embedded?(text(record.goal).replace(/^\[任务执行\]\s*/,'').trim()||text(record.role)||'分对话'):(text(record.role)||'子智能体')+' · '+record.taskId.slice(-8);
+    title.textContent = text(record.goal).replace(/^\[任务执行\]\s*/,'').trim()||text(record.role)||'子智能体';
+    if(!embedded)title.append(node('small',' #'+record.taskId.slice(-8),'subagent-window-id'));
     title.setAttribute('title', '子任务 ' + record.taskId + '\n父任务 ' + record.parentTaskId);
     status.setAttribute('role', 'status');
     status.textContent = '';
@@ -290,7 +296,7 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     turns.clear();answerSlots.clear();
     origin.replaceChildren(node('p',text(record.goal).replace(/^\[任务执行\]\s*/,'')||'任务目标未记录','subagent-conversation-user'));
     renderAnswer(origin,record);
-    if(bindingLabel)bindingLabel.textContent=text(record.modelId)||'原子任务模型';
+    bindingLabel.textContent=text(record.modelId)||'原子任务模型';
     renderMessages(messages,record.messages,renderAnswer);
     for(const taskId of liveTurns.keys())if(!turns.has(taskId)){liveTurns.delete(taskId);watermarks.delete(taskId);}
     if(follow)content.scrollTop=content.scrollHeight;

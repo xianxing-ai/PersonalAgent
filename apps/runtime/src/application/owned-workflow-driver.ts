@@ -3,7 +3,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import {getOwnedWorkflowAdapterRequirements,getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
 import type {OwnedWorkflowAdvanceRequest,OwnedWorkflowAdvanceResult,OwnedWorkflowHostBridge,WorkflowReceipt} from '@personal-agent/agentarts';
-import type {CoordinationAvailableTool} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError,type AgentArtsUnknownReceipt,type CoordinationAvailableTool} from '@personal-agent/coordination';
 import type {WorkerContext,WorkerResult} from '../index.js';
 import type {RuntimeApplication} from './runtime-application.js';
 
@@ -11,7 +11,8 @@ type Proposal=Extract<OwnedWorkflowAdvanceResult['proposals'][number],{kind:'too
 export interface RuntimeOwnedWorkflowDriverState<TInput=unknown> {
   version:1;sessionId:string;controlRevision:number;bindingId:string;sequence:number;
   input?:TInput;checkpoint?:string;result?:OwnedWorkflowAdvanceResult;receipts:WorkflowReceipt[];
-  resolvedValues:Record<string,unknown>;pendingSend?:{requestId:string;digest:string};
+  resolvedValues:Record<string,unknown>;pendingSend?:{requestId:string;digest:string;transportReceipt?:AgentArtsUnknownReceipt;
+    connectionDiagnostic?:AgentArtsResultUnknownError['connectionDiagnostic']};
   waiting?:{localTaskId:string;operationId:string};
   confirmedHost:Record<string,{localTaskId:string;operationId:string;result:unknown}>;
   /** Additive per-operation readback; the legacy per-tool index remains for F15 checkpoints. */
@@ -84,8 +85,13 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
     if(application.runtime.getTask(worker.taskId).state==='running')
       application.runtime.transitionTask(worker.taskId,local.state==='waiting_approval'?'waiting_approval':'waiting_reconciliation');
     return {resultSummary:options.workflowId+' waits for its original operation; unknown writes were not repeated',evidenceRefs:[]};};
+  const waitForCloudReceipt=():WorkerResult=>{
+    application.runtime.transitionTask(worker.taskId,'waiting_reconciliation');
+    return {resultSummary:options.workflowId+' is waiting for the original cloud receipt',evidenceRefs:[]};
+  };
   for(;;) {
     active();
+    if(state.pendingSend)return waitForCloudReceipt();
     const binding={taskId:worker.taskId,sessionId:state.sessionId,workflowId:options.workflowId,controlRevision:state.controlRevision,deadline:worker.deadline,taskDeadline:worker.deadline};
     const proposals=state.result?.proposals??[];
     state.receipts=[];
@@ -131,13 +137,22 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       }
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Graph stopped: '+state.result.state+' '+(options.stoppedReason?.(state.result)??''));
     }
-    if(state.pendingSend) {application.runtime.transitionTask(worker.taskId,'waiting_reconciliation');return {resultSummary:options.workflowId+' original send is unknown; not repeated',evidenceRefs:[]};}
     const envelope:OwnedWorkflowAdvanceRequest={...binding,requestId:options.requestId(state.sequence),input:state.input,
       signal:worker.signal,availableTools:options.catalog,mode:options.mode,...(state.checkpoint?{checkpoint:state.checkpoint}:{}),
       receipts:state.receipts,resolvedValues:state.resolvedValues};
     const snapshot=options.snapshot?.(state);if(snapshot)envelope.snapshot=snapshot;
     state.pendingSend={requestId:envelope.requestId,digest:hash({...envelope,signal:undefined})};save();
-    const result=await timed('image-advance',()=>options.image.advance(envelope,{executionEpoch,assertCurrent:active}));active();
+    let result:OwnedWorkflowAdvanceResult;
+    try {result=await timed('image-advance',()=>options.image.advance(envelope,{executionEpoch,assertCurrent:active}));}
+    catch(error) {
+      if(!(error instanceof AgentArtsResultUnknownError)||error.receipt.requestId!==envelope.requestId
+        ||error.receipt.sessionId!==envelope.sessionId)throw error;
+      state.pendingSend.transportReceipt=error.receipt;
+      if(error.connectionDiagnostic)state.pendingSend.connectionDiagnostic=error.connectionDiagnostic;
+      save();active();
+      return waitForCloudReceipt();
+    }
+    active();
     if(result.workflowId!==options.workflowId||result.workflowVersion!=='1.0.0'||!result.checkpoint||!Array.isArray(result.proposals)||!plain(result.nodes))
       throw new ProtocolError('PROTOCOL_MISMATCH','Invalid original image graph result');
     state.result=structuredClone(result);state.checkpoint=result.checkpoint;state.sequence++;delete state.pendingSend;save();

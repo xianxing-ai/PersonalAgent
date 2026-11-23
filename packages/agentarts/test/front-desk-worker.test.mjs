@@ -18,16 +18,22 @@ test('front desk allows weather and worker dispatch only', () => {
   assert.ok(FRONT_DESK_TOOL_NAMES.has('assistant.message'));
 });
 
-test('assistant chat is peer messaging only', () => {
+test('assistant chat exposes the same surface as front-desk including worker dispatch', () => {
   assert.equal(classifyToolSurface({hasAssistantTurn: true, hasSubtaskParent: false}), 'assistant_chat');
   assert.equal(isToolAllowedOnSurface('assistant_chat', 'assistant.message'), true);
-  assert.equal(isToolAllowedOnSurface('assistant_chat', 'subagent.dispatch'), false);
-  assert.ok([...ASSISTANT_CHAT_TOOL_NAMES].every(name => typeof name === 'string'));
+  assert.equal(isToolAllowedOnSurface('assistant_chat', 'subagent.dispatch'), true);
+  assert.equal(isToolAllowedOnSurface('assistant_chat', 'assistant.list'), true);
+  assert.equal(isToolAllowedOnSurface('assistant_chat', 'worker.list'), true);
+  assert.equal(isToolAllowedOnSurface('assistant_chat', 'weather.forecast'), true);
+  assert.equal(isToolAllowedOnSurface('assistant_chat', 'mail.read'), false);
+  assert.equal(ASSISTANT_CHAT_TOOL_NAMES, FRONT_DESK_TOOL_NAMES);
 });
 
 test('worker surface keeps full tool freedom at policy layer', () => {
   assert.equal(classifyToolSurface({hasAssistantTurn: false, hasSubtaskParent: true}), 'worker');
   assert.equal(isToolAllowedOnSurface('worker', 'workspace.apply_text_patch'), true);
+  assert.equal(isToolAllowedOnSurface('worker', 'mail.read'), true);
+  assert.equal(isToolAllowedOnSurface('worker', 'calendar.create'), true);
 });
 
 test('resolveBuiltinWorker reuses fixed workers before asking the user', () => {

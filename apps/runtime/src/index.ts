@@ -383,6 +383,13 @@ export const RUNTIME_MIGRATIONS: readonly Migration[] = [{
     "ALTER TABLE assistants ADD COLUMN origin TEXT NOT NULL DEFAULT 'builtin';",
     'ALTER TABLE assistants ADD COLUMN model_id TEXT;'
   ].join('\n')
+}, {
+  version: 15,
+  // Fixed + user-named workers. Distinct from peer assistants; turns remain ordinary subtasks.
+  sql: [
+    "CREATE TABLE workers (worker_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, preferred_driver TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('builtin','user')), status TEXT NOT NULL CHECK (status IN ('idle','working','waiting_approval')), active_task_id TEXT, last_summary TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;",
+    'CREATE INDEX workers_kind ON workers(kind, created_at, worker_id);',
+  ].join('\n')
 }];
 
 export class RuntimeError extends Error {
@@ -2271,8 +2278,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   postAssistantMail(input: {mailId: string; fromAssistantId: string; toAssistantId: string; body: string; hop: number}): AssistantMail {
-    this.getAssistant(input.fromAssistantId);
-    this.getAssistant(input.toAssistantId);
+    if (input.fromAssistantId !== 'front-desk') this.getAssistant(input.fromAssistantId);
+    if (input.toAssistantId !== 'front-desk') this.getAssistant(input.toAssistantId);
     const body = requireText(input.body, 'body');
     if (!Number.isSafeInteger(input.hop) || input.hop < 0) throw new RuntimeError('INVALID_ARGUMENT', 'hop is invalid');
     const createdAt = this.timestamp();
@@ -2288,6 +2295,18 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       body: String(row.body), hop: Number(row.hop), createdAt: String(row.created_at),
       ...(row.consumed_task_id ? {consumedTaskId: String(row.consumed_task_id)} : {}),
     }));
+  }
+
+  /** Internal group chat between front desk and assistants; projection never grants execution. */
+  listInternalChatMail(limit = 100): AssistantMail[] {
+    const size = Number.isSafeInteger(limit) && limit > 0 && limit <= 200 ? limit : 100;
+    return (this.db.prepare('SELECT * FROM assistant_mail ORDER BY created_at DESC LIMIT ?').all(size) as Record<string, unknown>[])
+      .map(row => ({
+        mailId: String(row.mail_id), fromAssistantId: String(row.from_assistant_id), toAssistantId: String(row.to_assistant_id),
+        body: String(row.body), hop: Number(row.hop), createdAt: String(row.created_at),
+        ...(row.consumed_task_id ? {consumedTaskId: String(row.consumed_task_id)} : {}),
+      }))
+      .reverse();
   }
 
   consumeAssistantMail(mailId: string, taskId: string): void {

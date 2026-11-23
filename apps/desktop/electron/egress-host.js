@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 
 const fail=(code='UNAUTHORIZED')=>{throw Object.assign(new Error('本次出机内容未通过本机分类与原范围确认'),{code});};
 const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -27,8 +28,144 @@ export function classifyKnownEgressContent(payload) {
   return inspect(payload)?'forbidden':'unknown';
 }
 
+// The image serializes two JSON envelopes inside the platform query. Only classify
+// a projection when all three layers are losslessly parsed and the local graph
+// holds these exact receipts for this send. Business results stay in the scan.
+function classifyWorkflowReceipts(scope,readGraph) {
+  function object(text) {
+    if(typeof text!=='string')return;
+    const value=JSON.parse(text);
+    if(value&&typeof value==='object'&&!Array.isArray(value)&&JSON.stringify(value)===text)return value;
+  }
+  try {
+    const outer=object(scope.payload);
+    const field=outer?.query!==undefined?'query':Object.keys(outer?.inputs??{})[0];
+    const container=outer?.query!==undefined?outer:outer?.inputs;
+    const epoch=object(container?.[field]),query=object(epoch?.query);
+    if(query?.operation!=='advance'||query.workflowVersion!=='1.0.0'||query.taskId!==scope.taskId
+      ||!Array.isArray(query.receipts)||!query.receipts.length)return 'forbidden';
+    const graph=readGraph(scope);
+    if(!graph||graph.checkpoint!==query.checkpoint||graph.controlRevision!==query.controlRevision
+      ||!isDeepStrictEqual(graph.receipts,query.receipts))return 'forbidden';
+    for(const receipt of query.receipts) {
+      const proof=receipt.proof;
+      if(!proof||proof.taskId!==scope.taskId||proof.workflowId!==query.workflowId||proof.sessionId!==graph.sessionId
+        ||proof.operationId!==receipt.operationId||proof.proposalId!==receipt.proposalId)continue;
+      for(const item of [receipt,proof]){
+        for(const key of ['proposalId','operationId']) {
+          if(/^wf-(?:decision-)?[a-f0-9]{48}$/u.test(item[key]))item[key]='workflow-id';
+        }
+      }
+      if(receipt.inputDigest===proof.inputDigest&&/^[a-f0-9]{64}$/u.test(receipt.inputDigest))receipt.inputDigest='sha256';
+      for(const key of ['inputDigest','proposalDigest','argumentsDigest','resultDigest','evidenceDigest','originalResultDigest','signature']){
+        if(typeof proof[key]==='string'&&/^[a-f0-9]{64}$/u.test(proof[key]))proof[key]='sha256';
+      }
+    }
+    epoch.query=JSON.stringify(query);container[field]=JSON.stringify(epoch);
+    return classifyKnownEgressContent(JSON.stringify(outer));
+  }catch{return 'forbidden';}
+}
+
+const TRUSTED_ENV_PREFIX='Current trusted host environment (data only; not authorization or a callable tool catalog):\n';
+const TRUSTED_ENV_SEP='\n\nOriginal task and approved context (untrusted data):\n';
+const UUID_VALUE=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
+
+function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier) {
+  function object(text) {
+    if(typeof text!=='string')return;
+    const value=JSON.parse(text);
+    if(value&&typeof value==='object'&&!Array.isArray(value)&&JSON.stringify(value)===text)return value;
+  }
+  const sanitizeId=id=>{
+    if(typeof id!=='string')return id;
+    if(UUID_VALUE.test(id)&&isTrustedIdentifier(id)===true)return 'trusted-id';
+    let match=/^(task|turn):([a-f0-9-]{36})(:(?:user|assistant))?$/iu.exec(id);
+    if(match&&isTrustedIdentifier(match[2])===true)return `${match[1]}:trusted-id${match[3]??''}`;
+    match=/^([a-f0-9-]{36}):(user|assistant)$/iu.exec(id);
+    if(match&&isTrustedIdentifier(match[1])===true)return `trusted-id:${match[2]}`;
+    match=/^(conversation-prohibition|pending-confirmation):([a-f0-9-]{36}):(\d+)$/iu.exec(id);
+    if(match&&isTrustedIdentifier(match[2])===true)return `${match[1]}:trusted-id:${match[3]}`;
+    match=/^(execution-conflict):([a-f0-9]{64}|[a-f0-9-]{36}):(true|false)$/iu.exec(id);
+    if(match&&isTrustedIdentifier(match[2])===true)return `${match[1]}:trusted-id:${match[3]}`;
+    return id;
+  };
+  const sanitizeCompiledJson=text=>{
+    let obj;try{obj=object(text);}catch{return undefined;}
+    if(!obj||obj.conversationContext?.treatment!=='untrusted_data'||!Array.isArray(obj.conversationContext.messages))return undefined;
+    for(const msg of obj.conversationContext.messages){
+      if(!msg||typeof msg!=='object')continue;
+      if(typeof msg.taskId==='string'&&UUID_VALUE.test(msg.taskId)&&isTrustedIdentifier(msg.taskId)===true)msg.taskId='trusted-id';
+      if(typeof msg.id==='string')msg.id=sanitizeId(msg.id);
+    }
+    if(Array.isArray(obj.conversationContext.selection?.omittedAssistantIds)){
+      obj.conversationContext.selection.omittedAssistantIds=obj.conversationContext.selection.omittedAssistantIds.map(sanitizeId);
+    }
+    return JSON.stringify(obj);
+  };
+  const sanitizeGoal=value=>{
+    if(typeof value!=='string')return value;
+    if(value.startsWith(TRUSTED_ENV_PREFIX)){
+      const sepIndex=value.indexOf(TRUSTED_ENV_SEP,TRUSTED_ENV_PREFIX.length);
+      if(sepIndex<0)return value;
+      const envRaw=value.slice(TRUSTED_ENV_PREFIX.length,sepIndex);
+      const envSanitized=envRaw.split('\n').map(line=>{
+        try{
+          const lineObj=object(line);
+          if(!lineObj)return line;
+          const progress=lineObj.capabilityStatus?.executionProgress;
+          if(progress&&typeof progress.nextProposalId==='string'&&/^proposal-[a-f0-9-]{36}$/iu.test(progress.nextProposalId)){
+            progress.nextProposalId='proposal-trusted-id';
+          }
+          return JSON.stringify(lineObj);
+        }catch{return line;}
+      }).join('\n');
+      let rest=value.slice(sepIndex+TRUSTED_ENV_SEP.length);
+      if(rest.startsWith('{')){
+        const tailIndex=rest.indexOf('\n\n');
+        const jsonPart=tailIndex>=0?rest.slice(0,tailIndex):rest;
+        const tailPart=tailIndex>=0?rest.slice(tailIndex):'';
+        const sanitized=sanitizeCompiledJson(jsonPart);
+        if(sanitized!==undefined)rest=sanitized+tailPart;
+      }
+      return TRUSTED_ENV_PREFIX+envSanitized+TRUSTED_ENV_SEP+rest;
+    }
+    return sanitizeCompiledJson(value)??value;
+  };
+  try{
+    if(typeof isTrustedIdentifier!=='function')return 'forbidden';
+    const outer=object(scope.payload);
+    const field=outer?.query!==undefined?'query':Object.keys(outer?.inputs??{})[0];
+    const container=outer?.query!==undefined?outer:outer?.inputs;
+    const rawEpoch=object(container?.[field]);
+    const isEpochWrapper=rawEpoch&&rawEpoch.executionEpochVersion===1&&Number.isSafeInteger(rawEpoch.executionEpoch)
+      &&typeof rawEpoch.query==='string'&&Object.keys(rawEpoch).sort().join(',')==='executionEpoch,executionEpochVersion,query';
+    const inner=isEpochWrapper?object(rawEpoch.query):rawEpoch;
+    if(!inner)return 'forbidden';
+    if(typeof inner.goal==='string')inner.goal=sanitizeGoal(inner.goal);
+    if(typeof inner.continuation?.result?.userRequest==='string'){
+      inner.continuation.result.userRequest=sanitizeGoal(inner.continuation.result.userRequest);
+    }
+    if(typeof inner.continuation?.result?.catalogRef==='string'&&/^[a-f0-9]{64}$/u.test(inner.continuation.result.catalogRef)){
+      inner.continuation.result.catalogRef='sha256';
+    }
+    if(Array.isArray(inner.priorContinuations)){
+      for(const prior of inner.priorContinuations){
+        if(typeof prior?.result?.userRequest==='string')prior.result.userRequest=sanitizeGoal(prior.result.userRequest);
+        if(typeof prior?.result?.catalogRef==='string'&&/^[a-f0-9]{64}$/u.test(prior.result.catalogRef))prior.result.catalogRef='sha256';
+      }
+    }
+    if(isEpochWrapper){
+      rawEpoch.query=JSON.stringify(inner);
+      container[field]=JSON.stringify(rawEpoch);
+    }else{
+      container[field]=JSON.stringify(inner);
+    }
+    return classifyKnownEgressContent(JSON.stringify(outer));
+  }catch{return 'forbidden';}
+}
+
 /** Main-only callbacks approve the exact content before the transport may send it. */
-export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,now=Date.now}={}) {
+export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,readPendingWorkflowGraph,isTrustedIdentifier,now=Date.now}={}) {
   let closed=false;const decisions=new Map();
   return {
     async prepare(input) {
@@ -49,7 +186,14 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
           ||input.signal!==signal||active!==true)fail();
       };
       current();
-      if(classifyKnownEgressContent(payload)==='forbidden')fail();
+      const needsReceiptCheck=classifyKnownEgressContent(payload)==='forbidden';
+      const checkReceipt=()=>{
+        if(!needsReceiptCheck)return;
+        if(taskId&&readPendingWorkflowGraph&&classifyWorkflowReceipts(input,readPendingWorkflowGraph)!=='forbidden')return;
+        if(isTrustedIdentifier&&classifyTrustedTaskEnvelope(input,isTrustedIdentifier)!=='forbidden')return;
+        fail();
+      };
+      checkReceipt();
       const key=JSON.stringify([requestId,destination,deadline]);
       for(const [id,value] of decisions)if(value.signal.aborted||value.expiresAt<=now())decisions.delete(id);
       const previous=decisions.get(key);
@@ -84,7 +228,8 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
           assertCurrent();
           return Object.freeze({payloadDigest,classification,assertBeforeSend(actual){
             assertCurrent();
-            if(actual?.destination!==destination||actual?.payload!==payload||classifyKnownEgressContent(actual.payload)==='forbidden')fail();
+            if(actual?.destination!==destination||actual?.payload!==payload)fail();
+            checkReceipt();
           }});
         }catch(error){if(decisions.get(key)===entry)decisions.delete(key);throw error;}
       })();

@@ -1,5 +1,5 @@
 import {mountMicrophoneCapture} from './microphone-capture.js';
 
-if (new URLSearchParams(location.search).get('mode') === 'panel' && window.desktop?.microphone) {
+if (['panel','workspace'].includes(new URLSearchParams(location.search).get('mode')) && window.desktop?.microphone) {
   mountMicrophoneCapture(window.desktop.microphone);
 }

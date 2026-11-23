@@ -16,10 +16,18 @@ test('owned image lists workers and classifies surfaces', async () => {
     value: {frontDeskWorkerVersion: 1, operation: 'assert_tool', surface: 'front_desk', toolName: 'weather.forecast'},
   });
   assert.equal(allowed.allowed, true);
-  const denied = await controller({
+  const assistantDispatch = await controller({
     value: {frontDeskWorkerVersion: 1, operation: 'assert_tool', surface: 'assistant_chat', toolName: 'subagent.dispatch'},
   });
-  assert.equal(denied.allowed, false);
+  assert.equal(assistantDispatch.allowed, true);
+  const assistantMailDenied = await controller({
+    value: {frontDeskWorkerVersion: 1, operation: 'assert_tool', surface: 'assistant_chat', toolName: 'mail.read'},
+  });
+  assert.equal(assistantMailDenied.allowed, false);
+  const workerMail = await controller({
+    value: {frontDeskWorkerVersion: 1, operation: 'assert_tool', surface: 'worker', toolName: 'mail.read'},
+  });
+  assert.equal(workerMail.allowed, true);
 });
 
 test('image services expose frontDeskWorkerVersion controller', () => {

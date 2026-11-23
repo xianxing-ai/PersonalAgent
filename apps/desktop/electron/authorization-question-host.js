@@ -70,12 +70,46 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     questions?.refresh();onUpdate();
     return generation;
   }
+  function wrapStateStore(rawStore){
+    let cachedState,hasCachedState=false;
+    return {
+      get(k){
+        if(k==='state'&&hasCachedState)return cachedState;
+        const value=rawStore.get(k);
+        if(k==='state'){cachedState=value;hasCachedState=true;}
+        return value;
+      },
+      ...(typeof rawStore.set==='function'?{
+        set(k,value){
+          rawStore.set(k,value);
+          if(k==='state'){cachedState=value;hasCachedState=true;}
+        },
+      }:{}),
+      ...(typeof rawStore.delete==='function'?{
+        delete(k){
+          if(k==='state'){hasCachedState=false;cachedState=undefined;}
+          return rawStore.delete(k);
+        },
+      }:{}),
+      ...(typeof rawStore.compareAndSet==='function'?{
+        compareAndSet(k,expected,next){
+          const ok=rawStore.compareAndSet(k,expected,next);
+          if(k==='state'){
+            if(ok){cachedState=next;hasCachedState=true;}
+            else{hasCachedState=false;cachedState=undefined;}
+          }
+          return ok;
+        },
+      }:{}),
+    };
+  }
   function service() {
     const current=getApplication();
     if(closed||!current?.runtime)denied();
     if(current!==application){
       questions?.close();application=current;
-      questions=createQuestions({store:current.runtime.bindTrustedHostState('desktop-authorization:'+digest(namespace)),profiles,
+      const store=wrapStateStore(current.runtime.bindTrustedHostState('desktop-authorization:'+digest(namespace)));
+      questions=createQuestions({store,profiles,
         defaultProfileRef,now,available,onChange:onUpdate,resolveProfile,describeExecution,
         readBinding:request=>{
           const original=current.readAuthorizationQuestionBinding(request);

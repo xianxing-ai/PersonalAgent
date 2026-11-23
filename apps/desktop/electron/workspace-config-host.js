@@ -16,6 +16,8 @@ import {workspaceRepairProjectionSchema,workspaceWorkflowSummaryProjectionSchema
 import {createF20CaseConfiguration} from './f20-case-config-host.js';
 import {createF20TypeScriptRecipe,F20_TYPESCRIPT_RECIPE} from './f20-typescript-recipe.js';
 import {initializeDefaultWorkspace} from './default-workspace.js';
+import {F20_VERIFIED_COMPLETION} from '@personal-agent/contracts/f20-candidate';
+import {f20CompletionProjectionSchema} from './f20-workflow-projection.js';
 
 const codingConsentGroups=Object.freeze([
   {id:'source-review',tools:['coding.repair.start','coding.repair.list','coding.repair.read','coding.repair.snapshot',
@@ -30,7 +32,7 @@ const codingConsentGroups=Object.freeze([
 const projectionObject=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 const f20CaseExport=projectionObject(Object.fromEntries(['schemaFile','codeFile','recipeId','docTemplate','targetDoc','sourceVersion']
   .map(key=>[key,{type:'string'}])));
-const f20CompletionExport=projectionObject({workflowId:{const:'F20'},state:{const:'settled'},published:{const:false}});
+const f20CompletionExport=f20CompletionProjectionSchema();
 const f20CommandExport=projectionObject({recipeId:{const:F20_TYPESCRIPT_RECIPE},exitCode:{const:0},stdout:{const:''},stderr:{const:''}});
 
 function directory(value) {
@@ -1003,7 +1005,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(!operation||operation.preflight!==(input.stage!=='receipt'))return false;
     let expected;
     if(input.stage==='initial')expected=binding.input;
-    else if(input.stage==='completion')expected={workflowId:'F20',state:'settled',published:false};
+    else if(input.stage==='completion'){
+      const graph=binding.state;
+      const trial=Object.values(graph.confirmedOperations??{}).find(item=>item.nodeId==='F20_N03'
+        &&item.toolName==='workspace.run_allowed_command')?.exportedResult;
+      if(graph.result?.state!=='settled'||graph.result.nodes?.F20_N04?.state!=='completed'
+        ||trial?.recipeId!==binding.input.recipeId||trial.exitCode!==0)return false;
+      expected=F20_VERIFIED_COMPLETION;
+    }
     else if(read.toolName==='workspace.read_text')expected={...read.confirmed.result,
       originalSources:[binding.input.schemaFile,binding.input.codeFile].map(path=>sourceReads.find(item=>item.path===path))};
     else if(read.toolName==='coding.repair.trial')expected={recipeId:F20_TYPESCRIPT_RECIPE,exitCode:0,stdout:'',stderr:''};

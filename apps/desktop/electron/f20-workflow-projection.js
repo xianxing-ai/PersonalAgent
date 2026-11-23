@@ -1,8 +1,11 @@
 import {workspaceRepairProjectionSchema} from './workspace-result-projection.js';
+import {F20_VERIFIED_COMPLETION} from '@personal-agent/contracts/f20-candidate';
 const text={type:'string'},id={type:'string',minLength:1},digest={type:'string',pattern:'^[a-f0-9]{64}$'};
 const object=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 export const f20InputProjectionSchema=()=>object(Object.fromEntries(['schemaFile','codeFile','recipeId','docTemplate','targetDoc','sourceVersion'].map(key=>[key,text])));
-export const f20CompletionProjectionSchema=()=>object({workflowId:{const:'F20'},state:{const:'settled'},published:{const:false}});
+export const f20CompletionProjectionSchema=()=>object(Object.fromEntries(
+  Object.entries(F20_VERIFIED_COMPLETION).map(([key,value])=>[key,{const:value}])
+));
 export function f20TrialProjectionSchema(){
   const checkReadback=workspaceRepairProjectionSchema('readback');
   checkReadback.properties.verification.items.properties.diagnostics={type:'array',items:object({source:{const:'command'},

@@ -13,6 +13,9 @@ import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {reconcileTaskFromSurface,skipReconciliationConflictFromSurface} from './reconcile-task-action.js';
 import {readReconciliationConflict,inspectReconciliationConflictOnce,recordUnavailableConflictNotification,assertNoUnresolvedWriteReplay} from './reconciliation-conflict.js';
 import {createFailureRepairHost} from './failure-repair-host.js';
+import {projectNodeCheckDiagnostics} from './node-check-diagnostics.js';
+import {createCrewReplanDispatcher} from './crew-replan-dispatcher.js';
+import {createLocateOpenHost} from './locate-open-host.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {isDeepStrictEqual} from 'node:util';
@@ -30,7 +33,7 @@ import {createSnapshotPublisher} from './snapshot-publisher.js';
 import {createResourcePolicy} from './resource-policy.js';
 import {TaskProjectionCache,readSafeTaskProjection} from './task-projection-cache.js';
 import {createHistoryPages,compareHistoryKeys} from './history-pages.js';
-import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, safeStorage, screen, session, Tray} from 'electron';
+import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, safeStorage, screen, session, shell, Tray} from 'electron';
 import {createDesktopVoiceStartupHost} from './voice-startup-host.js';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
@@ -45,7 +48,7 @@ import {panelBounds, clampOrb, dockedOrbBounds, draggedGroupBounds, placeOrb, OR
 import {orbShapeRects} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
-import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
+import {panelWindowAppearance, bindPanelMaterial, supportsPanelAcrylic} from './panel-material.js';
 import {workspaceWindowAppearance,bindWorkspaceMaterial} from './workspace-material.js';
 import {desktopDataPaths} from './data-paths.js';
 import {restoreSyntheticRepairSubmission} from './competition-repair-submission.js';
@@ -92,7 +95,8 @@ import {createDesktopNotificationApplicationHost} from './notification-applicati
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
 import {createVoiceSessionFinalHost} from './voice-session-final-host.js';
 import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
-import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
+import {createConversationToolAccess,isEgressReviewConversationCurrent,projectComputerConversationStatus,
+  resolveEgressReviewConversation} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
 import {createDesktopNativeExecutionHost} from './native-execution-host.js';
@@ -284,6 +288,7 @@ const snapshotPublisher = createSnapshotPublisher({project:projectWindowSnapshot
   onError:()=>{runtimeError='桌面状态投影失败；任务记录仍由 Runtime 保留';}});
 let orb;
 let panel;
+let panelPageLoaded = false;
 let draftQuitPreflight;
 let admin;
 let workspace;
@@ -371,6 +376,13 @@ const submitting = new Set();
 const conversationDelivery = createConversationDelivery(submitting);
 const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
+function pruneApprovals() {
+  if (approvals.size <= 128) return;
+  for (const [existingId, existing] of approvals) {
+    if (approvals.size <= 128) break;
+    if (existing?.state !== 'pending') approvals.delete(existingId);
+  }
+}
 const notifications = new Map();
 let runtimeApplication;
 const operatorBrake = createDesktopOperatorBrake({
@@ -488,6 +500,7 @@ let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, voiceSessionFinalHost, proactiveWorkflowApplication, cloudPersistentWorkflowHost, riskAutonomyHost, desktopNotificationPort;
+let crewReplanDispatcher, locateOpenHost;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter,businessSourceAdapters;
 let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -832,19 +845,48 @@ function privateMemoryController() {
   return privateMemory;
 }
 
+function ensureCrewReplanDispatcher() {
+  if (crewReplanDispatcher || runtimeClosed) return crewReplanDispatcher;
+  crewReplanDispatcher = createCrewReplanDispatcher({
+    dbPath: path.join(app.getPath('userData'), 'crew-replan.sqlite'),
+    workspaceRoot: path.join(app.getPath('userData'), 'crew-workspace'),
+  });
+  return crewReplanDispatcher;
+}
+
+function failureRepairHost() {
+  if (!runtimeApplication) throw Error('Runtime 未就绪');
+  return createFailureRepairHost(runtimeApplication.runtime, {
+    dispatchParentReplan: input => ensureCrewReplanDispatcher()?.dispatch(input),
+  });
+}
+
+function ensureLocateOpenHost() {
+  if (locateOpenHost) return locateOpenHost;
+  locateOpenHost = createLocateOpenHost({
+    getRoot: () => codingWorkspace?.readWorkspaceBinding?.()?.rootPath || repoRootForLocate(),
+    openPath: target => shell.openPath(target),
+    openExternal: target => shell.openExternal(target),
+  });
+  return locateOpenHost;
+}
+
 function projectFailureRepair(task) {
   if (runtimeClosed || !runtimeApplication || (task.state !== 'failed' && task.state !== 'waiting_reconciliation')) return {};
   try {
-    const repair = createFailureRepairHost(runtimeApplication.runtime).view(task.taskId);
+    const repair = failureRepairHost().view(task.taskId);
     return repair ? {repair} : {};
   } catch { return {}; }
 }
 
 function taskResultMetadata(task) {
-  if (runtimeClosed || task.state!=='succeeded' || !runtimeApplication) return undefined;
+  if (runtimeClosed || !runtimeApplication) return undefined;
   const source=runtimeApplication.runtime;
-  return source.loadCheckpoint(task.taskId,'application-profile')==='huawei_ict_agentarts'
+  const diagnostics=projectNodeCheckDiagnostics(source,task);
+  const competition=task.state==='succeeded' && source.loadCheckpoint(task.taskId,'application-profile')==='huawei_ict_agentarts'
     ? resultMetadata(task.resultSummary,{profile:'huawei_ict_agentarts'}) : undefined;
+  if (!diagnostics && !competition) return undefined;
+  return {...(competition ?? {}), ...(diagnostics ? {diagnostics} : {})};
 }
 
 function agentArtsSnapshot() {
@@ -867,20 +909,26 @@ function visibleConversationTask(task,surface){
 }
 function foregroundConversationTask(task,surface){
   if(!visibleConversationTask(task,surface)||terminalTaskStates.has(task.state)||conversationDelivery.stopped(task))return false;
-  const runtime=competitionMode?runtimeApplication?.runtime:undefined;
-  const original=runtime?.loadCheckpoint(task.taskId,'required-subagent-delegation:v1');
-  if(original?.parentTaskId!==task.taskId||original.subtask?.subtaskId!=='user-work')return true;
-  const child=runtime?.findTaskByIdempotencyKey(`subagent-dispatch-${task.taskId}-user-work`);
-  if(!child||child.conversationId!==`desktop-subtask:${task.taskId}`)return true;
-  const binding=runtime.loadCheckpoint(child.taskId,'subtask-parent');
-  return binding?.parentTaskId!==task.taskId||binding.subtaskId!=='user-work'||binding.goal!==original.subtask.goal;
+  // Keep the main chat non-blocking while tasks or workers run; only an unverified reconciliation gate pauses new foreground writes.
+  return task.state==='waiting_reconciliation';
 }
 function safeDesktopTask(task){
   return readSafeTaskProjection(task,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,delivery:conversationDelivery,cache:tasks,goals:taskGoals});
 }
-function compactSubagentTasks(children){
+const childToolActivityCache = new Map();
+function cachedChildToolActivity(runtime, task, childApprovals) {
+  const activitySeq = terminalTaskStates.has(task.state) ? 0 : taskActivitySequence;
+  const key = JSON.stringify([task.taskId, task.revision, activitySeq, (childApprovals ?? []).map(a => [a.approvalId, a.state, a.revision])]);
+  const cached = childToolActivityCache.get(key);
+  if (cached && cached.runtime === runtime) return cached.activity;
+  const activity = projectChildToolActivity(runtime.readTranscript(task.taskId), childApprovals, 3);
+  childToolActivityCache.set(key, {runtime, activity});
+  if (childToolActivityCache.size > 64) childToolActivityCache.delete(childToolActivityCache.keys().next().value);
+  return activity;
+}
+function compactSubagentTasks(children,visibleParents,surface){
   const runtime=runtimeApplication?.runtime;
-  const recent=children.slice(0,8);
+  const recent=surface==='panel'?[]:children.slice(0,8);
   const approvalOwners=new Map(recent.map(child=>[child.taskId,child.taskId]));
   for(const child of recent){
     if(child.state!=='waiting_approval')continue;
@@ -897,16 +945,37 @@ function compactSubagentTasks(children){
   }
   return children.map((child,index)=>{
     const task=safeDesktopTask(runtime.getTask(child.taskId));
-    const {goal,resultSummary,error,...identity}=child;
-    return {...identity,...(!task.bodyWithheld&&goal?{goal}:{}),...projectChildProgress(task,3),
-      ...(index<8&&!task.bodyWithheld?{toolActivity:projectChildToolActivity(runtime.readTranscript(task.taskId),byChild.get(task.taskId),3)}:{})};
+    const {goal,resultSummary,error,latestMessageTaskId,...identity}=child;
+    const parent=visibleParents.get(child.parentTaskId);
+    const canReply=surface&&parent&&!parent.bodyWithheld&&!parent.outputTruncated&&!conversationDelivery.stopped(parent)
+      &&!task.bodyWithheld&&!task.outputTruncated&&!conversationDelivery.stopped(task)
+      &&task.conversationId===`desktop-subtask:${parent.taskId}`;
+    const finalReply=canReply&&task.state==='succeeded'?resultText(task.resultSummary,taskResultMetadata(task)):'';
+    if(surface==='panel')return {parentTaskId:child.parentTaskId,taskId:child.taskId,state:task.state,...(child.role?{role:child.role}:{}),...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),...(finalReply?{finalReply}:{})};
+    let preview=finalReply||(canReply&&task.state==='failed'?'执行异常':'');
+    if(canReply&&latestMessageTaskId){
+      const latest=safeDesktopTask(runtime.getTask(latestMessageTaskId));
+      preview='';
+      if(latest.conversationId===`desktop-subagent-conversation:${task.taskId}`&&!latest.bodyWithheld&&!latest.outputTruncated&&!conversationDelivery.stopped(latest)){
+        preview=latest.state==='succeeded'?resultText(latest.resultSummary,taskResultMetadata(latest)):
+          runtime.loadCheckpoint(latest.taskId,'subagent-conversation-message:v1')?.userText;
+      }
+    }
+    return {...identity,...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),
+      ...(finalReply?{finalReply}:{}),...(preview?{preview:preview.slice(0,140)}:{}),
+      ...(index<recent.length&&!task.bodyWithheld?{toolActivity:cachedChildToolActivity(runtime,task,byChild.get(task.taskId))}:{})};
   });
 }
 function conversationProjection(surface) {
+  pruneApprovals();
   const page=historyPages.get(surface);
   const pageTasks=new Set(page.entries.filter(entry=>entry.kind==='task').map(entry=>entry.id));
   const activeConversationId=surface?conversations?.activeConversationId(surface):undefined;
-  const authorizationQuestions=(authorizationQuestionHost?.snapshot(activeConversationId)??[]).map(question=>{
+  const pendingApprovalIds=new Set();
+  if(surface)for(const approval of approvals.values())if(approval.state==='pending')pendingApprovalIds.add(approval.approvalId);
+  const rawQuestions=authorizationQuestionHost?.snapshot(activeConversationId)??[];
+  const authorizationQuestions=(surface?rawQuestions.filter(question=>question.state==='pending'
+    ||(typeof question.sourceApprovalId==='string'&&pendingApprovalIds.has(question.sourceApprovalId))):rawQuestions).map(question=>{
     if(!activeConversationId||question.state!=='pending')return question;
     const review=authorizationIntentHost?.readEgressReview(question.taskId);
     return review?.conversationId===activeConversationId?{...question,egressReview:review.payload}:question;
@@ -915,24 +984,31 @@ function conversationProjection(surface) {
   const scoped=ordered.filter(task=>visibleConversationTask(task,surface));
   const active=scoped.filter(task=>!terminalTaskStates.has(task.state));
   const foreground=surface?active.filter(task=>foregroundConversationTask(task,surface)):[];
+  const foregroundIds=new Set(foreground.map(task=>task.taskId));
   const liveIds=new Set(active.slice(-8).map(task=>task.taskId));
   const projectedTasks=scoped.filter(task=>pageTasks.has(task.taskId)||liveIds.has(task.taskId));
   const projectedIds=new Set(projectedTasks.map(task=>task.taskId));
   const childConflicts=fakeMode||runtimeClosed?[]:readConversationConflictTasks({application:runtimeApplication,tasks:ordered,
     parents:projectedTasks,surface,taskSurface,conversations}).filter(task=>!projectedIds.has(task.taskId)&&taskSurface(task)===undefined);
   const workspaceChildren=surface==='workspace'&&!fakeMode?scopeSubagentConversations(runtimeApplication?.listSubagentConversations({limit:100,
-    parentTaskIds:[...new Set(projectedTasks.map(task=>task.taskId))]}).items??[],
+    parentTaskIds:[...new Set(projectedTasks.map(task=>task.taskId))]})?.items??[],
     taskId=>runtimeApplication.runtime.getTask(taskId),parent=>visibleConversationTask(parent,'workspace')):[];
   const children=fakeMode?[]:(surface==='workspace'?workspaceChildren:projectSubagentActivity({tasks:projectedTasks,surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)}));
+  const visibleParents=new Map(projectedTasks.map(task=>[task.taskId,safeDesktopTask(task)]));
+  const sandboxSelected=runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined;
+  const autoApproves=sandboxSelected?.mode==='full-access';
+  const pendingQuestionRuns=new Set(authorizationQuestions.filter(q=>q.state==='pending'&&q.sourceApprovalId).map(q=>q.sourceApprovalId));
+  const pendingQuestionTasks=new Set(authorizationQuestions.filter(q=>q.state==='pending').map(q=>q.taskId));
+  const delegatedParentIds=new Set(children.map(child=>child.parentTaskId));
   return {
-    subagentTasks:compactSubagentTasks(children),
-    tasks: [...projectedTasks,...childConflicts].map(original => {const conflictOnly=!projectedIds.has(original.taskId),task=readSafeTaskProjection(original,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,
-      delivery:conversationDelivery,cache:tasks,goals:taskGoals});return ({...structuredClone(task),
+    subagentTasks:compactSubagentTasks(children,visibleParents,surface),
+    tasks: [...projectedTasks,...childConflicts].map(original => {const conflictOnly=!projectedIds.has(original.taskId),task=visibleParents.get(original.taskId)??safeDesktopTask(original);return ({...structuredClone(task),
       ...(task.error?{error:{...task.error,...errorDisplay(task.error,'task')}}:{}),
       reconciliationStatus:{...readReconciliationStatus(runtimeApplication,task),...(surface?{conversationId:conversations.activeConversationId(surface)}:{})},
       ...(conflictOnly?{conflictOnly:true}:{}),
+      ...(!conflictOnly&&surface&&!terminalTaskStates.has(task.state)&&!foregroundIds.has(task.taskId)&&!conversationDelivery.stopped(task)&&(delegatedParentIds.has(task.taskId)||Boolean(competitionMode&&runtimeApplication?.runtime?.loadCheckpoint(task.taskId,'required-subagent-delegation:v1')))?{backgroundDelegation:true}:{}),
       ...projectFailureRepair(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: task.createdAt ?? conversations?.turns.get(task.taskId)?.createdAt ?? task.updatedAt,
@@ -940,6 +1016,7 @@ function conversationProjection(surface) {
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
       ...(notepadHost?.projectTask(task) ?? {})});}),
     assistants: fakeMode ? [] : (runtimeApplication?.listAssistants?.() ?? []),
+    internalChat: fakeMode ? {messages: []} : (runtimeApplication?.listInternalChat?.(40) ?? {messages: []}),
     messages: page.entries.filter(entry=>entry.kind==='message').map(entry=>conversations?.messages.get(entry.id)).filter(Boolean).map(message=>({...message})),
     historyPage:{...historyPages.summary(surface),activeCount:active.length},
     conversationState:surface?conversations?.snapshot(surface):undefined,
@@ -948,10 +1025,11 @@ function conversationProjection(surface) {
     authorizationQuestions,
     workflowQuestions:!runtimeClosed&&surface?readBusinessWorkflowQuestions({application:runtimeApplication,
       hosts:[f01Workflow?.questions,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
-    authorizationSandbox:runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined,
-    approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
-      &&!authorizationQuestionHost?.hasPending(approval.approvalId)
-      &&!authorizationQuestions.some(question=>question.state==='pending'&&question.taskId===approval.taskId))
+    authorizationSandbox:sandboxSelected,
+    approvals: (autoApproves?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
+      &&!pendingQuestionRuns.has(approval.approvalId)
+      &&!(approval.state==='pending'&&authorizationQuestionHost?.hasPending(approval.approvalId))
+      &&!pendingQuestionTasks.has(approval.taskId))
       .map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime)),
   };
 }
@@ -971,13 +1049,14 @@ function projectWindowSnapshot(surface,topics=['all']) {
     ...(topics.includes('notifications')?{notifications:[...notifications.values(),...(todoHost?.snapshot().notifications??[])],
       notificationCenter:surface?undefined:notificationApplicationHost?.snapshot()}:{}),
     connection:connectionLabel,
+    pinned,
     ...(typeof operatorBrake === 'undefined' ? {} : {operatorBrake: operatorBrake.snapshot()}),
     connectionError:(runtimeError||cloudRequestFailureNotice||cloudTransportNotice)?errorDisplayText(runtimeError||cloudRequestFailureNotice||cloudTransportNotice,'runtime'):undefined,
     resourceBudget:resourcePolicy.snapshot(),
   };
 }
 function snapshot(surface) {
-  const cloudSettings=agentArtsSnapshot();
+  const cloudSettings=surface==='panel'?agentArtsConfig?.snapshot():agentArtsSnapshot();
   const modelSettings=agentArtsModels?.snapshot();
   return {
     ...conversationProjection(surface),
@@ -995,6 +1074,7 @@ function snapshot(surface) {
       available:competitionMode && !fakeMode && !syntheticMvp,
       enabled:desktopHost?.settings.shadowPreview===true,
     },
+    ...(surface==='panel'?{}:{
     assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
     contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
@@ -1002,7 +1082,7 @@ function snapshot(surface) {
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
     privateMemory: {available: competitionMode && Boolean(runtimeApplication),
-      vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
+      vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true}}),
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
     pluginCatalog:surface ? undefined : pluginCatalogHost?.snapshot(),
@@ -1032,6 +1112,7 @@ function snapshot(surface) {
         reason:voiceInitializationFailure?.message ?? '请先连接华为 SIS 语音；唤醒尚未开启'},
     wakePreference: currentWakePreference(),
     briefingOpen: panelBriefingRequested,
+    ...(surface==='panel'?{}:{
     proactive: proactiveSnapshot(),
     p5: p5StatusSnapshot(),
     knowledgeWatch: knowledgeWatchHost?.snapshot() ?? null,
@@ -1041,24 +1122,27 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
-    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'},
+    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'}}),
     dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
     computerControl:computerControlSnapshot(surface),
-    coding: codingSettingsSnapshot(),
+    coding: surface==='panel'?undefined:codingSettingsSnapshot(),
     reference:surface ? undefined : referenceHost?.snapshot(),
     agentArts: cloudSettings,
     usageBudget: surface ? undefined : usageBudgetProduct?.snapshot(),
+    usageDashboard: surface ? undefined : usageBudgetProduct?.dashboard({tasks: orderedTasks()}),
     laya: localLaya?.snapshot() ?? {state:'unavailable', ready:false, reason:'本地模型尚未装配'},
     knowledge: (obsidianPairing?.source ?? knowledgeSourceConfig)?.snapshot()??structuredClone(knowledgeStatus),
     knowledgeSource:surface ? undefined : knowledgeSourceConfig ? {...knowledgeSourceConfig.snapshot(),
       monitor:wikiSourceMonitor?.snapshot(),pairing:obsidianPairing?.snapshot()} : undefined,
     wikiImport:surface ? undefined : wikiImportHost?.snapshot() ?? (competitionMode
       ? {available:false,selectionAvailable:false,reason:'请先在模型设置中配置 AgentArts，再重新启动后导入 Wiki'} : undefined),
-    voice: voiceInput ? {...voiceInput.snapshot(), hostReady:true, experimental: sisConfigHost?.snapshot().configured,
+    voice: voiceInput ? {...voiceInput.snapshot(),hostReady:true,
+      ownsCapture:voiceInput.ownsCapture((surface==='workspace'?workspace:panel)?.webContents.id),
+      experimental: sisConfigHost?.snapshot().configured,
       configuration: sisConfigHost?.snapshot()} : {available: false, status: voiceInitializationFailure ? 'error' : 'unconfigured',
       hostReady:false,
       reason: voiceInitializationFailure?.message ?? sisConfigHost?.snapshot().reason ?? 'SIS 尚未配置',
@@ -1151,9 +1235,19 @@ function pushTaskActivity(event) {
   const task=runtime?.getTask(event.taskId);
   if(!task||runtime.loadCheckpoint(event.taskId,'private-copy-erasure')!==undefined||conversationDelivery.stopped(task))return;
   const isAssistant=task.conversationId?.startsWith('desktop-assistant:');
+  const parentBinding=task.conversationId?.startsWith('desktop-subtask:')
+    ? runtime.loadCheckpoint(event.taskId,'subtask-parent') : undefined;
+  const parentTask=parentBinding?.parentTaskId ? runtime.getTask(parentBinding.parentTaskId) : undefined;
+  const parentActivity=parentTask
+    && runtime.loadCheckpoint(parentTask.taskId,'private-copy-erasure')===undefined
+    && !conversationDelivery.stopped(parentTask)
+    && !parentTask.bodyWithheld && !parentTask.outputTruncated
+    ? {...activity,taskId:parentTask.taskId,childTaskId:event.taskId}
+    : undefined;
   for(const [win,surface] of [[panel,'panel'],[workspace,'workspace']]){
-    if(win&&!win.isDestroyed()&&(visibleConversationTask(task,surface)||isAssistant))
-      win.webContents.send('desktop:task-activity',activity);
+    if(!win||win.isDestroyed())continue;
+    if(visibleConversationTask(task,surface)||isAssistant)win.webContents.send('desktop:task-activity',activity);
+    else if(parentActivity&&visibleConversationTask(parentTask,surface))win.webContents.send('desktop:task-activity',parentActivity);
   }
   if(admin&&!admin.isDestroyed())admin.webContents.send('desktop:task-activity',activity);
   if(workspaceChildActivity?.taskIds.has(event.taskId)&&workspaceChildIsCurrent(workspaceChildActivity))
@@ -1172,7 +1266,7 @@ function windowFor(mode, bounds, options = {}) {
   const centerOnPresent = mode === 'workspace' && !desktopHost.hasSavedBounds(mode);
   const win = new BrowserWindow({...desktopHost.restore(mode, bounds), show: false, backgroundColor: '#00000000',
     webPreferences: {preload: path.join(dir, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true,
-      ...(mode === 'panel' ? {autoplayPolicy: 'no-user-gesture-required'} : {})}, ...options});
+      ...(mode === 'panel' ? {autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false} : {})}, ...options});
   win.setMenuBarVisibility(false);
   desktopHost.attach(win, mode, {remember:!['subagent','subagent-list'].includes(mode)});
   if(['orb','panel','admin','workspace'].includes(mode))snapshotPublisher.attach(win,mode==='admin'?undefined:mode);
@@ -1190,6 +1284,17 @@ function windowFor(mode, bounds, options = {}) {
     win.webContents.on('destroyed', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
   }
   if (mode === 'orb') bindOrbShape(win);
+  if (mode === 'workspace') {
+    const senderId=win.webContents.id;
+    const stopDictation=()=>{
+      if(voiceInput?.ownsCapture(senderId))void voiceInput.cancelCapture(senderId).catch(reportPanelVoiceFailure);
+    };
+    win.on('hide',stopDictation);
+    win.on('minimize',stopDictation);
+    win.webContents.on('did-start-navigation',(_event,_url,_inPlace,mainFrame)=>{if(mainFrame)stopDictation();});
+    win.webContents.on('render-process-gone',stopDictation);
+    win.webContents.on('destroyed',stopDictation);
+  }
   if (mode === 'orb') {
     const invalidateDrag = () => {
       if (win !== orb) return;
@@ -1243,19 +1348,29 @@ function roundedRects(width, height, radius) {
   return rects;
 }
 
+const appliedPanelShapes=new WeakMap();
 function applyShape(win, radius) {
   const bounds = win.getBounds();
+  const zoom=win.webContents.getZoomFactor();
+  const signature=[bounds.width,bounds.height,radius,zoom,screen.getDisplayMatching(bounds).scaleFactor].join('/');
+  if(appliedPanelShapes.get(win)===signature)return;
   // Leave one DIP for the per-pixel visual/CSS antialiasing; the native region
   // is the hit mask, not the final optical edge of the clipped glass layer.
-  win.setShape(roundedRects(bounds.width, bounds.height, Math.max(0, radius * win.webContents.getZoomFactor() - 1)));
+  win.setShape(roundedRects(bounds.width, bounds.height, Math.max(0, radius * zoom - 1)));
+  appliedPanelShapes.set(win,signature);
 }
 
+const appliedOrbShapes=new WeakMap();
 function applyOrbShape(win) {
-  const {width, height} = win.getBounds();
-  win.setShape(desktopHost.settings.orbPlacement === 'right'
-    ? [{x: width - ORB_DOCK_HANDLE_WIDTH, y: Math.floor((height - ORB_DOCK_HANDLE_HEIGHT) / 2),
+  const bounds = win.getBounds();
+  const placement = desktopHost.settings.orbPlacement;
+  const signature = [bounds.width, bounds.height, placement, screen.getDisplayMatching(bounds).scaleFactor].join('/');
+  if (appliedOrbShapes.get(win) === signature) return;
+  win.setShape(placement === 'right'
+    ? [{x: bounds.width - ORB_DOCK_HANDLE_WIDTH, y: Math.floor((bounds.height - ORB_DOCK_HANDLE_HEIGHT) / 2),
       width: ORB_DOCK_HANDLE_WIDTH, height: ORB_DOCK_HANDLE_HEIGHT}]
-    : orbShapeRects(width, height));
+    : orbShapeRects(bounds.width, bounds.height));
+  appliedOrbShapes.set(win, signature);
 }
 
 function bindOrbShape(win) {
@@ -1287,7 +1402,7 @@ function reconfigureOrbPlacement(previous) {
 function placePanel(bounds) {
   const current = panel.getBounds();
   if (current.width === bounds.width && current.height === bounds.height) {
-    panel.setPosition(bounds.x, bounds.y);
+    if(current.x!==bounds.x||current.y!==bounds.y)panel.setPosition(bounds.x,bounds.y);
   } else {
     panel.setBounds(bounds);
   }
@@ -1305,6 +1420,7 @@ function placePanelNearOrb() {
 function openPanel(focus = false) {
   if (!orb || !panel || orb.isDestroyed() || panel.isDestroyed()) return;
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
+  if (panelPageLoaded && !panel.isVisible()) panel.setBackgroundColor('#00000000');
   placePanelNearOrb();
   if (focus) panel.show(); else panel.showInactive();
   away = 0;
@@ -1328,13 +1444,12 @@ function movePanelGroup(point) {
   if (desktopHost.settings.orbPlacement === 'right') {
     const {panel: start, pointer} = panelDragOrigin;
     placePanel(clampOrb({...start, x: start.x + point.x - pointer.x, y: start.y + point.y - pointer.y}, area));
-    applyShape(panel, 40);
     return;
   }
   const next = draggedGroupBounds(panelDragOrigin.orb, panelDragOrigin.pointer, point, area);
-  placeOrb(orb, next.orb);
+  const currentOrb = orb.getContentBounds();
+  if (next.orb.x !== currentOrb.x || next.orb.y !== currentOrb.y) placeOrb(orb, next.orb);
   placePanel(next.panel);
-  applyShape(panel, 40);
 }
 
 function openAdmin(page) {
@@ -1345,11 +1460,29 @@ function openAdmin(page) {
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
-  admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
+  const useAdminAcrylic = () => supportsPanelAcrylic()
+    && !nativeTheme.prefersReducedTransparency
+    && !nativeTheme.shouldUseHighContrastColors;
+  const adminAcrylic = useAdminAcrylic();
+  admin = windowFor('admin', {width: Math.min(1180, area.width), height: Math.min(800, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 设置', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
-  admin.on('closed', () => { mailMonitorPreparation.cancel(); admin = undefined; });
+    {title: 'PersonalAgent · 设置', frame: false, transparent: false,
+      backgroundMaterial: adminAcrylic ? 'acrylic' : 'none',
+      backgroundColor: adminAcrylic ? '#00000000' : '#090b10',
+      roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
+  const syncAdminMaterial = () => {
+    if (!admin || admin.isDestroyed()) return;
+    const acrylic = useAdminAcrylic();
+    try {
+      if (supportsPanelAcrylic()) admin.setBackgroundMaterial(acrylic ? 'acrylic' : 'none');
+      admin.setBackgroundColor(acrylic ? '#00000000' : '#090b10');
+    } catch {
+      admin.setBackgroundColor('#090b10');
+    }
+  };
+  nativeTheme.on('updated', syncAdminMaterial);
+  admin.on('closed', () => { nativeTheme.removeListener('updated', syncAdminMaterial); mailMonitorPreparation.cancel(); admin = undefined; });
 }
 
 async function stopWakeVoice(dispose = false) {
@@ -1385,23 +1518,34 @@ function reportQuitFailure(message) {
 }
 
 async function stopPanelVoice() {
+  const hadActiveVoice = Boolean(
+    wakeQuitUnknown
+    || wakeVoice?.hasActive?.()
+    || voiceInput?.hasActive?.(panel?.webContents.id)
+    || liveVoice?.hasActive?.()
+    || voiceStartupHost?.snapshot?.().active
+    || sisPlaybackHost?.snapshot?.().active
+    || microphoneCaptureHost?.snapshot?.().busy
+    || microphoneCaptureHost?.snapshot?.().active
+  );
   const results = await Promise.allSettled([stopWakeVoice()]);
-  if (voiceInput?.hasActive()) {
+  if (voiceInput?.hasActive(panel?.webContents.id)) {
     results.push(...await Promise.allSettled([voiceInput.cancelCapture(panel?.webContents.id)]));
   }
   results.push(...await Promise.allSettled([
-    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(), microphoneCaptureHost?.revoke(),
+    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(), microphoneCaptureHost?.revoke(panel?.webContents.id),
   ]));
   if (results.some(result => result.status === 'rejected') || liveVoice?.hasActive()) throw Error('语音资源释放未确认');
-  publish();
+  if (hadActiveVoice) publish();
 }
 
 function hidePanel() {
   if (panelHiding) return panelHiding;
   panelHiding = (async () => {
+    const wasPinned = pinned;
     pinned = false;
     panel?.hide();
-    publish();
+    if (wasPinned) publish(['window']);
   })().finally(() => {panelHiding = undefined;});
   return panelHiding;
 }
@@ -1629,7 +1773,7 @@ async function openWorkspace() {
     try{weatherCardHost.refresh();}catch{/* Preserve the unavailable state; never substitute a provider. */}
   }
   await hidePanel();
-  if (workspace && !workspace.isDestroyed()) { if(workspace.isMinimized())workspace.restore(); workspace.show(); workspace.focus(); publish(); return; }
+  if (workspace && !workspace.isDestroyed()) { if(workspace.isMinimized())workspace.restore(); workspace.show(); workspace.focus(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
@@ -1875,7 +2019,9 @@ async function refresh(taskId, isCurrent = () => true) {
   if (!isCurrent()) throw Error('Task refresh session changed');
   const current = tasks.get(taskId);
   if (current?.taskId === task.taskId && current.revision > task.revision) return current;
+  const previousVersion=tasks.version;
   tasks.set(taskId, task);
+  if(previousVersion!==undefined&&tasks.version===previousVersion)return task;
   observeTextTaskOutput(task);
   clearInactiveTaskExitWarning();
   publish(['tasks','approvals']);
@@ -2016,7 +2162,7 @@ async function pumpEvents() {
       }
       // Re-send even when all tasks are terminal: the final IPC update may have
       // arrived while a renderer was loading or failed to apply its projection.
-      publish();
+      publish(['recovery']);
     }
     const afterSequence = eventCursor.afterSequence;
     if (eventSubscriptionConnection !== connection) {
@@ -2246,20 +2392,25 @@ function readDesktopDeveloperHarnessConfiguration() {
 // Windows' own signed-code verifier checks the fixed PowerShell viewer binary;
 // source text is never passed to it, to a command line, or to the Renderer.
 const f15ViewerSignatureCache=new Map();
+function cacheF15ViewerSignature(key,valid) {
+  if(f15ViewerSignatureCache.size>=16&&!f15ViewerSignatureCache.has(key))
+    f15ViewerSignatureCache.delete(f15ViewerSignatureCache.keys().next().value);
+  f15ViewerSignatureCache.set(key,{time:Date.now(),valid});
+}
 function verifyF15ViewerExecutable({path:executable,sha256}) {
   if(process.platform!=='win32'||typeof executable!=='string'||!/^[a-f0-9]{64}$/.test(sha256))return false;
   const key=executable+'\0'+sha256,prior=f15ViewerSignatureCache.get(key);
   if(prior&&Date.now()-prior.time<60000)return prior.valid;
   try {
-    const systemRoot=process.env.SystemRoot;if(!systemRoot||!path.isAbsolute(systemRoot))return false;
+    const systemRoot=process.env.SystemRoot;if(!systemRoot||!path.isAbsolute(systemRoot)){cacheF15ViewerSignature(key,false);return false;}
     const verifier=path.join(systemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
-    if(realpathSync.native(verifier).toLowerCase()!==path.normalize(verifier).toLowerCase())return false;
+    if(realpathSync.native(verifier).toLowerCase()!==path.normalize(verifier).toLowerCase()){cacheF15ViewerSignature(key,false);return false;}
     const target=Buffer.from(executable,'utf8').toString('base64');
     const script=`$ErrorActionPreference='Stop';$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${target}'));$s=Get-AuthenticodeSignature -LiteralPath $p;if($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match '(^|,\\s*)CN=Microsoft Corporation(,|$)'){[Console]::Write('OK')}else{exit 1}`;
     const output=execFileSync(verifier,['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
       {encoding:'utf8',windowsHide:true,timeout:10000,stdio:['ignore','pipe','ignore']});
-    const valid=output==='OK';f15ViewerSignatureCache.set(key,{time:Date.now(),valid});return valid;
-  }catch{return false;}
+    const valid=output==='OK';cacheF15ViewerSignature(key,valid);return valid;
+  }catch{cacheF15ViewerSignature(key,false);return false;}
 }
 function f15ReviewSnapshot(){
   const state=f15ReviewHost?.snapshot()??{configured:false,available:false},viewer=f15ReviewViewer?.snapshot();
@@ -2426,7 +2577,7 @@ function initializeAuthorizationHosts(runtimeModule){
       ??connectorWatchHost?.resolveUserConversation(taskId)
       ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
-    available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
+    available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:()=>publish(['approvals']),
     profiles:[{ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
       {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true},
       {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true},
@@ -2444,14 +2595,27 @@ function initializeAuthorizationHosts(runtimeModule){
 }
 
 function authorizeAgentArtsEgress(scope) {
-  const owner=runtimeApplication,conversationId=conversationToolAccess?.resolveConversation(scope.taskId);
-  if(!conversationId||!authorizationIntentHost)return false;
+  const owner=runtimeApplication;
+  if(!owner||!authorizationIntentHost||!conversationToolAccess)return false;
+  const binding=resolveEgressReviewConversation({
+    taskId:scope.taskId,
+    resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+    readTask:taskId=>owner.runtime.getTask(taskId),
+    readToolConversation:taskId=>owner.readToolConversation(taskId),
+    activePanelConversationId:()=>conversations?.activeConversationId('panel'),
+  });
+  if(!binding)return false;
   return authorizationIntentHost.request({action:'model.egress',payload:scope.payloadDigest,
     scope:{taskId:scope.taskId,requestId:scope.requestId,destination:scope.destination},
     summary:`将当前任务所列内容仅发送本次到 ${scope.destination}`,
     deadline:scope.deadline,signal:scope.signal,
-    isCurrent:()=>owner===runtimeApplication&&conversationToolAccess.resolveConversation(scope.taskId)===conversationId,
-    egressReview:{conversationId,payload:scope.payload}});
+    isCurrent:()=>owner===runtimeApplication&&isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
+      resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      readTask:taskId=>owner.runtime.getTask(taskId),
+      readToolConversation:taskId=>owner.readToolConversation(taskId),
+      activePanelConversationId:()=>conversations?.activeConversationId('panel'),
+    }),
+    egressReview:{conversationId:binding.conversationId,payload:scope.payload}});
 }
 
 async function initializeLocalAuthorizationControlPlane(){
@@ -2509,6 +2673,9 @@ async function initializeRuntime() {
     clearInterval(eventPoll);eventPoll=undefined;
     if(typeof dutyPoll!=='undefined'&&dutyPoll){clearInterval(dutyPoll);dutyPoll=undefined;}
     if(typeof asyncSubagentHost!=='undefined')asyncSubagentHost?.stop();
+    try {crewReplanDispatcher?.close();} catch {/* crew db best-effort */}
+    crewReplanDispatcher=undefined;
+    locateOpenHost=undefined;
     runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;localAuthorizationOnly=false;
   }
   initializeAuthorizationHosts(runtimeModule);
@@ -3024,6 +3191,7 @@ async function initializeRuntime() {
       const subagentAvailability = {
         toolName: SUBAGENT_DISPATCH_TOOL_NAME,
         toolVersion: SUBAGENT_DISPATCH_TOOL_VERSION,
+        publicDescription: '新建并派发后台工人执行任务（worker.list 为空或没有合适工人时必须调用本工具；支持 researcher/coder/reviewer/planner/coordinator 角色，工人拥有全部工作工具与连接器）。',
         publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort'],
         available: async ({taskId}) => runtimeApplication.isDefaultSubagentAvailable()
           && !runtimeApplication.runtime.getTask(taskId).conversationId?.startsWith('desktop-subtask:'),
@@ -3486,6 +3654,7 @@ async function initializeRuntime() {
         riskAutonomy: ensureRiskAutonomyHost().gate,
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
+        frontDeskUserTurns: true,
         getToolsForSubtask:(subtask,worker,tools)=>f28Workflow?.getToolsForSubtask(subtask,worker,tools)??tools,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
@@ -3585,8 +3754,8 @@ async function initializeRuntime() {
         // Module availability/consent, input validation and ToolGateway still run.
         // Explicit names prevent future destructive tools inheriting this policy.
         automaticTools: [...[...(historyTool?[historyTool.tool]:[]),...productTools.tools,...codingWorkspace.tools,...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
-          ...(todoHost?.tools??[]),...(feedsHost?.tools??[]),...(shadowPreview?[shadowPreview.tool]:[])].filter(tool=>[
-            'conversation.read_history','weather.forecast','research.search','feeds.collect','feeds.subscriptions',
+          ...(todoHost?.tools??[]),...(feedsHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(shadowPreview?[shadowPreview.tool]:[])].filter(tool=>[
+            'conversation.read_history','weather.forecast','calendar.events','feeds.subscriptions','feeds.collect','research.search',
             'todo.list','todo.create','todo.update','notifications.status',
             'goals.list','goals.get','goals.create','goals.revise',
             'workspace.read_text','workspace.list_entries','workspace.preview_text_patch',
@@ -3598,7 +3767,12 @@ async function initializeRuntime() {
           ].includes(tool.descriptor.name))
           .map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'},
-            {toolName:runtimeModule.DEVELOPER_HARNESS_TOOL_NAME,toolVersion:runtimeModule.DEVELOPER_HARNESS_TOOL_VERSION}] : [])],
+            {toolName:runtimeModule.DEVELOPER_HARNESS_TOOL_NAME,toolVersion:runtimeModule.DEVELOPER_HARNESS_TOOL_VERSION}] : []),
+          {toolName:'assistant.list',toolVersion:'1.0.0'},
+          {toolName:'assistant.create',toolVersion:'1.0.0'},
+          {toolName:'assistant.message',toolVersion:'1.0.0'},
+          {toolName:'worker.list',toolVersion:'1.0.0'},
+          {toolName:'worker.instruct',toolVersion:'1.0.0'}],
         // A missing remote catalog omits only the implicit model; an invalid configured default remains an error.
         readDefaultExecutionModel:role=>usageBudgetProduct?.degradeSelection(readDesktopExecutionModel(agentArtsModels,undefined,role),selection=>agentArtsModels.resolveExecutionModel(selection))
           ??readDesktopExecutionModel(agentArtsModels,undefined,role),
@@ -4450,7 +4624,7 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
 
 async function interruptConversation(conversationId,surface,except,previous) {
   const pending=conversationDelivery.interruptPending(conversationId,except)??previous;
-  const running=[...tasks.values()].filter(task=>task.conversationId===conversationId&&foregroundConversationTask(task,surface));
+  const running=[...tasks.values()].filter(task=>task.conversationId===conversationId&&visibleConversationTask(task,surface)&&!terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task));
   // Acceptance may precede the first task.get. A stalled readback cannot hide this task from Stop.
   if(pending?.taskId&&!running.some(task=>task.taskId===pending.taskId))running.push({taskId:pending.taskId});
   for(const task of running){conversationDelivery.truncate(task);liveVoice?.cancelTextTask(task.taskId);}
@@ -4520,7 +4694,7 @@ async function action(event, name, payload) {
   }
   if (name === 'task.repair') {
     if ((sender !== panel && sender !== workspace) || !runtimeApplication) throw Error('请从当前对话处理失败');
-    const result = createFailureRepairHost(runtimeApplication.runtime).act(payload);
+    const result = failureRepairHost().act(payload);
     publish();
     return result;
   }
@@ -4556,6 +4730,8 @@ async function action(event, name, payload) {
   }
   if(name==='workspace.live.toggle'){
     // Capture, playback, conversation ownership and approvals stay with the original panel host.
+    if(sender===workspace&&conversations.activeConversationId('workspace')!==conversations.activeConversationId('panel')
+      &&!liveVoice?.hasActive())throw Error('请先切回共享主对话，再开启 Live');
     return workspaceLiveEntry({sender,workspace,payload,competitionMode,configuration:liveConfig,openSettings:openAdmin,toggle:()=>toggleLive()});
   }
   if(name.startsWith('workspace.subagent.')){
@@ -4587,14 +4763,14 @@ async function action(event, name, payload) {
     if(payload?.decision==='deny'||result?.decision==='deny'||result?.state==='denied'){
       permissionAudit?.recordEvent('denied',`question:${question.toolName??payload?.questionId}`);
     }
-    publish();return result;
+    publish(payload?.decision==='deny'||result?.state==='denied'?undefined:['approvals']);return result;
   }
   if(['workflow.f11.location.respond','workflow.f11.decision.respond','workflow.f08.decision.respond','workflow.f01.clarification.respond'].includes(name)){
     const host=name==='workflow.f01.clarification.respond'?f01Workflow?.questions:name==='workflow.f11.location.respond'?f11LocationQuestion:name==='workflow.f11.decision.respond'?f11DecisionQuestion:f08DecisionQuestion;
     if(sender!==panel&&sender!==workspace||!host)throw Error('请在原对话中补充任务信息');
     const conversationId=conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!conversationId)throw Error('当前对话不可用');
-    const result=host.submitReply(payload,{conversationId});publish();return result;
+    const result=host.submitReply(payload,{conversationId});publish(['tasks','approvals']);return result;
   }
   if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
     if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
@@ -4744,6 +4920,10 @@ async function action(event, name, payload) {
         snippet: fr.snippet === undefined ? null : fr.snippet}))})),
       totalFailures: report.totalFailures};
   }
+  if (name === 'task.locate.open') {
+    if (sender !== panel && sender !== admin && sender !== workspace) throw Error('Untrusted sender for task.locate.open');
+    return ensureLocateOpenHost().open(payload);
+  }
   if (name === 'admin.open') { openAdmin(payload?.page); return; }
   if (name === 'desktop.appearance') {
     if (sender !== admin || !payload || !['system','light','dark'].includes(payload.theme) || typeof payload.calm !== 'boolean') throw Error('外观只能从设置页保存');
@@ -4881,6 +5061,53 @@ async function action(event, name, payload) {
     if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
     return runtimeApplication.markAssistantRead(assistantId);
   }
+  if (name === 'internalChat.list') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里查看内部群聊');
+    if (fakeMode || !runtimeApplication?.listInternalChat) return {messages: []};
+    if (payload !== undefined) {
+      const clean = requirePlainRecord(payload, ['limit'], '读取内部群聊参数无效');
+      if (clean.limit !== undefined && (!Number.isSafeInteger(clean.limit) || clean.limit < 1 || clean.limit > 200)) {
+        throw Error('内部群聊分页无效');
+      }
+      return runtimeApplication.listInternalChat(clean.limit);
+    }
+    return runtimeApplication.listInternalChat();
+  }
+  if (name === 'internalChat.send') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里给助手交付工作');
+    if (fakeMode || !runtimeApplication?.submitAssistantMessage) throw Error('内部群聊需要正式 Runtime');
+    const clean = requirePlainRecord(payload, ['assistantId', 'text', 'requestId'], '内部群聊发送参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    const text = requireCleanText(clean.text, '请写下要交付的内容');
+    const requestId = requireCleanText(clean.requestId, '请求标识无效', 128).trim();
+    if (assistantId !== clean.assistantId || requestId !== clean.requestId) throw Error('内部群聊发送参数无效');
+    const result = runtimeApplication.submitAssistantMessage({assistantId, text, requestId});
+    publish();
+    return result;
+  }
+  if (name === 'workers.list') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里查看工人');
+    if (fakeMode || !runtimeApplication?.listWorkersOwnedByAssistant) return {workers: []};
+    const clean = requirePlainRecord(payload, ['assistantId'], '读取工人列表参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
+    return {workers: runtimeApplication.listWorkersOwnedByAssistant(assistantId)};
+  }
+  if (name === 'workers.instruct') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里给工人下指令');
+    if (fakeMode || !runtimeApplication?.instructOwnedWorker) throw Error('工人指令需要正式 Runtime');
+    const clean = requirePlainRecord(payload, ['assistantTaskId', 'text', 'workerTaskId', 'role'], '工人指令参数无效');
+    const assistantTaskId = requireCleanText(clean.assistantTaskId, '助手任务标识无效', 128).trim();
+    const text = requireCleanText(clean.text, '请写下给工人的指令');
+    if (assistantTaskId !== clean.assistantTaskId) throw Error('助手任务标识格式无效');
+    const result = runtimeApplication.instructOwnedWorker(assistantTaskId, {
+      text,
+      ...(typeof clean.workerTaskId === 'string' ? {workerTaskId: requireCleanText(clean.workerTaskId, '工人任务标识无效', 128).trim()} : {}),
+      ...(typeof clean.role === 'string' ? {role: requireCleanText(clean.role, '工人角色无效', 64).trim()} : {}),
+    });
+    publish();
+    return result;
+  }
   if (name === 'task.transcript') {
     if (sender !== panel && sender !== workspace) throw Error('请从对话里查看过程');
     const clean = requirePlainRecord(payload, ['taskId'], '查看执行过程参数无效');
@@ -4904,9 +5131,9 @@ async function action(event, name, payload) {
     if (sender !== admin) throw Error('Untrusted sender');
     admin.close(); return;
   }
-  if (name === 'panel.pin' && sender === panel) { const next=Boolean(payload);if(next===pinned)return;pinned=next;publish();return; }
+  if (name === 'panel.pin' && sender === panel) { const next=Boolean(payload);if(next===pinned)return;pinned=next;publish(['window']);return; }
   if (name === 'panel.hide' && sender === panel) { await hidePanel(); return; }
-  if (name === 'orb.open' && sender === orb) { pinned = true; openPanel(true); publish(); return; }
+  if (name === 'orb.open' && sender === orb) {const changed=!pinned;pinned=true;openPanel(true);if(changed)publish(['window']);return;}
   if (name === 'orb.dragStart' && sender === orb) {
     if (desktopHost.settings?.orbPlacement === 'right') return;
     const revision = ++orbDragRevision, dragWindow = orb;
@@ -4927,7 +5154,7 @@ async function action(event, name, payload) {
     orbDragRevision++;
     stopOrbDrag();
     dragging = 'panel';
-    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getContentBounds(), panel: panel.getBounds()};
+    panelDragOrigin = {pointer: {x: payload.x, y: payload.y}, orb: orb.getContentBounds(), panel: panel.getBounds?.()};
     return;
   }
   if (name === 'panel.dragMove' && sender === panel && dragging === 'panel') {
@@ -5621,15 +5848,18 @@ async function action(event, name, payload) {
     } finally { voiceConfigurationPending = false; }
   }
   if (name.startsWith('voice.record.') || name === 'voice.play') {
-    if (sender !== panel || !voiceInput) throw Error('语音试用只允许从 Competition 可信面板调用');
+    const workspaceDictation=sender===workspace&&['voice.record.start','voice.record.finish'].includes(name);
+    if (sender !== panel && !workspaceDictation || !voiceInput) throw Error('请从已配置听写的对话窗口开始录音');
+    if(workspaceDictation&&(!payload||Object.keys(payload).length!==1
+      ||payload.conversationId!==conversations.activeConversationId('workspace')))throw Error('对话已切换，请在当前输入框重新操作');
     if (voiceConfigurationPending) throw Error('语音配置正在更新，请稍候');
     if (liveVoice?.hasActive()) throw Error('请先关闭 Live 再使用语音转文字');
     if (voiceStartupHost && !voiceStartupHost.snapshot().resourcesReleased) throw Error('请先结束启动语音');
     const senderId = sender.webContents.id;
     if (name === 'voice.record.start') {
-      if (panelHiding || !panel.isVisible()) throw Error('请先显示面板');
+      if (sender===panel&&panelHiding || !sender.isVisible() || sender.isMinimized()) throw Error('请先显示发起听写的窗口');
       if (wakeQuitUnknown) throw Error('唤醒音频资源释放未确认');
-      if (wakeVoice?.snapshot().phase === 'listening') return wakeVoice.beginCapture(senderId);
+      if (sender===panel&&wakeVoice?.snapshot().phase === 'listening') return wakeVoice.beginCapture(senderId);
       if (wakeVoice?.hasActive()) throw Error('唤醒正在切换或资源释放未确认，请先关闭唤醒');
       return voiceInput.beginCapture(senderId);
     }
@@ -5903,10 +6133,11 @@ async function action(event, name, payload) {
     throw Error('Unsupported Goal action');
   }
   if(name==='conversation.interrupt') {
-    if(sender!==panel)throw Error('请从主面板停止当前回答');
+    if(sender!==panel&&sender!==workspace)throw Error('请从主面板或工作区停止当前回答');
+    const surface=sender===workspace?'workspace':'panel';
     if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>key!=='conversationId')
-      ||payload.conversationId!==conversations.activeConversationId('panel'))throw Error('当前对话已切换，请重试');
-    return interruptConversation(payload.conversationId,'panel');
+      ||payload.conversationId!==conversations.activeConversationId(surface))throw Error('当前对话已切换，请重试');
+    return interruptConversation(payload.conversationId,surface);
   }
   if (name === 'task.submit' || name==='skill.run') {
     if (typeof operatorBrake !== 'undefined' && operatorBrake.isPaused()) throw Error('总暂停中，新任务不会启动。恢复后从断点继续。');
@@ -5928,7 +6159,7 @@ async function action(event, name, payload) {
     if(!skillRun&&payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新发送');
     const injecting=!skillRun&&!compactCommand&&payload?.delivery==='inject';
     if(injecting){
-      const active=[...tasks.values()].find(task=>foregroundConversationTask(task,surface));
+      const active=[...tasks.values()].reverse().find(task=>visibleConversationTask(task,surface)&&!terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task));
       if(!active){/* 没有正在跑的任务时，插话就是普通发送。 */}
       else {
         const injected=runtimeApplication?.runtime?.injectUserMessage?.(active.taskId,text.trim(),'user');
@@ -5992,6 +6223,9 @@ async function action(event, name, payload) {
     conversationDelivery.truncate(tasks.get(payload));liveVoice?.cancelTextTask(payload);publish();
     const result=await client.call('task.cancel',{taskId:payload,reason:'用户截断当前回答'});
     conversationDelivery.acceptStop(payload,result);
+    const cancelledChildren=runtimeApplication?.readSubagentTasks?.(payload)?.map(child=>child.taskId)??[];
+    publish(['tasks','approvals']);
+    publishChildUpdates([payload,...cancelledChildren]);
     void refresh(payload).catch(()=>{});
     return result;
   }
@@ -6091,13 +6325,14 @@ async function initializeSisVoice() {
     source = createVoicePcmFrameSourcePort(microphoneCaptureHost.binding);
     input = createDesktopVoiceInput({source, microphoneHost: microphoneCaptureHost,
       client, onUpdate: publish, enabled: true, inputMode: 'dictation', speechPorts,
-      readConversationId:()=>conversations.activeConversationId('panel'),
+      readConversationId:senderId=>conversations.activeConversationId(workspace&&!workspace.isDestroyed()
+        &&senderId===workspace.webContents.id?'workspace':'panel'),
       onTranscript: ({senderId, text,conversationId,dictationId}) => {
-        if(!conversations?.containsConversation(conversationId)||conversations.session(conversationId).surface!=='panel')throw Error('原听写会话不存在');
-        if (panel && !panel.isDestroyed() && !panel.webContents.isDestroyed()
-          && panel.webContents.id === senderId) {
-          panel.webContents.send('desktop:dictation-result', {text,conversationId,dictationId});
-        }
+        const owner=panel&&!panel.isDestroyed()&&panel.webContents.id===senderId?panel:workspace;
+        if(!owner||owner.isDestroyed()||owner.webContents.isDestroyed()||owner.webContents.id!==senderId||!owner.isVisible())
+          throw Error('原听写窗口已关闭');
+        conversations.session(conversationId,owner===panel?'panel':'workspace');
+        owner.webContents.send('desktop:dictation-result',{text,conversationId,dictationId});
       },
       onTaskSubmitted: ({taskId, goal}) => {
         rememberTaskGoal(taskId, goal);
@@ -6319,7 +6554,10 @@ app.whenReady().then(async () => {
   activityProduct = openDesktopActivity({userData:app.getPath('userData'),onUpdate:publish});
   microphonePermissionGate = createMicrophonePermissionGate({
     expectedPageUrl: pathToFileURL(entry).href,
-    isTrustedWindow: contents => contents === panel?.webContents,
+    isTrustedWindow: (contents,mode) => {
+      const owner=mode==='workspace'?workspace:panel;
+      return Boolean(owner&&!owner.isDestroyed()&&contents===owner.webContents);
+    },
   });
   session.defaultSession.setPermissionRequestHandler(microphonePermissionGate.request);
   session.defaultSession.setPermissionCheckHandler(microphonePermissionGate.check);
@@ -6333,7 +6571,10 @@ app.whenReady().then(async () => {
         deadline:new Date(Math.min(Date.parse(payload.expiresAt),Date.now()+180000)).toISOString(),signal,
         isCurrent:()=>!voiceConfigurationPending&&!panelHiding&&isCurrent()});
     },
-    getPanel: () => panel, onLevel: noteMicLevel});
+    getPanel: senderId => {
+      if(senderId===undefined)return panel;
+      return [panel,workspace].find(win=>win&&!win.isDestroyed()&&win.webContents.id===senderId);
+    }, onLevel: noteMicLevel});
   ipcMain.on('desktop:microphone-event', (event, message) => {
     if (microphoneCaptureHost.receive(event, message) && message.type!=='frame') publish();
   });
@@ -6348,7 +6589,39 @@ app.whenReady().then(async () => {
   costRouteBudget = usageBudgetProduct;
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage,
     onCloudRun: info => usageBudgetProduct.recordCloud(info)});
-  egressHost=createNativeEgressHost({dialog,authorizeTaskEgress:authorizeAgentArtsEgress});
+  egressHost=createNativeEgressHost({dialog,authorizeTaskEgress:authorizeAgentArtsEgress,
+    isTrustedIdentifier:id=>{
+      if(typeof id!=='string')return false;
+      const isUuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(id);
+      const isHex64=/^[a-f0-9]{64}$/u.test(id);
+      if(!isUuid&&!isHex64)return false;
+      if(isUuid){
+        if(tasks.has(id)||conversations?.turns?.has(id)||conversations?.messages?.has(id)
+          ||conversations?.sessions?.has(`desktop-panel:${id}`)||conversations?.sessions?.has(`desktop-workspace:${id}`))return true;
+        if(conversations?.sessions){
+          for(const session of conversations.sessions.values()){
+            if(session.prohibitions?.items?.some(item=>item.id===id))return true;
+          }
+        }
+        try{if(runtimeApplication?.runtime?.getTask(id))return true;}catch{}
+        try{if(authorizationQuestionHost?.snapshot?.().some(q=>q.questionId===id||q.taskId===id))return true;}catch{}
+      }
+      if(isHex64&&runtimeApplication){
+        for(const task of tasks.values()){
+          try{if(readReconciliationConflict(runtimeApplication,task)?.conflictId===id)return true;}catch{}
+        }
+      }
+      return false;
+    },
+    readPendingWorkflowGraph({taskId,requestId,deadline}){
+      const runtime=runtimeApplication?.runtime;
+      if(!runtime||runtime.loadCheckpoint(taskId,'application-deadline')!==deadline)return;
+      for(const key of runtime.listCheckpointKeys(taskId)){
+        if(!key.endsWith(':graph')||!(key.startsWith('owned-workflow:')||key==='coding-repair:graph'))continue;
+        const graph=runtime.loadCheckpoint(taskId,key);
+        if(graph?.pendingSend?.requestId===requestId)return graph;
+      }
+    }});
   agentArtsConfig.setEgressHost(egressHost);
   if(competitionMode&&!syntheticMvp) {
     try {
@@ -6442,6 +6715,13 @@ app.whenReady().then(async () => {
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
     {frame: false, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
   const panelMaterial=bindPanelMaterial(panel, nativeTheme);
+  const clearPanelBackingFlash = () => {
+    if (panelPageLoaded && panel && !panel.isDestroyed()) panel.setBackgroundColor('#00000000');
+  };
+  const onPanelThemeUpdated = () => { queueMicrotask(clearPanelBackingFlash); };
+  nativeTheme.on('updated', onPanelThemeUpdated);
+  panel.once('closed', () => { panelPageLoaded = false; nativeTheme.removeListener('updated', onPanelThemeUpdated); });
+  panel.webContents.on('did-finish-load', () => { panelPageLoaded = true; clearPanelBackingFlash(); });
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
   panel.webContents.once('did-finish-load', () => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
@@ -6497,10 +6777,11 @@ app.whenReady().then(async () => {
     if (away > Date.now()) return;
     const near = desktopHost.settings.orbPlacement === 'top'
       && Math.hypot(point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2) <= 90;
-    const panelBoundsValue = panel.getBounds();
-    const inside = panel.isVisible() && point.x >= panelBoundsValue.x && point.x <= panelBoundsValue.x + panelBoundsValue.width && point.y >= panelBoundsValue.y && point.y <= panelBoundsValue.y + panelBoundsValue.height;
-    if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panel.isVisible()) openPanel(); }
-    else if (panel.isVisible()) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
+    const panelVisible = panel.isVisible();
+    const panelBoundsValue = panelVisible ? panel.getBounds() : undefined;
+    const inside = panelVisible && point.x >= panelBoundsValue.x && point.x <= panelBoundsValue.x + panelBoundsValue.width && point.y >= panelBoundsValue.y && point.y <= panelBoundsValue.y + panelBoundsValue.height;
+    if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panelVisible) openPanel(); }
+    else if (panelVisible) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
   }, 80);
   draftQuitPreflight=createDraftQuitPreflight({windows:()=>[panel,workspace],retry:()=>app.quit(),
     onFailure:error=>{app.isQuitting=false;runtimeError=error.message;publish();}});

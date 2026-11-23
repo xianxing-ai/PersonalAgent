@@ -42,6 +42,7 @@
     "@personal-agent/cognition": "0.1.0-alpha.1",
     "@personal-agent/contracts": "0.1.0-alpha.1",
     "@personal-agent/coordination": "0.1.0-alpha.1",
+    "@personal-agent/crew": "0.1.0-alpha.1",
     "@personal-agent/feeds": "0.1.0-alpha.1",
     "@personal-agent/github": "0.1.0-alpha.1",
     "@personal-agent/goals": "0.1.0-alpha.1",

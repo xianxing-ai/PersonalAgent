@@ -5,37 +5,26 @@ import {readDeveloperSettingsDiagnostic} from '../../shared/developer-settings-d
 import {readComputerControlDiagnostic} from './computer-controls.js';
 import {readComputerVisionDiagnostic} from './computer-vision-controls.js';
 import {mountSubagentConversationPage} from '../features/conversation/subagent-conversations.js';
-import {mountSubagentCompletionNotice} from '../features/conversation/subagent-completion-notice.js';
-import {mountBackgroundTasks} from '../features/conversation/background-tasks.js';
-import {mountRemoteRunners} from '../features/conversation/remote-runners.js';
 import {mountSubagentConversationList} from '../features/conversation/subagent-conversation-list.js';
 import {mountModelThinkingPicker} from '../features/conversation/model-thinking-picker.js';
-import {answerCardHtml, rememberActivity, replaceAnswerCard, syncContainerAnswerDisclosures} from '../features/conversation/answer-block.js';
-import {mountAssistantRoster} from '../features/conversation/assistant-roster-ui.js';
-import {renderPermissionSheet} from '../features/workspace/permission-sheet.js';
-import {renderContentFence} from '../features/workspace/content-fence-status.js';
-import {renderCostRoute} from '../features/workspace/cost-route-status.js';
 import {mountInputPin} from './input-pin.js';
 import {conversationTimeline} from '../features/conversation/timeline.js';
 import {updateConversationTurns} from '../features/conversation/turn-view.js';
 import {mountTaskProgress} from '../features/conversation/task-progress.js';
-import {mountFailureRepairCard} from '../features/conversation/failure-repair-card.js';
 import {Orb} from '../features/orb/orb.js';
 import {stateNames,isTerminal,currentTask,visualOrbState,orbStatusLabel} from '../features/conversation/state.js';
-import {sisStatusLine} from '../features/conversation/sis-status.js';
 import {createFollowLock} from '../features/conversation/follow-lock.js';
 import {mountAdmin} from '../features/admin/view.js';
 import {mountBriefingPanel} from '../features/admin/daily-briefing.js';
 import {mountWorkspace} from '../features/workspace/view.js';
 import {applyPreferences,orbVariantPreference,orbStateOverride} from '../ui/preferences.js';
 import {mountConversationRail} from '../features/conversation/rail.js';
-import {resultText} from '../features/conversation/result-text.js';
+import {resultText,mainChatReplies} from '../features/conversation/result-text.js';
+import {DISPATCH_ACK, createDelegatedDeliveryTracker, delegatedDeliveryHtml, rememberActivity, replaceTraceBlock, syncTraceDisclosures, traceBlockHtml} from '../features/conversation/answer-block.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
 import {mountDesktopShell} from '../ui/desktop-shell.js';
 import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
-import {mountProactiveControls} from './proactive-controls.js';
-import {mountProactiveWorkflowControls} from './proactive-workflow-controls.js';
 import {approvalCards,approvalResponse,focusApprovalCard,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
 import {applyOperatorBrake} from '../features/conversation/operator-brake-view.js';
@@ -46,7 +35,6 @@ import {createMessageQueue} from '../features/conversation/message-queue.js';
 import {createSnapshotReceiver} from '../shared/snapshot-receiver.js';
 import {mountRenderBudget} from '../shared/render-budget.js';
 import {mountHistoryControls} from '../features/conversation/history-controls.js';
-import {mountPanelDelegatedTasks} from './panel-delegated-tasks.js';
 
 applyPreferences();
 mountDesktopShell();
@@ -163,11 +151,11 @@ else {
   root.querySelector('#close').before(expand);
   expand.onclick=()=>invoke('workspace.open').catch(error=>{setFeedback(error.message);});
   let current,pending=false,submitGeneration=0,lastTaskSignature='',draftRevision=0;
-  const liveTurns=new Map();
+  const streamedAnswers=new Map();
+  const panelLiveTurns=new Map();
+  const delegatedTracker=createDelegatedDeliveryTracker();
   // Bounded UI state: these collections only serve the current session and must not grow for the
   // lifetime of a long-running panel (#435).
-  const capCollection=(collection,limit)=>{while(collection.size>limit){collection.delete(collection.keys().next().value);}};
-  const locateFeedback=new Map();let locateClosed=false;
   const approvalDecisions=new Map();
   let focusedApproval;
   const pendingCancelIds=new Set();
@@ -177,9 +165,14 @@ else {
   const truncatedTaskIds=new Set();
   const truncatedOutput=new Map();
   const activeTasks=()=>{
-    const delegatedParents=new Set(current?.subagentTasks?.map(child=>child.parentTaskId));
-    return (current?.tasks??[]).filter(task=>!task.conflictOnly&&!isTerminal(task)&&!task.outputTruncated&&!task.cancelRequested
-      &&!truncatedTaskIds.has(task.taskId)&&!delegatedParents.has(task.taskId));
+    return (current?.tasks??[]).filter(task=>!task.conflictOnly&&task.state==='waiting_reconciliation'&&!task.outputTruncated&&!task.cancelRequested
+      &&!truncatedTaskIds.has(task.taskId));
+  };
+  const stoppableTasks=()=>{
+    const foreground=activeTasks();
+    if(foreground.length)return foreground;
+    return (current?.tasks??[]).filter(task=>!task.conflictOnly&&!isTerminal(task)&&task.state!=='waiting_reconciliation'
+      &&!task.outputTruncated&&!task.cancelRequested&&!truncatedTaskIds.has(task.taskId));
   };
   let approvalExpiryTimer;
   let errorFeedbackRevision=0;
@@ -194,20 +187,26 @@ else {
   };
   const report=e=>setFeedback(typeof e==='string'?e:errorDisplayText(e));
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
-  const updateDelegatedTasks=mountPanelDelegatedTasks(tasksNode,{invoke,escape,report});
-  const assistantRoster=document.createElement('section');tasksNode.before(assistantRoster);
-  const roster=mountAssistantRoster(assistantRoster,{invoke,escape,report,onOpen:assistantId=>invoke('workspace.openAssistant',{assistantId}).catch(report)});
-  const panelRuntimeStrip=document.createElement('div');panelRuntimeStrip.className='panel-runtime-strip';
-  const panelPermissionOverviewBtn=document.createElement('button');panelPermissionOverviewBtn.type='button';panelPermissionOverviewBtn.className='turn-action';panelPermissionOverviewBtn.textContent='权限总览';panelPermissionOverviewBtn.setAttribute('aria-label','权限总览与审计');
-  const panelAuditAlert=document.createElement('div');panelAuditAlert.className='notice';panelAuditAlert.hidden=true;panelAuditAlert.setAttribute('role','alert');panelAuditAlert.dataset.auditAlert='';
-  const panelPermissionSheet=document.createElement('div');panelPermissionSheet.className='notice';panelPermissionSheet.hidden=true;panelPermissionSheet.dataset.permissionSheet='';panelPermissionSheet.dataset.signature='';
-  const panelContentFence=document.createElement('p');panelContentFence.className='notice';panelContentFence.hidden=true;panelContentFence.dataset.contentFence='';
-  const panelCostRoute=document.createElement('div');panelCostRoute.className='notice';panelCostRoute.hidden=true;panelCostRoute.dataset.costRoute='';
-  panelPermissionOverviewBtn.onclick=()=>{panelPermissionSheet.hidden=!panelPermissionSheet.hidden;if(!panelPermissionSheet.hidden)renderPermissionSheet(panelPermissionSheet,current?.assistantPermissions,invoke,report);};
-  panelRuntimeStrip.append(panelPermissionOverviewBtn,panelAuditAlert,panelPermissionSheet,panelContentFence,panelCostRoute);
-  tasksNode.before(panelRuntimeStrip);
-  tasksNode.addEventListener?.('toggle',()=>syncContainerAnswerDisclosures(tasksNode,liveTurns),true);
-  bridge?.onTaskActivity?.(event=>{rememberActivity(liveTurns,event);const slot=tasksNode.querySelector(`[data-answer-for="${event.taskId}"]`);const task=(current?.tasks??[]).find(item=>item.taskId===event.taskId);if(slot&&task)replaceAnswerCard(slot,task,liveTurns.get(event.taskId),escape);});
+  const removeAnswerStream=bridge?.onTaskActivity?.(event=>{
+    if(!event||typeof event.taskId!=='string')return;
+    if(event.kind==='reasoning_summary')event={...event,kind:'reasoning'};
+    const task=current?.tasks.find(item=>item.taskId===event.taskId);
+    if(!task||task.bodyWithheld||task.outputTruncated||truncatedTaskIds.has(task.taskId))return;
+    const live=rememberActivity(panelLiveTurns,event);
+    if(panelLiveTurns.size>40)panelLiveTurns.delete(panelLiveTurns.keys().next().value);
+    const traceSlot=tasksNode.querySelector(`[data-trace-for="${CSS.escape(task.taskId)}"]`);
+    if(traceSlot)replaceTraceBlock(traceSlot,task,live,current?.subagentTasks?.filter(c=>c.parentTaskId===task.taskId)??[],escape);
+    if(event.kind==='answer_delta'&&typeof event.text==='string'&&!isTerminal(task)){
+      const slot=tasksNode.querySelector(`[data-chat-answer="${CSS.escape(task.taskId)}"]`);
+      if(!slot)return;
+      const answer=(streamedAnswers.get(task.taskId)??'')+event.text;
+      streamedAnswers.set(task.taskId,answer);
+      slot.textContent=answer;
+      slot.classList?.remove('cc-dispatch-ack');
+    }
+  });
+  tasksNode.addEventListener?.('toggle',()=>syncTraceDisclosures(tasksNode,panelLiveTurns),true);
+  window.addEventListener('unload',()=>removeAnswerStream?.(),{once:true});
   const briefingPanel=mountBriefingPanel(thread,invoke);
   const compact=document.createElement('button');compact.type='button';compact.id='compact';compact.className='compact-entry';compact.textContent='压缩';compact.title='把较早的对话收成摘要';compact.setAttribute('aria-label','压缩对话');
   form.querySelector('.composer-bar')?.prepend(compact);
@@ -244,16 +243,7 @@ else {
     if(button.dataset.sendNow){void submitMessage(item.text,{queued:item,steer:true});return;}
     messageQueue.remove(item.id);input.value=(input.value?input.value+'\n':'')+item.text;input.dispatchEvent(new Event('input',{bubbles:true}));renderQueue();input.focus();
   };
-  const subagents=mountSubagentCompletionNotice(thread,invoke);
-  const backgroundTasks=mountBackgroundTasks(thread,invoke);
-  window.addEventListener('unload',()=>subagents.dispose(),{once:true});
-  window.addEventListener('unload',()=>backgroundTasks.dispose(),{once:true});
-  const remoteRunners=mountRemoteRunners(thread,invoke);
-  window.addEventListener('unload',()=>remoteRunners.dispose(),{once:true});
-  // Keep the current status outside history: a long old message must not hide
-  // a pending presence request while the task appears to be doing nothing.
   const updateProgress=mountTaskProgress(thread.parentElement,thread,taskId=>invoke('computer.control.confirm',{taskId}));
-  const updateRepair=mountFailureRepairCard(thread.parentElement,thread,invoke);
   const quickStart=root.querySelector('#quick-start');
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
@@ -274,48 +264,7 @@ else {
     const button=[...tasksNode.querySelectorAll('[data-action],[data-ui-action]')].find(item=>(item.dataset.action??item.dataset.uiAction)===action&&item.dataset.id===focused.dataset.id&&item.dataset.messageId===focused.dataset.messageId&&item.dataset.locateId===focused.dataset.locateId);
     if(button&&!button.disabled)button.focus({preventScroll:true});
   };
-  const currentLocateFailure=(id,request)=>{
-    const task=current?.tasks.find(item=>item.taskId===id);
-    return task&&isTerminal(task)&&task.state===request.taskState&&task.error?.message===request.text
-      &&!resultText(task.resultSummary,task.resultMetadata);
-  };
-  const projectLocateFeedback=()=>{
-    for(const [id,request] of locateFeedback) if(!currentLocateFailure(id,request))locateFeedback.delete(id);
-    for(const button of tasksNode.querySelectorAll('[data-locate-id]')) {
-      const request=locateFeedback.get(button.dataset.locateId);
-      const resultNode=button.closest('.locate-block')?.querySelector('.locate-result');
-      if(!resultNode)continue;
-      if(!request||request.text!==button.dataset.locateText){resultNode.hidden=true;resultNode.textContent='';continue;}
-      resultNode.hidden=false;
-      if(request.html!==undefined)resultNode.innerHTML=request.html;else resultNode.textContent=request.message;
-    }
-  };
-  const locateFailure=async button=>{
-    const id=button.dataset.locateId,text=button.dataset.locateText||'';
-    const task=current?.tasks.find(item=>item.taskId===id);
-    if(locateClosed||!task)return;
-    const request={text,taskState:task.state,message:'定位中…'};
-    if(!currentLocateFailure(id,request))return;
-    locateFeedback.set(id,request);capCollection(locateFeedback,20);projectLocateFeedback();
-    const isCurrent=()=>!locateClosed&&locateFeedback.get(id)===request&&currentLocateFailure(id,request);
-    try {
-      const response=await invoke('task.locate',{text});
-      if(!isCurrent())return;
-      const report=response&&typeof response==='object'&&'failures' in response?response:null;
-      const failures=report&&Array.isArray(report.failures)?report.failures:[];
-      if(!failures.length)request.message='未能从错误输出定位到源码位置';
-      else request.html=failures.slice(0,3).map(f=>{
-        const top=f.frames&&f.frames[0];
-        const head=`<div class="locate-head">${escape(f.name)}${f.timedOut?'（超时）':''}</div>`;
-        const frames=top?`<div class="locate-frame">${escape(top.file)}:${top.line}${top.column?':'+top.column:''}<span class="locate-conf">置信度 ${(top.confidence*100).toFixed(0)}%</span></div>${top.snippet?`<pre class="locate-snippet">${escape(top.snippet)}</pre>`:''}`:'';
-        return head+frames;
-      }).join('');
-    } catch(err) {if(!isCurrent())return;request.message='定位失败：'+(err&&err.message?err.message:'未知错误');}
-    if(isCurrent())projectLocateFeedback();
-  };
   const liveControls=mountLiveVoiceControls(root,invoke,{compact:true});
-  const proactiveControls=mountProactiveControls(root.querySelector('.thread'),invoke);
-  const proactiveWorkflowControls=mountProactiveWorkflowControls(root.querySelector('.thread'),invoke);
   const wakeControls=document.createElement('details');
   wakeControls.className='wake-controls';
   const wakeSummary=document.createElement('summary');wakeSummary.textContent='语音唤醒';
@@ -363,9 +312,7 @@ else {
     if(typeof result?.text!=='string'||!result.text.trim())return;
     void sessionControls.appendDictation(result).catch(()=>report('原对话听写草稿读取失败；未填入其他对话。'));
   });
-  window.addEventListener('unload',()=>{wakeClosed=true;locateClosed=true;locateFeedback.clear();clearTimeout(approvalExpiryTimer);approvalExpiryTimer=undefined;removeDictation?.();});
-  const sisStatus=document.createElement('p');sisStatus.className='notice';sisStatus.setAttribute('role','status');
-  root.querySelector('#error').before(sisStatus);
+  window.addEventListener('unload',()=>{wakeClosed=true;clearTimeout(approvalExpiryTimer);approvalExpiryTimer=undefined;removeDictation?.();});
   const goalControl=createGoalControl(invoke,()=>input.value);
   root.querySelector('.composer-bar .spacer').before(goalControl.button);
   root.querySelector('.panel').append(goalControl.dialog);
@@ -375,11 +322,25 @@ else {
   const bellBtn=root.querySelector('#bell'),bellMenu=root.querySelector('#bell-menu');
   const closeModel=()=>nativeReasoning.close();
   const closeBell=()=>{bellMenu.hidden=true;bellBtn.setAttribute('aria-expanded','false');};
-  const header=root.querySelector('header');let panelDragStart,panelDragging=false,panelDragReady,panelDragGeneration=0,panelDragOwner=0,panelDragClosed=false;
+  const header=root.querySelector('header');let panelDragStart,panelDragging=false,panelDragReady,panelDragGeneration=0,panelDragOwner=0,panelDragClosed=false,panelDragFrame=0,panelDragPending,panelDragInFlight=false,panelDragMoveToken=0,flushPanelDragMove=generation=>{
+    if(panelDragInFlight||!panelDragPending||!panelDragging||!panelDragCurrent(generation))return;
+    const point=panelDragPending,token=++panelDragMoveToken;panelDragPending=undefined;panelDragInFlight=true;
+    panelDragReady?.then(ready=>{
+      if(!ready||!panelDragging||!panelDragCurrent(generation))return;
+      return invoke('panel.dragMove',point);
+    }).catch(error=>panelDragReport(generation,error)).finally(()=>{
+      if(token===panelDragMoveToken)panelDragInFlight=false;
+      if(panelDragPending&&panelDragging&&panelDragCurrent(generation)&&!panelDragFrame)schedulePanelDragMove(generation);
+    });
+  },schedulePanelDragMove=generation=>{
+    if(typeof requestAnimationFrame==='function'){
+      panelDragFrame=requestAnimationFrame(()=>{panelDragFrame=0;flushPanelDragMove(generation);});
+    }else flushPanelDragMove(generation);
+  };
   const panelDragCurrent=generation=>!panelDragClosed&&generation===panelDragGeneration;
   const panelDragReport=(generation,error)=>{if(panelDragCurrent(generation))report(error);};
-  window.addEventListener('unload',()=>{panelDragClosed=true;});
-  header.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;panelDragGeneration++;panelDragStart={x:e.screenX,y:e.screenY};header.setPointerCapture(e.pointerId);});
+  window.addEventListener('unload',()=>{panelDragClosed=true;panelDragInFlight=false;panelDragMoveToken++;if(panelDragFrame){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(panelDragFrame);panelDragFrame=0;}panelDragPending=undefined;});
+  header.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;panelDragGeneration++;panelDragInFlight=false;panelDragMoveToken++;panelDragPending=undefined;if(panelDragFrame){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(panelDragFrame);panelDragFrame=0;}panelDragStart={x:e.screenX,y:e.screenY};header.setPointerCapture(e.pointerId);});
   header.addEventListener('pointermove',e=>{
     if(!panelDragStart)return;
     const generation=panelDragGeneration;
@@ -388,25 +349,31 @@ else {
       panelDragOwner++;
       panelDragReady=invoke('panel.dragStart',panelDragStart).then(()=>true,error=>{panelDragReport(generation,error);return false;});
     }
-    if(panelDragging)panelDragReady?.then(ready=>{if(ready&&panelDragging&&panelDragCurrent(generation))return invoke('panel.dragMove',{x:e.screenX,y:e.screenY}).catch(error=>panelDragReport(generation,error));});
+    if(panelDragging){
+      panelDragPending={x:e.screenX,y:e.screenY};
+      if(!panelDragInFlight&&!panelDragFrame)schedulePanelDragMove(generation);
+    }
   });
   const finishPanelDrag=()=>{
     const generation=panelDragGeneration,owner=panelDragOwner,ready=panelDragReady;
+    panelDragInFlight=false;panelDragMoveToken++;
+    if(panelDragFrame){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(panelDragFrame);panelDragFrame=0;}
+    panelDragPending=undefined;
     if(panelDragging)ready?.then(()=>{if(!panelDragClosed&&owner===panelDragOwner)return invoke('panel.dragEnd').catch(error=>panelDragReport(generation,error));});
     panelDragStart=undefined;panelDragging=false;panelDragReady=undefined;
   };
   header.addEventListener('pointerup',finishPanelDrag);header.addEventListener('pointercancel',finishPanelDrag);header.addEventListener('lostpointercapture',finishPanelDrag);
   const setSendMode=hasText=>{
-    const busy=pending||activeTasks().length>0,stop=!hasText&&busy;
+    const busy=pending||activeTasks().length>0,canStop=busy||(typeof stoppableTasks==='function'?stoppableTasks():activeTasks()).length>0,stop=!hasText&&busy;
     sendBtn.dataset.mode=hasText?'send':stop?'stop':'live';
-    sendBtn.title=hasText?(busy?(deliveryMode.value==='queue'?'加入队列':'立即引导'):'发送'):stop?'强制截断当前回答':current?.live?.active?'关闭实时语音':'开启实时语音';
+    sendBtn.title=hasText?(busy?(deliveryMode.value==='queue'?'加入队列':'立即引导'):'发送'):stop?'停止当前任务':current?.live?.active?'关闭实时语音':'开启实时语音';
     sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!stop&&!hasText&&Boolean(current?.live?.active)));
     sendBtn.setAttribute('aria-busy','false');sendBtn.disabled=false;
     deliveryHint.textContent=deliveryMode.value==='queue'?'当前回答结束后依次发送，可随时立即发送':'截断当前回答，结合上下文立即续答';
     const playback=current?.voice?.status==='speaking'||current?.live?.active;
-    stopButton.hidden=!(busy&&hasText||!busy&&playback);stopButton.disabled=false;
-    stopButton.innerHTML=busy?'<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><rect x="4.5" y="4.5" width="11" height="11" rx="1.25"/></svg>':stopPlaybackIcon;
-    stopButton.title=busy?'强制截断当前回答':'停止播报';stopButton.setAttribute('aria-label',stopButton.title);
+    stopButton.hidden=!(canStop&&hasText||!canStop&&playback);stopButton.disabled=false;
+    stopButton.innerHTML=canStop?'<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><rect x="4.5" y="4.5" width="11" height="11" rx="1.25"/></svg>':stopPlaybackIcon;
+    stopButton.title=canStop?'停止当前任务':'停止播报';stopButton.setAttribute('aria-label',stopButton.title);
   };
   root.querySelector('#admin').onclick=()=>invoke('admin.open').catch(report);
   root.querySelector('#close').onclick=()=>invoke('panel.hide').catch(report);
@@ -462,7 +429,7 @@ else {
     e.preventDefault();if(!input.value.trim())return;
     // A bare stop instruction targets the running task, not the model.
     if(isStopRequest(input.value)){
-      const running=activeTasks();
+      const running=stoppableTasks();
       if(!running.length&&!pending){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));setFeedback('当前没有正在执行的任务。');return;}
       window.speechSynthesis?.cancel();await stopActiveTasks(running);
       input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));
@@ -523,6 +490,11 @@ else {
       await stopActiveTasks(running);
       return;
     }
+    const delegated=typeof stoppableTasks==='function'?stoppableTasks():[];
+    if(delegated.length){
+      for(const task of delegated)stopTask(task);
+      return;
+    }
     try{const result=await invoke('voice.stop');if(!result?.stopped)report(result?.reason??'语音供应商尚未连接');}catch(err){report(err);}
   };
   const talkButton=root.querySelector('#talk');
@@ -535,9 +507,33 @@ else {
     talkButton.disabled=true;
     try{await invoke(action);if(!wakeClosed&&feedbackRevision===talkFeedbackRevision&&current?.voice?.status!=='error')setFeedback('');}
     catch(err){if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)report(err);}
-    finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
+    finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=(current?.voice?.status==='listening'&&current?.voice?.ownsCapture===false)||Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
   };
-  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on){likedTasks.add(b.dataset.id);capCollection(likedTasks,200);}else likedTasks.delete(b.dataset.id);for(const button of tasksNode.querySelectorAll('[data-ui-action="like"]')){const active=likedTasks.has(button.dataset.id);button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}if(b.dataset.action==='task.cancel'){if(b.disabled)return;const task=current?.tasks.find(item=>item.taskId===b.dataset.id);if(task)stopTask(task);return;}const cancelling=['task.cancel','task.reconcile.finish','task.reconcile.skip'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,b.dataset.action==='task.reconcile.skip'?conflictDecisionPayload(current.tasks.find(task=>task.taskId===id)):id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
+  tasksNode.onclick=async e=>{
+    const b=e.target.closest('[data-action],[data-ui-action]');
+    if(!b||b.disabled)return;
+    if(b.dataset.uiAction==='jump-turn'){
+      [...tasksNode.querySelectorAll('[data-turn]')].find(item=>item.dataset.turn===b.dataset.id)?.scrollIntoView?.({behavior:'smooth',block:'center'});
+      return;
+    }
+    if(b.dataset.uiAction==='copy'){
+      const value=current?.messages?.find(item=>item.id===b.dataset.messageId)?.text
+        ?? b.closest('.assistant-turn')?.querySelectorAll('.assistant-message')[Number(b.dataset.replyIndex??0)]?.textContent;
+      if(value)try{await invoke('clipboard.writeText',value);b.title='已复制';}catch(error){report(error);}
+      return;
+    }
+    if(b.dataset.action==='task.cancel'){
+      const task=current?.tasks.find(item=>item.taskId===b.dataset.id);
+      if(task)stopTask(task);
+      return;
+    }
+    const id=b.dataset.id;
+    if(pendingCancelIds.has(id))return;
+    pendingCancelIds.add(id);b.disabled=true;
+    try{await invoke(b.dataset.action,b.dataset.action==='task.reconcile.skip'?conflictDecisionPayload(current.tasks.find(task=>task.taskId===id)):id);}
+    catch(error){report(error);}
+    finally{pendingCancelIds.delete(id);syncCancelButtons();}
+  };
   const syncApprovalButtons=()=>{
     for(const [id,phase] of approvalDecisions)if(phase==='submitted' && !(current?.approvals??[]).some(item=>
       item.approvalId===id && item.state==='pending' && current?.tasks.some(task=>task.taskId===item.taskId && task.state==='waiting_approval')))approvalDecisions.delete(id);
@@ -579,27 +575,14 @@ else {
       approvalDecisions.set(id,'submitted');syncApprovalButtons();}
     catch(error){approvalDecisions.delete(id);report(error);syncApprovalButtons();}
   });
-  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'实时语音已开启'):task?stateNames[task.state]:'待机';
-    subagents.update(data.subagentTasks??[]);
-    void backgroundTasks.refresh();
-    void remoteRunners.refresh();
+  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;streamedAnswers.clear();panelLiveTurns.clear();delegatedTracker.reset();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'实时语音已开启'):task?stateNames[task.state]:'待机';
+    for(const id of streamedAnswers.keys())if(!data.tasks.some(task=>task.taskId===id&&!isTerminal(task)&&!task.bodyWithheld&&!task.outputTruncated))streamedAnswers.delete(id);
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
-    updateProgress(data.tasks.filter(task=>!task.outputTruncated),data.computerControl,
+    updateProgress(data.computerControl?.waitingConfirmation?data.tasks.filter(task=>!task.outputTruncated):[],data.computerControl,
       {questions:data.authorizationQuestions,workflowQuestions:data.workflowQuestions,conversationId:data.conversationState?.activeId});
-    updateRepair(data.tasks.filter(task=>!task.outputTruncated));
-    const panelAudit=data.assistantPermissions?.audit;
-    const panelAuditBroken=Boolean(panelAudit&&(panelAudit.unreadable||panelAudit.intact===false||panelAudit.recordingStopped));
-    panelPermissionOverviewBtn.textContent=panelAuditBroken?'权限总览 · 审计异常':'权限总览';
-    panelAuditAlert.hidden=!panelAuditBroken;
-    panelAuditAlert.textContent=panelAuditBroken?`警告：${panelAudit.warning||(panelAudit.unreadable?'审计日志无法读取，已停止记录':`审计链在第 ${panelAudit.brokenAt} 条损坏，已停止追加后续记录`)}`:'';
-    renderPermissionSheet(panelPermissionSheet,data.assistantPermissions,invoke,report);
-    renderContentFence(panelContentFence,data.contentFence);
-    renderCostRoute(panelCostRoute,data.costRoute,invoke,report);
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
-    proactiveControls.render(data.proactive);
-    proactiveWorkflowControls.render(data.proactiveWorkflow);
     const notifs=Array.isArray(data.notifications)?data.notifications:[];
     if(notifs.length>0){
       bellMenu.innerHTML=notifs.slice(0,5).map(n=>`<div class="notice bell-notice"><strong>${escape(n.summary)}</strong><br><small>${escape(new Date(n.occurredAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</small></div>`).join('');
@@ -608,8 +591,6 @@ else {
       bellMenu.innerHTML='<div class="notice">暂无新通知</div>';
       bellBtn.title='通知';bellBtn.setAttribute('aria-label','通知');
     }
-    const sisConfiguration=data.voice?.configuration;
-    sisStatus.textContent=sisStatusLine(data.voice,sisConfiguration);
     const voiceFailure=data.voice?.status==='error'?data.voice.failure:null;
     const voiceFailureStage=voiceFailureStages[voiceFailure?.stage]??'处理';
     const voiceError=data.voice?.status==='error'?`语音${voiceFailureStage}失败：${voiceFailure?.message??data.voice.reason??'语音处理失败'}`:'';
@@ -622,13 +603,13 @@ else {
     const modelConnected=modelReady||(data.model?.configured===true&&data.model?.status!=='error');const connectionNotice=root.querySelector('#connection-notice');connectionNode.hidden=modelConnected;if(connectionNotice){connectionNotice.hidden=modelConnected;connectionNotice.textContent=data.fakeModel?'当前使用 Fake Model，仅用于离线测试。':modelReady?`当前使用 ${modelIdentity}；语音尚未连接。`:`${data.model?.reason??'模型尚未连接'}；语音尚未连接。`;}
     const voiceState=data.voice?.status;
     const voiceReady=Boolean(data.voice?.experimental);
-    talkButton.disabled=Boolean(data.live?.active)||wakeBlocksCapture(data)||!voiceReady||!['unavailable','error','listening','awaiting_speech'].includes(voiceState);
+    talkButton.disabled=(voiceState==='listening'&&data.voice?.ownsCapture===false)||Boolean(data.live?.active)||wakeBlocksCapture(data)||!voiceReady||!['unavailable','error','listening','awaiting_speech'].includes(voiceState);
     talkButton.title=voiceState==='listening'?'结束录音并填入文字':voiceReady?'语音转文字（不自动发送）':'语音转文字未连接';
     talkButton.setAttribute('aria-label',talkButton.title);
     const micStatus=voiceError || (voiceState==='listening'?'麦克风：正在采集，点击结束':voiceState==='acquiring'?'麦克风：等待设备就绪':voiceState==='recognizing'?'语音：正在转成文字':'');
     root.querySelector('.mic-state').textContent=micStatus;
     for(const id of [...truncatedTaskIds])if(!data.tasks.some(item=>item.taskId===id)){truncatedTaskIds.delete(id);truncatedOutput.delete(id);}
-    const hasActiveTask=activeTasks().length>0;
+    const hasActiveTask=stoppableTasks().length>0;
     stopButton.hidden=!hasActiveTask&&!pending&&voiceState!=='speaking'&&!data.live?.active;
     stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持实时语音）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
@@ -638,29 +619,32 @@ else {
       if(!childrenByParent.has(child.parentTaskId)) childrenByParent.set(child.parentTaskId,[]);
       childrenByParent.get(child.parentTaskId).push(child);
     }
-    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label]),childrenByParent.has(t.taskId)]),data.messages,data.approvals]);
-    const thinkingGrid='<span class="thinking-grid" aria-hidden="true">'+[0,1,2,3,4,5,6,7,8].map(index=>`<i data-cell="${index}"></i>`).join('')+'</span>';
+    const timeline=conversationTimeline(data.tasks,data.messages);
+    delegatedTracker.observe(timeline,childrenByParent,mainChatReplies);
+    const deliveries=delegatedTracker.list();
+    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.bodyWithheld,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.backgroundDelegation,t.error?.message,t.steps?.map(s=>[s.stepId,s.label,s.state]),childrenByParent.get(t.taskId)?.map(c=>[c.taskId,c.state,c.finalReply,c.steps?.map(s=>[s.stepId,s.label,s.state])])]),data.messages,data.approvals,deliveries.map(d=>[d.taskId,d.state,d.reply])]);
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
-    syncContainerAnswerDisclosures(tasksNode,liveTurns);
     function renderTaskAnswer(task, terminal) {
-      if(childrenByParent.has(task.taskId)) return `<div class="delegated-task-list" data-delegated-for="${escape(task.taskId)}"></div>`;
-      const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(task.state);
-      const activeStep=task.steps?.at(-1);
-      const activity=waiting?stateNames[task.state]:activeStep?.label??(task.state==='verifying'?'整理回答':task.state==='running'?'执行中':'思考中');
-      const answer=resultText(task.resultSummary,task.resultMetadata);
-      const failure=task.outputTruncated?undefined:task.error?.message;
-      const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(task.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button><button type="button" data-ui-action="share" data-id="${escape(task.taskId)}" title="分享" aria-label="分享回答">${responseIcons.share}</button><button type="button" data-ui-action="like" data-id="${escape(task.taskId)}" title="点赞" aria-label="点赞回答" aria-pressed="${likedTasks.has(task.taskId)}" class="${likedTasks.has(task.taskId)?'active':''}">${responseIcons.like}</button></div>`:'';
-      const locateHtml=failure&&!answer?`<div class="locate-block" data-locate-for="${escape(task.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(task.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';
-      const live=liveTurns.get(task.taskId);
-      if(live&&(live.reasoning||live.answer||live.steps?.length||live.summary))
-        return `${answerCardHtml(task.outputTruncated?{...task,error:undefined}:task,live,escape)}${answerActions}${locateHtml}`;
-      if(!terminal&&task.state!=='waiting_reconciliation')
-        return `<section class="answer-card" data-answer-for="${escape(task.taskId)}"><div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div></section>`;
-      if(answer) return `<div class="assistant-message">${escape(answer)}</div>${answerActions}`;
-      return failure?`<div class="assistant-error">${escape(failure)}</div>${locateHtml}`:'';
+      const children=childrenByParent.get(task.taskId)??[];
+      const live=panelLiveTurns.get(task.taskId);
+      const traceHtml=traceBlockHtml(task,live,children,escape);
+      const replies=mainChatReplies(task,children,streamedAnswers.get(task.taskId));
+      if(!terminal&&!task.bodyWithheld){
+        const liveText=replies.join('\n\n')||streamedAnswers.get(task.taskId)||'';
+        const delegated=children.length>0||task.backgroundDelegation===true;
+        const bubble=liveText
+          ? `<div class="assistant-message" data-chat-answer="${escape(task.taskId)}">${escape(liveText)}</div>`
+          : delegated
+            ? `<div class="assistant-message cc-dispatch-ack" data-chat-answer="${escape(task.taskId)}">${DISPATCH_ACK}</div>`
+            : `<div class="assistant-message" data-chat-answer="${escape(task.taskId)}">正在回复…</div>`;
+        return `${traceHtml}${bubble}`;
+      }
+      if(replies.length)return `${traceHtml}${replies.map((reply,index)=>`<div class="assistant-message">${escape(reply)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-reply-index="${index}" title="复制回复" aria-label="复制回复">${responseIcons.copy}</button></div>`).join('')}`;
+      return traceHtml;
     }
     if(taskSignature!==lastTaskSignature) {
-      const html=conversationTimeline(data.tasks,data.messages).map(entry=>{
+      syncTraceDisclosures(tasksNode,panelLiveTurns);
+      const html=timeline.map(entry=>{
         if(entry.kind==='message') {
           const m=entry.value;
           const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;
@@ -669,17 +653,14 @@ else {
         const t=entry.value;
         const terminal=isTerminal(t)||t.outputTruncated||t.conflictOnly;
         return `<article class="task turn" data-turn="${escape(t.taskId)}">${!t.conflictOnly&&t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}
-          <div class="assistant-turn">${renderTaskAnswer(t,terminal)}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}
-          ${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${!t.conflictOnly&&t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}
-          ${conflictDecisionMarkup(t,escape)}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>${childrenByParent.has(t.taskId)?'停止此任务':'停止'}</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;
-      }).join('');
+          <div class="assistant-turn">${renderTaskAnswer(t,terminal)}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)&&t.state!=='waiting_reconciliation'?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}
+          ${t.state==='waiting_reconciliation'&&!t.conflictOnly&&t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}
+          ${conflictDecisionMarkup(t,escape)}${!terminal&&t.state!=='waiting_reconciliation'&&data.fake?`<div class="turn-actions"><button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button></div>`:''}</article>`;
+      }).join('')+delegatedDeliveryHtml(deliveries,escape,'panel');
       updateConversationTurns(tasksNode,html,{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     }
-    updateDelegatedTasks(childrenByParent);
-    if(focused?.isConnected&&focused.closest('.delegated-task-card')&&document.activeElement===document.body)
-      focused.focus({preventScroll:true});
-    projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
-    refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;roster.paint(data.assistants,data);
+    syncCancelButtons();restoreTaskActionFocus(focused);
+    refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;
     setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
     if(emptyThread){followLock.markProgrammatic();thread.scrollTop=0;}
     else if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
@@ -694,7 +675,7 @@ if(bridge&&authorizationThread) {
   const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
   const workflowQuestionRoot=document.createElement('div');authorizationThread.append(workflowQuestionRoot);
   const previousRender=render;
-  let questionClosed=false,questionSnapshotRevision=0;
+  let questionClosed=false;
   const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onPending:({questionId})=>{
     // Run after the ordinary task projection's follow-to-bottom callback. A new
     // question must be discoverable at its heading, without repeatedly moving
@@ -703,16 +684,9 @@ if(bridge&&authorizationThread) {
       const element=[...questionRoot.querySelectorAll('[data-question-id]')].find(node=>node.dataset.questionId===questionId);
       if(element?.isConnected&&element.querySelector('[data-authorization-decision]:not(:disabled)'))
         element.querySelector('.authorization-question-title')?.scrollIntoView({block:'start',behavior:'instant'});});
-  },onChanged:async()=>{
-    const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
-    if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
   }});
-  const workflowQuestions=mountWorkflowQuestionCards(workflowQuestionRoot,{invoke,onChanged:async()=>{
-    const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
-    if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
-  }});
+  const workflowQuestions=mountWorkflowQuestionCards(workflowQuestionRoot,{invoke});
   render=(data,...options)=>{
-    questionSnapshotRevision++;
     previousRender(data,...options);
     // Missing conversation identity must not widen the view to another conversation's questions.
     const conversationId=data.conversationState?.activeId;

@@ -13,6 +13,17 @@ const require=createRequire(import.meta.url);
 const unpacked=file=>file.replace(/([\\/])app\.asar(?=[\\/])/u,'$1app.asar.unpacked');
 const checker=unpacked(fileURLToPath(new URL('./f20-typescript-check.cjs',import.meta.url)));
 const sha=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
+const f20ShaCache=new Map();
+function shaCached(file) {
+  const stat=statSync(file,{bigint:true});
+  const stamp=`${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}:${stat.birthtimeNs}`;
+  const hit=f20ShaCache.get(file);
+  if(hit&&hit.stamp===stamp)return hit.digest;
+  const digest=sha(file);
+  if(f20ShaCache.size>=256)f20ShaCache.delete(f20ShaCache.keys().next().value);
+  f20ShaCache.set(file,{stamp,digest});
+  return digest;
+}
 const relative=value=>typeof value==='string'&&value.length>0&&!/[\\:\u0000-\u001f]/u.test(value)&&!path.isAbsolute(value)
   &&value.split('/').every(part=>part&&part!=='.'&&part!=='..');
 
@@ -34,15 +45,15 @@ export function createF20TypeScriptRecipe({rootPath,nodeExecutable,input,createW
       ||fromRoot!== '..'&&!fromRoot.startsWith('..'+path.sep)&&!path.isAbsolute(fromRoot))
       throw new ProtocolError('UNAUTHORIZED','F20 compiler must be outside the writable workspace');
   }
-  const pins=files.map(file=>[file,sha(file)]);
-  const available=()=>{try{return pins.every(([file,digest])=>!lstatSync(file).isSymbolicLink()&&realpathSync.native(file)===file&&sha(file)===digest);}catch{return false;}};
+  const pins=files.map(file=>[file,shaCached(file)]);
+  const available=(strict=false)=>{try{const digestOf=strict?sha:shaCached;return pins.every(([file,digest])=>!lstatSync(file).isSymbolicLink()&&realpathSync.native(file)===file&&digestOf(file)===digest);}catch{return false;}};
   const tool=createWorkspaceCommandTool({rootPath:root,recipes:[{id:F20_TYPESCRIPT_RECIPE,executable:node,
     args:['--preserve-symlinks','--preserve-symlinks-main',checker,compiler,F20_TYPESCRIPT_VERSION,root,input.schemaFile,input.codeFile,input.codeFile+'.f20-sample.ts']}],
     trustedReadRoots:[path.dirname(checker),path.dirname(path.dirname(compiler))],maxDurationMs:30000,maxOutputBytes:4096});
-  return {available,tool:{...tool,async execute(value,context){
-    if(!available())throw new ProtocolError('REVISION_CONFLICT','F20 trusted compiler changed');
+  return {available:()=>available(false),tool:{...tool,async execute(value,context){
+    if(!available(true))throw new ProtocolError('REVISION_CONFLICT','F20 trusted compiler changed');
     const result=await tool.execute(value,context);
-    if(!available())throw new ProtocolError('REVISION_CONFLICT','F20 trusted compiler changed during verification');
+    if(!available(true))throw new ProtocolError('REVISION_CONFLICT','F20 trusted compiler changed during verification');
     return result;
   }}};
 }

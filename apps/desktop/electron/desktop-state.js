@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const HOST_USER_NAMESPACE = /^desktop-user-v1:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-export const defaults = {theme: 'system', language: 'system', fontScale: 1, calm: false, orbPlacement: 'top', alwaysOnTop: true, snap: true, hover: true, shortcut: false, shadowPreview: false};
+export const defaults = {theme: 'system', language: 'system', fontScale: 1, calm: false, orbPlacement: 'top', alwaysOnTop: true, snap: true, hover: true, shortcut: false, shadowPreview: true};
 export const isOrbPlacement = value => ['top', 'bottom', 'right'].includes(value);
 export function normalizeSettings(value = {}) {
   const result = {...defaults};

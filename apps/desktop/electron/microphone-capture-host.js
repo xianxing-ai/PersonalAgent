@@ -21,34 +21,36 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
   let releaseUnknown = false;
   let lastRelease = {stopped: true, verified: false, reason: 'never_started'};
 
-  function validPanel() {
-    const panel = getPanel();
+  function validPanel(senderId) {
+    const panel = getPanel(senderId);
     return panel && !panel.isDestroyed() && panel.isVisible() && !panel.webContents.isDestroyed()
       ? panel : null;
   }
 
-  async function authorize({deadline,purpose='dictation',signal=new AbortController().signal} = {}) {
+  async function authorize({deadline,purpose='dictation',senderId,signal=new AbortController().signal} = {}) {
     if (releaseUnknown) throw Error('上次麦克风释放未确认，不能重新开启');
     if (capture || authorization || pendingAuthorization) throw Error('麦克风会话已存在');
-    const panel = validPanel();
+    const panel = validPanel(senderId);
     if (!panel) throw Error('请先显示可信面板');
     // Only the trusted host supplies a longer Live lease; Renderer cannot extend it.
     const expiresAt = deadline === undefined ? now() + 10 * 60_000 : Date.parse(deadline);
     if (!Number.isFinite(expiresAt) || expiresAt <= now() || expiresAt - now() > 120 * 60_000) throw Error('麦克风授权期限无效');
     if(!['dictation','live','wake'].includes(purpose)||signal.aborted)throw Error('麦克风用途或原操作已失效');
-    const controller=new AbortController(),record={controller,panel,expiresAt,purpose};pendingAuthorization=record;
+    const controller=new AbortController(),record={controller,ownerId:panel.webContents.id,expiresAt,purpose};pendingAuthorization=record;
     const combined=AbortSignal.any([signal,controller.signal]);
-    const isCurrent=()=>pendingAuthorization===record&&!combined.aborted&&validPanel()===panel&&now()<expiresAt&&!capture&&!authorization;
+    const isCurrent=()=>pendingAuthorization===record&&!combined.aborted&&validPanel(senderId)===panel&&now()<expiresAt&&!capture&&!authorization;
     try {
       const accepted=await confirmAuthorization({purpose,expiresAt:new Date(expiresAt).toISOString(),panelId:panel.webContents.id,
         signal:combined,isCurrent});
       if(accepted!==true||!isCurrent())throw Error('本次麦克风用途未获得有效对话卡授权');
     } finally {if(pendingAuthorization===record)pendingAuthorization=undefined;}
-    authorization = {id:randomUUID(),contents: panel.webContents, expiresAt,purpose};
+    authorization = {id:randomUUID(),senderId,contents: panel.webContents, expiresAt,purpose};
     return {authorized: true, expiresAt: new Date(authorization.expiresAt).toISOString()};
   }
 
-  function revoke() {
+  function revoke(onlyForSenderId) {
+    if(onlyForSenderId!==undefined&&onlyForSenderId!==(pendingAuthorization?.ownerId
+      ??authorization?.contents.id??capture?.contents.id))return Promise.resolve();
     pendingAuthorization?.controller.abort();pendingAuthorization=undefined;
     authorization = undefined;
     return capture ? stop(capture, 'revoked') : Promise.resolve();
@@ -63,7 +65,7 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
 
   async function start(sink) {
     if (!sink || typeof sink.onFrame !== 'function') throw Error('无效的语音采集消费者');
-    if (!authorization || now() >= authorization.expiresAt || validPanel()?.webContents !== authorization.contents) {
+    if (!authorization || now() >= authorization.expiresAt || validPanel(authorization.senderId)?.webContents !== authorization.contents) {
       authorization = undefined;
       throw Error('请在可信面板明确启用麦克风');
     }
@@ -197,7 +199,7 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
     if(!session||session.readyState!=='ready'||session.stopPromise||!authorization
       ||session.authorizationId!==authorization.id||session.purpose!==purpose||signal?.aborted
       ||!Number.isFinite(Date.parse(deadline))||now()>=Date.parse(deadline)||now()>=authorization.expiresAt
-      ||validPanel()?.webContents!==session.contents)return undefined;
+      ||validPanel(authorization.senderId)?.webContents!==session.contents)return undefined;
     return Object.freeze({captureId:session.token,authorizationId:session.authorizationId,purpose:session.purpose,
       startedAt:session.startedAt,...(session.lastFrameAt?{lastFrameAt:session.lastFrameAt}:{}),
       expiresAt:new Date(authorization.expiresAt).toISOString(),frames:session.frames,bytes:session.bytes,

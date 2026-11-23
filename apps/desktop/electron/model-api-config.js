@@ -68,7 +68,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
   const target = path.join(userData, 'model-api-config.json');
   let entries = new Map(), defaultId, restoreFailed = false, disposed = false, egressHost;
   const sends=new AsyncLocalStorage();
-  let harness={version:1,revision:'unconfigured',enabled:false,context:{enabled:false},events:{enabled:false,quiet:false}};
+  let harness={version:1,revision:'unconfigured',enabled:true,maxExecutorSteps:DEFAULT_HARNESS_STEPS,context:{enabled:false},events:{enabled:false,quiet:false}};
   const gateways = new Map();
   const controllers = new Map();
   const requestBudgets = new Map();

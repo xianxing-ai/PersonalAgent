@@ -598,6 +598,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
     if (input.subtasks.length > 10) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Subtasks count cannot exceed 10');
     }
+    const savedRecords = runtime.loadCheckpoint(context.taskId, 'subtask-progress-records') as Record<string, SubtaskProgressRecord> | undefined;
     const seen = new Set<string>();
     for (const subtask of input.subtasks) {
       if (!subtask.subtaskId?.trim() || !subtask.goal?.trim() || seen.has(subtask.subtaskId.trim())
@@ -606,11 +607,31 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
         throw new ProtocolError('INVALID_ARGUMENT', 'Subtask identity, goal or explicit model is invalid');
       }
       seen.add(subtask.subtaskId.trim());
-      const saved = runtime.loadCheckpoint(context.taskId, 'subtask-progress-records') as Record<string, SubtaskProgressRecord> | undefined;
-      const record = saved && Object.hasOwn(saved, subtask.subtaskId) ? saved[subtask.subtaskId] : undefined;
+      const record = savedRecords && Object.hasOwn(savedRecords, subtask.subtaskId) ? savedRecords[subtask.subtaskId] : undefined;
       if (record && (record.parentTaskId !== context.taskId || record.inputDigest !== computeSubtaskInputDigest(subtask))) {
         throw new ProtocolError('REVISION_CONFLICT', 'Subtask input changed from the prior dispatch');
       }
+    }
+    const priorFailedCount = Object.values(savedRecords ?? {}).filter(record => record.state === 'failed').length;
+    const hasOnlyNewSubtasks = input.subtasks.every(subtask => !(savedRecords && Object.hasOwn(savedRecords, subtask.subtaskId)));
+    if (priorFailedCount >= 2 && hasOnlyNewSubtasks) {
+      const stopNotice = '同一轮对话已有多次工人执行失败，已停止继续重复派发。请直接用自然语言向用户说明当前遇到的情况、已完成的部分或建议，不要再次调用 subagent.dispatch 重试。';
+      const progress: SubtaskProgress[] = input.subtasks.map((subtask: SubtaskDefinition) => ({
+        subtaskId: subtask.subtaskId,
+        role: subtask.role,
+        roleLabel: subtask.roleLabel?.trim() || DEFAULT_ROLE_LABELS[subtask.role as keyof typeof DEFAULT_ROLE_LABELS] || String(subtask.role),
+        state: 'failed',
+        error: stopNotice,
+      }));
+      return {
+        total: progress.length,
+        succeeded: 0,
+        failed: progress.length,
+        cancelled: 0,
+        subtasks: progress,
+        aggregatedSummary: stopNotice,
+        summary: stopNotice,
+      };
     }
 
     // 2. 构造父任务 WorkerContext 桥接对象供 dispatchSubtasks 记录进度与检查点

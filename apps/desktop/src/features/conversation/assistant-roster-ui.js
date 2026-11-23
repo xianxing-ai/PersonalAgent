@@ -12,7 +12,7 @@ export function mountAssistantRoster(container, {invoke, escape, onOpen, report}
 <label>模型（可选）<select name="modelId">${defaultModelOption}</select></label>
 <div><button type="submit">保存</button><button type="button" data-assistant-create-cancel>取消</button></div>
 <p class="assistant-form-status" data-assistant-form-status role="status"></p>
-</form><div class="assistant-cards" aria-label="子助手"></div>`;
+</form><p class="assistant-form-status">助手只和你、主对话交流。每个助手有自己的工人，工人听助手的命令。</p><div class="assistant-cards" aria-label="助手"></div>`;
   const form = () => container.querySelector('[data-assistant-create-form]');
   const status = () => container.querySelector('[data-assistant-form-status]');
   const field = (node, name) => (node?.elements?.namedItem?.(name)?.value ?? node?.[name]?.value ?? '').trim();

@@ -2,7 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {parseHarnessCandidateTrial} from '@personal-agent/contracts/harness-candidates';
-import type {F20DocumentCandidate} from '@personal-agent/contracts/f20-candidate';
+import {F20_VERIFIED_COMPLETION,type F20DocumentCandidate} from '@personal-agent/contracts/f20-candidate';
 import type {TaskSnapshot} from '@personal-agent/contracts';
 import type {AgentToolPort} from '@personal-agent/agents';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
@@ -348,7 +348,7 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
     if(task.state==='waiting_approval'||task.state==='waiting_reconciliation')return {state:task.state==='waiting_approval'?'pending':'unknown',
       result:null,evidenceRefs:[],selection:bound};
     active(scope);
-    const result={workflowId:'F20',state:'settled',published:false};
+    const result=F20_VERIFIED_COMPLETION;
     if(await options.authorizeExport({...scope,stage:'completion',inputRef,value:result})!==true)
       fail('UNAUTHORIZED','Exact F20 completion export was denied');active(scope);
     const selection={...bound,resultDigest:hash(result)};context.saveCheckpoint(namespace+':receipt',{selection,result});
@@ -366,6 +366,6 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
     canReuseReceipt:(proposal,original,receipt)=>accepts(proposal)&&accepts(original)
       &&proposal.verification==='unverified'&&original.verification==='unverified'
       &&isDeepStrictEqual(proposal.arguments,original.arguments)
-      &&isDeepStrictEqual(receipt,{workflowId:'F20',state:'settled',published:false}),
+      &&(isDeepStrictEqual(receipt,F20_VERIFIED_COMPLETION)||isDeepStrictEqual(receipt,{workflowId:'F20',state:'settled',published:false})),
     isActive,pendingHostTask,assertResumeAllowed};
 }

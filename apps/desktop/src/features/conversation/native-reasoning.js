@@ -8,7 +8,7 @@ const labelFor=effort=>effortLabels[effort]??effort;
 export function nativeReasoningState(snapshot){
   const catalog=snapshot?.agentArtsModels?.catalog,preference=snapshot?.conversationPreference;
   const defaults=snapshot?.agentArtsModels?.preferences;
-  const useDefaults=Boolean(catalog)&&defaults!=null&&!preference?.executionModel&&!preference?.modelId;
+  const useDefaults=Boolean(catalog)&&defaults!=null&&!preference?.executionModel&&!preference?.modelId&&defaults.catalogRevision===catalog.revision;
   const modelId=preference?.executionModel?.modelId??(preference?.modelId||undefined)??(useDefaults?defaults?.defaultModelId:catalog?.defaultModelId);
   const model=textModels(catalog).find(m=>m.id===modelId);
   const effort=preference?.executionModel?.reasoningEffort??(useDefaults?defaults?.reasoningEffort:undefined);

@@ -3,7 +3,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 import type {OwnedWorkflowAdvanceRequest,OwnedWorkflowAdvanceResult} from '@personal-agent/agentarts';
 import {AgentArtsWebSocketTransport,parseAgentArtsResponseText} from '@personal-agent/coordination';
-import type {AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsWebSocketFactory,AgentArtsTransportState,AgentArtsPayloadPreparer} from '@personal-agent/coordination';
+import type {AgentArtsAuthorizationProvider,AgentArtsCloudAgentPort,AgentArtsFetch,AgentArtsWebSocketFactory,AgentArtsTransportState,AgentArtsPayloadPreparer} from '@personal-agent/coordination';
 import type {RuntimeCodingRepairImagePort} from './coding-repair-application.js';
 export interface RuntimeOwnedWorkflowImageOptions {
   gatewayUrl:string;runtimeName:string;deploymentVersion?:string;transport?:'https'|'wss';websocketUrl?:string;
@@ -12,6 +12,7 @@ export interface RuntimeOwnedWorkflowImageOptions {
   fetchHandlesHostAuthorization?:true;
   websocketFactory?:AgentArtsWebSocketFactory;fetchImpl?:AgentArtsFetch;invokeMode?:'debug'|'published';workflowGoalInput?:string;
   assertDeploymentBinding?:()=>void;onTransportState?:(state:AgentArtsTransportState)=>void;
+  queryOriginalStatus?:AgentArtsCloudAgentPort['queryStatus'];
   /** Synchronous trusted source/configuration fence, including after credential awaits and before WSS sends. */
   assertWorkflowCurrent?:(request:OwnedWorkflowAdvanceRequest)=>void;
   preparePayload?:AgentArtsPayloadPreparer;
@@ -37,7 +38,8 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
       ||options.deploymentVersion!==undefined&&address.searchParams.get('endpoint')!==options.deploymentVersion)
       throw new ProtocolError('REVISION_CONFLICT','Owned-workflow WSS must retain the same fixed deployment');
   }
-  const ws=options.transport==='wss'&&options.websocketUrl?new AgentArtsWebSocketTransport(options.websocketUrl,options.websocketFactory,options.onTransportState):undefined;
+  const ws=options.transport==='wss'&&options.websocketUrl?new AgentArtsWebSocketTransport(options.websocketUrl,options.websocketFactory,
+    options.onTransportState,options.queryOriginalStatus):undefined;
   const bindingId=createHash('sha256').update(JSON.stringify({gatewayUrl:gateway.origin,runtimeName:options.runtimeName,version:options.deploymentVersion??null,
     transport:options.transport??'https',websocketUrl:options.websocketUrl??null,invokeMode:options.invokeMode??'published',workflowGoalInput:options.workflowGoalInput??null})).digest('hex');
   const active=(request:OwnedWorkflowAdvanceRequest)=>{
@@ -77,7 +79,8 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
     if(options.transport==='wss') {
       if(!ws)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original owned-workflow WSS endpoint unavailable');
       const destination=options.websocketUrl!,lease=await prepare(destination);assertCurrent();
-      try {response=await ws.invoke(init,{beforeSend:()=>{assertCurrent();lease?.assertBeforeSend({destination,payload:body});},
+      try {response=await ws.invoke(init,{renewIdleConnection:true,recoverDisconnectedResult:true,beforeStatusRead:assertCurrent,
+        beforeSend:()=>{assertCurrent();lease?.assertBeforeSend({destination,payload:body});},
         afterAccepted:assertCurrent,afterTerminal:assertCurrent});}
       catch(error) {
         if(!options.allowHttpsFallback||!ws.canFallback(error))throw error;

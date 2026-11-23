@@ -427,6 +427,9 @@ export function createAsyncSubagentController(options: {
         ...(record.definition.deadlineMs === undefined ? {} : {deadlineMs: record.definition.deadlineMs}),
         ...(model === undefined ? {} : {model})};
     }
+    if (!typeName && raw.role === undefined && roleLabel) {
+      role = 'coordinator';
+    }
     if (!role || !Object.hasOwn(DEFAULT_ROLE_LABELS, role)) fail('INVALID_ARGUMENT', 'Subtask role is not a built-in role');
     const definition: SubtaskDefinition = {subtaskId, role, goal, ...(roleLabel ? {roleLabel} : {}),
       ...(model ? {model} : {}),
@@ -608,7 +611,7 @@ export function createAsyncSubagentController(options: {
     digest: proposal.digest, kind: proposal.kind, name: proposal.name, summary: subagentTypeChangeSummary(proposal),
     effect: 'none' as const});
   const subtaskSchema = {type: 'object', additionalProperties: false, required: ['subtaskId', 'goal'], properties: {
-    subtaskId: {type: 'string', minLength: 1}, role: {type: 'string', enum: [...BUILTIN_SUBAGENT_ROLES]},
+    subtaskId: {type: 'string', minLength: 1}, role: {type: 'string', enum: [...BUILTIN_SUBAGENT_ROLES], description: '内置角色（未指定 typeName 时建议使用 researcher/coder/reviewer/planner/coordinator；仅传 roleLabel 时默认 coordinator）。'},
     typeName: {type: 'string', description: '已确认的自定义子智能体类型名称。五种内置角色仍用 role。'},
     roleLabel: {type: 'string'}, goal: {type: 'string', minLength: 1}, model: {type: 'string'},
     reasoningEffort: {type: 'string', enum: EFFORTS}, thinkingDepth: {type: 'integer', minimum: 0, maximum: 5}}};

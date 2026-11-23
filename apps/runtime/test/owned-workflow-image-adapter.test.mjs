@@ -96,3 +96,24 @@ test('an accepted owned WSS invocation with a lost result is unknown and is neve
     allowHttpsFallback:true,websocketFactory:()=>new AcceptedThenLost(),fetchImpl:async()=>{calls++;return response();}});
   try{await assert.rejects(adapter.advance(request(),execution),error=>error.receipt?.accepted===true);assert.equal(calls,0);}finally{adapter.close();}
 });
+test('a disconnected graph consumes only the status of its original invocation',async()=>{
+  for(const sameInstance of [true,false]){
+    let sockets=0,reads=0,http=0;
+    const adapter=createRuntimeOwnedWorkflowImageAdapter({...original,transport:'wss',websocketUrl:'wss://fixture.invalid/ws?endpoint=v-fixed',
+      allowHttpsFallback:true,websocketFactory:()=>{sockets++;return new AcceptedThenLost();},
+      fetchImpl:async()=>{http++;return response();},
+      queryOriginalStatus:async receipt=>{
+        reads++;
+        return {protocolVersion:AGENTARTS_TRANSPORT_VERSION,type:'status',state:'completed',
+          serverInstanceId:sameInstance?receipt.serverInstanceId:'different-instance',sessionId:receipt.sessionId,
+          requestId:receipt.requestId,idempotencyKey:receipt.idempotencyKey,payloadDigest:receipt.payloadDigest,
+          events:await response().json()};
+      }});
+    try{
+      const invocation=adapter.advance(request(),execution);
+      if(sameInstance)assert.deepEqual(await invocation,result);
+      else await assert.rejects(invocation,error=>error.receipt?.accepted===true);
+      assert.deepEqual({sockets,reads,http},{sockets:1,reads:1,http:0});
+    }finally{adapter.close();}
+  }
+});

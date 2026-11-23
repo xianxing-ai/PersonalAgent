@@ -10,18 +10,20 @@ export function mountConversationProhibitions(root,invoke,report=()=>{}) {
   root.classList.add('conversation-prohibitions-sidebar');
   root.innerHTML='<button type="button" data-prohibitions-toggle aria-expanded="false" aria-label="本对话禁止项：0 条">⊘ <span data-prohibitions-count>0</span></button>'
     +'<section class="conversation-prohibitions-editor" data-prohibitions-editor hidden aria-label="本对话禁止项">'
-    +'<button type="button" data-prohibitions-close>关闭</button><h3>本对话禁止项</h3><p>每条禁止项拦住本对话的整个动作类别，对象不明确也不执行。原句、期限和条件完整保留；持续拦住直到你在这里修改或移除，聊天不会自动改变规则。</p>'
+    +'<header class="prohibitions-head"><h3>本对话禁止项</h3><button type="button" class="prohibitions-close" data-prohibitions-close aria-label="关闭本对话禁止项">关闭</button></header>'
+    +'<p class="prohibitions-desc">每条禁止项拦住本对话的整个动作类别，对象不明确也不执行。原句、期限和条件完整保留；持续拦住直到你在这里修改或移除，聊天不会自动改变规则。</p>'
     +'<div data-prohibitions-list></div><form data-prohibitions-form><label>动作类别<select name="action">'
     +Object.entries(labels).map(([value,label])=>`<option value="${value}">${label}</option>`).join('')
-    +'</select></label><label>禁止项原句<textarea name="text" required maxlength="4000" rows="3"></textarea></label>'
-    +'<button type="submit" data-prohibitions-save>添加</button><button type="button" data-prohibitions-cancel hidden>取消修改</button></form>'
+    +'</select></label><label>禁止项原句<textarea name="text" required maxlength="4000" rows="3" placeholder="例如：今天 18:00 前不要对外发邮件或消息"></textarea></label>'
+    +'<div class="prohibitions-actions"><button type="submit" data-prohibitions-save>添加</button><button type="button" data-prohibitions-cancel hidden>取消修改</button></div></form>'
     +'<p data-prohibitions-status role="status"></p></section>';
   const toggle=root.querySelector('[data-prohibitions-toggle]'),count=root.querySelector('[data-prohibitions-count]'),editor=root.querySelector('[data-prohibitions-editor]');
   const list=root.querySelector('[data-prohibitions-list]'),form=root.querySelector('[data-prohibitions-form]'),action=form.querySelector('[name="action"]'),text=form.querySelector('[name="text"]');
   const save=root.querySelector('[data-prohibitions-save]'),cancel=root.querySelector('[data-prohibitions-cancel]'),status=root.querySelector('[data-prohibitions-status]');
   let active,rules={revision:0,items:[]},editing,busy=false,signature='';
-  toggle.onclick=()=>{editor.hidden=!editor.hidden;toggle.setAttribute('aria-expanded',String(!editor.hidden));};
-  root.querySelector('[data-prohibitions-close]').onclick=()=>{editor.hidden=true;toggle.setAttribute('aria-expanded','false');};
+  toggle.onclick=()=>{editor.hidden=!editor.hidden;toggle.setAttribute('aria-expanded',String(!editor.hidden));if(!editor.hidden)text.focus?.();};
+  root.querySelector('[data-prohibitions-close]').onclick=()=>{editor.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.focus?.();};
+  editor.addEventListener?.('keydown',e=>{if(e.key==='Escape'){editor.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.focus?.();}});
   const reset=()=>{editing=undefined;text.value='';save.textContent='添加';cancel.hidden=true;};
   cancel.onclick=reset;
   async function persist(items){
@@ -45,13 +47,14 @@ export function mountConversationProhibitions(root,invoke,report=()=>{}) {
     count.textContent=String(rules.items.length);toggle.setAttribute('aria-label',`本对话禁止项：${rules.items.length} 条`);
     const next=JSON.stringify([active,rules]);if(next===signature)return;signature=next;
     list.replaceChildren(...rules.items.map(item=>{
-      const row=document.createElement('article'),heading=document.createElement('strong'),body=document.createElement('p');
+      const row=document.createElement('article'),heading=document.createElement('strong'),body=document.createElement('p'),actions=document.createElement('div');
+      actions.className='prohibitions-item-actions';
       heading.textContent=labels[item.action];body.textContent=item.text;
       const edit=document.createElement('button');edit.type='button';edit.textContent='修改';edit.onclick=()=>{
-        if(busy)return;editing=item.id;action.value=item.action;text.value=item.text;save.textContent='保存修改';cancel.hidden=false;
+        if(busy)return;editing=item.id;action.value=item.action;text.value=item.text;save.textContent='保存修改';cancel.hidden=false;text.focus?.();
       };
       const remove=document.createElement('button');remove.type='button';remove.textContent='移除';remove.onclick=()=>void persist(rules.items.filter(rule=>rule.id!==item.id));
-      row.append(heading,body,edit,remove);return row;
+      actions.append(edit,remove);row.append(heading,body,actions);return row;
     }));
   }
   return {update};
