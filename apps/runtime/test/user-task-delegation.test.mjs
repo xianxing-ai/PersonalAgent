@@ -21,7 +21,7 @@ test('required host delegation returns its original execution epoch and refuses 
     runtime.saveCheckpoint(task.taskId,'application-deadline',deadline);
     runtime.saveCheckpoint(task.taskId,'task-thinking',{depth:2,maxSteps:8});
     runtime.saveCheckpoint(task.taskId,'competition-max-steps',8);
-    const port=userTaskDelegationPort(runtime,{execute:async()=>assert.fail('Host proposal must precede cloud invocation')},binding);
+    const port=userTaskDelegationPort(runtime,binding);
     const request={taskId:task.taskId,goal:task.goal,revision:0,deadline,signal:new AbortController().signal,executionEpoch:0};
     const {executionEpoch,...proposal}=await port.execute(request);
     assert.equal(executionEpoch,0);assert.deepEqual(proposal,userTaskDelegationProposal(binding));

@@ -72,7 +72,7 @@ async function fixture(t,{expand=false,unknown=false,onExport,tamperCandidate=fa
   const assertWorkflowCurrent=request=>bundle.configuredWorkflowWorkerPorts[0].assertCurrent({taskId:request.taskId,
     deadline:request.taskDeadline??request.deadline,signal:request.signal});
   const compositionContext=Object.fromEntries(['fetchHandlesHostAuthorization','transport','websocketUrl','allowHttpsFallback',
-    'websocketAuthorizationProvider','websocketFactory','invokeMode','workflowGoalInput','assertDeploymentBinding',
+    'websocketAuthorizationProvider','websocketFactory','recoverAcceptedStatus','invokeMode','workflowGoalInput','assertDeploymentBinding',
     'onTransportState','readOwnedWorkflowReceiptSecret'].map(key=>[key,undefined]));
   Object.assign(compositionContext,{ProtocolError,createRuntimeOwnedWorkflowImageAdapter,preparePayload:syntheticPublicPayloadGate,initialRequestMode:'goal-with-tools-json',
     gatewayUrl:'https://fixture.invalid',runtimeName:'synthetic-f05',deploymentVersion:'fixed',f20WorkflowWorkerPorts:undefined,

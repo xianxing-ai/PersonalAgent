@@ -95,7 +95,7 @@ test('planGuidance derives exact affected_targets, preserved_targets and optiona
 });
 
 test('prompts reflect current convergence rules for world, plan and non-repeating readonly continuation', () => {
-  assert.equal(PROMPT_VERSION, 'owned-1.12');
+  assert.equal(PROMPT_VERSION, 'owned-1.15');
   assert.match(WORLD_GUIDANCE_PROMPT, /因果/);
   assert.match(PLAN_GUIDANCE_PROMPT, /plan_constraints/);
   assert.match(PLAN_GUIDANCE_PROMPT, /preserved_targets/);

@@ -6570,6 +6570,41 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return {deleted:true as const, assistantId};
   }
 
+  listWorkers() {
+    return this.runtime.ensureWorkers();
+  }
+
+  getWorker(workerId:string) {
+    return this.runtime.getWorker(workerId);
+  }
+
+  resolveWorker(input:{workerId?:string;role?:string;createIfMissing?:boolean}) {
+    const workers = this.runtime.ensureWorkers();
+    if (typeof input?.workerId === 'string' && input.workerId.trim()) {
+      const worker = workers.find(item => item.workerId === input.workerId!.trim());
+      return worker ? {worker, action: 'reuse' as const} : {action: 'missing' as const};
+    }
+    if (typeof input?.role === 'string' && input.role.trim()) {
+      const worker = workers.find(item => item.role === input.role!.trim());
+      if (worker) return {worker, action: 'reuse' as const};
+      return input.createIfMissing ? {action: 'needs_user' as const} : {action: 'missing' as const};
+    }
+    return {action: 'needs_user' as const};
+  }
+
+  createWorker(input:{displayName:string;instructions:string;role:string;preferredDriver?:string}) {
+    return this.runtime.createWorker(input);
+  }
+
+  renameWorker(workerId:string, input:{displayName:string;instructions?:string}) {
+    return this.runtime.renameWorker(workerId, input);
+  }
+
+  deleteWorker(workerId:string) {
+    this.runtime.deleteWorker(workerId);
+    return {deleted:true as const, workerId};
+  }
+
   submitAssistantMessage(input:{assistantId:string;text:string;requestId:string;source?:'user'|'peer';hop?:number}):{acceptedTaskId:string;injected?:true} {
     if(!input||typeof input.text!=='string'||!input.text.trim()||!nonEmptyText(input.requestId)) {
       throw new ProtocolError('INVALID_ARGUMENT','请写下要发给助手的话');

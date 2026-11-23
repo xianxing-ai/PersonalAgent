@@ -507,8 +507,10 @@ export class OwnedWorkflowEngine {
         ||!Object.hasOwn(item,'value'))) throw new ProtocolError('EXTERNAL_FAILURE','Invalid executor candidates');
     if(context.template.workflowId==='F20'&&context.node.id==='F20_N02') {
       const rejected=new Set(state.nodes[context.node.id]!.f20DraftReview?.rejectedDigests??[]);
-      candidates=candidates.filter(candidate=>candidate.abstain||!rejected.has(f20DraftDigest(parseF20DocumentCandidate(candidate.value))));
-      if(candidates.every(candidate=>candidate.abstain))return {state:'failed',reason:'F20 review rejected the original draft and no revised draft was produced'};
+      if(rejected.size>0) {
+        candidates=candidates.filter(candidate=>candidate.abstain||!rejected.has(f20DraftDigest(parseF20DocumentCandidate(candidate.value))));
+        if(candidates.every(candidate=>candidate.abstain))return {state:'failed',reason:'F20 review rejected the original draft and no revised draft was produced'};
+      }
     }
     for(const candidate of candidates)if(candidate.metadata)parseWorkflowSelectionResult({selectedId:candidate.id,metadata:candidate.metadata},candidates.map(item=>item.id));
     const selectionRequest={context:JSON.stringify({workflowId:context.template.workflowId,

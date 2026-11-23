@@ -23,6 +23,12 @@ import {ASSISTANT_BUILTIN_LOCKED, ASSISTANT_BUSY, ASSISTANT_LIMIT_REACHED, MAX_U
 import type {AssistantMail, AssistantRecord} from './assistant-roster.js';
 export type {AssistantMail, AssistantRecord} from './assistant-roster.js';
 export {DEFAULT_ASSISTANTS, assistantConversationId} from './assistant-roster.js';
+import {
+  WORKER_BUILTIN_LOCKED, WORKER_BUSY, WORKER_LIMIT_REACHED, WORKER_NOT_FOUND, MAX_USER_WORKERS,
+  builtinWorkerSeedRows, workerDisplayName, workerDriver, workerFromRow, workerInstructions, workerRole,
+} from './worker-roster.js';
+import type {WorkerRecord} from './worker-roster.js';
+export type {WorkerRecord} from './worker-roster.js';
 import type {TaskActivityEvent, TaskActivityInput, TaskTranscript, UserInjection} from './task-activity.js';
 export type {TaskActivityEvent, TaskActivityInput, TaskTranscript, TranscriptSegment, UserInjection} from './task-activity.js';
 export {publicFailureMessage, redactSecrets, summarizeValue} from './task-activity.js';
@@ -660,6 +666,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.expirePendingApprovals();
     if (!this.db.prepare('SELECT 1 FROM assistants LIMIT 1').get()) {
       this.ensureAssistants();
+    }
+    if (!this.db.prepare('SELECT 1 FROM workers LIMIT 1').get()) {
+      this.ensureWorkers();
     }
   }
 
@@ -2253,6 +2262,77 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     if (!assistant.activeTaskId) return assistant.status !== 'idle';
     try { return !terminal.has(this.getTask(assistant.activeTaskId).state); }
     catch { return assistant.status !== 'idle'; }
+  }
+
+  ensureWorkers(): WorkerRecord[] {
+    const now = this.timestamp();
+    for (const worker of builtinWorkerSeedRows(now)) {
+      this.db.prepare(`INSERT INTO workers (worker_id, display_name, role, instructions, preferred_driver, kind, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'builtin', 'idle', ?, ?) ON CONFLICT(worker_id) DO NOTHING`).run(
+        worker.workerId, worker.displayName, worker.role, worker.instructions, worker.preferredDriver, worker.createdAt, worker.updatedAt);
+    }
+    return this.listWorkers();
+  }
+
+  listWorkers(): WorkerRecord[] {
+    return (this.db.prepare('SELECT * FROM workers ORDER BY kind, created_at, worker_id').all() as Record<string, unknown>[]).map(workerFromRow);
+  }
+
+  getWorker(workerId: string): WorkerRecord {
+    const id = requireText(workerId, 'workerId');
+    const row = this.db.prepare('SELECT * FROM workers WHERE worker_id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) throw new RuntimeError('NOT_FOUND', WORKER_NOT_FOUND);
+    return workerFromRow(row);
+  }
+
+  createWorker(input: {displayName: string; instructions: string; role: string; preferredDriver?: string}): WorkerRecord {
+    const displayName = this.workerField(() => workerDisplayName(input?.displayName));
+    const instructions = this.workerField(() => workerInstructions(input?.instructions));
+    const role = this.workerField(() => workerRole(input?.role));
+    const preferredDriver = this.workerField(() => workerDriver(input?.preferredDriver));
+    return this.transaction(() => {
+      const count = this.db.prepare("SELECT COUNT(*) AS total FROM workers WHERE kind = 'user'").get() as {total: number};
+      if (count.total >= MAX_USER_WORKERS) throw new RuntimeError('INVALID_ARGUMENT', WORKER_LIMIT_REACHED);
+      const workerId = 'user-worker-' + randomUUID().replace(/-/g, '').slice(0, 12);
+      const now = this.timestamp();
+      this.db.prepare(`INSERT INTO workers (worker_id, display_name, role, instructions, preferred_driver, kind, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'user', 'idle', ?, ?)`).run(
+        workerId, displayName, role, instructions, preferredDriver, now, now);
+      return this.getWorker(workerId);
+    });
+  }
+
+  renameWorker(workerId: string, input: {displayName: string; instructions?: string}): WorkerRecord {
+    const current = this.getWorker(workerId);
+    if (current.kind !== 'user') throw new RuntimeError('INVALID_ARGUMENT', WORKER_BUILTIN_LOCKED);
+    const displayName = this.workerField(() => workerDisplayName(input?.displayName));
+    const instructions = input?.instructions === undefined ? current.instructions : this.workerField(() => workerInstructions(input.instructions));
+    this.db.prepare("UPDATE workers SET display_name = ?, instructions = ?, updated_at = ? WHERE worker_id = ? AND kind = 'user'").run(
+      displayName, instructions, this.timestamp(), current.workerId);
+    return this.getWorker(current.workerId);
+  }
+
+  deleteWorker(workerId: string): void {
+    const current = this.getWorker(workerId);
+    if (current.kind !== 'user') throw new RuntimeError('INVALID_ARGUMENT', WORKER_BUILTIN_LOCKED);
+    this.transaction(() => {
+      const again = this.getWorker(current.workerId);
+      if (again.kind !== 'user') throw new RuntimeError('INVALID_ARGUMENT', WORKER_BUILTIN_LOCKED);
+      if (this.workerIsBusy(again)) throw new RuntimeError('REVISION_CONFLICT', WORKER_BUSY);
+      const removed = this.db.prepare("DELETE FROM workers WHERE worker_id = ? AND kind = 'user'").run(again.workerId);
+      if (removed.changes !== 1) throw new RuntimeError('NOT_FOUND', WORKER_NOT_FOUND);
+    });
+  }
+
+  private workerField<T>(read: () => T): T {
+    try { return read(); }
+    catch (error) { throw new RuntimeError('INVALID_ARGUMENT', error instanceof Error ? error.message : '工人信息不完整'); }
+  }
+
+  private workerIsBusy(worker: WorkerRecord): boolean {
+    if (!worker.activeTaskId) return worker.status !== 'idle';
+    try { return !terminal.has(this.getTask(worker.activeTaskId).state); }
+    catch { return worker.status !== 'idle'; }
   }
 
   getAssistant(assistantId: string): AssistantRecord {

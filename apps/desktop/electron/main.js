@@ -88,7 +88,7 @@ import {createDesktopProactiveHost} from './proactive-host.js';
 import {createP5SystemObservationSource} from './p5-system-observation-source.js';
 import {createP5DeviceReceiptStore} from './p5-device-receipt-store.js';
 import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
-import {createDesktopNotificationPort} from './desktop-notification-port.js';
+import {createDesktopNotificationPort, parseNotificationActivationTag} from './desktop-notification-port.js';
 import {createEncryptedAutonomyStore, createRiskAutonomyHost} from './risk-autonomy-host.js';
 import {createEncryptedModuleStorage} from './encrypted-module-storage.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
@@ -1016,6 +1016,7 @@ function conversationProjection(surface) {
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
       ...(notepadHost?.projectTask(task) ?? {})});}),
     assistants: fakeMode ? [] : (runtimeApplication?.listAssistants?.() ?? []),
+    workers: fakeMode ? [] : (runtimeApplication?.listWorkers?.() ?? []),
     internalChat: fakeMode ? {messages: []} : (runtimeApplication?.listInternalChat?.(40) ?? {messages: []}),
     messages: page.entries.filter(entry=>entry.kind==='message').map(entry=>conversations?.messages.get(entry.id)).filter(Boolean).map(message=>({...message})),
     historyPage:{...historyPages.summary(surface),activeCount:active.length},
@@ -2764,6 +2765,14 @@ async function initializeRuntime() {
           onClick: record => { riskAutonomyHost?.compensate(record.id); },
           onNavigate: openNotificationTarget});
         desktopNotificationPort = channel;
+        if (process.platform === 'win32' && typeof Notification.handleActivation === 'function') {
+          Notification.handleActivation(details => {
+            if (details?.type && details.type !== 'click' && details.type !== 'action') return;
+            const tag = parseNotificationActivationTag(details?.arguments ?? '');
+            if (!tag || !desktopNotificationPort) return;
+            desktopNotificationPort.activateByNativeTag(tag);
+          });
+        }
         usageBudgetProduct?.bindNotifier(channel);
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,
           getVoiceHost:()=>liveVoice,verifyVoiceFinal:command=>voiceSessionFinalHost?.verifyVoiceCommand(command)===true,onUpdate: publish});
@@ -3751,6 +3760,7 @@ async function initializeRuntime() {
         competitionMaxSteps: readCompetitionExecutionPolicy().initialWindowSteps,
         competitionExecution:readCompetitionExecutionPolicy().policy,
         competitionMessageTimeoutMs:readCompetitionExecutionPolicy().taskTimeoutMs,
+        // Front-desk auto-approve surface: light read/chat tools + subagent dispatch + internal assistant/worker messaging.
         // Module availability/consent, input validation and ToolGateway still run.
         // Explicit names prevent future destructive tools inheriting this policy.
         automaticTools: [...[...(historyTool?[historyTool.tool]:[]),...productTools.tools,...codingWorkspace.tools,...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
@@ -3758,8 +3768,7 @@ async function initializeRuntime() {
             'conversation.read_history','weather.forecast','calendar.events','feeds.subscriptions','feeds.collect','research.search',
             'todo.list','todo.create','todo.update','notifications.status',
             'goals.list','goals.get','goals.create','goals.revise',
-            'workspace.read_text','workspace.list_entries','workspace.preview_text_patch',
-            'workspace.stage_text_patch','workspace.apply_text_patch','workspace.git_diff_check',
+            'workspace.read_text','workspace.list_entries','workspace.git_diff_check',
             'workspace.node_check','workspace.npm_build','workspace.npm_test',SUBAGENT_DISPATCH_TOOL_NAME,'knowledge.search','mcp.workspace.read_text',
             'computer.request_access',WORKFLOW_SHADOW_PREVIEW,
             'developer.repository_context',
@@ -5016,6 +5025,46 @@ async function action(event, name, payload) {
     publish();
     return result;
   }
+  if (name === 'workers.list') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信窗口读取工人列表');
+    return runtimeApplication.listWorkers();
+  }
+  if (name === 'worker.get') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信窗口读取工人信息');
+    const clean = requirePlainRecord(payload, ['workerId'], '读取工人参数无效');
+    const workerId = requireCleanText(clean.workerId, '缺少工人标识', 128);
+    return runtimeApplication.getWorker(workerId);
+  }
+  if (name === 'worker.create') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信窗口新建工人');
+    const clean = requirePlainRecord(payload, ['displayName', 'instructions', 'role', 'preferredDriver'], '新建工人参数无效');
+    const displayName = requireCleanText(clean.displayName, '请填写工人名字', 40);
+    const instructions = requireCleanText(clean.instructions, '请填写这个工人负责什么', 500);
+    const role = requireCleanText(clean.role, '请选择工人角色', 32);
+    const preferredDriver = clean.preferredDriver !== undefined && clean.preferredDriver !== null && clean.preferredDriver !== ''
+      ? requireCleanText(clean.preferredDriver, '工人驱动无效', 32) : undefined;
+    const created = runtimeApplication.createWorker({displayName, instructions, role, ...(preferredDriver ? {preferredDriver} : {})});
+    publish();
+    return created;
+  }
+  if (name === 'worker.rename') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信窗口修改工人');
+    const clean = requirePlainRecord(payload, ['workerId', 'displayName', 'instructions'], '修改工人参数无效');
+    const workerId = requireCleanText(clean.workerId, '缺少工人标识', 128);
+    const displayName = requireCleanText(clean.displayName, '请填写工人名字', 40);
+    const instructions = clean.instructions !== undefined ? requireCleanText(clean.instructions, '请填写这个工人负责什么', 500) : undefined;
+    const updated = runtimeApplication.renameWorker(workerId, {displayName, ...(instructions !== undefined ? {instructions} : {})});
+    publish();
+    return updated;
+  }
+  if (name === 'worker.delete') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信窗口删除工人');
+    const clean = requirePlainRecord(payload, ['workerId'], '删除工人参数无效');
+    const workerId = requireCleanText(clean.workerId, '缺少工人标识', 128);
+    const result = runtimeApplication.deleteWorker(workerId);
+    publish();
+    return result;
+  }
   if (name === 'assistant.create') {
     if (sender !== panel && sender !== workspace) throw Error('请从对话里新建助手');
     const clean = requirePlainRecord(payload, ['displayName', 'instructions', 'modelId'], '新建助手参数无效');
@@ -6245,7 +6294,7 @@ async function action(event, name, payload) {
     return dailyBriefingHost.update(payload);
   }
   if (name === 'briefing.openDecision') {
-    if (sender !== admin || event.senderFrame !== sender.webContents.mainFrame || !dailyBriefingHost) throw Error('请从每日简报打开审批卡');
+    if ((sender !== admin && sender !== panel && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame || !dailyBriefingHost) throw Error('请从每日简报打开审批卡');
     return presentBriefingDecision({taskId: payload?.taskId, approvalId: payload?.approvalId,
       tasks: {get: id => tasks.get(id) ?? runtimeApplication?.runtime.getTask(id)}, conversations, sourceSurface: taskSurface,
       openPanel: () => openPanel(true), openWorkspace, publish, rememberFocus: focus => {approvalFocus = focus;}});

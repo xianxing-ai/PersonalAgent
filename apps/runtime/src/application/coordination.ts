@@ -375,6 +375,9 @@ async function exchange(
             markCompetitionCloudUnknown(runtime, taskId, error.receipt, suffix);
             throw new ProtocolError('RESULT_UNKNOWN', `Original cloud invocation requires reconciliation${suffix}`);
           }
+          if (error instanceof ProtocolError && error.message.startsWith('任务执行未完成；')) {
+            throw error;
+          }
           // Adapter errors may contain credentials or private response bodies.
           throw new ProtocolError('EXTERNAL_FAILURE', `Coordination adapter failed${suffix}`);
         } finally {
