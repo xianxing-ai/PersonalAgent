@@ -190,6 +190,7 @@ import {prepareWorkflowHostPreflight} from './workflow-host-preflight.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createNativeEgressHost} from './egress-dialog-host.js';
+import {extractGitSha40} from './egress-host.js';
 import {createUsageBudgetProduct, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
@@ -6693,6 +6694,29 @@ app.whenReady().then(async () => {
         }
       }
       return false;
+    },
+    readTrustedGitHubShas(taskId){
+      const runtime=runtimeApplication?.runtime;
+      if(!runtime||typeof taskId!=='string'||!taskId)return undefined;
+      const shas=new Set();
+      const collect=(value,key='',depth=0)=>{
+        if(depth>6||value==null)return;
+        if(typeof value==='string'){
+          if(['sha','headSha','baseSha'].includes(key)){const hex=extractGitSha40(value);if(hex)shas.add(hex);}
+          return;
+        }
+        if(Array.isArray(value)){for(const item of value)collect(item,'',depth+1);return;}
+        if(typeof value==='object'){for(const [k,v]of Object.entries(value))collect(v,k,depth+1);}
+      };
+      try{
+        for(const record of runtime.readToolExecutions(taskId)){
+          if(record.toolName?.startsWith('github.')&&record.state==='confirmed'&&record.executionStarted){
+            const saved=runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId);
+            if(saved?.result)collect(saved.result);
+          }
+        }
+      }catch{}
+      return shas;
     },
     readPendingWorkflowGraph({taskId,requestId,deadline}){
       const runtime=runtimeApplication?.runtime;
