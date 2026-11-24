@@ -141,7 +141,7 @@ test('GitHubRestProvider executes mainstream read and write ops with redaction a
       });
     }
     if (path.startsWith('/repos/acme/app/pulls/9/files?')) {
-      return jsonResponse([{ filename: 'a.ts', status: 'modified', additions: 2, deletions: 1, changes: 3 }]);
+      return jsonResponse([{ filename: 'a.ts', status: 'modified', additions: 2, deletions: 1, changes: 3, patch: '@@ -1 +1,2 @@\n+const x = 1;' }]);
     }
     if (path === '/repos/acme/app/pulls/9/reviews' && init.method === 'POST') {
       return jsonResponse({ id: 55, html_url: 'https://github.com/acme/app/pull/9#pullrequestreview-55' }, 200);
@@ -209,6 +209,9 @@ test('GitHubRestProvider executes mainstream read and write ops with redaction a
 
   const files = await tools.get('github.pr.files').execute({ repo: 'acme/app', number: 9 }, hostCtx(['github:read']));
   assert.equal(files.items[0].filename, 'a.ts');
+  assert.equal(files.items[0].patch, undefined);
+  const filesWithPatch = await tools.get('github.pr.files').execute({ repo: 'acme/app', number: 9, includePatch: true }, hostCtx(['github:read']));
+  assert.match(filesWithPatch.items[0].patch ?? '', /@@/);
 
   const review = await tools.get('github.pr.review').execute({ repo: 'acme/app', number: 9, expectedHeadSha: 'f'.repeat(40), event: 'APPROVE', body: 'LGTM' }, hostCtx(['github:write']));
   assert.equal(review.externalId, '55');

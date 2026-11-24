@@ -15,7 +15,8 @@ export interface GitHubRestOptions {
 }
 
 const API_ORIGIN = 'https://api.github.com';
-const MAX_BODY_BYTES = 1048576;
+const MAX_RAW_BODY_BYTES = 1048576;
+const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
 const GET_MAX_ATTEMPTS = 3;
 const GET_ATTEMPT_TIMEOUT_MS = 12_000;
 const RETRYABLE_GET_STATUSES = new Set([502, 503, 504]);
@@ -91,7 +92,7 @@ function isAllowedLogRedirect(rawUrl: string): boolean {
   );
 }
 
-async function readBoundedText(response: Response): Promise<string> {
+async function readBoundedText(response: Response, maxBytes = MAX_RAW_BODY_BYTES): Promise<string> {
   if (response.body) {
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
@@ -101,7 +102,7 @@ async function readBoundedText(response: Response): Promise<string> {
       if (done) break;
       if (value) {
         total += value.byteLength;
-        if (total > MAX_BODY_BYTES) {
+        if (total > maxBytes) {
           await reader.cancel().catch(() => {});
           throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub response exceeded byte limit');
         }
@@ -111,7 +112,7 @@ async function readBoundedText(response: Response): Promise<string> {
     return Buffer.concat(chunks, total).toString('utf8');
   }
   const text = await response.text();
-  if (Buffer.byteLength(text, 'utf8') > MAX_BODY_BYTES) {
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
     throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub response exceeded byte limit');
   }
   return text;
@@ -221,13 +222,14 @@ export class GitHubRestProvider implements GitHubProvider {
       url: string,
       init: RequestInit,
       method: string,
+      maxBytes = MAX_JSON_BODY_BYTES,
     ): Promise<{ response: Response; bodyText: string }> => {
       const outcome = await executeAttempt(method, true, async signal => {
         const response = await this.fetchImpl(url, { ...init, signal });
         if (method === 'GET' && RETRYABLE_GET_STATUSES.has(response.status)) {
           return { response, result: '' };
         }
-        const bodyText = await readBoundedText(response);
+        const bodyText = await readBoundedText(response, maxBytes);
         return { response, result: bodyText };
       });
       return { response: outcome.response, bodyText: outcome.result };
@@ -262,6 +264,7 @@ export class GitHubRestProvider implements GitHubProvider {
           redirect: 'error',
         },
         method,
+        raw === true ? MAX_RAW_BODY_BYTES : MAX_JSON_BODY_BYTES,
       );
 
       if (!response.ok) {
@@ -314,11 +317,11 @@ export class GitHubRestProvider implements GitHubProvider {
           throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub log redirect rejected');
         }
         // Never forward GitHub Authorization header to third-party log blob storage.
-        const redirected = await requestWithBody(location, { method: 'GET', redirect: 'error' }, 'GET');
+        const redirected = await requestWithBody(location, { method: 'GET', redirect: 'error' }, 'GET', MAX_RAW_BODY_BYTES);
         finalResponse = redirected.response;
         text = redirected.bodyText;
       } else {
-        text = finalResponse.ok ? await readBoundedText(finalResponse) : '';
+        text = finalResponse.ok ? await readBoundedText(finalResponse, MAX_RAW_BODY_BYTES) : '';
       }
 
       if (!finalResponse.ok) {

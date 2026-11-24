@@ -97,21 +97,7 @@ export function createGitHubConversationTools({
   const host = {
     register(tool) {
       if (!GITHUB_TOOL_NAMES.has(tool.descriptor.name)) return () => {};
-      const descriptor = tool.descriptor.name === 'github.repo.get'
-        ? {
-            ...tool.descriptor,
-            outputSchema: {
-              ...tool.descriptor.outputSchema,
-              properties: {
-                repo: tool.descriptor.outputSchema.properties.fullName,
-                defaultBranch: tool.descriptor.outputSchema.properties.defaultBranch,
-                private: tool.descriptor.outputSchema.properties.private,
-                url: tool.descriptor.outputSchema.properties.url,
-              },
-              required: ['repo', 'defaultBranch', 'private', 'url'],
-            },
-          }
-        : tool.descriptor;
+      const descriptor = tool.descriptor;
       tools.push({
         descriptor,
         execute: async (input, context) => {
@@ -169,10 +155,6 @@ export function createGitHubConversationTools({
 
             const result = await Promise.race([operation, interrupted]);
             assertCurrent(activeContext);
-            if (descriptor.name === 'github.repo.get' && result && typeof result === 'object' && 'fullName' in result) {
-              const {fullName, ...rest} = result;
-              return {repo: fullName, ...rest};
-            }
             return result;
           } catch (error) {
             if (signal.aborted) {
@@ -243,6 +225,27 @@ export function createGitHubConversationTools({
     return true;
   };
 
+  const projectionOutputSchema = descriptor => descriptor.name === 'github.repo.get'
+    ? {
+        ...descriptor.outputSchema,
+        properties: {
+          repo: descriptor.outputSchema.properties.fullName,
+          defaultBranch: descriptor.outputSchema.properties.defaultBranch,
+          private: descriptor.outputSchema.properties.private,
+          url: descriptor.outputSchema.properties.url,
+        },
+        required: ['repo', 'defaultBranch', 'private', 'url'],
+      }
+    : descriptor.outputSchema;
+
+  const projectToolResult = (name, value) => {
+    if (name === 'github.repo.get' && value && typeof value === 'object' && 'fullName' in value) {
+      const {fullName, ...rest} = value;
+      return {repo: fullName, ...rest};
+    }
+    return structuredClone(value);
+  };
+
   const questionExports = tools.map(tool => ({
     toolName: tool.descriptor.name,
     toolVersion: tool.descriptor.version,
@@ -254,7 +257,7 @@ export function createGitHubConversationTools({
         if (scope.phase === 'final') {
           if (!entry.resultDigest || entry.resultDigest !== digest(scope.projection)) return false;
           const exact = {...entry.scope, signal: scope.signal ?? entry.scope.signal};
-          if (confirmedHostResult(entry, scope.projection)) question.assertConsumedResult(exact, 'github-export');
+          if (confirmedHostResult(entry, entry.rawResult ?? scope.projection)) question.assertConsumedResult(exact, 'github-export');
           else question.currentRequirement(exact, 'github-export');
         }
         return true;
@@ -264,19 +267,21 @@ export function createGitHubConversationTools({
     },
     project: scope => {
       const entry = originalPreparation(scope);
-      const text = JSON.stringify(scope.result);
+      const projected = projectToolResult(tool.descriptor.name, scope.result);
+      const text = JSON.stringify(projected);
       if (entry.scope.toolName !== tool.descriptor.name) denied();
       if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 512 * 1024 || containsCredential(text)) denied();
       const exact = {...entry.scope, signal: scope.signal ?? entry.scope.signal};
       if (confirmedHostResult(entry, scope.result)) {
         question.assertConsumedResult(exact, 'github-session');
-        question.authorizeConsumedExport(exact, scope.result, 'github-export');
+        question.authorizeConsumedExport(exact, projected, 'github-export');
       } else {
         question.currentRequirement(exact, 'github-session');
-        question.authorizeExport(exact, scope.result, 'github-export');
+        question.authorizeExport(exact, projected, 'github-export');
       }
-      entry.resultDigest = digest(scope.result);
-      return structuredClone(scope.result);
+      entry.rawResult = structuredClone(scope.result);
+      entry.resultDigest = digest(projected);
+      return projected;
     },
   }));
 
@@ -322,12 +327,13 @@ export function createGitHubConversationTools({
           prepared.set(id, entry);
           const isWrite = tool.descriptor.sideEffect === 'external_write';
           const repoHint = typeof scope.proposal.arguments?.repo === 'string' ? `（仓库 ${scope.proposal.arguments.repo}）` : '';
+          const projSchema = projectionOutputSchema(tool.descriptor);
           const ruleBindingDigest = digest({
             resource: source,
             resourceGeneration,
             toolName: tool.descriptor.name,
             toolVersion: tool.descriptor.version,
-            projection: tool.descriptor.outputSchema,
+            projection: projSchema,
           });
           question.prepare(exact, {
             requirements: [{
@@ -351,7 +357,7 @@ export function createGitHubConversationTools({
           });
           question.prepareExport(exact, {
             requirementId: 'github-export',
-            projectionSchema: connectorResultProjectionSchema(tool.descriptor.outputSchema),
+            projectionSchema: connectorResultProjectionSchema(projSchema),
             summary: `将本次 ${tool.descriptor.name} 已声明字段的结果发送到本任务选定 AgentArts 模型；排除凭据与额外字段（最多 512 KiB）`,
             bindingDigest: digest({ruleBindingDigest, taskId: scope.taskId, runId: scope.runId, argumentsDigest: entry.argumentsDigest}),
             ruleBindingDigest: digest({ruleBindingDigest, kind: 'export'}),

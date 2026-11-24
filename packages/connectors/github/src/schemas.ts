@@ -57,7 +57,7 @@ const fields: Record<GitHubOperation, Record<string, unknown>> = {
   'issue.close': {number: positive, expectedUpdatedAt: isoTime, comment: body, stateReason: {enum: ['completed', 'not_planned']}},
   'pr.get': {number: positive},
   'pr.list': { ...page, state: { enum: ['open', 'closed', 'all'] }, base: branch, head: { type: 'string', minLength: 1, maxLength: 255 }, sort: { enum: ['created', 'updated', 'popularity', 'long-running'] } },
-  'pr.files': { number: positive, ...page },
+  'pr.files': { number: positive, includePatch: { type: 'boolean' }, ...page },
   'pr.diff': {number: positive, expectedHeadSha: sha, expectedBaseSha: sha, ...textPage},
   'pr.create': {title, body, head: branch, base: branch, expectedHeadSha: sha, draft: {type: 'boolean'}},
   'pr.comment': {number: positive, body},

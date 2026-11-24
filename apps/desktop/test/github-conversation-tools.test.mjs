@@ -141,8 +141,13 @@ test('createGitHubConversationTools exposes 29 mainstream tools with fail-closed
   const repoGetScope = makeScope(repoGetTool, {repo: 'acme/app'});
   await host.prepareExport({...repoGetScope, phase: 'preflight'});
   const repoGetResult = await repoGetTool.execute({repo: 'acme/app'}, repoGetScope);
-  assert.equal(repoGetResult.repo, 'acme/app');
-  assert.notEqual(classifyKnownEgressContent(JSON.stringify(repoGetResult)), 'forbidden');
+  assert.equal(repoGetResult.fullName, 'acme/app');
+  const repoGetExport = host.competitionToolExports.find(x => x.toolName === 'github.repo.get');
+  const projectedRepoGet = repoGetExport.project({taskId: repoGetScope.taskId, proposalId: repoGetScope.proposal.proposalId, result: repoGetResult, signal: repoGetScope.signal});
+  assert.equal(projectedRepoGet.repo, 'acme/app');
+  assert.equal('fullName' in projectedRepoGet, false);
+  assert.notEqual(classifyKnownEgressContent(JSON.stringify(projectedRepoGet)), 'forbidden');
+  assert.equal(repoGetExport.accepts({taskId: repoGetScope.taskId, proposalId: repoGetScope.proposal.proposalId, arguments: {repo: 'acme/app'}, phase: 'final', projection: projectedRepoGet}), true);
 
   // External writes have presence flag and write summary.
   const issueTool = host.tools.find(x => x.descriptor.name === 'github.issue.create');

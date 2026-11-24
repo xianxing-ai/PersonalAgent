@@ -95,12 +95,13 @@ export function parseRepositorySummary(raw: unknown): GitHubRepositorySummary {
   };
 }
 
-export function parseIssue(raw: unknown): GitHubIssue {
+export function parseIssue(raw: unknown, maxBodyChars = 65536): GitHubIssue {
   const r = asObject(raw);
+  const fullBody = r.body === null ? '' : asString(r.body);
   return {
     number: asPositiveInt(r.number),
     title: asString(r.title),
-    body: r.body === null ? '' : asString(r.body),
+    body: fullBody.slice(0, maxBodyChars),
     state: asString(r.state),
     labels: asArray(r.labels).map(label => (typeof label === 'string' ? label : asString(asObject(label).name))),
     url: asString(r.html_url),
@@ -108,12 +109,13 @@ export function parseIssue(raw: unknown): GitHubIssue {
   };
 }
 
-export function parsePull(raw: unknown): GitHubPullRequest {
+export function parsePull(raw: unknown, maxBodyChars = 65536): GitHubPullRequest {
   const r = asObject(raw), base = asObject(r.base), head = asObject(r.head);
+  const fullBody = r.body === null ? '' : asString(r.body);
   return {
     number: asPositiveInt(r.number),
     title: asString(r.title),
-    body: r.body === null ? '' : asString(r.body),
+    body: fullBody.slice(0, maxBodyChars),
     state: asString(r.state),
     base: asString(base.ref),
     baseSha: asString(base.sha),
@@ -473,7 +475,7 @@ export async function executeGitHubOperation<K extends GitHubOperation>({
           `${root}/issues?${pageQuery(r)}&state=${r.state ?? 'open'}${r.labels ? `&labels=${encodeURIComponent(r.labels.join(','))}` : ''}`,
         ),
       );
-      return paginate(rows.filter(value => !asObject(value).pull_request).map(parseIssue), r, rows.length);
+      return paginate(rows.filter(value => !asObject(value).pull_request).map(v => parseIssue(v, 2000)), r, rows.length);
     }
     case 'issue.create': {
       const r = input as GitHubInputs['issue.create'];
@@ -522,7 +524,7 @@ export async function executeGitHubOperation<K extends GitHubOperation>({
       const r = input as GitHubInputs['pr.list'];
       const query = `${pageQuery(r)}&state=${r.state ?? 'open'}${r.base ? `&base=${encodeURIComponent(r.base)}` : ''}${r.head ? `&head=${encodeURIComponent(r.head)}` : ''}${r.sort ? `&sort=${encodeURIComponent(r.sort)}` : ''}`;
       const rows = asArray(await api(`${root}/pulls?${query}`));
-      return paginate(rows.map(parsePull), r, rows.length);
+      return paginate(rows.map(v => parsePull(v, 2000)), r, rows.length);
     }
     case 'pr.files': {
       const r = input as GitHubInputs['pr.files'];
@@ -535,7 +537,7 @@ export async function executeGitHubOperation<K extends GitHubOperation>({
           additions: asNonNegativeInt(f.additions),
           deletions: asNonNegativeInt(f.deletions),
           changes: asNonNegativeInt(f.changes),
-          ...(typeof f.patch === 'string' ? { patch: f.patch.slice(0, 65536) } : {}),
+          ...(r.includePatch === true && typeof f.patch === 'string' ? { patch: f.patch.slice(0, 65536) } : {}),
         };
       });
       return paginate(items, r, rows.length);

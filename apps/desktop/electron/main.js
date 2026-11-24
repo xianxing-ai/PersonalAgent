@@ -3511,7 +3511,25 @@ async function initializeRuntime() {
         codingWorkspace,workflowEntries,
       });
       const genericWorkflowTools=(workflowGraphComposition?.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
+      const useDeveloperGitHub=()=>developerDeployment?.snapshot?.()?.configured===true;
       const developerToolNames=new Set((developerDeployment?.host.tools??[]).map(tool=>tool.descriptor.name));
+      const githubToolMap=new Map((githubConversationTools?.tools??[]).map(tool=>[tool.descriptor.name,tool]));
+      const githubAvailMap=new Map((githubConversationTools?.competitionToolAvailability??[]).map(item=>[item.toolName,item]));
+      const githubExportMap=new Map((githubConversationTools?.competitionToolExports??[]).map(item=>[item.toolName,item]));
+      const muxedDeveloperTools=(developerDeployment?.host.tools??[]).map(tool=>{
+        const ghTool=githubToolMap.get(tool.descriptor.name);
+        return ghTool ? {descriptor:tool.descriptor,execute:(input,ctx)=>useDeveloperGitHub()?tool.execute(input,ctx):ghTool.execute(input,ctx)} : tool;
+      });
+      const muxedDeveloperAvailability=(developerDeployment?.host.competitionToolAvailability??[]).map(item=>{
+        const ghAvail=githubAvailMap.get(item.toolName);
+        return ghAvail ? {...item,available:scope=>useDeveloperGitHub()?item.available(scope):ghAvail.available(scope)} : item;
+      });
+      const muxedDeveloperExports=(developerDeployment?.host.competitionToolExports??[]).map(item=>{
+        const ghExport=githubExportMap.get(item.toolName);
+        return ghExport ? {toolName:item.toolName,toolVersion:item.toolVersion,exportPolicyVersion:'desktop-github-mux-v1',
+          accepts:scope=>useDeveloperGitHub()?item.accepts(scope):ghExport.accepts(scope),
+          project:scope=>useDeveloperGitHub()?item.project(scope):ghExport.project(scope)} : item;
+      });
       const extraGithubTools=(githubConversationTools?.tools??[]).filter(tool=>!developerToolNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(f10Workflow?.tools??[]),
@@ -3520,7 +3538,7 @@ async function initializeRuntime() {
         ...(f23DecisionConfiguration?[f23DecisionConfiguration.tool]:[]),
         ...(f23Workflow?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
-        ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
+        ...muxedDeveloperTools,...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),...extraGithubTools,
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
         ...(f01Workflow?.tools??[]),...(f21Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f28Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
@@ -3926,9 +3944,9 @@ async function initializeRuntime() {
           await computerVisionHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
           await feedsHost?.prepareExport?.(scope);
-          await developerDeployment?.prepareExport(scope);
+          if(useDeveloperGitHub()||!githubToolMap.has(proposal?.toolName))await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
-          if(!developerToolNames.has(proposal?.toolName)) await githubConversationTools?.prepareExport?.(scope);
+          if(!useDeveloperGitHub()||!developerToolNames.has(proposal?.toolName)) await githubConversationTools?.prepareExport?.(scope);
           const configuredDecision=phase==='preflight'&&prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
           if(!configuredDecision)await codingWorkspace?.prepareExport?.(scope);
           await goalCloudHost?.prepareExport?.(scope);
@@ -3977,10 +3995,10 @@ async function initializeRuntime() {
             profile:'huawei_ict_agentarts',tools:conversationTools,
             competitionToolAvailability:[...(shadowPreview?[shadowPreview.availability]:[]),
               ...(workflowGraphComposition?.competitionToolAvailability??[]),
-              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...(githubConversationTools?.competitionToolAvailability??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
+              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...(githubConversationTools?.competitionToolAvailability??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...muxedDeveloperAvailability, ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
           competitionToolExports: [...(shadowPreview?[shadowPreview.exportBinding]:[]),
             ...(workflowGraphComposition?.competitionToolExports??[]),
-            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...(githubConversationTools?.competitionToolExports??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
+            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...(githubConversationTools?.competitionToolExports??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...muxedDeveloperExports, ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,

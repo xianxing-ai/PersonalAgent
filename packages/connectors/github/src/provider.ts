@@ -70,7 +70,7 @@ export interface GitHubInputs {
   'issue.close': NumberInput & { expectedUpdatedAt?: string; comment?: string; stateReason?: 'completed' | 'not_planned' };
   'pr.get': NumberInput;
   'pr.list': PageInput & { state?: 'open' | 'closed' | 'all'; base?: string; head?: string; sort?: 'created' | 'updated' | 'popularity' | 'long-running' };
-  'pr.files': PageInput & { number: number };
+  'pr.files': PageInput & { number: number; includePatch?: boolean };
   'pr.diff': NumberInput & { expectedHeadSha: string; expectedBaseSha: string; offset?: number; maxChars?: number };
   'pr.create': RepositoryInput & { title: string; body: string; head: string; base: string; expectedHeadSha: string; draft?: boolean };
   'pr.comment': NumberInput & { body: string };
