@@ -16,6 +16,54 @@ export interface GitHubRestOptions {
 
 const API_ORIGIN = 'https://api.github.com';
 const MAX_BODY_BYTES = 1048576;
+const GET_MAX_ATTEMPTS = 3;
+const GET_ATTEMPT_TIMEOUT_MS = 12_000;
+const RETRYABLE_GET_STATUSES = new Set([502, 503, 504]);
+
+function sleepForRetry(context: GitHubReadContext, delayMs: number): Promise<void> {
+  checkContext(context);
+  const remaining = Date.parse(context.deadline) - Date.now();
+  if (remaining <= 0) {
+    throw new ProtocolError('TIMEOUT', 'GitHub request deadline expired');
+  }
+  const waitMs = Math.min(delayMs, remaining);
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      context.signal.removeEventListener('abort', onAbort);
+      if (Date.now() >= Date.parse(context.deadline)) {
+        reject(new ProtocolError('TIMEOUT', 'GitHub request deadline expired'));
+      } else {
+        resolve();
+      }
+    }, waitMs);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new ProtocolError('CANCELLED', 'GitHub request cancelled'));
+    };
+    context.signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function withAttemptTimeout<T>(
+  signal: AbortSignal,
+  timeoutMs: number,
+  fn: (attemptSignal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort();
+  if (signal.aborted) {
+    controller.abort();
+  } else {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fn(controller.signal);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
+  }
+}
 
 function statusToCode(status: number, rateLimited: boolean): ProtocolError['code'] {
   if (status === 404) return 'NOT_FOUND';
@@ -116,19 +164,73 @@ export class GitHubRestProvider implements GitHubProvider {
     }
 
     let writeDispatched = false;
-    const request = async (url: string, init: RequestInit, method: string): Promise<Response> => {
-      try {
-        return await withGitHubContext(context, async bounded => {
-          if (method !== 'GET') writeDispatched = true;
-          return this.fetchImpl(url, { ...init, signal: bounded.signal });
-        });
-      } catch (error) {
-        if (method !== 'GET' && writeDispatched) {
-          throw new ProtocolError('RESULT_UNKNOWN', 'GitHub write outcome unknown; reconcile before any retry');
+    const executeAttempt = async <T>(
+      method: string,
+      allowRetryStatuses: boolean,
+      run: (attemptSignal: AbortSignal) => Promise<{ response: Response; result: T }>,
+    ): Promise<{ response: Response; result: T }> => {
+      if (method !== 'GET') {
+        try {
+          return await withGitHubContext(context, bounded => {
+            writeDispatched = true;
+            return run(bounded.signal);
+          });
+        } catch (error) {
+          if (writeDispatched) {
+            throw new ProtocolError('RESULT_UNKNOWN', 'GitHub write outcome unknown; reconcile before any retry');
+          }
+          if (error instanceof ProtocolError) throw error;
+          throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub request failed');
         }
-        if (error instanceof ProtocolError) throw error;
-        throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub request failed');
       }
+
+      for (let attempt = 1; attempt <= GET_MAX_ATTEMPTS; attempt += 1) {
+        checkContext(context);
+        const remaining = Date.parse(context.deadline) - Date.now();
+        if (remaining <= 0) {
+          throw new ProtocolError('TIMEOUT', 'GitHub request deadline expired');
+        }
+        const canRetry = attempt < GET_MAX_ATTEMPTS;
+        const useAttemptTimeout = canRetry && remaining > GET_ATTEMPT_TIMEOUT_MS;
+
+        try {
+          const outcome = await withGitHubContext(context, bounded => (
+            useAttemptTimeout
+              ? withAttemptTimeout(bounded.signal, GET_ATTEMPT_TIMEOUT_MS, run)
+              : run(bounded.signal)
+          ));
+          if (canRetry && allowRetryStatuses && RETRYABLE_GET_STATUSES.has(outcome.response.status)) {
+            await outcome.response.body?.cancel().catch(() => {});
+            await sleepForRetry(context, 150 * attempt);
+            continue;
+          }
+          return outcome;
+        } catch (error) {
+          checkContext(context);
+          if (error instanceof ProtocolError) throw error;
+          if (!canRetry) {
+            throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub request failed');
+          }
+          await sleepForRetry(context, 150 * attempt);
+        }
+      }
+      throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub request failed');
+    };
+
+    const requestWithBody = async (
+      url: string,
+      init: RequestInit,
+      method: string,
+    ): Promise<{ response: Response; bodyText: string }> => {
+      const outcome = await executeAttempt(method, true, async signal => {
+        const response = await this.fetchImpl(url, { ...init, signal });
+        if (method === 'GET' && RETRYABLE_GET_STATUSES.has(response.status)) {
+          return { response, result: '' };
+        }
+        const bodyText = await readBoundedText(response);
+        return { response, result: bodyText };
+      });
+      return { response: outcome.response, bodyText: outcome.result };
     };
 
     const api = async (
@@ -145,7 +247,7 @@ export class GitHubRestProvider implements GitHubProvider {
         : raw
           ? 'application/vnd.github.diff'
           : 'application/vnd.github+json';
-      const response = await request(
+      const { response, bodyText } = await requestWithBody(
         url,
         {
           method,
@@ -161,16 +263,6 @@ export class GitHubRestProvider implements GitHubProvider {
         },
         method,
       );
-
-      let bodyText: string;
-      try {
-        bodyText = await readBoundedText(response);
-      } catch (error) {
-        if (method !== 'GET' && writeDispatched) {
-          throw new ProtocolError('RESULT_UNKNOWN', 'GitHub write outcome unknown; reconcile before any retry');
-        }
-        throw error;
-      }
 
       if (!response.ok) {
         const remaining = response.headers.get('x-ratelimit-remaining');
@@ -195,35 +287,44 @@ export class GitHubRestProvider implements GitHubProvider {
 
     const readJobLog = async (r: GitHubInputs['actions.log.read'], job: Record<string, unknown>): Promise<string> => {
       const url = `${API_ORIGIN}/repos/${r.repo}/actions/jobs/${r.jobId}/logs`;
-      const initial = await request(
-        url,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'PersonalAgent-GitHubConnector/1.0',
-            'X-GitHub-Api-Version': '2022-11-28',
+      const { response: initial } = await executeAttempt('GET', true, async signal => {
+        const response = await this.fetchImpl(
+          url,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.github+json',
+              'User-Agent': 'PersonalAgent-GitHubConnector/1.0',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+            redirect: 'manual',
+            signal,
           },
-          redirect: 'manual',
-        },
-        'GET',
-      );
+        );
+        return { response, result: undefined };
+      });
 
       let finalResponse = initial;
+      let text: string;
       if (initial.status >= 300 && initial.status < 400) {
         const location = initial.headers.get('location');
+        await initial.body?.cancel().catch(() => {});
         if (!location || !isAllowedLogRedirect(location)) {
           throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub log redirect rejected');
         }
         // Never forward GitHub Authorization header to third-party log blob storage.
-        finalResponse = await request(location, { method: 'GET', redirect: 'error' }, 'GET');
+        const redirected = await requestWithBody(location, { method: 'GET', redirect: 'error' }, 'GET');
+        finalResponse = redirected.response;
+        text = redirected.bodyText;
+      } else {
+        text = finalResponse.ok ? await readBoundedText(finalResponse) : '';
       }
 
       if (!finalResponse.ok) {
+        await finalResponse.body?.cancel().catch(() => {});
         throw new ProtocolError(statusToCode(finalResponse.status, finalResponse.status === 429), 'GitHub log read failed');
       }
-      const text = await readBoundedText(finalResponse);
       if (text.includes('\x00')) throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub log is not UTF-8 text');
       if (job.conclusion === 'failure' && !text.trim()) {
         throw new ProtocolError('EXTERNAL_FAILURE', 'GitHub failed job log unavailable');

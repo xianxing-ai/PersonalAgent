@@ -249,3 +249,61 @@ test('GitHubRestProvider does not forward Authorization header on Actions log re
     err => err.code === 'SCOPE_DENIED',
   );
 });
+
+test('GitHubRestProvider retries transient GET failures and 502/503/504 responses but never retries writes', async () => {
+  let getTransportAttempts = 0;
+  let getStatusAttempts = 0;
+  let getStreamAttempts = 0;
+  let postAttempts = 0;
+
+  const provider = new GitHubRestProvider({
+    readToken: async () => 'ghp_1234567890123456789012345',
+    fetchImpl: async (url, init = {}) => {
+      if (url === 'https://api.github.com/user') {
+        getTransportAttempts += 1;
+        if (getTransportAttempts === 1) throw new TypeError('fetch failed');
+        return jsonResponse({ login: 'octocat', name: 'Octo', html_url: 'https://github.com/octocat' });
+      }
+      if (url.startsWith('https://api.github.com/repos/acme/app/branches?')) {
+        getStatusAttempts += 1;
+        if (getStatusAttempts === 1) return new Response('bad gateway', { status: 502 });
+        if (getStatusAttempts === 2) return new Response('unavailable', { status: 503 });
+        return jsonResponse([{ name: 'main', commit: { sha: 'a'.repeat(40) }, protected: true }]);
+      }
+      if (url.startsWith('https://api.github.com/repos/acme/app/commits?')) {
+        getStreamAttempts += 1;
+        if (getStreamAttempts === 1) {
+          const broken = new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('['));
+              controller.error(new Error('socket hang up'));
+            },
+          });
+          return new Response(broken, { status: 200 });
+        }
+        return jsonResponse([{ sha: 'b'.repeat(40), commit: { message: 'ok', author: { name: 'A', date: '2026-11-24T00:00:00Z' } }, html_url: 'https://github.com/acme/app/commit/b' }]);
+      }
+      if (url === 'https://api.github.com/repos/acme/app/issues' && init.method === 'POST') {
+        postAttempts += 1;
+        throw new TypeError('fetch failed');
+      }
+      throw new Error(`Unexpected url ${url}`);
+    },
+  });
+
+  const viewer = await provider.execute('viewer.get', {}, ctx());
+  assert.equal(viewer.login, 'octocat');
+  assert.equal(getTransportAttempts, 2);
+
+  const branches = await provider.execute('branch.list', { repo: 'acme/app' }, ctx());
+  assert.equal(branches.items[0].name, 'main');
+  assert.equal(getStatusAttempts, 3);
+
+  const commits = await provider.execute('commit.list', { repo: 'acme/app' }, ctx());
+  assert.equal(commits.items[0].sha, 'b'.repeat(40));
+  assert.equal(getStreamAttempts, 2);
+
+  const writeResult = await provider.execute('issue.create', { repo: 'acme/app', title: 'No retry write' }, ctx());
+  assert.deepEqual(writeResult, { state: 'unknown', evidenceRefs: [] });
+  assert.equal(postAttempts, 1);
+});
