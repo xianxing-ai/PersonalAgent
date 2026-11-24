@@ -15,9 +15,11 @@ export function orbStatusLabel(data) {
   if(data?.live?.active)return liveStatusNames[data.live.status]??'实时语音已开启';
   return stateNames[task?.state]??'待机';
 }
-// A later completed turn must not hide an earlier task that is still running.
+// Keep active work visible. An older reconciliation belongs to its own turn.
 export function currentTask(tasks) {
-  return tasks.findLast(task => !isTerminal(task)) ?? tasks.at(-1);
+  const visible = task => task && !task.conflictOnly && !task.outputTruncated;
+  return tasks.findLast(task => visible(task) && !isTerminal(task) && task.state !== 'waiting_reconciliation')
+    ?? tasks.findLast(visible);
 }
 const LIVE_VOICE = new Set(['listening', 'speaking', 'connecting', 'reconnecting']);
 /** Task motion wins over Live. Live speech follows the microphone and playback level. */

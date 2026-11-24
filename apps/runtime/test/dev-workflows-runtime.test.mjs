@@ -96,7 +96,8 @@ test('repair association tools require explicit opt-in and retain the original p
     const host = createDevWorkflowsRuntime({path: ':memory:', model: model(), github, githubRepairLinks: enabled,
       maxSteps: 1, maxTokens: 1024});
     const names = host.tools.list().map(tool => tool.name);
-    assert.equal(names.length, enabled ? 15 : 13);
+    assert.equal(names.length, enabled ? 16 : 14);
+    assert.equal(names.includes('github.issue.close'), true);
     assert.equal(names.includes('github.actions.repair.link'), enabled);
     assert.equal(names.includes('github.actions.repair.get'), enabled);
     await host.close(); assert.equal(disposed, 1);

@@ -49,6 +49,15 @@
 .panel .voice-runtime-controls .notice {margin:0 0 8px}
 .panel #live-open-settings {border:0;border-radius:999px;padding:6px 11px;background:var(--panel-lens);color:var(--fg-2);font:inherit;font-size:11px;box-shadow:inset 0 1px 0 var(--panel-glint)}
 .panel .user-message {border:0;border-radius:19px 19px 6px 19px;background:var(--panel-hover);box-shadow:none}
+.panel .assistant-message {
+  width:fit-content;max-width:95%;padding:9px 13px;border-radius:15px 15px 15px 4px;
+  background:var(--panel-lens);color:var(--fg);font-size:14px;line-height:1.65;
+  white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;
+}
+.panel .assistant-turn {align-items:flex-start;min-width:0}
+.panel .assistant-turn .response-actions {opacity:0}
+.panel .assistant-turn:is(:hover,:focus-within) .response-actions {opacity:1}
+@media (hover:none) {.panel .assistant-turn .response-actions {opacity:1}}
 .panel>.composer {
   margin:0 12px 12px;padding:14px 14px 10px;border:0;border-radius:25px;
   background:linear-gradient(155deg,rgba(233,244,255,.06),transparent 70%),var(--panel-lens);

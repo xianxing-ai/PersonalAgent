@@ -6,7 +6,13 @@ const keyOf=binding=>JSON.stringify([binding.parentTaskId,binding.taskId]);
 export function mountInlineSubagents(chat,invoke,report,onChange=()=>{}){
   const host=document.createElement('div');host.className='cc-inline-host';host.hidden=true;chat.append(host);
   const views=new Map();let selected=null,closed=false;
-  const main=()=>{if(closed)return;selected=null;host.hidden=true;chat.classList.remove('cc-showing-child');onChange(null);};
+  const unwatch=()=>{
+    const view=views.get(selected);
+    if(!view)return;
+    view.root.hidden=true;
+    void invoke('workspace.subagent.snapshot',{binding:view.binding,watch:false}).catch(()=>{});
+  };
+  const main=()=>{if(closed)return;unwatch();selected=null;host.hidden=true;chat.classList.remove('cc-showing-child');onChange(null);};
   function select(binding){
     if(closed)return;
     const key=keyOf(binding);let view=views.get(key);
@@ -17,14 +23,24 @@ export function mountInlineSubagents(chat,invoke,report,onChange=()=>{}){
         if(name==='subagentConversation.main'||name==='subagentConversation.close'){main();return Promise.resolve();}
         const suffix={'subagentConversation.snapshot':'snapshot','subagentConversation.submit':'submit','subagentConversation.cancel':'cancel'}[name];
         if(!suffix)return Promise.reject(Error('内嵌子对话不支持此操作'));
-        return invoke('workspace.subagent.'+suffix,{binding:owner,...(payload===undefined?{}:{request:payload})});
+        return invoke('workspace.subagent.'+suffix,{binding:owner,...(suffix==='snapshot'?{watch:selected===key}:{}),
+          ...(payload===undefined?{}:{request:payload})});
       };
-      view={root,binding:owner,page:mountSubagentConversationPage(root,scoped,{embedded:true}),lastRefresh:Date.now()};views.set(key,view);
+      view={root,binding:owner,page:mountSubagentConversationPage(root,scoped,{embedded:true})};views.set(key,view);
     }
+    if(selected!==key)unwatch();
     selected=key;for(const [id,entry] of views)entry.root.hidden=id!==key;host.hidden=false;chat.classList.add('cc-showing-child');onChange(view.binding);
     void view.page.refresh();
+    view.page.focus();
   }
   const dispose=()=>{closed=true;for(const view of views.values())view.page.dispose();views.clear();};
   window.addEventListener('unload',dispose,{once:true});
-  return {select,main,get selected(){return selected===null?null:views.get(selected)?.binding;},update(){const view=views.get(selected);if(view&&Date.now()-view.lastRefresh>750){view.lastRefresh=Date.now();void view.page.refresh();}}};
+  return {select,main,get selected(){return selected===null?null:views.get(selected)?.binding;},update(child){
+    const view=views.get(selected);
+    if(!view)return;
+    const state=JSON.stringify(child);
+    if(child!==undefined&&view.state===state)return;
+    view.state=state;
+    void view.page.refresh();
+  }};
 }

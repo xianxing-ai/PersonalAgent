@@ -37,6 +37,7 @@ export function createPermissionAuditProduct({userData, list, revoke, now, onUpd
   let unreadable = false;
   let writeFailed = false;
   let skippedCount = 0;
+  let verifiedAudit = null;
   if (file && existsSync(file)) {
     try {
       const parsed = JSON.parse(readFileSync(file, 'utf8'));
@@ -45,6 +46,10 @@ export function createPermissionAuditProduct({userData, list, revoke, now, onUpd
     } catch {
       unreadable = true;
     }
+  }
+  function readVerifiedAudit() {
+    if (verifiedAudit === null) verifiedAudit = verifyAudit(events);
+    return verifiedAudit;
   }
   const clock = now ?? (() => new Date());
   function notifyUpdate() {
@@ -62,10 +67,11 @@ export function createPermissionAuditProduct({userData, list, revoke, now, onUpd
       }
     }
     events = next;
+    verifiedAudit = null;
     return true;
   }
   function record(action, subject) {
-    if (unreadable || writeFailed || !verifyAudit(events).intact) {
+    if (unreadable || writeFailed || !readVerifiedAudit().intact) {
       skippedCount += 1;
       notifyUpdate();
       return false;
@@ -92,7 +98,7 @@ export function createPermissionAuditProduct({userData, list, revoke, now, onUpd
         warning: `审计日志无法读取，已停止追加新记录（${skippedCount} 条未写入）`,
       };
     }
-    const checked = verifyAudit(events);
+    const checked = readVerifiedAudit();
     if (writeFailed) {
       return {
         intact: checked.intact,

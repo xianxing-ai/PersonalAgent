@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -48,7 +49,7 @@ test('original graph ToolPort retains hidden public node, while original model p
   const tools=[node,createRuntimeCodingRepairDispatchTool(()=>app)],availability=createConversationToolSurface({profile,tools,competitionToolAvailability:bindings(tools)});
   const app=createRuntimeApplication({path:':memory:',profile,tools,competitionToolAvailability:availability,
     competitionToolExports:tools.map(t=>({toolName:t.descriptor.name,toolVersion:t.descriptor.version,exportPolicyVersion:'synthetic-surface',accepts:()=>true,project:({result})=>result})),
-    coordination:{execute:async request=>{assert.deepEqual(request.availableTools.map(t=>t.name),['coding.repair.workflow']);return {kind:'tool_proposal',proposalId:'hidden-node',toolName:node.descriptor.name,toolVersion:node.descriptor.version,arguments:{sessionId:'synthetic',path:'.'},verification:'unverified'};}}});
+    coordination:{execute:syntheticCoordinationExecution(async request=>{assert.deepEqual(request.availableTools.map(t=>t.name),['coding.repair.workflow']);return {kind:'tool_proposal',proposalId:'hidden-node',toolName:node.descriptor.name,toolVersion:node.descriptor.version,arguments:{sessionId:'synthetic',path:'.'},verification:'unverified'};})}});
   try{
     assert.ok(app.tools.list().some(t=>t.name===node.descriptor.name));assert.deepEqual(app.readConversationToolCapabilities().map(t=>t.name),['coding.repair.workflow']);
     assert.equal(availability.find(b=>b.toolName===node.descriptor.name).available(),true,'F15 trusted readiness can still read the original binding');

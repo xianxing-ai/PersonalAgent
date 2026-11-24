@@ -11,16 +11,26 @@
   --sg-rim:rgba(255,255,255,.9);--sg-shadow:rgba(35,42,55,.10);
 }
 
-.admin {background:var(--sg-ground)}
+.admin {
+  --sg-ground:light-dark(#f8f8f7,#131313);
+  --sg-rail:light-dark(#f1f1f0,#0e0e0e);
+  --sg-control:light-dark(#e9e9e7,#272727);
+  --sg-card:light-dark(#fff,#1d1d1d);
+  --sg-hover:light-dark(#dfdfdd,#303030);
+  background:var(--sg-ground);
+}
 .admin .admin-bar {background:var(--sg-rail);border-bottom:1px solid var(--sg-line)}
+.admin .admin-title {color:var(--fg-2);font-size:12px}
 .admin .side {background:var(--sg-rail);border-right:1px solid var(--sg-line)}
 .admin>.main {background:var(--sg-ground)}
-.admin .side-home {padding:4px 10px 8px}
-.admin .side .brand {letter-spacing:-.025em}
-.admin .admin-search {background:var(--sg-control);border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim)}
+.admin .side-home {padding:10px 10px 9px}
+.admin .side .brand {font-size:17px;font-weight:600;letter-spacing:-.025em}
+.admin .admin-search {background:var(--sg-control);border-color:transparent;box-shadow:none;border-radius:14px}
 .admin .side nav button {border:1px solid transparent;transition:background-color .15s,border-color .15s,color .15s}
 .admin .side nav button:hover {background:var(--sg-hover)}
-.admin .side nav button[aria-current="page"] {background:var(--sg-control);border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim)}
+.admin .side nav button[aria-current="page"] {background:var(--sg-control);border-color:var(--sg-line);color:var(--fg);font-weight:600;box-shadow:none}
+.admin .side nav .nav-icon {flex-shrink:0}
+.admin .side nav button:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-2px}
 .admin .primary-nav {display:grid;gap:3px;margin-bottom:16px}
 .admin .advanced-nav {border-top:1px solid var(--sg-line);padding-top:9px}
 .admin .advanced-nav[hidden] {display:none}
@@ -60,16 +70,21 @@
 .admin :is(.sis-advanced,.connection-advanced)>summary {cursor:pointer;font-weight:600}
 
 .panel {
-  --panel-coat:rgba(24,25,29,.80);--panel-lens:rgba(255,255,255,.075);
+  --panel-coat:#18191e;--panel-lens:rgba(255,255,255,.075);
   --panel-hover:rgba(255,255,255,.13);--panel-glint:rgba(255,255,255,.16);
   --panel-line:rgba(255,255,255,.10);--panel-menu:#292a30;
   background:var(--panel-coat);box-shadow:inset 0 1px 0 var(--panel-glint),inset 0 0 0 1px var(--panel-line);
 }
 :root[data-theme="light"] .panel {
-  --panel-coat:rgba(239,241,244,.84);--panel-lens:rgba(255,255,255,.52);
+  --panel-coat:#f3f5f8;--panel-lens:rgba(255,255,255,.52);
   --panel-hover:rgba(255,255,255,.72);--panel-glint:rgba(255,255,255,.85);
   --panel-line:rgba(34,40,50,.12);--panel-menu:#f7f8fa;
 }
+.panel .composer-bar>.compact-entry {
+  flex:0 0 auto;white-space:nowrap;border:0;border-radius:999px;
+  padding:4px 8px;background:var(--panel-lens);color:var(--fg-2);font-size:10.5px;line-height:1.2;
+}
+.panel .composer-bar>.compact-entry:hover:not(:disabled) {background:var(--panel-hover);color:var(--fg)}
 .panel :is(.quick-start button,.composer,.voice-runtime-controls,.user-message) {
   background:var(--panel-lens);box-shadow:inset 0 1px 0 var(--panel-glint),0 5px 16px rgba(0,0,0,.06);
 }

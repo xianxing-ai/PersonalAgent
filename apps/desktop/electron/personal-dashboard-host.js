@@ -26,6 +26,8 @@ export function createPersonalDashboardHost({
   let recovered = false;
   let busy = false;
   let lastTick = -Infinity;
+  let publishedState;
+  let cachedSnapshot;
   const settings = () => {
     const saved = storage.get(SETTINGS);
     const period = PERIODS.includes(saved?.period) ? saved.period : 'weekly';
@@ -85,9 +87,10 @@ export function createPersonalDashboardHost({
     }
   }
   async function tick(force = false) {
-    if (busy || (!force && now() - lastTick < 1000)) return snapshot();
+    if (busy || (!force && now() - lastTick < 1000)) return cachedSnapshot ?? snapshot();
     busy = true;
     lastTick = now();
+    let current;
     try {
       const period = settings().period;
       runtime.reconcileSchedules(conversationId, desired(period, false));
@@ -95,9 +98,15 @@ export function createPersonalDashboardHost({
       else { runtime.recoverMissedSchedules(conversationId); recovered = true; }
       await runFired();
       runtime.reconcileSchedules(conversationId, desired(period, true));
-      onUpdate();
+      current = snapshot();
+      cachedSnapshot = current;
+      const serialized = JSON.stringify(current);
+      if (serialized !== publishedState) {
+        publishedState = serialized;
+        onUpdate();
+      }
     } finally { busy = false; }
-    return snapshot();
+    return current ?? cachedSnapshot ?? snapshot();
   }
   function snapshot() {
     const latest = storage.get(LATEST);
@@ -122,8 +131,11 @@ export function createPersonalDashboardHost({
         || !PERIODS.includes(payload.period)) throw new Error('汇总周期无效');
       storage.set(SETTINGS, {period: payload.period});
       runtime.reconcileSchedules(conversationId, desired(payload.period, true));
+      const current = snapshot();
+      cachedSnapshot = current;
+      publishedState = JSON.stringify(current);
       onUpdate();
-      return snapshot();
+      return current;
     },
   };
 }

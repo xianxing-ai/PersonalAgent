@@ -1,4 +1,5 @@
 import {VoiceSessionError} from './errors.js';
+import {randomUUID} from 'node:crypto';
 import {
   MAX_AUDIO_BYTES,
   MAX_AUDIO_DURATION_MS,
@@ -40,6 +41,8 @@ export interface HuaweiSisConfig {
   readonly tokenPort?: HuaweiSisTokenPort;
   readonly requestAuthPort?: HuaweiSisRequestAuthPort;
   readonly fetchImpl?: typeof fetch;
+  readonly preparePayload?:(scope:{requestId:string;destination:string;payload:string;deadline:string;signal:AbortSignal;isCurrent:()=>boolean})=>
+    Promise<{assertBeforeSend(actual:{destination:string;payload:string}):void}>;
 }
 
 export interface HuaweiSisOutputConfig extends HuaweiSisConfig {
@@ -66,6 +69,7 @@ interface ReadyConfig {
   readonly tokenPort?: HuaweiSisTokenPort;
   readonly requestAuthPort?: HuaweiSisRequestAuthPort;
   readonly fetchImpl: typeof fetch;
+  readonly preparePayload?:HuaweiSisConfig['preparePayload'];
 }
 
 function invalid(message: string): VoiceSessionError {
@@ -93,7 +97,8 @@ function readyConfig(config: HuaweiSisConfig): ReadyConfig {
   }
   return {region: config.region, baseUrl: ENDPOINTS[config.region], projectId: config.projectId,
     ...(config.tokenPort ? {tokenPort: config.tokenPort} : {}),
-    ...(config.requestAuthPort ? {requestAuthPort: config.requestAuthPort} : {}), fetchImpl};
+    ...(config.requestAuthPort ? {requestAuthPort: config.requestAuthPort} : {}), fetchImpl,
+    ...(config.preparePayload?{preparePayload:config.preparePayload}:{})};
 }
 
 function deadlineMs(deadline: string): number {
@@ -219,6 +224,7 @@ async function boundedJson(response: Response, limit: number, signal: AbortSigna
 async function callSis(config: ReadyConfig, path: string, body: unknown, deadline: string,
   signal: AbortSignal, responseLimit: number, checkActive: () => void): Promise<unknown> {
   checkActive();
+  if(config.preparePayload&&path==='asr/short-audio')throw new VoiceSessionError('UNSUPPORTED_CAPABILITY','Raw audio lacks local content classification');
   const url = `${config.baseUrl}/v1/${config.projectId}/${path}`;
   const serialized = JSON.stringify(body);
   let headers: Record<string, string>;
@@ -246,6 +252,12 @@ async function callSis(config: ReadyConfig, path: string, body: unknown, deadlin
     throw external();
   }
   checkActive();
+  let lease:Awaited<ReturnType<NonNullable<HuaweiSisConfig['preparePayload']>>>|undefined;
+  if(config.preparePayload){
+    try{lease=await abortable(config.preparePayload({requestId:randomUUID(),destination:url,payload:serialized,deadline,signal,
+      isCurrent:()=>{checkActive();return true;}}),signal);checkActive();lease.assertBeforeSend({destination:url,payload:serialized});}
+    catch{checkActive();throw new VoiceSessionError('UNSUPPORTED_CAPABILITY','Local speech content classification or approval is unavailable');}
+  }
   let response: Response;
   try {
     response = await abortable(config.fetchImpl(url,

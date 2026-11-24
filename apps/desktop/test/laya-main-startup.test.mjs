@@ -32,7 +32,7 @@ const capabilityEnd=main.indexOf('\nasync function syncRuntimeSnapshots() {',cap
 assert.ok(capabilityStart>=0&&capabilityEnd>capabilityStart,'actual capability startup must be present');
 const capabilityInitialize=main.slice(capabilityStart,capabilityEnd);
 const authorizationPort = main.slice(main.indexOf('const authorizationQuestionPort='),main.indexOf('\nlet syntheticRepairHost;'));
-const startupStart = main.indexOf('  try {\n    conversations = new Conversations(dataPaths.conversations);');
+const startupStart = main.indexOf('  try {\n    conversations = new Conversations(dataPaths.conversations,{sharedMain:true});');
 const startupEnd = main.indexOf('\n\n  const area = screen.getPrimaryDisplay().workArea;', startupStart);
 assert.ok(startupStart>=0 && startupEnd>startupStart, 'actual application startup must be present');
 const startup = main.slice(startupStart, startupEnd);

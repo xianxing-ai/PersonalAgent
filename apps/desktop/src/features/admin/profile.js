@@ -1,3 +1,5 @@
+import {usageDashboardHtml} from './usage-dashboard.js';
+
 const pencil = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6L16 3zM14 5l5 5"/></svg>';
 
 export function readProfile() {
@@ -7,9 +9,32 @@ export function readProfile() {
   } catch { return {name: '我的个人资料', bio: '', avatar: ''}; }
 }
 
-export function profilePage(data, escape) {
+export function profilePage(data, escape, {usageMetric = 'tokens'} = {}) {
   const profile = readProfile();
-  return `<section class="profile-page"><header class="profile-toolbar"><h2>个人资料</h2><div><span class="profile-private">仅本机</span><button class="profile-action" id="profile-edit">${pencil}编辑</button></div></header><div class="profile-identity"><div class="profile-avatar" id="profile-avatar">${profile.avatar ? `<img src="${escape(profile.avatar)}" alt="个人头像">` : '<span aria-hidden="true">P</span>'}</div><h1 id="profile-name">${escape(profile.name)}</h1><p id="profile-bio">${escape(profile.bio || '仅在此设备保存的个人资料')}</p></div><div class="profile-insights"><section><h3>本机记录</h3><div><span>已完成</span><b>${(data.tasks || []).filter(task=>task.state==='succeeded').length}</b></div><div><span>失败</span><b>${(data.tasks || []).filter(task=>task.state==='failed').length}</b></div></section></div><dialog id="profile-dialog"><form id="profile-form" class="settings-form"><h2>编辑个人资料</h2><label>显示名称<input id="profile-name-input" maxlength="60" value="${escape(profile.name)}" required></label><label>简介<input id="profile-bio-input" maxlength="200" value="${escape(profile.bio)}"></label><label>头像<input id="profile-image-input" type="file" accept="image/png,image/jpeg,image/webp"></label><p id="profile-edit-error" role="alert"></p><div class="form-actions"><button class="btn btn-primary" type="submit">保存</button><button class="btn" id="profile-cancel" type="button">取消</button></div></form></dialog></section>`;
+  const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
+  const succeededCount = tasks.filter(task => task.state === 'succeeded').length;
+  const failedCount = tasks.filter(task => task.state === 'failed').length;
+  return `<section class="profile-page">
+    <div class="profile-header-card">
+      <div class="profile-avatar" id="profile-avatar">${profile.avatar ? `<img src="${escape(profile.avatar)}" alt="个人头像">` : '<span aria-hidden="true">P</span>'}</div>
+      <div class="profile-header-copy">
+        <div class="profile-name-row">
+          <h2 id="profile-name">${escape(profile.name)}</h2>
+          <span class="profile-private">仅本机</span>
+        </div>
+        <p id="profile-bio">${escape(profile.bio || '仅在此设备保存的个人资料与本地活动面板')}</p>
+      </div>
+      <div class="profile-header-meta">
+        <div class="profile-insights" aria-label="本机任务统计">
+          <div class="profile-stat"><span>已完成</span><b>${succeededCount}</b></div>
+          <div class="profile-stat"><span>失败</span><b>${failedCount}</b></div>
+        </div>
+        <button class="profile-action" id="profile-edit" type="button">${pencil}编辑资料</button>
+      </div>
+    </div>
+    ${usageDashboardHtml(data?.usageDashboard, data?.usageBudget, escape, {metric: usageMetric})}
+    <dialog id="profile-dialog"><form id="profile-form" class="settings-form"><h2>编辑个人资料</h2><label>显示名称<input id="profile-name-input" maxlength="60" value="${escape(profile.name)}" required></label><label>简介<input id="profile-bio-input" maxlength="200" value="${escape(profile.bio)}"></label><label>头像<input id="profile-image-input" type="file" accept="image/png,image/jpeg,image/webp"></label><p id="profile-edit-error" role="alert"></p><div class="form-actions"><button class="btn btn-primary" type="submit">保存</button><button class="btn" id="profile-cancel" type="button">取消</button></div></form></dialog>
+  </section>`;
 }
 
 export function bindProfile(root, escape) {
