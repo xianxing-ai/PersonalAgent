@@ -4,7 +4,7 @@ import {getOwnedWorkflowTemplate} from '../dist/owned-workflow-templates.js';
 import {workflowCandidateMetadata} from '../dist/owned-workflows.js';
 import {f20DocumentCandidateSchema} from '@personal-agent/contracts/f20-candidate';
 
-test('F20 workflow template binds N03 to workspace.run_allowed_command and defines bounded candidate schema',()=> {
+test('F20 workflow template binds N03 to the isolated command check used by the live graph',()=> {
   const template=getOwnedWorkflowTemplate('F20');
   assert.equal(template.workflowId,'F20');
   assert.equal(template.nodes.length,4);
@@ -19,9 +19,12 @@ test('F20 workflow template binds N03 to workspace.run_allowed_command and defin
   const n01Tools=n01.capabilities.filter(c=>c.kind==='tool');
   assert.deepEqual(n01Tools.map(t=>t.name),['workspace.read_text']);
 
-  // N03 proposes workspace.run_allowed_command; trusted Runtime maps it to the bound coding.repair.trial host
+  // Live F20 (860c0551 / 25625000) isolated-compiled TypeScript through the allowed command recipe.
+  // The graph proposes workspace.run_allowed_command; trusted Runtime maps it to the bound host.
+  // F20_N04 only continues when that receipt has recipeId plus exitCode 0.
   const n03Tools=n03.capabilities.filter(c=>c.kind==='tool');
   assert.deepEqual(n03Tools.map(t=>t.name),['workspace.run_allowed_command']);
+  assert.equal(n03Tools.some(t=>t.name==='coding.repair.trial'),false);
 
   // N02 and N04 candidate value metadata matches public @personal-agent/contracts/f20-candidate
   const expectedSchema=f20DocumentCandidateSchema();
