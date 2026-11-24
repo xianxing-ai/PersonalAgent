@@ -168,6 +168,13 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
   }
   function serialize(work) {const next=mutation.then(work);mutation=next.catch(()=>{});return next;}
   return {tools,competitionToolAvailability,competitionToolExports,snapshot,bindTask,assertTask,
+    /** Original native workspace selection and fixed owned Skill, including while disabled. */
+    readF21Configuration(){
+      const selected=workspace.readWorkspaceBinding(),manifest=application?.referenceSkillSnapshot().manifest;
+      if(closed||!selected||!workspace.isWorkspaceBindingCurrent(selected)||!manifest)return;
+      return structuredClone({workspace:selected,manifest,descriptor});
+    },
+    readF21Connection(){const ref=current();return ref?{configurationRef:ref,mcp:service.health(),skill:application.referenceSkillSnapshot().health}:undefined;},
     readPublicReferencePreflightCandidate(query) {
       try {return freezeCandidate(publicOrigin(query));} catch {return undefined;}
     },
@@ -232,19 +239,26 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
         }});
     },
     invalidate:()=>serialize(stop),
-    setMcpEnabled(enabled) {return serialize(async()=>{
+    setMcpEnabled(enabled,request={}) {return serialize(async()=>{
       if(typeof enabled!=='boolean' || closed) throw Error('参考服务设置无效');
+      const assertCurrent=()=>{if(request.signal?.aborted||request.deadline!==undefined&&(!Number.isFinite(Date.parse(request.deadline))||Date.parse(request.deadline)<=Date.now())
+        ||request.assertCurrent&&request.assertCurrent()!==true)throw Error('原参考连接操作已失效');};
+      assertCurrent();
       await stop();
       if(enabled) {
+        assertCurrent();
         binding=workspace.readWorkspaceBinding();
         if(!binding) throw Error('请先选择工作区、可信 Node，并许可本会话读取');
         // Reconnecting the same permitted root must not revive prior session
         // receipts or complete Skill caches after stop/revocation.
         configurationRef=digest({binding,connectionId:randomUUID()});
+        if(request.onBound){const result=request.onBound({configurationRef});if(result!==undefined){void Promise.resolve(result).catch(()=>{});throw Error('参考连接绑定须同步保存');}}
         service=createMcp({rootPath:binding.rootPath,nodeExecutable:binding.nodeExecutable,enabled:true});
-        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+        const duration=Math.max(1,Math.min(15000,request.deadline===undefined?15000:Date.parse(request.deadline)-Date.now()));
+        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),duration);
+        const signal=request.signal?AbortSignal.any([controller.signal,request.signal]):controller.signal;
         try {
-          await service.start({signal:controller.signal,deadline:new Date(Date.now()+15000).toISOString()});
+          await service.start({signal,deadline:new Date(Date.now()+duration).toISOString()});assertCurrent();
           if(!workspace.isWorkspaceBindingCurrent(binding)) throw Error('工作区许可在连接期间已改变');
         } catch(error) {await stop();throw error;} finally {clearTimeout(timer);}
       }

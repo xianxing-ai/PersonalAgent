@@ -112,3 +112,16 @@ test('actual HTTP replay route authenticates frozen export and returns signed da
   assert.equal(result.originalTaskDeadline,value.taskDeadline);
   const tampered=structuredClone(value);tampered.snapshot.records[0].result={content:'tampered'};assert.equal((await send(tampered)).status,401);
 });
+
+test('cloud code binds response epoch without exposing the envelope to model instructions',async t=>{
+  const token='explicit-public-epoch-token-123456789';let calls=0;
+  const server=createAgentServer({mode:'standalone-validation',authToken:token,wssAuthToken:token,
+    orchestrator:{async invoke(request){calls++;assert.equal(request.query,'original goal');return {kind:'text',text:'answer'};}}});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const response=await fetch('http://127.0.0.1:'+server.address().port+'/invocations',{method:'POST',
+    headers:{'content-type':'application/json','x-pa-agent-token':'Bearer '+token},
+    body:JSON.stringify({query:JSON.stringify({executionEpochVersion:1,executionEpoch:7,query:'original goal'})})});
+  assert.equal(response.status,200);assert.equal(calls,1);
+  const result=JSON.parse((await response.json())[0].data.text);
+  assert.deepEqual(result,{executionEpochVersion:1,executionEpoch:7,result:{kind:'text',text:'answer'}});
+});

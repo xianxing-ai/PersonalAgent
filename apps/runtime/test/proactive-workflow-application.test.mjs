@@ -4,7 +4,7 @@ import {mkdirSync, mkdtempSync} from 'node:fs';
 import {join} from 'node:path';
 import {createRuntimeApplication} from '../dist/application/runtime-application.js';
 import {createRuntimeProactiveConnectorHost} from '../dist/application/proactive-connector-host.js';
-import {RUNTIME_PROACTIVE_TOOLS, RUNTIME_PROACTIVE_TOOL_VERSION} from '../dist/application/proactive-workflow-application.js';
+import {createRuntimeProactiveControlPort, RUNTIME_PROACTIVE_TOOLS, RUNTIME_PROACTIVE_TOOL_VERSION} from '../dist/application/proactive-workflow-application.js';
 import {createRuntimeAtomicStatePort} from '../dist/index.js';
 import {ProactiveWorkflowEngine} from '@personal-agent/agentarts';
 import {createProactiveHostProofs} from '@personal-agent/agentarts-runtime/proactive-controller';
@@ -55,7 +55,7 @@ function fixture(extra = {}) {
     now: () => new Date(clock), tools: toolValues,
     automaticTools: [
       ...toolValues.filter(tool => extra.approval ? tool.descriptor.sideEffect === 'read' : true).map(tool => ({toolName: tool.descriptor.name, toolVersion: tool.descriptor.version})),
-      ...Object.entries(RUNTIME_PROACTIVE_TOOLS).filter(([kind]) => kind !== 'notify').map(([, toolName]) => ({toolName, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION})),
+      ...Object.entries(RUNTIME_PROACTIVE_TOOLS).filter(([kind]) => kind !== 'notify' || extra.notify).map(([, toolName]) => ({toolName, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION})),
     ]});
   const task = app.runtime.submitTask({goal: 'Continuously track this original public responsibility', conversationId: 'fixture-conversation', idempotencyKey: 'original-proactive-task'});
   const source = app.runtime.submitTask({goal: 'Original user words: keep the tracked source current and report changes', conversationId: 'fixture-conversation', idempotencyKey: 'original-user-instruction'});
@@ -79,6 +79,10 @@ function fixture(extra = {}) {
         location: 'local_device', effect: 'write', arguments: () => ({subtasks: [{subtaskId: 'child-one', role: 'researcher', goal: 'Read only the assigned public material'}]})}
         : {kind: extra.action ?? 'continue', toolName: 'fixture.action', toolVersion: '1.0.0', location: 'local_device', effect: 'write'}],
     ...(extra.options ?? {})};
+  if (extra.notify) {
+    options.notificationHost = app.createNotificationHost({policy: {}, settingsScopes: ['notifications:settings'], verifyUserCommand: async () => false});
+    options.bindings = options.bindings.filter(binding => binding.kind !== 'notify');
+  }
   const host = app.createProactiveWorkflowHost(options);
   let sequence = 0;
   const context = {deadline, signal};
@@ -100,6 +104,110 @@ function fixture(extra = {}) {
       {deadline, sideEffect: 'local_write', ...(app.runtime.getTask(task.taskId).state === 'waiting_approval' ? {resume: true} : {})}),
     close: async () => {await connectorRunner.dispose(); app.close();}};
 }
+
+test('responsibility lifecycle requires trusted original decision, preserves old records and enforces expiry and source binding', async () => {
+  let authorized = true;
+  const f = fixture({options: {verifyResponsibilityLifecycle: async () => authorized,
+    assertResponsibilityLifecycleCurrent: () => {if (!authorized) throw Error('fixture revoked');}}});
+  try {
+    const id = 'fixture-lifecycle';
+    f.host.registerResponsibility({id, revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    const ref = {responsibilityId: id, responsibilityRevision: 1};
+    assert.deepEqual(f.host.readResponsibilityLifecycle(ref, f.context), {state: 'unavailable', reason: 'lifecycle_not_recorded'});
+    const foreign = f.app.runtime.submitTask({goal: 'Foreign instruction', conversationId: 'foreign-conversation', idempotencyKey: 'foreign-lifecycle'});
+    const command = {commandId: 'activate-one', ...ref, expectedLifecycleRevision: null, action: 'activate', sourceTaskId: f.source.taskId,
+      validUntil: new Date(Date.parse(f.deadline) - 119_000).toISOString()};
+    await assert.rejects(f.host.recordResponsibilityLifecycle({...command, sourceTaskId: foreign.taskId}, f.context), {code: 'UNAUTHORIZED'});
+    authorized = false;
+    await assert.rejects(f.host.recordResponsibilityLifecycle(command, f.context), {code: 'UNAUTHORIZED'});
+    authorized = true;
+    assert.deepEqual(await f.host.recordResponsibilityLifecycle(command, f.context), {state: 'recorded', revision: 1});
+    assert.equal(f.host.readResponsibilityLifecycle(ref, f.context).state, 'current');
+    f.advanceClock(1001);
+    assert.deepEqual(f.host.readResponsibilityLifecycle(ref, f.context), {state: 'unavailable', reason: 'responsibility_expired'});
+  } finally {await f.close();}
+});
+
+test('responsibility revocation is atomic, checks the execution gate and does not repeat a command', async () => {
+  let gate = true;
+  const f = fixture({options: {verifyResponsibilityLifecycle: async () => true,
+    assertResponsibilityLifecycleCurrent: () => {if (!gate) throw Error('fixture authorization revoked');}}});
+  try {
+    const id = 'fixture-revoke', ref = {responsibilityId: id, responsibilityRevision: 1};
+    f.host.registerResponsibility({id, revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    const activation = {commandId: 'activate', ...ref, expectedLifecycleRevision: null, action: 'activate', sourceTaskId: f.source.taskId, validUntil: f.deadline};
+    gate = false;
+    await assert.rejects(f.host.recordResponsibilityLifecycle(activation, f.context), {code: 'RESULT_UNKNOWN'});
+    assert.equal(f.host.readResponsibilityLifecycle(ref, f.context).reason, 'lifecycle_not_recorded');
+    gate = true;
+    assert.deepEqual(await f.host.recordResponsibilityLifecycle(activation, f.context), {state: 'recorded', revision: 1});
+    assert.deepEqual(await f.host.recordResponsibilityLifecycle(activation, f.context), {state: 'recorded', revision: 1});
+    const revoke = {commandId: 'revoke-one', ...ref, expectedLifecycleRevision: 1, action: 'revoke', sourceTaskId: f.source.taskId};
+    const outcomes = await Promise.allSettled([f.host.recordResponsibilityLifecycle(revoke, f.context),
+      f.host.recordResponsibilityLifecycle({...revoke, commandId: 'revoke-two'}, f.context)]);
+    assert.equal(outcomes.filter(outcome => outcome.status === 'fulfilled').length, 1);
+    assert.equal(outcomes.find(outcome => outcome.status === 'rejected').reason.code, 'REVISION_CONFLICT');
+    assert.deepEqual(f.host.readResponsibilityLifecycle(ref, f.context), {state: 'unavailable', reason: 'responsibility_revoked'});
+    f.host.registerResponsibility({id, revision: 2, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    assert.equal(f.host.readResponsibilityLifecycle({...ref, responsibilityRevision: 2}, f.context).reason, 'responsibility_revision_changed');
+    assert.deepEqual(f.host.readResponsibilityLifecycleOperation(activation,f.context),{state:'recorded',revision:1},
+      'revocation and a later responsibility version do not erase the original activation');
+    assert.deepEqual(f.host.readResponsibilityLifecycleOperation({...activation,commandId:'not-executed'},f.context),{state:'unknown'});
+    assert.throws(()=>f.host.readResponsibilityLifecycleOperation({...activation,validUntil:'2099-01-01T00:00:00.000Z'},f.context),{code:'REVISION_CONFLICT'});
+    const snapshot=f.host.readResponsibility({...ref,responsibilityRevision:2},f.context);snapshot.sourceQuotes.length=0;
+    assert.equal(f.host.readResponsibility({...ref,responsibilityRevision:2},f.context).sourceQuotes.length,1);
+  } finally {await f.close();}
+});
+
+test('one injected source consumes only its active explicit responsibility, then survives leave and return on the original checkpoint', async () => {
+  const id = 'tracked-source';
+  const f = fixture({options: {sourceResponsibilityBinding: {sourceId: 'fixture-source', responsibilityId: id},
+    verifyResponsibilityLifecycle: async () => true, assertResponsibilityLifecycleCurrent: () => {}}});
+  try {
+    f.host.registerResponsibility({id, revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    f.host.registerResponsibility({id: 'other-interest', revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'inferred_interest', scopeRefs: []}, f.context);
+    await f.connectorRunner.start('fixture-source', f.context);
+    const blocked = await f.connectorRunner.tick('fixture-source', {...f.context, limit: 1});
+    assert.equal(blocked.errorCode, 'UNSUPPORTED_CAPABILITY');
+    assert.equal((await f.connectorRunner.status('fixture-source')).checkpoint.cursor, undefined);
+    await f.host.recordResponsibilityLifecycle({commandId: 'activate-tracked', responsibilityId: id, responsibilityRevision: 1,
+      expectedLifecycleRevision: null, action: 'activate', sourceTaskId: f.source.taskId, validUntil: f.deadline}, f.context);
+    const committed = await f.connectorRunner.tick('fixture-source', {...f.context, limit: 1});
+    assert.equal(committed.state, 'changed');
+    assert.equal(f.calls().sourceReads, 1, 'the same pending batch is drained without another source read');
+    const userEvent = f.host.ingestUserInstruction({sourceTaskId: f.source.taskId, responsibilityId: id}, f.context);
+    const entries = Object.values(f.host.inspect().application.state.entries);
+    assert.deepEqual(entries.find(entry => entry.event.entry === 'connector').event.responsibilityRefs, [id]);
+    assert.deepEqual(entries.find(entry => entry.event.eventId === userEvent).event.responsibilityRefs, [id]);
+    const frontier = await f.next();
+    assert.ok(frontier.proposals.length >= 1);
+    assert.equal(JSON.stringify(frontier).includes('other-interest'), false);
+    assert.equal(f.calls().sourceReads, 1);
+  } finally {await f.close();}
+});
+
+test('runtime control port persists enter and return on the original checkpoint without extending the deadline', async () => {
+  const f = fixture();
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    await f.next();
+    const port = createRuntimeProactiveControlPort(f.app.runtime, f.host);
+    const leave = await port.enter({commandId: 'port-leave', expectedControlRevision: f.host.binding.controlRevision, sourceTaskId: f.source.taskId}, f.context);
+    assert.equal(leave.mode, 'unattended');
+    assert.equal(leave.taskDeadline, f.deadline);
+    assert.equal(leave.replayedNotifications, 0);
+    const calls = f.calls().imageCalls;
+    const returnCommand = {commandId: 'port-return', expectedControlRevision: f.host.binding.controlRevision, sourceTaskId: f.source.taskId};
+    const returned = await port.return(returnCommand, f.context);
+    assert.equal(returned.replayedNotifications, 0);
+    assert.equal(returned.taskDeadline, f.deadline);
+    assert.equal(returned.result.proposals.length, 0);
+    assert.equal(f.host.binding.taskDeadline, f.deadline);
+    assert.equal((await port.return(returnCommand, f.context)).replayedNotifications, 0);
+    assert.equal(f.calls().imageCalls, calls + 1, 'replaying the same return does not advance the image again');
+    assert.equal(f.calls().actionCalls, 0);
+  } finally {await f.close();}
+});
 
 test('real application consumes durable connector and original user quote, public context, original Scheduler and immutable wake', async () => {
   const f = fixture({wake: true});
@@ -171,6 +279,53 @@ test('trusted unattended/pause/return/cancel controls use actual original comman
     assert.equal(f.app.runtime.getTask(f.task.taskId).cancelRequested, true);
     await assert.rejects(f.next(), {code: 'CANCELLED'});
   } finally {await f.close();}
+});
+
+test('pause invalidates a pending cloud frontier before it settles and rejects its late proposals', async () => {
+  let entered, release;
+  const waiting = new Promise(resolve => {entered = resolve;}), gate = new Promise(resolve => {release = resolve;});
+  const f = fixture();
+  const advance = f.options.advancePort;
+  f.options.advancePort = async input => {
+    if (input.requestId === 'blocked-frontier') {entered(); await gate;}
+    return advance(input);
+  };
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    const pending = f.host.advance({...f.context, requestId: 'blocked-frontier'});
+    const rejected = assert.rejects(pending, {code: 'REVISION_CONFLICT'});
+    await waiting;
+    const paused = await f.host.control({commandId: 'pause-pending', action: 'pause', expectedControlRevision: 0, sourceTaskId: f.source.taskId}, f.context);
+    assert.equal(paused.mode, 'paused');
+    assert.equal(f.app.runtime.readExecutionEpoch(f.task.taskId), 1);
+    assert.equal(f.host.inspect().application.state.requests['blocked-frontier'].acknowledged, false);
+    release(); await rejected;
+    assert.equal(f.calls().actionCalls, 0);
+    assert.equal(f.host.inspect().application.state.lastResult.mode, 'paused');
+  } finally {release(); await f.close();}
+});
+
+test('cancel persists before both the old frontier and cloud cancellation notification return', {timeout:5000}, async () => {
+  let entered, notified, release;
+  const waiting = new Promise(resolve => {entered = resolve;}), notification = new Promise(resolve => {notified = resolve;});
+  const gate = new Promise(resolve => {release = resolve;}), f = fixture();
+  const advance = f.options.advancePort;
+  f.options.advancePort = async input => {
+    if (input.requestId === 'blocked-frontier') entered(); else if (input.control?.action === 'cancel') notified();
+    await gate; return advance(input);
+  };
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    const pending = f.host.advance({...f.context, requestId:'blocked-frontier'});
+    const rejected = assert.rejects(pending, {code:'REVISION_CONFLICT'});
+    await waiting;
+    const cancelled = f.host.control({commandId:'cancel-pending', action:'cancel', expectedControlRevision:0, sourceTaskId:f.source.taskId}, f.context);
+    await notification;
+    assert.equal(f.app.runtime.getTask(f.task.taskId).cancelRequested, true);
+    assert.equal(f.app.runtime.readExecutionEpoch(f.task.taskId), 1);
+    release(); await rejected; await cancelled;
+    assert.equal(f.calls().actionCalls, 0);
+  } finally {release(); await f.close();}
 });
 
 test('offline local device without an actual persistent host stays waiting_device; optional notification service is never invented', async () => {
@@ -247,6 +402,36 @@ test('bound child reports and task.progress reach the original controller, stale
   } finally {await f.close();}
 });
 
+test('without controller consumer, bound child report is pending and unavailable: controller_consumer, and reconciliation rejects', async () => {
+  const f = fixture({action: 'delegate'});
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    const final = await f.run(async worker => {
+      for (let i = 0; i < 4; i++) {
+        const result = await f.next();
+        for (const proposal of result.proposals) assert.equal((await f.host.executeProposal(proposal, {deadline: worker.deadline, signal: worker.signal})).state, 'confirmed');
+      }
+      const child = f.app.runtime.findTaskByIdempotencyKey('subagent-dispatch-' + f.task.taskId + '-child-one');
+      assert.equal(child.state, 'succeeded');
+      // Subagent terminal transition in RuntimeApplication already automatically invoked ingestSubtaskFeedback.
+      const eventId = 'subtask-feedback:' + child.taskId + ':' + child.revision;
+      const stored = f.host.inspect().application.state.controllerReports[eventId];
+      assert.ok(stored);
+      assert.equal(stored.state, 'pending');
+      assert.equal(stored.report.parentTaskId, f.task.taskId);
+      assert.equal(stored.report.childRevision, child.revision);
+      assert.equal(stored.receipt, undefined);
+      assert.equal(f.app.runtime.readEvents().some(event => event.taskId === f.task.taskId && event.type === 'task.progress' && event.payload.stepId === eventId), true);
+      // Calling ingest again while pending correctly fails with RESULT_UNKNOWN
+      await assert.rejects(f.host.ingestSubtaskFeedback({childTaskId: child.taskId, expectedRevision: child.revision}, f.context), {code: 'RESULT_UNKNOWN'});
+      // Reconciling without controller correctly fails with UNSUPPORTED_CAPABILITY
+      await assert.rejects(f.host.reconcileControllerReport(eventId, f.context), {code: 'UNSUPPORTED_CAPABILITY'});
+      return {resultSummary: 'Report pending without controller consumer'};
+    });
+    assert.equal(final.state, 'succeeded', final.error?.message);
+  } finally {await f.close();}
+});
+
 test('one Runtime notification factory returns the same actual service and rejects a second configuration', async () => {
   const f = fixture();
   try {
@@ -255,6 +440,39 @@ test('one Runtime notification factory returns the same actual service and rejec
     assert.equal(f.app.createNotificationHost({...options}), host);
     assert.throws(() => f.app.createNotificationHost({...options, settingsScopes: ['different']}), {code: 'REVISION_CONFLICT'});
     assert.throws(() => f.app.createProactiveWorkflowHost({...f.options, notificationHost: {...host}}), {code: 'UNAUTHORIZED'});
+  } finally {await f.close();}
+});
+
+test('the same connector event produces separate durable notification receipts in each original responsibility scope', async () => {
+  const f = fixture({action: 'notify', notify: true});
+  try {
+    const second = f.app.runtime.submitTask({goal: 'Second explicit public responsibility', conversationId: 'fixture-conversation', idempotencyKey: 'second-notify'});
+    const other = f.app.createProactiveWorkflowHost({...f.options, taskId: second.taskId, sessionId: 'second-notify-session'});
+    for (const host of [f.host, other]) host.registerResponsibility({id: 'notify-source', revision: 1,
+      sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    await f.connectorRunner.start('fixture-source', f.context);
+    assert.equal((await f.connectorRunner.tick('fixture-source', {...f.context, limit: 1})).state, 'changed');
+    const batch = Object.values(f.host.inspect().application.state.batches)[0];
+    await other.eventSink.persist(batch, f.context);
+    for (const [host, taskId] of [[f.host, f.task.taskId], [other, second.taskId]]) {
+      const result = await f.app.runtime.runTask(taskId, async worker => {
+        for (let n = 0; n < 7; n++) {
+          const frontier = await host.advance({...f.context, requestId: 'notify-' + n});
+          for (const proposal of frontier.proposals)
+            assert.equal((await host.executeProposal(proposal, {deadline: worker.deadline, signal: worker.signal})).state, 'confirmed');
+          if (Object.values(frontier.items).every(item => item.stage === 'done')) break;
+        }
+        return {resultSummary: 'Original notification queue read back'};
+      }, {deadline: f.deadline, sideEffect: 'local_write'});
+      assert.equal(result.state, 'succeeded', result.error?.message);
+    }
+    const service = f.options.notificationHost;
+    const entries = [f.task.taskId, second.taskId].map(taskId => service.notificationFeed({
+      scope: {kind: 'responsibility', responsibilityId: taskId, connectorId: 'fixture-source'}}).items);
+    assert.deepEqual(entries.map(items => items.length), [1, 1]);
+    assert.notEqual(entries[0][0].id, entries[1][0].id);
+    assert.equal(service.notificationFeed({scope: {kind: 'connector', connectorId: 'fixture-source'}}).items.length, 2);
+    assert.equal(Object.values(f.host.inspect().application.state.batches)[0].events[0].item.dedupeKey, 'source-one');
   } finally {await f.close();}
 });
 

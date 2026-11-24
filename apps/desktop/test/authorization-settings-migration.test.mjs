@@ -36,6 +36,12 @@ test('Synthetic mail config saves credentials without a consent field and config
   assert.deepEqual(Object.keys(payload).sort(),['authCode','user']);assert.equal(payload.authCode,'','credential DTO is cleared after the host call');
   assert.equal(field('key').value,'');assert.equal(field('read').disabled,false,'all old consent false does not block starting the exact card challenge');
   await field('read').onclick();assert.equal(f.calls[1].name,'mail.read');
+  assert.equal(field('dashboardEnable').disabled,false);assert.equal(field('dashboardRevoke').disabled,true);
+  await field('dashboardEnable').onclick();
+  assert.deepEqual(f.calls[2],{name:'mail.dashboard.enable',input:{readConsent:true,scope:'personal-dashboard'}});
+  f.controls.render({configured:true,sessionAllowed:false,dashboardSessionAllowed:true,localModelReady:true,status:'disabled'});
+  assert.equal(field('dashboardEnable').disabled,true);assert.equal(field('dashboardRevoke').disabled,false);
+  await field('dashboardRevoke').onclick();assert.deepEqual(f.calls[3],{name:'mail.dashboard.revoke',input:undefined});
   f.controls.render({configured:false,localModelReady:true,status:'unconfigured'});assert.equal(field('read').disabled,true,'a card cannot replace missing credentials');
 });
 

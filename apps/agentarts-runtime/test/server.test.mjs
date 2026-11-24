@@ -11,6 +11,17 @@ async function host(t, options={}) {
   return {server,calls,url:`http://127.0.0.1:${server.address().port}`};
 }
 const post=(url,body,headers={})=>fetch(url+'/invocations',{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body)});
+test('AgentArts HTTP keeps health public and requires its independent inner token',async t=>{
+  assert.throws(()=>createAgentServer({mode:'agentarts',orchestrator:{invoke(){}}}),{code:'INVALID_ARGUMENT'});
+  const token='inner-fixture-token'.repeat(2),{url,calls}=await host(t,{mode:'agentarts',wssAuthToken:token});
+  assert.equal((await fetch(url+'/ping')).status,200);
+  const outer={authorization:'Bearer platform-fixture'};
+  assert.equal((await post(url,{query:'x'},outer)).status,503);
+  assert.equal((await post(url,{query:'x'},{...outer,'x-pa-agent-token':'Bearer wrong'})).status,401);
+  assert.equal(calls.length,0);
+  assert.equal((await post(url,{query:'x'},{...outer,'x-pa-agent-token':`Bearer ${token}`})).status,200);
+  assert.equal(calls.length,1);
+});
 test('request deadline mode preserves deadlines beyond 60s and requires a deadline',async t=>{
   const {url,calls}=await host(t,{timeoutMode:'request-deadline'});
   assert.equal((await post(url,{query:'x'})).status,400);
