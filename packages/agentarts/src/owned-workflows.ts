@@ -1,6 +1,6 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {deflateRawSync,inflateRawSync} from 'node:zlib';
-import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {MAX_COORDINATION_INITIAL_QUERY_BYTES,ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
 import type {CoordinationAvailableTool} from '@personal-agent/coordination';
 import {getOwnedWorkflowTemplate,OWNED_WORKFLOW_VERSION} from './owned-workflow-templates.js';
@@ -137,14 +137,14 @@ const control = (request:Pick<OwnedWorkflowAdvanceRequest,'signal'|'deadline'>):
   if(Date.parse(request.deadline)<=Date.now()) throw new ProtocolError('TIMEOUT','Workflow deadline expired');
 };
 const copy = <T>(value:T):T => {
-  try {const encoded=JSON.stringify(value);if(!encoded||Buffer.byteLength(encoded)>1_100_000) invalid();return JSON.parse(encoded) as T;}
+  try {const encoded=JSON.stringify(value);if(!encoded||Buffer.byteLength(encoded)>MAX_COORDINATION_INITIAL_QUERY_BYTES) invalid();return JSON.parse(encoded) as T;}
   catch(error) {if(error instanceof ProtocolError) throw error;return invalid();}
 };
 const referenced=(value:unknown):value is {kind:'trusted_tool_result_reference';valueDigest:string;bytes:number;evidenceRefs:readonly string[]} =>
   plain(value)&&value.kind==='trusted_tool_result_reference'&&typeof value.valueDigest==='string';
 const inputReferenced=(value:unknown):value is {kind:'workflow_input_reference';valueDigest:string} =>
   plain(value)&&value.kind==='workflow_input_reference'&&typeof value.valueDigest==='string';
-const NODE_OUTPUT_BYTES=(template:OwnedWorkflowTemplate):number=>Math.floor((1_100_000-65_536)/(4*template.nodes.length));
+const NODE_OUTPUT_BYTES=(template:OwnedWorkflowTemplate):number=>Math.floor((MAX_COORDINATION_INITIAL_QUERY_BYTES-65_536)/(4*template.nodes.length));
 function decisionInput(context:WorkflowNodeContext):Record<string,unknown> {
   if(!['F15_N01','F20_N01'].includes(context.node.id)||!plain(context.input)) return {input:context.input};
   // The current question is whether to request a file read, not whether a future patch is correct.
@@ -199,13 +199,13 @@ export class OwnedWorkflowEngine {
   }
   private seal(state:CheckpointState,compressed=false):string {
     const json=Buffer.from(JSON.stringify(state));
-    // Preserve the decoded capacity of the existing 1,100,000-byte plain envelope.
-    if(compressed&&json.length>Math.floor((1_100_000-44)*3/4))throw new ProtocolError('EXTERNAL_FAILURE','Workflow checkpoint exceeds the existing decoded capacity');
+    // Decoded checkpoint stays inside the query byte budget; overflow is rejected, never trimmed.
+    if(compressed&&json.length>Math.floor((MAX_COORDINATION_INITIAL_QUERY_BYTES-44)*3/4))throw new ProtocolError('EXTERNAL_FAILURE','Workflow checkpoint exceeds the existing decoded capacity');
     const encoded=compressed?'deflate:'+deflateRawSync(json).toString('base64url'):json.toString('base64url');
     return encoded+'.'+createHmac('sha256',this.secret).update(encoded).digest('base64url');
   }
   private open(value:string):CheckpointState {
-    if(typeof value!=='string'||Buffer.byteLength(value)>1_100_000) invalid('Invalid workflow checkpoint');
+    if(typeof value!=='string'||Buffer.byteLength(value)>MAX_COORDINATION_INITIAL_QUERY_BYTES) invalid('Invalid workflow checkpoint');
     const parts=value.split('.');if(parts.length!==2) invalid('Invalid workflow checkpoint');
     const [encoded,signature]=parts as [string,string];
     const expected=createHmac('sha256',this.secret).update(encoded).digest();
@@ -213,7 +213,7 @@ export class OwnedWorkflowEngine {
     if(expected.length!==actual.length||!timingSafeEqual(expected,actual)) invalid('Workflow checkpoint integrity failed');
     try {
       const bytes=encoded.startsWith('deflate:')
-        ?inflateRawSync(Buffer.from(encoded.slice('deflate:'.length),'base64url'),{maxOutputLength:Math.floor((1_100_000-44)*3/4)})
+        ?inflateRawSync(Buffer.from(encoded.slice('deflate:'.length),'base64url'),{maxOutputLength:Math.floor((MAX_COORDINATION_INITIAL_QUERY_BYTES-44)*3/4)})
         :Buffer.from(encoded,'base64url');
       return JSON.parse(bytes.toString('utf8')) as CheckpointState;
     }
@@ -898,7 +898,7 @@ export class OwnedWorkflowEngine {
       ...(state.codingRepair?{codingRepair:{version:1 as const,round:state.codingRepair.round,snapshotId:state.codingRepair.snapshot.snapshotId,
         history:copy(state.codingRepair.history),verification:copy(state.codingRepair.verification),
         ...(state.codingRepair.stoppedReason?{stoppedReason:state.codingRepair.stoppedReason}:{})}}:{})};
-    if(Buffer.byteLength(JSON.stringify(result))>1_100_000) throw new ProtocolError('EXTERNAL_FAILURE','Workflow result exceeds the versioned graph transport budget');
+    if(Buffer.byteLength(JSON.stringify(result))>MAX_COORDINATION_INITIAL_QUERY_BYTES) throw new ProtocolError('EXTERNAL_FAILURE','Workflow result exceeds the versioned graph transport budget');
     return result;
   }
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {request as httpRequest} from 'node:http';
+import {MAX_AGENTARTS_TRANSPORT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {createAgentServer} from '../src/server.mjs';
 
 async function host(t, options={}) {
@@ -69,7 +70,7 @@ test('ping and strict invocation preserve deadline/session and contract events',
 test('auth, malformed input, forged fields, expired deadlines and oversized bodies never reach model',async t=>{
   const token='s'.repeat(32), {url,calls}=await host(t,{authToken:token});
   assert.equal((await post(url,{query:'x'})).status,401);
-  for (const [body,extra] of [[{query:'x',grant:true},{}],[{inputs:{goal:'x'}},{}],[{query:'x'},{'x-pa-deadline':'yesterday'}],[{query:'x'},{'x-pa-deadline':'2020-01-01T00:00:00.000Z'}],[{query:'x'.repeat(1_200_000)},{}]]) {
+  for (const [body,extra] of [[{query:'x',grant:true},{}],[{inputs:{goal:'x'}},{}],[{query:'x'},{'x-pa-deadline':'yesterday'}],[{query:'x'},{'x-pa-deadline':'2020-01-01T00:00:00.000Z'}],[{query:'x'.repeat(MAX_AGENTARTS_TRANSPORT_BYTES)},{}]]) {
     assert.notEqual((await post(url,body,{authorization:`Bearer ${token}`,...extra})).status,200);
   }
   assert.equal(calls.length,0);

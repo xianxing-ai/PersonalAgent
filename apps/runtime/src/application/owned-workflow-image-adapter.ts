@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
-import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_COORDINATION_INITIAL_QUERY_BYTES,ProtocolError} from '@personal-agent/contracts';
+import {MAX_AGENTARTS_TRANSPORT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 import type {OwnedWorkflowAdvanceRequest,OwnedWorkflowAdvanceResult} from '@personal-agent/agentarts';
 import {AgentArtsWebSocketTransport,parseAgentArtsResponseText} from '@personal-agent/coordination';
@@ -62,12 +63,13 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
       throw new ProtocolError('INVALID_ARGUMENT','Original owned-workflow execution epoch required');
     const assertCurrent=()=>{context?.assertCurrent?.();active(request);};
     assertCurrent();
-    const auth=await read(options.authorizationProvider,request.signal),hostAuth=options.websocketAuthorizationProvider?await read(options.websocketAuthorizationProvider,request.signal):undefined;
-    assertCurrent();
     const {signal:ignored,deadline:_deadline,requestId:_requestId,sessionId:_sessionId,resultFits:_resultFits,...data}=request;
     const query=JSON.stringify({executionEpochVersion:1,executionEpoch,query:JSON.stringify({workflowVersion:'1.0.0',operation:'advance',...data})});
     const body=JSON.stringify(options.workflowGoalInput?{inputs:{[options.workflowGoalInput]:query}}:{query});
-    if(Buffer.byteLength(query)>1_100_000)throw new ProtocolError('INVALID_ARGUMENT','Owned-workflow request exceeds original image capacity');
+    if(Buffer.byteLength(query)>MAX_COORDINATION_INITIAL_QUERY_BYTES||Buffer.byteLength(body)>MAX_AGENTARTS_TRANSPORT_BYTES)
+      throw new ProtocolError('INVALID_ARGUMENT','Owned-workflow request exceeds image transport capacity');
+    const auth=await read(options.authorizationProvider,request.signal),hostAuth=options.websocketAuthorizationProvider?await read(options.websocketAuthorizationProvider,request.signal):undefined;
+    assertCurrent();
     const init={method:'POST' as const,headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
       'x-hw-agentarts-session-id':request.sessionId,'X-Request-Id':request.requestId,'X-PA-Deadline':request.deadline,
       'X-Invoke-Mode':options.invokeMode??'published',...(hostAuth?{'X-PA-Agent-Token':hostAuth}:{})},body,signal:request.signal,redirect:'error' as const};

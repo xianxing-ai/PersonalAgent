@@ -136,14 +136,15 @@ test('Synthetic revoked model/config, denied consent and private bindings never 
 
 test('Synthetic disabled configuration preserves old preflight; enabled preflight retains the current goal and exact tail',t=>{
   const f=fixture(t),goal='Exact current goal';
-  assert.throws(()=>compileCoordinationGoal(goal,goal,f.messages),{code:'INVALID_ARGUMENT'});
-  const admitted=JSON.parse(f.host.preflight(goal,goal,f.messages,compileCoordinationGoal));
+  const oversized=f.messages.map((message,index)=>index<f.messages.length-2?{...message,content:message.content+'x'.repeat(40_000)}:message);
+  assert.throws(()=>compileCoordinationGoal(goal,goal,oversized),{code:'INVALID_ARGUMENT'});
+  const admitted=JSON.parse(f.host.preflight(goal,goal,oversized,compileCoordinationGoal));
   assert.equal(admitted.publicGoal,goal);assert.deepEqual(admitted.conversationContext.messages,f.messages.slice(-2));
   assert.equal(f.requests.length,0,'Preflight never runs a model');
-  assert.throws(()=>f.host.preflight('x'.repeat(128001),'x'.repeat(128001),f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>f.host.preflight('x'.repeat(1_000_001),'x'.repeat(1_000_001),f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
   const off=createDesktopHarnessContextHost({readConfiguration:()=>({enabled:false})});t.after(()=>off.dispose());
   assert.equal(off.runtimeHooks,undefined);assert.equal(off.snapshot().state,'disabled');
-  assert.throws(()=>off.preflight(goal,goal,f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>off.preflight(goal,goal,oversized,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
 });
 
 test('Synthetic explicit context config rejects missing budgets, unselected versions and an unguarded model factory',t=>{
@@ -154,7 +155,7 @@ test('Synthetic explicit context config rejects missing budgets, unselected vers
   const boundary='x'.repeat(128000);
   assert.equal(expandedHost.preflight(boundary,boundary,[],compileCoordinationGoal),boundary);
   for(const change of [{maxOutputTokens:undefined},{policy:{...f.configuration.policy,retainMessages:undefined}},
-    {configurationRef:'different-version'},{modelId:''},{policy:{...f.configuration.policy,maxCharacters:128001}}]){
+    {configurationRef:'different-version'},{modelId:''},{policy:{...f.configuration.policy,maxCharacters:1_000_001}}]){
     assert.throws(()=>createDesktopHarnessContextHost({...f.options,readConfiguration:()=>({...f.configuration,...change})}));
   }
   const noGuard=createModelApiConfig({userData:path.join(f.root,'profile'),safeStorage,createGateway:createConfiguredSubagentModelGateway});
