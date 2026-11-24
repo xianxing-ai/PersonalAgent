@@ -223,7 +223,7 @@ test('actual never-sent WSS adapter failure makes both a delegated child and rea
     const id=await submit(app,'never-sent-parent',5000),parent=await settled(app,id),[child]=app.readSubagentTasks(id);
     assert.equal(child.state,'failed');assert.equal(child.error.code,'EXTERNAL_FAILURE');
     assert.equal(parent.state,'failed');assert.equal(parent.error.code,'EXTERNAL_FAILURE');
-    assert.equal(connections,2);assert.equal(executions,0);
+    assert.equal(connections,1);assert.equal(executions,0);
     assert.equal(Boolean(app.runtime.loadCheckpoint(id,'competition-export-withheld')),false);
     assert.equal(Boolean(app.runtime.loadCheckpoint(child.taskId,'competition-cloud-inflight')),false);
   }finally{app.close();}

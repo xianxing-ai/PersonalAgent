@@ -66,7 +66,7 @@ function fixture(t, options = {}) {
 
 test('syntheticfixture: stable catalog validates contracts and never claims fixture identity is Windows acceptance', async t => {
   const f = fixture(t);
-  const names = ['list_windows','observe','screenshot','activate','click','type','set_value','invoke','select','focus','scroll','move','drag','shortcut','press','wait'];
+  const names = ['list_windows','observe','screenshot','launch_app','activate','click','type','set_value','invoke','select','focus','scroll','move','drag','shortcut','press','wait'];
   const before = f.host.tools.map(tool => tool.descriptor.name);
   assert.deepEqual(before, names.map(name => `computer.desktop.${name}`));
   await f.host.start(context());
@@ -75,7 +75,7 @@ test('syntheticfixture: stable catalog validates contracts and never claims fixt
     validateContract('tool', descriptor);
     assert.equal(descriptor.version, NATIVE_DESKTOP_VERSION);
     assert.deepEqual(descriptor.requiredScopes, [scope]);
-    assert.equal(descriptor.requiresPresence, true);
+    assert.equal(descriptor.requiresPresence, descriptor.name !== 'computer.desktop.launch_app');
     assert.equal(descriptor.idempotencySupport, false);
     assert.equal(descriptor.recoverySupport, false);
   }

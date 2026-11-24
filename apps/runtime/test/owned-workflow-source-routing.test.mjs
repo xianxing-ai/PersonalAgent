@@ -13,7 +13,7 @@ function compose({ports=[],f20,authorizationRead=async()=> 'Bearer synthetic',wo
   let sends=0;
   const context=Object.fromEntries(['fetchHandlesHostAuthorization','transport','websocketUrl','allowHttpsFallback',
     'websocketAuthorizationProvider','websocketFactory','invokeMode','workflowGoalInput','assertDeploymentBinding',
-    'onTransportState','readOwnedWorkflowReceiptSecret'].map(key=>[key,undefined]));
+    'onTransportState','readOwnedWorkflowReceiptSecret','recoverAcceptedStatus'].map(key=>[key,undefined]));
   Object.assign(context,{ProtocolError,createRuntimeOwnedWorkflowImageAdapter,preparePayload:syntheticPublicPayloadGate,initialRequestMode:'goal-with-tools-json',
     gatewayUrl:'https://fixture.invalid',runtimeName:'fixture-runtime',deploymentVersion:'v-fixed',
     configuredWorkflowWorkerPorts:ports,f20WorkflowWorkerPorts:f20,authorizationProvider:{read:authorizationRead},

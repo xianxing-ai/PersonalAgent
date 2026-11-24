@@ -1218,8 +1218,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           for (const tool of createRuntimeProactiveWorkflowTools((taskId, sessionId) => this.proactiveHosts.get(JSON.stringify([taskId, sessionId])))) gateway.register(tool);
         }
         if (this.localRepair) gateway.register(createLocalRepairTool(() => this.runtime, this.localRepair));
+        const hasHostTools = Boolean(options.tools || discoveryTool || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.voiceFinalTranscript || options.codingRepair || this.readDeveloperHarnessConfiguration);
         return {list:()=>gateway!.list(),
           listPublic:()=>gateway!.list().filter(tool=>!INTERNAL_CONVERSATION_TOOL_NAMES.has(tool.name)),
+          publicCapabilityConfigured: hasHostTools,
           invoke:invocation=>{
           this.assertPlanExecutionCurrent(invocation.taskId,invocation);
           assertWorkflowBusinessToolInvocation(this,invocation);
@@ -2941,7 +2943,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       try {
         const catalog=this.taskCompetitionCatalog(request.taskId);
         if(!catalog)return undefined;
-        registered=catalog.describe();
+        registered=catalog.describe().filter(item=>!INTERNAL_CONVERSATION_TOOL_NAMES.has(item.name));
       }
       catch {
         // Optional observation cannot preempt the original send guard's refusal
@@ -3635,12 +3637,6 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const approval = this.runtime.getApproval(request.payload.approvalId);
       void Promise.resolve(this.activeTextTasks.get(approval.taskId))
         .then(() => this.refreshSubagentParent(approval.taskId)).catch(() => {});
-      if (!this.activeTextTasks.has(approval.taskId)
-        && this.runtime.getTask(approval.taskId).state === 'waiting_approval'
-        && this.runtime.loadCheckpoint(approval.taskId, 'competition-loop') !== undefined) {
-        try { this.resumeTask(approval.taskId); }
-        catch { /* 已拒绝；续跑失败不重开授权或伪造成功 */ }
-      }
     }
     if (request.operation === 'authorization.respond' && response.outcome === 'ok' && request.payload.decision === 'allow_once') {
       const approval = this.runtime.getApproval(request.payload.approvalId);
@@ -5807,14 +5803,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           &&this.runtime.matchesToolExecutionInput(confirmedRecord,{arguments:nested.arguments,scopeRef:approvalRef});
         if(!routineReplay) {
           const competitionApproval = this.runtime.getApproval(approvalRef);
-          if (competitionApproval.state === 'denied') {
-            /* recover via coordination denial continuation */
-          } else {
-            if (competitionApproval.state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Task approval has not been allowed');
-            if(nested&&(competitionApproval.toolName!==nested.toolName||competitionApproval.argumentsDigest!==toolArgumentsDigest(nested.arguments)))
-              throw new ProtocolError('UNAUTHORIZED','Original nested worker approval changed');
-            if(!confirmedRecord && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');
-          }
+          if (competitionApproval.state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Task approval has not been allowed');
+          if(nested&&(competitionApproval.toolName!==nested.toolName||competitionApproval.argumentsDigest!==toolArgumentsDigest(nested.arguments)))
+            throw new ProtocolError('UNAUTHORIZED','Original nested worker approval changed');
+          if(!confirmedRecord && !this.runtime.policy.get(approvalRef))throw new ProtocolError('UNAUTHORIZED','Task grant was revoked');
         }
       }
       if(readSubagentConversationMessage(this.runtime,taskId)) {this.dispatchSubagentConversationMessage(taskId,true);return;}

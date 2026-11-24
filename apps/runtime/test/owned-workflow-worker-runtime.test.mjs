@@ -16,7 +16,8 @@ import {createRuntimeApplication,createDesktopSubagentDispatchTool,OWNED_WORKFLO
 
 // Synthetic image and workspace; Runtime, Policy, Gateway and host children are real.
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-function fixture({configured=true,unknown=false,unknownSource=false,replaceSample=false,denyExport=false,denyFrontier=false,typedReview=false,replaceReview=false,
+const sha=value=>createHash('sha256').update(value).digest('hex');
+function fixture({configured=true,unknown=false,unknownSource=false,replaceSample=false,denyExport=false,denyFrontier=false,typedReview=true,replaceReview=false,
   databasePath=':memory:',harnessCandidates}={}) {
   let app;const calls=[],cloud=[],advances=[],reviews=[];
   const caseInput={schemaFile:'schema.json',codeFile:'api.ts',recipeId:'check-api',docTemplate:'template',targetDoc:'docs/api.md',sourceVersion:'fixture-v1'};
@@ -33,26 +34,41 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
   const tools=[tool('workspace.read_text','read',{path:{type:'string'}},['path'],args=>{
     if(unknownSource&&args.path==='api.ts')throw new ProtocolError('RESULT_UNKNOWN','Synthetic source result is unknown');
     return {path:args.path,content:'synthetic'};}),
-    tool('decision.choose_candidate','read',{context:{type:'string'}},['context'],()=>({selectedId:'synthetic-candidate'})),
-    tool('coding.repair.trial','local_write',{candidateId:{type:'string'},patches:{type:'array',items:{type:'object'}},
-      recipeIds:{type:'array',items:{type:'string'}}},
-      ['candidateId','patches','recipeIds'],(args,context)=>{
-      if(unknown)throw new ProtocolError('RESULT_UNKNOWN','Synthetic trial result is unknown');
-      const parent=app.runtime.loadCheckpoint(context.taskId,'coding-repair:parent');
-      const actualBinding=app.readF20TrialBinding(context);
-      assert.equal(actualBinding.ownerTaskId,parent.taskId);
-      assert.equal(actualBinding.candidateId,args.candidateId);
-      assert.equal(actualBinding.samplePath,'api.ts.f20-sample.ts');
-      assert.match(actualBinding.sourceDigest,/^[a-f0-9]{64}$/);
-      assert.throws(()=>app.readF20TrialBinding({...context,runId:'another-run'}),{code:'UNAUTHORIZED'});
-      return {binding:{version:1,taskId:parent.taskId,trialTaskId:context.taskId,candidateId:args.candidateId,artifactId:'fixture-artifact',
-        workspaceId:'fixture-workspace',sessionId:'fixture-session',baselineSnapshotId:'fixture-baseline',inputDigest:hash('source'),
-        configurationDigest:hash('configuration'),workflowVersion:'fixture-v1',runtimeVersion:'fixture-v1',recipeFingerprint:hash('recipe'),
-        artifactDigest:hash('artifact'),parentArtifactDigests:[],executionKind:'synthetic'},
-        session:{version:1,sessionId:'fixture-session',taskId:context.taskId,workspaceId:'fixture-workspace',mode:'isolated',baselineSnapshotId:'fixture-baseline'},
-        checkReadback:{version:1,sessionId:'fixture-session',snapshot:{snapshotId:'fixture-checked',packages:[],files:[]},verification:[{
-          version:1,recipeId:caseInput.recipeId,status:'VALID',exitCode:0,sessionId:'fixture-session',inputSnapshotId:'fixture-checked',
-          runId:'fixture-verify',packageIds:[],files:[],evidenceRefs:[context.runId],diagnostics:[]}]}};})];
+    tool('decision.choose_candidate','read',{context:{type:'string'}},['context'],()=>({selectedId:'synthetic-candidate'}))];
+  const defaultBaseline={snapshotId:'synthetic-baseline',packages:[{id:'root',path:'',dependencies:[]}],files:[
+    {path:'schema.json',sha256:sha('synthetic'),packageId:'root',kind:'source'},
+    {path:'api.ts',sha256:sha('synthetic'),packageId:'root',kind:'source'},
+  ]};
+  const defaultRecipes=[{recipeId:caseInput.recipeId,packageIds:[],required:true}];
+  const effectiveHarnessCandidates=harnessCandidates??{
+    readF20WorkspaceRef:()=>'fixture-workspace',
+    readContext:(_context,scope)=>({binding:{version:1,taskId:scope.ownerTaskId,workspaceId:'fixture-workspace',
+      baselineSnapshotId:defaultBaseline.snapshotId,inputDigest:scope.inputDigest,configurationDigest:scope.configurationRef,
+      workflowVersion:'synthetic-f20-deployment',runtimeVersion:'test-runtime',executionKind:'synthetic',
+      recipeFingerprint:harnessCandidateRecipeFingerprint(defaultRecipes)},
+      baseline:defaultBaseline,recipes:defaultRecipes,selectionPolicy:'unique_verified'}),
+    host:{
+      async start(_input,context){return {version:1,session:{version:1,sessionId:'original-session',taskId:context.taskId,
+        workspaceId:'fixture-workspace',mode:'isolated',baselineSnapshotId:defaultBaseline.snapshotId},
+        initialSnapshot:defaultBaseline,recipes:defaultRecipes};},
+      async check(sessionId,patches,_recipeIds,context){
+        calls.push({name:'coding.repair.trial',args:{sessionId,patches},taskId:context.taskId,runId:context.runId});
+        if(unknown)throw new ProtocolError('RESULT_UNKNOWN','Synthetic trial result is unknown');
+        const actualBinding=app.readF20TrialBinding(context);
+        const parent=app.runtime.loadCheckpoint(context.taskId,'coding-repair:parent');
+        assert.equal(actualBinding.ownerTaskId,parent.taskId);
+        assert.equal(actualBinding.samplePath,'api.ts.f20-sample.ts');
+        assert.match(actualBinding.sourceDigest,/^[a-f0-9]{64}$/);
+        assert.throws(()=>app.readF20TrialBinding({...context,runId:'another-run'}),{code:'UNAUTHORIZED'});
+        const files=[...defaultBaseline.files,...patches.map(p=>({path:p.path,sha256:sha(p.createText??''),packageId:'root',kind:'source'}))];
+        return {version:1,sessionId,snapshot:{snapshotId:'fixture-checked',packages:defaultBaseline.packages,files},
+          verification:[{version:1,recipeId:caseInput.recipeId,status:'VALID',exitCode:0,sessionId,
+            inputSnapshotId:'fixture-checked',runId:'fixture-verify',packageIds:[],files,evidenceRefs:[context.runId],diagnostics:[]}]};
+      },
+      async publish(){throw Error('Fixture cannot publish');},
+      async reconcile(){throw Error('Fixture cannot reconcile');},
+    },
+  };
   tools.unshift(createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,scoped)=>app.runDefaultSubagentWorker(subtask,worker,scoped)}));
   if(typedReview){
@@ -66,16 +82,22 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
     tools[tools.findIndex(tool=>tool.descriptor.name==='decision.choose_candidate')]={...decision,execute:(args,context)=>{
       calls.push({name:decision.descriptor.name,args,taskId:context.taskId,runId:context.runId});return decision.execute(args,context);}};
   }
+  const nodeEvidence=new Map();
   const image={bindingId:'synthetic-f20-image',receiptSecret:async()=> 'synthetic-receipt-secret-at-least-32-chars',advance:async request=>{
     advances.push(request.requestId);const phase=request.checkpoint?Number(request.checkpoint):0;
+    for(const item of request.receipts??[])if(item.nodeId&&Array.isArray(item.evidenceRefs))
+      nodeEvidence.set(item.nodeId,[...new Set([...(nodeEvidence.get(item.nodeId)??[]),...item.evidenceRefs])]);
     const [name,node,args]=phase===0?['workspace.read_text','F20_N01',{path:'schema.json'}]
-      :phase===1?['decision.choose_candidate','F20_N02',decisionArgs('F20_N02')]:phase===2?['coding.repair.trial','F20_N03',
-        {candidateId:'synthetic-candidate',patches:[{path:'api.ts.f20-sample.ts',expectedSha256:null,edits:[],
-          createText:replaceSample?'export const substituted = true;':candidate.sampleSnippet}],recipeIds:['check-api']}]
+      :phase===1?['decision.choose_candidate','F20_N02',decisionArgs('F20_N02')]:phase===2?['workspace.run_allowed_command','F20_N03',
+        {recipeId:replaceSample?'substituted':'check-api'}]
         :['decision.choose_candidate','F20_N04',decisionArgs('F20_N04')];
     const descriptor=request.availableTools.find(tool=>tool.name===name),operationId=`synthetic-f20-${request.taskId}-${phase}`;
     return {workflowId:'F20',workflowVersion:'1.0.0',checkpoint:String(phase+1),state:phase===4?'settled':'awaiting_host',
-      nodes:Object.fromEntries(['F20_N01','F20_N02','F20_N03','F20_N04'].map(id=>[id,{state:id===node&&phase<4?'waiting_receipt':'completed'}])),
+      nodes:Object.fromEntries(['F20_N01','F20_N02','F20_N03','F20_N04'].map(id=>[id,{
+        state:id===node&&phase<4?'waiting_receipt':'completed',
+        ...(id==='F20_N02'&&phase>=2?{value:candidate}:{}),
+        ...(nodeEvidence.get(id)?.length?{evidenceRefs:nodeEvidence.get(id)}:{}),
+      }])),
       proposals:phase===4?[]:[{kind:'tool_proposal',nodeId:node,operationId,proposalId:operationId,inputDigest:hash(args),
         originControlRevision:0,toolName:name,toolVersion:'1.0.0',toolSchemaDigest:hash(descriptor.inputSchema),arguments:args,
         resourceKeys:[],effect:phase===2?'write':'read'}],unavailable:[]};
@@ -90,16 +112,16 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
       return {additionalSourceTaskIds:[]};}};
   if(!configured)delete ownedWorkflowWorker.verifyCompletion;
   app=createRuntimeApplication({path:databasePath,profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f20-owner',
-    coordinationBinding:'synthetic-f20-deployment',tools:harnessCandidates?tools.filter(tool=>tool.descriptor.name!=='coding.repair.trial'):tools,
-    ...(harnessCandidates?{harnessCandidates}:{}),ownedWorkflowWorker,
+    coordinationBinding:'synthetic-f20-deployment',tools,
+    harnessCandidates:effectiveHarnessCandidates,ownedWorkflowWorker,
     coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
       if(app.runtime.getTask(request.taskId).conversationId==='user-chat')return {kind:'text',text:'Synthetic parent',verification:'unverified'};
       if(request.continuation)return {kind:'text',text:'Synthetic F20 continuation',verification:'unverified'};
       return {kind:'tool_proposal',proposalId:'f20-synthetic',toolName:OWNED_WORKFLOW_WORKER_TOOL,toolVersion:'1.0.0',
         arguments:{workflowId:'F20',inputRef:'registered-case'},verification:'unverified'};})},
-    competitionToolAvailability:tools.filter(tool=>!harnessCandidates||tool.descriptor.name!=='coding.repair.trial').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
+    competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
-    competitionToolExports:tools.filter(tool=>!harnessCandidates||tool.descriptor.name!=='coding.repair.trial').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
+    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
   return {app,calls,cloud,advances,caseInput,reviews};
 }
 async function drive(f,client,taskId,{onApproval}={}) {

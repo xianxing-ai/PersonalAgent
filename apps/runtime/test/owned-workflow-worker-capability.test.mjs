@@ -7,12 +7,12 @@ import {createRuntimeOwnedWorkflowWorkerCapability,OWNED_WORKFLOW_WORKER_TOOL} f
 const input={schemaFile:'schema.json',codeFile:'api.ts',recipeId:'check-api',docTemplate:'fixed-template',targetDoc:'docs/api.md',sourceVersion:'fixture-v1'};
 const deadline=()=>new Date(Date.now()+60000).toISOString();
 function setup({result,configured=true,badSource=false}={}) {
-  const registered=['workspace.read_text','coding.repair.trial'].map(name=>({descriptor:{name,version:'1.0.0',
-    sideEffect:name==='workspace.read_text'?'read':'local_write',requiredScopes:['synthetic:f20'],
-    inputSchema:{type:'object',properties:name==='workspace.read_text'?{path:{type:'string'}}:{recipeId:{type:'string'}},
-      required:name==='workspace.read_text'?['path']:['recipeId'],additionalProperties:false},outputSchema:{type:'object'},
+  const registered=['workspace.read_text','coding.repair.trial','decision.choose_candidate'].map(name=>({descriptor:{name,version:'1.0.0',
+    sideEffect:name==='coding.repair.trial'?'local_write':'read',requiredScopes:['synthetic:f20'],
+    inputSchema:{type:'object',properties:name==='workspace.read_text'?{path:{type:'string'}}:name==='decision.choose_candidate'?{context:{type:'string'}}:{recipeId:{type:'string'}},
+      required:name==='workspace.read_text'?['path']:name==='decision.choose_candidate'?['context']:['recipeId'],additionalProperties:false},outputSchema:{type:'object'},
     idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async args=>
-      name==='workspace.read_text'?{path:badSource&&args.path==='api.ts'?'wrong.ts':args.path,content:'synthetic'}:{recipeId:args.recipeId,exitCode:0}}));
+      name==='workspace.read_text'?{path:badSource&&args.path==='api.ts'?'wrong.ts':args.path,content:'synthetic'}:name==='decision.choose_candidate'?{selectedId:'synthetic'}:{recipeId:args.recipeId,exitCode:0}}));
   const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-f20',tools:registered,
     automaticTools:[{toolName:'workspace.read_text',toolVersion:'1.0.0'}]});
   const calls=[];
@@ -51,7 +51,7 @@ test('image cannot submit a source outside the fixed case',async()=>{
 });
 test('a settled image cannot submit a command',async()=>{
   const f=setup({result:{workflowId:'F20',workflowVersion:'1.0.0',state:'settled',checkpoint:'synthetic',nodes:{},
-    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'coding.repair.trial',toolVersion:'1.0.0',
+    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'workspace.run_allowed_command',toolVersion:'1.0.0',
       arguments:{recipeId:'check-api'}}]}});
   try{const task=await f.run();assert.equal(task.state,'failed');assert.equal(task.error.code,'PROTOCOL_MISMATCH');
     assert.equal(f.app.runtime.listTasks({limit:20}).items.length,3);
@@ -60,7 +60,7 @@ test('a settled image cannot submit a command',async()=>{
 test('a command frontier without the original N01 graph receipt fails before submit',async()=>{
   const f=setup({result:{workflowId:'F20',workflowVersion:'1.0.0',state:'awaiting_host',checkpoint:'synthetic',
     nodes:{F20_N01:{state:'completed'},F20_N02:{state:'completed'},F20_N03:{state:'waiting_receipt'}},
-    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'coding.repair.trial',toolVersion:'1.0.0',
+    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'workspace.run_allowed_command',toolVersion:'1.0.0',
       arguments:{recipeId:'check-api'}}]}});
   try{const task=await f.run();assert.equal(task.state,'failed');assert.equal(task.error.code,'UNAUTHORIZED');
     assert.match(task.error.message,/predecessor/);assert.equal(f.app.runtime.listTasks({limit:20}).items.length,3);

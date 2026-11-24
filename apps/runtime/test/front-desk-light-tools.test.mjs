@@ -23,12 +23,12 @@ test('front-desk panel turn keeps light tools and skips forced user-work delegat
   const directory = await mkdtemp(join(tmpdir(), 'front-desk-light-'));
   const port = new FakeCoordinationPort(request => {
     if (request.continuation) {
-      return {kind: 'text', text: '青岛今天多云', verification: 'unverified'};
+      return {kind: 'text', text: '青岛今天多云', verification: 'unverified', executionEpoch: request.executionEpoch};
     }
     return {
       kind: 'tool_proposal', proposalId: 'weather-1',
       toolName: 'weather.forecast', toolVersion: '1.0.0',
-      arguments: {city: '青岛'}, verification: 'unverified',
+      arguments: {city: '青岛'}, verification: 'unverified', executionEpoch: request.executionEpoch,
     };
   });
   const app = createRuntimeApplication({
@@ -36,6 +36,7 @@ test('front-desk panel turn keeps light tools and skips forced user-work delegat
     profile: 'huawei_ict_agentarts',
     coordination: port,
     delegateUserTasks: true,
+    frontDeskUserTurns: true,
     competitionMaxSteps: 4,
     competitionToolExports: [{
       toolName: 'weather.forecast', toolVersion: '1.0.0', exportPolicyVersion: 'v1',
