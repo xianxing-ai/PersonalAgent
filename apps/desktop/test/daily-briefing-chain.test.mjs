@@ -200,7 +200,11 @@ test('briefing.openDecision trusts panel/workspace/admin main frames, validates 
     {approvalId: 'approval-a', taskId: 'task-1', state: 'pending', action: 'calendar.respond', scopes: ['calendar:write'], expiresAt: new Date(now + 60_000).toISOString()},
     {approvalId: 'approval-b', taskId: 'task-1', state: 'pending', action: 'mail.send', scopes: ['mail:send'], expiresAt: new Date(now + 60_000).toISOString()},
   ];
+  const pendingThread = elementFromHtml(`<div><article class="task turn" data-turn="task-1">${approvalCards(task, approvals.slice(0, 1), now)}</article></div>`);
+  assert.equal(focusApprovalCard(pendingThread, 'task-1', 'approval-b'), false);
+  assert.equal(Boolean(pendingThread.querySelector('.approval-card').scrolled), false);
   const thread = elementFromHtml(`<div><article class="task turn" data-turn="task-1">${approvalCards(task, approvals, now)}</article></div>`);
+  assert.equal(focusApprovalCard(thread, 'unrelated-task', 'approval-b'), false);
   assert.equal(focusApprovalCard(thread, 'task-1', 'approval-b'), true);
   const cards = thread.querySelectorAll('.approval-card');
   assert.equal(cards.length, 2);
@@ -214,6 +218,8 @@ test('briefing.openDecision trusts panel/workspace/admin main frames, validates 
     requirements: [{requirementId: 'tool', kind: 'tool', summary: '发送邮件', scopes: ['mail:send']}],
   }, {now});
   const questionRoot = elementFromHtml(`<div>${questionHtml}</div>`);
+  assert.equal(focusApprovalCard(questionRoot, 'task-q', 'missing-approval'), false);
+  assert.equal(focusApprovalCard(questionRoot, 'unrelated-task', 'approval-q'), false);
   assert.equal(focusApprovalCard(questionRoot, 'task-q', 'approval-q'), true);
   const qCard = questionRoot.querySelector('.authorization-question-card');
   assert.equal(qCard.scrolled, true);

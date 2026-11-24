@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRuntimeApplication,createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
@@ -14,7 +16,7 @@ for(const childFailure of [false,true])test(`factory strict Desktop projection c
     sideEffect:'read',requiredScopes:['fixture:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true};
   const exports=[dispatch.descriptor,read].map(tool=>({toolName:tool.name,toolVersion:tool.version,exportPolicyVersion:'fixture-v1',accepts:()=>true,
     project:tool.name===dispatch.descriptor.name?projectSubagentResult:({result})=>result}));
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'dispatch-runtime',
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'dispatch-runtime',
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',
     readDefaultExecutionModel:()=>selected,resolveExecutionModel:selection=>{assert.equal(selection.reasoningEffort,'high');return selected;},
     tools:[dispatch,{descriptor:read,execute:async()=>{toolReads++;return {value:'read'};}}],
@@ -59,7 +61,7 @@ for(const childFailure of [false,true])test(`factory strict Desktop projection c
 });
 test('trusted factory carries selected model through the actual coordinator into invocation query',async()=>{
   const selected={catalogRevision:'a'.repeat(64),modelId:'deepseek-v4.1-flash',reasoningEffort:'low'},queries=[];
-  const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'selected-runtime',
+  const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'selected-runtime',
     readDefaultExecutionModel:()=>selected,authorizationProvider:{read:async()=>'Bearer synthetic'},fetchImpl:async(_url,init)=>{
       queries.push(JSON.parse(JSON.parse(init.body).query));
       return new Response(JSON.stringify({event:'message',data:{text:'selected response',index:0}}),{status:200,headers:{'content-type':'application/json'}});

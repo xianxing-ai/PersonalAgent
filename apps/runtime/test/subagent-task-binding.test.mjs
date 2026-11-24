@@ -24,6 +24,29 @@ function fixture(automatic = true, database = ':memory:', local = false) {
   const parent = app.runtime.submitTask({goal:'delegate',conversationId:'competition',idempotencyKey:'parent'});
   return {app,parent,calls};
 }
+test('ordinary Local children retain original conversation identity and reject altered or missing parent bindings',async()=>{
+  const {app,parent}=fixture(false,':memory:',true);
+  try {
+    const gateway=new ModelGateway(new FakeModelProvider([()=>({kind:'final',text:'synthetic answer'})]));
+    const dispatch=app.createSubagentDispatchTool(()=>gateway);
+    const result=await dispatch.execute({subtasks:[{subtaskId:'identity',role:'researcher',goal:'read',model:'chosen'}]},context(parent));
+    assert.equal(result.succeeded,1,JSON.stringify(result));
+    const child=app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-identity`);
+    assert.equal(app.readToolConversation(child.taskId),parent.conversationId);
+    const original=app.runtime.loadCheckpoint(child.taskId,'subtask-parent');
+    const other=app.runtime.submitTask({goal:'another parent',conversationId:'other',idempotencyKey:'other-parent'});
+    for(const changed of [{...original,parentTaskId:other.taskId},{...original,subtaskId:'replacement'},
+      {...original,goal:'replacement'},{...original,parentDeadline:'invalid'}]) {
+      app.runtime.saveCheckpoint(child.taskId,'subtask-parent',changed);
+      assert.equal(app.readToolConversation(child.taskId),undefined);
+    }
+    app.runtime.saveCheckpoint(child.taskId,'subtask-parent',original);
+    assert.equal(app.readToolConversation(child.taskId),parent.conversationId);
+    const unbound=app.runtime.submitTask({goal:'unbound',conversationId:`desktop-subtask:${parent.taskId}`,idempotencyKey:'unbound'});
+    assert.equal(app.readToolConversation(unbound.taskId),undefined);
+  }finally {app.close();}
+});
+
 test('Runtime model factory composes each public provider and denies revoked credentials before network', async () => {
   assert.throws(()=>createConfiguredSubagentModelGateway({profile:'local',provider:'openai-compatible',
     baseUrl:'https://synthetic.invalid/v1',model:'synthetic',deployment:'synthetic',apiKey:()=>''}),{code:'UNSUPPORTED_CAPABILITY'});
@@ -56,7 +79,7 @@ test('selected models use persisted child IDs, Policy, ToolGateway and Evidence;
     const input = {subtasks:[{subtaskId:'r',role:'researcher',goal:'research',model:'research',thinkingDepth:4},
       {subtaskId:'c',role:'coder',goal:'code',model:'coder',thinkingDepth:2}]};
     const result = await dispatch.execute(input,context(parent));
-    assert.equal(result.succeeded,2);
+    assert.equal(result.succeeded,2,JSON.stringify(result));
     assert.deepEqual(selected,['research','coder']);
     assert.equal(calls.length,2);
     for (const [index,id] of ['r','c'].entries()) {

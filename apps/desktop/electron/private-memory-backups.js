@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 
 /** Host-owned copies only. A note recovery image is not a per-fact SQLite backup. */
-export function createPrivateMemoryBackupHost({userData, privateMemory}) {
+export function createPrivateMemoryBackupHost({userData, privateMemory, assertCoverage}) {
   const root = path.resolve(userData);
   const directory = path.join(root, 'private-memory-backups');
   const recovery = path.join(root, 'knowledge-recovery');
@@ -90,6 +90,7 @@ export function createPrivateMemoryBackupHost({userData, privateMemory}) {
       }
     },
     async reconcile(scope) {
+      await assertCoverage?.(scope);
       const pendingBackupIds = [];
       let copies;
       try {copies = inventory();} catch {return {pendingBackupIds: ['inventory_unavailable']};}

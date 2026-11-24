@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createConversationHistoryTool} from '../electron/conversation-history-tool.js';
@@ -30,7 +31,7 @@ test('actual Runtime consumer retrieves an omitted assistant source through Poli
  let app,sends=0;const original='x'.repeat(14900)+'结尾条件必须保留';
  const history=createConversationHistoryTool({readContext:({taskId,signal})=>app.readConversationContext({taskId,
   conversationId:app.runtime.getTask(taskId).conversationId,deadline:app.runtime.loadCheckpoint(taskId,'application-deadline'),signal})});
- app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'history-fixture',
+ app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'history-fixture',
   initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
   tools:[history.tool],competitionToolAvailability:[history.availability],competitionToolExports:[history.binding],
   automaticTools:[{toolName:history.tool.descriptor.name,toolVersion:'1.0.0'}],
@@ -44,7 +45,7 @@ test('actual Runtime consumer retrieves an omitted assistant source through Poli
    }else{assert.equal(query.continuation.result.messages[0].content,original);assert.ok(query.goal.includes('原来的结尾条件'));
     reply={kind:'text',text:'取回的原文结尾是：结尾条件必须保留。'};}
    return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify(reply),index:0}}),{headers:{'content-type':'application/json'}});
-  }});
+  }}));
  const earlier=app.runtime.submitTask({goal:'旧问题'.repeat(40000),conversationId:'history',idempotencyKey:'earlier'});
  app.runtime.transitionTask(earlier.taskId,'planning');app.runtime.transitionTask(earlier.taskId,'running');app.runtime.transitionTask(earlier.taskId,'verifying');
  app.runtime.transitionTask(earlier.taskId,'succeeded',{resultSummary:original});

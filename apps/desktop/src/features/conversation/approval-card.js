@@ -21,7 +21,7 @@ export function approvalCards(task, approvals = [], now = Date.now()) {
     const buttons=inactive?(validExpiry?'<p role="status">授权已过期</p>':'<p role="status">授权期限无效</p>'):
       `<div class="turn-actions"><button type="button" class="turn-action" data-approval-decision="allow_once" data-approval-id="${escape(item.approvalId)}">同意</button><button type="button" class="turn-action" data-approval-decision="deny" data-approval-id="${escape(item.approvalId)}">拒绝</button></div>`;
     const action=describeAction(item.action);
-    return `<section class="approval-card" data-approval-id="${escape(item.approvalId)}" role="group" aria-label="操作授权"><strong>允许${escape(action)}？</strong><details class="authorization-question-details"><summary>查看详情</summary><p>${escape(describeScopes(item.scopes))}</p><p>${validExpiry?escape(new Date(expiresAt).toLocaleString())+' 前有效':'授权期限无效'}</p></details>${buttons}</section>`;
+    return `<section class="approval-card" data-task-id="${escape(task.taskId)}" data-approval-id="${escape(item.approvalId)}" role="group" aria-label="操作授权"><strong>允许${escape(action)}？</strong><details class="authorization-question-details"><summary>查看详情</summary><p>${escape(describeScopes(item.scopes))}</p><p>${validExpiry?escape(new Date(expiresAt).toLocaleString())+' 前有效':'授权期限无效'}</p></details>${buttons}</section>`;
   }).join('');
 }
 
@@ -33,9 +33,8 @@ function matchingApprovalCard(root, taskId, approvalId) {
     ...root.querySelectorAll('.authorization-question-card'),
   ];
   if (typeof approvalId === 'string' && approvalId) {
-    const exact = candidates.find(node => node.getAttribute?.('data-approval-id') === approvalId
-      || Boolean(node.querySelector?.(`[data-approval-id="${css(approvalId)}"]`)));
-    if (exact) return exact;
+    return candidates.find(node => node.getAttribute?.('data-task-id') === taskId
+      && node.getAttribute?.('data-approval-id') === approvalId) ?? null;
   }
   const byTurn = root.querySelector(`[data-turn="${css(taskId)}"] .approval-card`)
     ?? root.querySelector(`[data-workspace-approvals="${css(taskId)}"] .approval-card`);

@@ -5,13 +5,18 @@ import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {createDeveloperSettingsHost} from '../electron/developer-settings-host.js';
+import {prepareConfiguredWorkflowDecisionQuestion} from '../electron/configured-workflow-decision-source.js';
 
 // Execute the actual Desktop composition callback without starting Electron.
 // Other participants are explicit Fakes; this is not a cloud/UI or full Runtime test.
 const main=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8');
 const ast=ts.createSourceFile('main.js',main,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS),callbacks=[];
 function visit(node){
-  if(ts.isPropertyAssignment(node)&&node.name.getText(ast)==='prepareCompetitionToolExport')callbacks.push(node.initializer.getText(ast));
+  if(ts.isPropertyAssignment(node)&&node.name.getText(ast)==='prepareCompetitionToolExport'
+    &&ts.isBinaryExpression(node.initializer)&&node.initializer.operatorToken.kind===ts.SyntaxKind.EqualsToken
+    &&node.initializer.left.getText(ast)==='prepareWorkflowToolExport'&&ts.isArrowFunction(node.initializer.right)) {
+    callbacks.push(node.initializer.right.getText(ast));
+  }
   ts.forEachChild(node,visit);
 }
 visit(ast);
@@ -36,6 +41,7 @@ async function fixture(t,{connectorFailure,publicFailure,publicAvailable=true}={
   const developerDeployment=await settings.createDeployment({});
   assert.equal(existsSync(path.join(userData,'developer-settings.json')),false);
   const context=vm.createContext({developerDeployment,remoteMcpCompetition:{async prepare(){}},computerVisionHost:undefined,windowsControlHost:undefined,
+    runtimeApplication:{readAuthorizationQuestionInvocation:()=>undefined},authorizationQuestionHost:undefined,prepareConfiguredWorkflowDecisionQuestion,
     todoHost:undefined,feedsHost:undefined,goalCloudHost:undefined,connectorConversationTools:{async prepareExport(scope){
     calls.push({participant:'connector',scope});if(connectorFailure)throw connectorFailure;
   }},publicReferenceConsent:publicAvailable?{
