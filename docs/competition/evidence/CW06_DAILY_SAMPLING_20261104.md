@@ -1,9 +1,9 @@
 # CW-06 主影选择收益：日常任务 Sampling 接线与台账汇总证据（2026-11-04）
 
-> 目标 Profile：`huawei_ict_agentarts`  
-> 任务包：CW-06「主影选择收益：日常任务的 sampling 接线」  
-> 责任人：zemeng5208  
-> 工作分支：`zemeng/cw06-daily-sampling`（基于 PR #543 head `codex/pr531-cloud-persistent`）  
+> 目标 Profile：`huawei_ict_agentarts`
+> 任务包：CW-06「主影选择收益：日常任务的 sampling 接线」
+> 责任人：zemeng5208
+> 工作分支：`zemeng/cw06-daily-sampling`（基于 PR #543 head `codex/pr531-cloud-persistent`）
 > 依据文件：[COLLABORATOR_WIRING_PACKAGE.md](../COLLABORATOR_WIRING_PACKAGE.md) 第 42/59 行、[OWNED_CONVERSATION_WIRING_20261018.md](../OWNED_CONVERSATION_WIRING_20261018.md) 第 47 行、[CW02_CW06_F23_F26_CODE_20261103.md](CW02_CW06_F23_F26_CODE_20261103.md)。
 
 ---

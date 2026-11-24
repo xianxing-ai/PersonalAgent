@@ -5522,7 +5522,7 @@ async function action(event, name, payload) {
       return result;
     }
   }
-  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.review.configure','mail.disableCloud','mail.monitor.start','mail.monitor.stop'].includes(name)) {
+  if (['mail.configure','mail.enable','mail.dashboard.enable','mail.dashboard.revoke','mail.read','mail.disable','mail.review.configure','mail.disableCloud','mail.monitor.start','mail.monitor.stop'].includes(name)) {
     if (sender !== admin || !competitionMode) throw Error('此操作仅允许从本项目设置调用');
     if(name==='mail.monitor.stop') {
       if(payload!==undefined)throw Error('邮件监测参数无效');
@@ -5580,6 +5580,11 @@ async function action(event, name, payload) {
       if(!runtimeClosed)return mailSnapshot();return;
     }
     if (name === 'mail.enable') mailConfig.enableSession(payload);
+    if (name === 'mail.dashboard.enable') mailConfig.enableDashboardSession(payload);
+    if (name === 'mail.dashboard.revoke') {
+      if (payload !== undefined) throw Error('邮箱看板汇总撤销参数无效');
+      mailConfig.revokeDashboardSession();
+    }
     if (name === 'mail.review.configure') {
       if(!mailAnalysisHost)throw Error('邮件云复核宿主尚未就绪');
       await mailAnalysisHost.configure(payload??{enabled:true});

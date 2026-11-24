@@ -7,7 +7,7 @@ Profile：`huawei_ict_agentarts`。工作树：`.worktrees/zemeng-owned-image-re
 - **#17**：中风险执行后的桌面通知，在无内存 `Notification` 对象（冷启动 / Action Center）时仍能按 Tag 复现点击 → `riskAutonomyHost.compensate` → 导航。
 - 附带修复 **#21 相关 IPC**：主面板/工作台 `mountBriefingPanel` 的「查看审批卡」原先被 `briefing.openDecision` 仅允许 admin 拦截。
 
-未宣称：#05 复杂工作区真机证据；Action Center 真人手点录屏（生产激活路径已接，见收口回执）。  
+未宣称：#05 复杂工作区真机证据；Action Center 真人手点录屏（生产激活路径已接，见收口回执）。
 收口见 `Z09_RECOVERY_REPLAN_PLUGIN_NODECHECK_20261120.md`（#17 recovery+读回 / #19 Crew 派发 / #25 最小权限正例 / #649 诊断+编辑器打开）。
 
 ## 行为

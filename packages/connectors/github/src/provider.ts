@@ -77,5 +77,5 @@ export interface GitHubPort {
 }
 export interface GitHubProvider extends GitHubPort { readonly verification: 'mock' | 'conditional'; dispose?(): void }
 export type GitHubToolContext = ToolContext;
-export const githubOperations: readonly GitHubOperation[] = ['repo.get', 'actions.run.list', 'actions.job.list', 'actions.log.read', 'issue.get', 'issue.list', 'issue.label', 'issue.comment', 'pr.get', 'pr.diff', 'pr.create', 'pr.comment', 'pr.review.comment'];
+export const githubOperations: readonly GitHubOperation[] = ['repo.get', 'actions.run.list', 'actions.job.list', 'actions.log.read', 'issue.get', 'issue.list', 'issue.label', 'issue.comment', 'issue.close', 'pr.get', 'pr.diff', 'pr.create', 'pr.comment', 'pr.review.comment'];
 export const isGitHubWrite = (op: GitHubOperation): boolean => ['actions.repair.link', 'issue.label', 'issue.comment', 'issue.close', 'pr.create', 'pr.comment', 'pr.review.comment'].includes(op);

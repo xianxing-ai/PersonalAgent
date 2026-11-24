@@ -1,8 +1,8 @@
 # 前台 / 同级助手 / 固定工人 — 本地与镜像接线回执
 
-日期：2026-11-21  
-Profile：`huawei_ict_agentarts`  
-工作树：`D:\PersonalAgent\.worktrees\zemeng-owned-image-remediation-20261119`  
+日期：2026-11-21
+Profile：`huawei_ict_agentarts`
+工作树：`D:\PersonalAgent\.worktrees\zemeng-owned-image-remediation-20261119`
 分支：`codex/zemeng-owned-image-remediation-20261119`
 
 ## 行为变化

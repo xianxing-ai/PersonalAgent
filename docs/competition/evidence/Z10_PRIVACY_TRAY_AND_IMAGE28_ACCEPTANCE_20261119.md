@@ -1,7 +1,7 @@
 # Z-10 隐私物理擦除图谱断链、原生托盘总暂停与 28 图可执行底座验收清单（2026-11-19）
 
-> 目标 Profile：`huawei_ict_agentarts`（通用 Local Profile 仅保留既有 `runAgent()` 与 `ModelGateway` 边界，未新增或扩展，且不得静默回退）。  
-> 工作流分支：`codex/z10-privacy-tray-image28-20261119`（基于 `origin/main@f33ef3837`）。  
+> 目标 Profile：`huawei_ict_agentarts`（通用 Local Profile 仅保留既有 `runAgent()` 与 `ModelGateway` 边界，未新增或扩展，且不得静默回退）。
+> 工作流分支：`codex/z10-privacy-tray-image28-20261119`（基于 `origin/main@f33ef3837`）。
 > 状态口径：本文严格区分 **`verified_local_or_docker`（本机门禁 / SQLite / 本地 Docker 容器已实证）** 与 **`pending_real_human_or_cloud_acceptance`（需真人授权 / 真机 Windows 桌面 / 真实华为云 AgentArts 联调与推送授权）**。任何本地 Fixture、SQLite 或本地容器验证均不冒充真云或真机验收，也不自动触发 SWR `-Push` 或切换云端 `Latest`。
 
 ---

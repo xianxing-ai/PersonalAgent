@@ -22,12 +22,12 @@ node --test apps/desktop/test/crew-replan-dispatcher.test.mjs \
   apps/desktop/test/node-check-diagnostics.test.mjs
 ```
 
-`npm test --workspace=@personal-agent/productivity`  
+`npm test --workspace=@personal-agent/productivity`
 `npm test --workspace=@personal-agent/plugin-catalog`
 
 ## 真机 toast 手点说明
 
-生产路径已接：`Notification.handleActivation` → Tag → `activateByNativeTag` → `riskAutonomyHost.compensate`。  
+生产路径已接：`Notification.handleActivation` → Tag → `activateByNativeTag` → `riskAutonomyHost.compensate`。
 本地用冷激活 + FakeStorage/TodoService 读回证明补偿闭环；**Windows 通知中心真人手点**仍需本机有自动执行后的 toast 时点一次确认（不另造第二套协议）。
 
 ## 未宣称

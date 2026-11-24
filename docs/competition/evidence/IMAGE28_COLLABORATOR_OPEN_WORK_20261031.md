@@ -2,11 +2,11 @@
 
 > **已恢复按模块分工**。下列开发缺口按 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 的各模块负责人交付。#531 仍须完成全部接线及真实验收才可合并，未满足项不得勾选为完成。
 
-> Profile：`huawei_ict_agentarts`。归属与开放缺口登记（可随分工文档合入 main）。  
-> 接线代码在 [#531](https://github.com/xianxing-ai/PersonalAgent/pull/531) / `codex/image28-full-wiring`，**接线未完成前勿合并该 PR**。  
-> 对照：[28 图工作记录](IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。  
-> **规则**：缺受信口保持 unavailable，禁止 Fake/静默回退 Local；每人交付「生产口 → 实际调用方 → 测试 → Evidence」；勾选 152 项须具备生产注册 + 真实宿主 + 约定证据。  
-> **分工修订（Owner，2026-10-31）**：**`2511375597-lab` 负责全部前端与前端接线**（Renderer/设置页/工作区 UI、Desktop 组合层把图 host/worker/IPC 接到对话与设置、相关 smoke）。Electron 受信设备宿主（语音/键鼠/WinForms 原生能力本身）、Runtime/Policy、业务连接器实现、AgentArts 云端仍归原负责人；lab 只接公开口，不伪造后端。  
+> Profile：`huawei_ict_agentarts`。归属与开放缺口登记（可随分工文档合入 main）。
+> 接线代码在 [#531](https://github.com/xianxing-ai/PersonalAgent/pull/531) / `codex/image28-full-wiring`，**接线未完成前勿合并该 PR**。
+> 对照：[28 图工作记录](IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。
+> **规则**：缺受信口保持 unavailable，禁止 Fake/静默回退 Local；每人交付「生产口 → 实际调用方 → 测试 → Evidence」；勾选 152 项须具备生产注册 + 真实宿主 + 约定证据。
+> **分工修订（Owner，2026-10-31）**：**`2511375597-lab` 负责全部前端与前端接线**（Renderer/设置页/工作区 UI、Desktop 组合层把图 host/worker/IPC 接到对话与设置、相关 smoke）。Electron 受信设备宿主（语音/键鼠/WinForms 原生能力本身）、Runtime/Policy、业务连接器实现、AgentArts 云端仍归原负责人；lab 只接公开口，不伪造后端。
 > #531 已代实现大量 fail-closed 工厂与部分 Desktop 条件接线；**下表是仍须各负责人本人完成的缺口**。
 
 ## 接管后的当前增量（2026-11-01）
@@ -164,13 +164,13 @@
 
 - Runtime：大量 `createRuntimeF*` fail-closed、F09/F20 worker capability、F15 frontier/signed-review、F23 shadow、F06 revision checkpoint、AgentArts `f09WorkflowWorkerPorts`→ownedImage、F16/F17 导出。
 - Desktop（后续由 lab 接管演进）：F15 review、F09 feed+worker ports、F06 binding、workflow-graph-composition、F20 case configure。
-- 验证：本工作树 `npm run check` 通过（2026-10-31）。  
+- 验证：本工作树 `npm run check` 通过（2026-10-31）。
 - **未勾 152；未宣称 28 图完成；未注入 F20 worker / F10 enqueue / cloudPersistent。**
 
 ## 建议开工顺序
 
-1. Potatos：F08 真发送/归档 + F06 `invokeTodoCreate` + F12 N04 投递口。  
-2. goo：F04/F05 Gateway invoke + F23 配置消费者。  
-3. lab：在已有口上补齐设置/对话组合与 smoke；跟进三人新口做注入。  
-4. zemeng：固定部署联跑 F09；F15 真人签名；F20 信任闭环设计。  
+1. Potatos：F08 真发送/归档 + F06 `invokeTodoCreate` + F12 N04 投递口。
+2. goo：F04/F05 Gateway invoke + F23 配置消费者。
+3. lab：在已有口上补齐设置/对话组合与 smoke；跟进三人新口做注入。
+4. zemeng：固定部署联跑 F09；F15 真人签名；F20 信任闭环设计。
 5. Evidence 回填后再勾 152 / 整图 done。

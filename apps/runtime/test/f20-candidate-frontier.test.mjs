@@ -83,7 +83,7 @@ test('assertF20CandidateSelection rejects invalid task, operation or selection i
 
 test('assertF20CandidateSelection enforces task lifecycle and readOnlyRecovery states',()=> {
   const {runtime,parentTaskId,operationId,candidateValues,selectedId}=validFixture();
-  
+
   // Cancelled or invalid state in active execution
   runtime.setTaskState(parentTaskId,'succeeded');
   assert.throws(()=>assertF20CandidateSelection({runtime,parentTaskId,operationId,candidateValues,selectedId}),{code:'UNAUTHORIZED'});

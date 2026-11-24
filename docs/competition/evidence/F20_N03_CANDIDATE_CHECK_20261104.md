@@ -1,7 +1,7 @@
 # F20 N03 候选检查 Schema 与 Worker 信任闭环验收证据（2026-11-04）
 
-> 目标 Profile：`huawei_ict_agentarts`  
-> 责任人：`zemeng5208`（依据 `IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md` 编号 3、6 项）  
+> 目标 Profile：`huawei_ict_agentarts`
+> 责任人：`zemeng5208`（依据 `IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md` 编号 3、6 项）
 > 关联依据：`docs/competition/evidence/F20_WORKER_TRUST_GAPS_20261029.md`
 
 ---
@@ -141,5 +141,5 @@
 
 ## 5. 结论
 
-**无生产代码缺口**。  
+**无生产代码缺口**。
 F20「N03 候选检查 Schema 与 Worker 信任闭环」在 `@personal-agent/contracts`、`@personal-agent/agentarts`、`@personal-agent/runtime` 以及 `@personal-agent/desktop` 的所有本地可验证环节均已具备完整实现及测试闭环，保持 fail-closed 语义与未验外部真实服务状态。

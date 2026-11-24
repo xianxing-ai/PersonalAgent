@@ -1,7 +1,7 @@
 # 用户工人持久化 + 华为真实 WSS / 本地 ARM64 构建 · 2026-11-21
 
-Profile：`huawei_ict_agentarts`  
-工作树：`D:\PersonalAgent\.worktrees\zemeng-owned-image-remediation-20261119`  
+Profile：`huawei_ict_agentarts`
+工作树：`D:\PersonalAgent\.worktrees\zemeng-owned-image-remediation-20261119`
 分支：`codex/zemeng-owned-image-remediation-20261119`
 
 ## 1. 用户自定义工人持久化（已做）
@@ -19,7 +19,7 @@ Profile：`huawei_ict_agentarts`
 
 ### 2.1 WSS 绑定 live
 
-入口：`tests/manual/agentarts/owned-binding-live.mjs`（本树已同步 Z01：目录允许多余顶层字段）。  
+入口：`tests/manual/agentarts/owned-binding-live.mjs`（本树已同步 Z01：目录允许多余顶层字段）。
 配置：既有 `.cache/z01-live-20261120/live-config.json`（不落库明文到回执）。
 
 | 项 | 值 |
@@ -59,9 +59,9 @@ Profile：`huawei_ict_agentarts`
 
 ## 3. 未完成（需宿主凭据）
 
-1. `docker login` + `-Push -RegistryReference …` 推 SWR  
-2. 控制台 `UpdateCoreRuntime` 切 Latest / `PA_AGENT_DEPLOYMENT_VERSION`  
-3. AK/SK 或 console `cftk` 做 Logs / ShowOpsTrace 对上本轮 `requestId`  
+1. `docker login` + `-Push -RegistryReference …` 推 SWR
+2. 控制台 `UpdateCoreRuntime` 切 Latest / `PA_AGENT_DEPLOYMENT_VERSION`
+3. AK/SK 或 console `cftk` 做 Logs / ShowOpsTrace 对上本轮 `requestId`
 4. 新镜像上线后，再验云端 `frontDeskWorkerVersion`（当前云端仍为 image28-receipts 代）
 
 ## 提交状态

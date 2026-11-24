@@ -69,6 +69,7 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
     } catch {failure = '邮箱加密配置无法读取，请重新保存';}
   }
   const snapshot = () => ({account: mask(saved?.user), configured: Boolean(saved), sessionAllowed,
+    dashboardSessionAllowed: Boolean(dashboardSessionAllowed && dashboardBoundRevision === saved?.revision),
     cloudAnalysisAllowed: Boolean(cloudGeneration && sessionAllowed && boundRevision === saved?.revision),
     requiresRestart: Boolean(saved && boundRevision !== saved.revision), headersOnly: true,
     status: failure ? 'unavailable' : sessionAllowed ? 'enabled' : saved ? 'disabled' : 'unconfigured',

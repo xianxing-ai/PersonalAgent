@@ -40,7 +40,7 @@ Gemini 镜像修复工作树在 `D:\PersonalAgent\.worktrees\zemeng-owned-image-
 
 > **2026-11-20 更新**：前端验收与完善已改交 Gemini，专用交接见 [FRONTEND_DESIGN_HANDOFF_FOR_GEMINI_20261120.md](./FRONTEND_DESIGN_HANDOFF_FOR_GEMINI_20261120.md)。Codex 接手其余 Z 系列，续接状态见 [Z_SERIES_CODEX_CONTINUATION_20261120.md](file:///D:/PersonalAgent/.worktrees/zemeng-owned-image-remediation-20261119/docs/competition/evidence/Z_SERIES_CODEX_CONTINUATION_20261120.md)。
 
-**工作树** `D:\worktree\e84d\PersonalAgent\.worktrees\image28-live-acceptance`  
+**工作树** `D:\worktree\e84d\PersonalAgent\.worktrees\image28-live-acceptance`
 **分支** `codex/image28-live-acceptance`，HEAD `ac9a2552e6ae75b180b23197fc2394acd1a7c5a9`。本轮改动未提交、未推送。此树也保留了此前 F20 的授权、Runtime 和编译回执修改。以下路径均相对此工作树。
 
 | 区域 | 本轮落地内容 | 具体位置 |
