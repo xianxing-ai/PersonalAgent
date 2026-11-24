@@ -30,7 +30,7 @@ function localAt(date, timeZone) {
 export function createConversationEnvironmentContext({now = () => new Date(),
   readTimeZone = () => new Intl.DateTimeFormat().resolvedOptions().timeZone,
   readUtcOffsetMinutes = date => -date.getTimezoneOffset(), readTodoState = () => undefined,
-  readCalendarState = () => undefined, readF20InputRef = () => undefined} = {}) {
+  readCalendarState = () => undefined, readGitHubState = () => undefined, readF20InputRef = () => undefined} = {}) {
   return scope => {
     const date = now();
     if (!(date instanceof Date) || !Number.isFinite(date.getTime())) throw Error('Trusted clock is unavailable');
@@ -69,6 +69,13 @@ export function createConversationEnvironmentContext({now = () => new Date(),
       guidance:calendar.configured === true
         ? '日历已有本机配置；这不证明账号连接、写入或出机已获许可。按当前任务工具目录和原授权提问卡处理，不能自动创建事件。'
         : '日历工具已装配，但尚缺有效的 CalDAV 账号配置。请用户在设置→连接→CalDAV 日历配置填写本人已有配置；不要索取聊天中的密码，授权提问卡不能替代账号配置。',
+    });
+    const github = readGitHubState(scope);
+    if (github?.registered === true) capabilityGuidance.push({capability:'github',
+      state:github.configured === true ? 'check_task_catalog' : 'configuration_required', callable:false,
+      guidance:github.configured === true
+        ? 'GitHub 连接器已在本机配置；这不证明仓库访问或外部写入已获许可。按当前任务工具目录和原授权提问卡处理，所有 issue/PR/分支等外部写入及首次仓库读取须经授权确认。'
+        : 'GitHub 工具已装配，但尚未连接账号凭据。请用户在设置→连接→GitHub 连接器导入本机 gh 登录或填写 PAT；不要在聊天中索要 Token，授权提问卡不能替代账号连接。',
     });
     const inputRef = readF20InputRef(scope);
     if (typeof inputRef === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(inputRef)) {

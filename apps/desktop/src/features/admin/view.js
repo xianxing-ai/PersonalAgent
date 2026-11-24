@@ -17,6 +17,7 @@ import {mountComputerControls} from '../../app/computer-controls.js';
 import {mountComputerVisionControls} from '../../app/computer-vision-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
+import {mountGitHubControls} from '../../app/github-controls.js';
 import {mountLayaControls} from '../../app/laya-controls.js';
 import {mountWorkspaceControls} from '../../app/workspace-controls.js';
 import {mountAgentArtsControls} from '../../app/agentarts-controls.js';
@@ -280,7 +281,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls,mailSourceControls;
+  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,githubControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls,mailSourceControls;
   window.addEventListener('unload',()=>mailSourceControls?.dispose(),{once:true});
   let installedSkillsControls,pluginCatalogControls,activityControls,sisControls,notificationControls,riskAutonomyControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
@@ -645,6 +646,8 @@ export function mountAdmin(root, invoke, escape) {
     mailControls?.render(data.mail);mailControls?.showSettings(section==='connections');
     if (section==='connections' && data.calendar) calendarControls ??= mountCalendarControls(root.querySelector('.main'),invoke);
     calendarControls?.render(data.calendar);calendarControls?.show(section==='connections');
+    if (section==='connections' && data.github) githubControls ??= mountGitHubControls(root.querySelector('.main'),invoke);
+    githubControls?.render(data.github);githubControls?.show(section==='connections');
     if (section==='connections' && data.feeds) feedsControls ??= markProMounted(main, () => mountFeedsControls(root.querySelector('.main'),invoke));
     feedsControls?.render(data.feeds);feedsControls?.show(section==='connections');
     if(section==='connections' && data.todo) todoControls ??= mountTodoControls(root.querySelector('.main'),invoke);

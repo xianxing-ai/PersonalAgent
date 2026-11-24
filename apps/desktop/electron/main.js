@@ -25,6 +25,8 @@ import {createOpenCliBrowserHost} from './opencli-browser-host.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
+import {createGitHubConfig} from './github-config.js';
+import {createGitHubConversationTools} from './github-conversation-tools.js';
 import {projectMailStatus} from './mail-status-projection.js';
 import {projectChildProgress,projectChildToolActivity,projectSubagentActivity,scopeSubagentConversations,openTaskConversation,readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction,handleWorkspaceSubagentAction} from './subagent-window-actions.js';
@@ -529,6 +531,7 @@ function withReviewedRepairLock(work) {
 let productTools;
 let weatherCardHost;
 let connectorConversationTools;
+let githubConversationTools;
 let codingWorkspace;
 let f15ReviewHost,f15ReviewOrigin,f15ReviewViewer,f15ReviewInstalled=false,f15ReviewNotice='';
 let developerDeployment;
@@ -550,6 +553,7 @@ let knowledgeSourceConfig,knowledgeTools,wikiSourceMonitor,obsidianPairing,wikiI
 let competitionToolAvailabilityList = [];
 let mailConfig;
 let calendarConfig;
+let githubConfig;
 let calendarMeetingHost;
 let feedsHost;
 let f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
@@ -1120,6 +1124,7 @@ function snapshot(surface) {
     mail: mailSnapshot(),
     proactiveTasks: proactiveSourceHost?.snapshot(),
     calendar: calendarMeetingHost?.snapshot() ?? calendarConfig?.snapshot(),
+    github: githubConfig?.snapshot(),
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
@@ -2319,6 +2324,8 @@ function readDesktopRequestContext(scope) {
   return createConversationEnvironmentContext({readTodoState:current=>todoHost?.readConversationGuidance?.(current),
     readCalendarState:()=>({registered:connectorConversationTools?.tools.some(tool=>tool.descriptor.name==='calendar.create')===true,
       configured:calendarConfig?.snapshot().configured===true}),
+    readGitHubState:()=>({registered:typeof githubConversationTools!=='undefined'&&(githubConversationTools?.tools.length??0)>0,
+      configured:typeof githubConfig!=='undefined'&&githubConfig?.snapshot().configured===true}),
     readF20InputRef:()=>{
       const selected = codingWorkspace?.readF20CaseConfiguration();
       return selected?.configured === true ? selected.inputRef : undefined;
@@ -3139,6 +3146,9 @@ async function initializeRuntime() {
         getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
         onReadTask:({taskId})=>connectorMailReadOrigin.bind({taskId,conversationId:conversationToolAccess.resolveConversation(taskId)}),
         confirmExport:confirmDeveloperExport});
+      if(!syntheticMvp)githubConversationTools=createGitHubConversationTools({github:githubConfig,question:authorizationQuestionPort,
+        getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        confirmExport:confirmDeveloperExport});
       const {
         createDesktopSubagentDispatchTool,
         SUBAGENT_DISPATCH_TOOL_NAME,
@@ -3500,6 +3510,8 @@ async function initializeRuntime() {
         codingWorkspace,workflowEntries,
       });
       const genericWorkflowTools=(workflowGraphComposition?.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
+      const developerToolNames=new Set((developerDeployment?.host.tools??[]).map(tool=>tool.descriptor.name));
+      const extraGithubTools=(githubConversationTools?.tools??[]).filter(tool=>!developerToolNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(f10Workflow?.tools??[]),
         ...(f26Workflow?.tools??[]),
@@ -3508,7 +3520,7 @@ async function initializeRuntime() {
         ...(f23Workflow?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
-        ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
+        ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),...extraGithubTools,
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
         ...(f01Workflow?.tools??[]),...(f21Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f28Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
@@ -3915,6 +3927,7 @@ async function initializeRuntime() {
           await feedsHost?.prepareExport?.(scope);
           await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
+          if(!developerToolNames.has(proposal?.toolName)) await githubConversationTools?.prepareExport?.(scope);
           const configuredDecision=phase==='preflight'&&prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
           if(!configuredDecision)await codingWorkspace?.prepareExport?.(scope);
           await goalCloudHost?.prepareExport?.(scope);
@@ -3963,10 +3976,10 @@ async function initializeRuntime() {
             profile:'huawei_ict_agentarts',tools:conversationTools,
             competitionToolAvailability:[...(shadowPreview?[shadowPreview.availability]:[]),
               ...(workflowGraphComposition?.competitionToolAvailability??[]),
-              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
+              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...(githubConversationTools?.competitionToolAvailability??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
           competitionToolExports: [...(shadowPreview?[shadowPreview.exportBinding]:[]),
             ...(workflowGraphComposition?.competitionToolExports??[]),
-            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
+            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...(githubConversationTools?.competitionToolExports??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -5483,6 +5496,20 @@ async function action(event, name, payload) {
     if (name === 'calendar.configure') calendarMeetingHost?.invalidate();
     publish(); return result;
   }
+  if (['github.configure','github.detectGh','github.revoke'].includes(name)) {
+    if (sender !== admin || !competitionMode || syntheticMvp || !githubConfig) throw Error('请从正式应用 GitHub 设置操作');
+    if (name === 'github.detectGh') {
+      if (payload?.importToken && (runtimeApplication?.activeTaskCount || runtimeStartup.snapshot().state === 'starting')) throw Error('请等待当前任务及启动结束后修改 GitHub 配置');
+      if (payload?.importToken) await githubConversationTools?.invalidate();
+      const result = await githubConfig.detectLocalGh(payload);
+      if (payload?.importToken) publish();
+      return result;
+    }
+    if (name === 'github.configure' && (runtimeApplication?.activeTaskCount || runtimeStartup.snapshot().state === 'starting')) throw Error('请等待当前任务及启动结束后修改 GitHub 配置');
+    await githubConversationTools?.invalidate();
+    const result = name === 'github.configure' ? await githubConfig.configure(payload) : githubConfig.revoke();
+    publish(); return result;
+  }
   if (['calendar.read','calendar.readTask','calendar.bindMeeting','calendar.refreshMeeting',
     'calendar.respond','calendar.cancel'].includes(name)) {
     if (sender !== admin || !competitionMode || syntheticMvp || !calendarMeetingHost || !client) {
@@ -6740,6 +6767,7 @@ app.whenReady().then(async () => {
     computerVisionConfig.setEgressHost(egressHost);
   }
   if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
+  if (competitionMode && !syntheticMvp) githubConfig = createGitHubConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   ipcMain.on('desktop:live-event', (event, message) => {liveVoice?.receive(event, message);});
   ipcMain.on('desktop:voice-playback-event', (event, message) => {
@@ -7027,6 +7055,7 @@ app.whenReady().then(async () => {
       goalCloudHost?.close();
       calendarMeetingHost?.close();
       void connectorConversationTools?.close();
+      void githubConversationTools?.close();
       computerVisionHost?.close();
       computerVisionConfig?.dispose();
       f15ReviewViewer?.close();f15ReviewHost?.close();
