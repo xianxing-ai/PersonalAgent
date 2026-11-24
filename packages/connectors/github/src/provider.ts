@@ -6,6 +6,7 @@ export interface PageInput extends RepositoryInput { page?: number; perPage?: nu
 export interface NumberInput extends RepositoryInput { number: number }
 export interface TextPage { text: string; offset: number; nextOffset: number | null; truncated: boolean }
 export interface GitHubRepository { fullName: string; defaultBranch: string; private: boolean; url: string }
+export interface GitHubRepositorySummary { repo: string; defaultBranch: string; private: boolean; url: string }
 export interface GitHubRun { id: number; name: string; status: string; conclusion: string | null; headSha: string; url: string; createdAt: string }
 export interface GitHubJob { id: number; runId: number; name: string; status: string; conclusion: string | null; url: string }
 export interface GitHubIssue { number: number; title: string; body: string; state: string; labels: string[]; url: string; updatedAt: string }
@@ -80,7 +81,7 @@ export interface GitHubInputs {
 export interface GitHubOutputs {
   'viewer.get': GitHubUser;
   'repo.get': GitHubRepository;
-  'repo.list': GitHubPage<GitHubRepository>;
+  'repo.list': GitHubPage<GitHubRepositorySummary>;
   'repo.contents': { kind: 'file' | 'dir'; path: string; ref?: string; text?: string; offset?: number; nextOffset?: number | null; truncated?: boolean; entries?: GitHubContentEntry[] };
   'branch.list': GitHubPage<GitHubBranch>;
   'branch.create': GitHubWriteResult;

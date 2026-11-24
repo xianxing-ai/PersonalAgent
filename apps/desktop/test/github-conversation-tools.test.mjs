@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {GitHubRestProvider} from '@personal-agent/github';
 import {createGitHubConversationTools} from '../electron/github-conversation-tools.js';
+import {classifyKnownEgressContent} from '../electron/egress-host.js';
 
 function createQuestionPortMock() {
   const generations = new Map();
@@ -63,6 +64,12 @@ test('createGitHubConversationTools exposes 29 mainstream tools with fail-closed
     if (path === '/user') {
       return new Response(JSON.stringify({login: 'octocat', name: 'Octo Cat', html_url: 'https://github.com/octocat'}), {status: 200});
     }
+    if (path.startsWith('/user/repos?')) {
+      return new Response(JSON.stringify([{full_name: 'acme/app', default_branch: 'main', private: true, html_url: 'https://github.com/acme/app'}]), {status: 200});
+    }
+    if (path === '/repos/acme/app') {
+      return new Response(JSON.stringify({full_name: 'acme/app', default_branch: 'main', private: true, html_url: 'https://github.com/acme/app'}), {status: 200});
+    }
     if (path === '/repos/acme/app/issues' && init.method === 'POST') {
       return new Response(JSON.stringify({number: 42, html_url: 'https://github.com/acme/app/issues/42'}), {status: 201});
     }
@@ -118,6 +125,24 @@ test('createGitHubConversationTools exposes 29 mainstream tools with fail-closed
   assert.equal(viewerResult.login, 'octocat');
   const exportPolicy = host.competitionToolExports.find(x => x.toolName === 'github.viewer.get');
   assert.deepEqual(exportPolicy.project({taskId: viewerScope.taskId, proposalId: viewerScope.proposal.proposalId, result: viewerResult, signal: viewerScope.signal}), viewerResult);
+
+  // Repository tools emit repo (never fullName) so PII egress checks allow cloud continuation.
+  const repoListTool = host.tools.find(x => x.descriptor.name === 'github.repo.list');
+  const repoListScope = makeScope(repoListTool, {sort: 'updated', perPage: 10, page: 1});
+  await host.prepareExport({...repoListScope, phase: 'preflight'});
+  const repoListResult = await repoListTool.execute({sort: 'updated', perPage: 10, page: 1}, repoListScope);
+  assert.equal(repoListResult.items[0].repo, 'acme/app');
+  assert.notEqual(classifyKnownEgressContent(JSON.stringify(repoListResult)), 'forbidden');
+  const repoListExport = host.competitionToolExports.find(x => x.toolName === 'github.repo.list');
+  const projectedRepos = repoListExport.project({taskId: repoListScope.taskId, proposalId: repoListScope.proposal.proposalId, result: repoListResult, signal: repoListScope.signal});
+  assert.equal(repoListExport.accepts({taskId: repoListScope.taskId, proposalId: repoListScope.proposal.proposalId, arguments: {page: 1, perPage: 10, sort: 'updated'}, phase: 'final', projection: projectedRepos}), true);
+
+  const repoGetTool = host.tools.find(x => x.descriptor.name === 'github.repo.get');
+  const repoGetScope = makeScope(repoGetTool, {repo: 'acme/app'});
+  await host.prepareExport({...repoGetScope, phase: 'preflight'});
+  const repoGetResult = await repoGetTool.execute({repo: 'acme/app'}, repoGetScope);
+  assert.equal(repoGetResult.repo, 'acme/app');
+  assert.notEqual(classifyKnownEgressContent(JSON.stringify(repoGetResult)), 'forbidden');
 
   // External writes have presence flag and write summary.
   const issueTool = host.tools.find(x => x.descriptor.name === 'github.issue.create');

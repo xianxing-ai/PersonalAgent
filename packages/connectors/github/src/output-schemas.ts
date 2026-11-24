@@ -20,6 +20,7 @@ const strOrNull = {type: ['string', 'null'], maxLength: 65536};
 const intZero = {type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER};
 const prObj = {type: 'object', properties: {number: n, title: s, body: s, state: s, base: s, baseSha: s, head: s, headSha: s, url: s, draft: {type: 'boolean'}, merged: {type: 'boolean'}, mergedAt: strOrNull, mergeable: boolOrNull, mergeStateStatus: s}, required: ['number', 'title', 'body', 'state', 'base', 'baseSha', 'head', 'headSha', 'url', 'draft'], additionalProperties: false};
 const repoObj = obj({fullName: s, defaultBranch: s, private: {type: 'boolean'}, url: s});
+const repoSummaryObj = obj({repo: s, defaultBranch: s, private: {type: 'boolean'}, url: s});
 const contentEntry = obj({type: {enum: ['file', 'dir']}, path: s, name: s, sha: s, size: intZero, url: s, content: s, truncated: {type: 'boolean'}, offset: intZero, nextOffset: {type: ['integer', 'null'], minimum: 0}}, ['type', 'path', 'name', 'sha', 'size', 'url']);
 const contentsOut = obj({kind: {enum: ['file', 'dir']}, path: s, ref: s, text: s, offset: intZero, nextOffset: {type: ['integer', 'null'], minimum: 0}, truncated: {type: 'boolean'}, entries: {type: 'array', maxItems: 500, items: contentEntry}}, ['kind', 'path']);
 const branchObj = obj({name: s, sha: s, protected: {type: 'boolean'}});
@@ -31,7 +32,7 @@ const prFileObj = obj({filename: s, status: s, additions: intZero, deletions: in
 const outputs: Record<GitHubOperation, Record<string, unknown>> = {
   'viewer.get': obj({login: s, name: strOrNull, url: s}),
   'repo.get': repoObj,
-  'repo.list': page(repoObj),
+  'repo.list': page(repoSummaryObj),
   'repo.contents': contentsOut,
   'branch.list': page(branchObj),
   'branch.create': write,

@@ -2,6 +2,7 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import * as githubModule from '@personal-agent/github';
 import {attachExactExports} from './developer-deployment-config.js';
 import {connectorResultProjectionSchema} from './connector-result-projection.js';
@@ -96,19 +97,34 @@ export function createGitHubConversationTools({
   const host = {
     register(tool) {
       if (!GITHUB_TOOL_NAMES.has(tool.descriptor.name)) return () => {};
+      const descriptor = tool.descriptor.name === 'github.repo.get'
+        ? {
+            ...tool.descriptor,
+            outputSchema: {
+              ...tool.descriptor.outputSchema,
+              properties: {
+                repo: tool.descriptor.outputSchema.properties.fullName,
+                defaultBranch: tool.descriptor.outputSchema.properties.defaultBranch,
+                private: tool.descriptor.outputSchema.properties.private,
+                url: tool.descriptor.outputSchema.properties.url,
+              },
+              required: ['repo', 'defaultBranch', 'private', 'url'],
+            },
+          }
+        : tool.descriptor;
       tools.push({
-        ...tool,
+        descriptor,
         execute: async (input, context) => {
           if (question) {
             const entry = [...prepared.values()].find(
               value => value.scope.taskId === context.taskId && value.scope.runId === context.runId,
             );
-            if (!entry || entry.scope.toolName !== tool.descriptor.name || entry.argumentsDigest !== digest(input)) denied();
+            if (!entry || entry.scope.toolName !== descriptor.name || entry.argumentsDigest !== toolArgumentsDigest(input)) denied();
             context = {...entry.scope, ...context};
           }
           context = {...context, kind: 'github', ...(question ? {questionExecution: true} : {})};
           assertCurrent(context);
-          if (!context.authorizationRef || !tool.descriptor.requiredScopes.every(scope => context.scopes?.includes(scope))) denied();
+          if (!context.authorizationRef || !descriptor.requiredScopes.every(scope => context.scopes?.includes(scope))) denied();
 
           const controller = new AbortController();
           const signal = AbortSignal.any([context.signal, controller.signal]);
@@ -153,6 +169,10 @@ export function createGitHubConversationTools({
 
             const result = await Promise.race([operation, interrupted]);
             assertCurrent(activeContext);
+            if (descriptor.name === 'github.repo.get' && result && typeof result === 'object' && 'fullName' in result) {
+              const {fullName, ...rest} = result;
+              return {repo: fullName, ...rest};
+            }
             return result;
           } catch (error) {
             if (signal.aborted) {
@@ -219,7 +239,7 @@ export function createGitHubConversationTools({
       || !hostTask.confirmed.evidenceRefs.includes(scope.runId) || !isDeepStrictEqual(hostTask.confirmed.result, result)
       || intent?.commandId !== scope.proposalId || intent.toolName !== scope.toolName
       || intent.toolVersion !== scope.toolVersion || intent.deadline !== scope.deadline
-      || digest(intent.arguments) !== entry.argumentsDigest) denied();
+      || toolArgumentsDigest(intent.arguments) !== entry.argumentsDigest) denied();
     return true;
   };
 
@@ -230,7 +250,7 @@ export function createGitHubConversationTools({
     accepts: scope => {
       try {
         const entry = originalPreparation(scope);
-        if (entry.scope.toolName !== tool.descriptor.name || entry.argumentsDigest !== digest(scope.arguments)) return false;
+        if (entry.scope.toolName !== tool.descriptor.name || entry.argumentsDigest !== toolArgumentsDigest(scope.arguments)) return false;
         if (scope.phase === 'final') {
           if (!entry.resultDigest || entry.resultDigest !== digest(scope.projection)) return false;
           const exact = {...entry.scope, signal: scope.signal ?? entry.scope.signal};
@@ -295,7 +315,7 @@ export function createGitHubConversationTools({
             deadline: scope.deadline,
             signal: scope.signal,
           };
-          const entry = {scope: exact, argumentsDigest: digest(scope.proposal.arguments)};
+          const entry = {scope: exact, argumentsDigest: toolArgumentsDigest(scope.proposal.arguments)};
           const id = preparationKey(scope);
           const prior = prepared.get(id);
           if (prior && (prior.scope.runId !== exact.runId || prior.argumentsDigest !== entry.argumentsDigest)) denied();

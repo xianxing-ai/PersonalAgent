@@ -13,6 +13,7 @@ import type {
   GitHubPullRequestFile,
   GitHubReadContext,
   GitHubRepository,
+  GitHubRepositorySummary,
   GitHubSearchCodeItem,
   GitHubSearchIssueItem,
   TextPage,
@@ -81,6 +82,16 @@ export function parseRepository(raw: unknown): GitHubRepository {
     defaultBranch: asString(r.default_branch),
     private: asBool(r.private),
     url: asString(r.html_url),
+  };
+}
+
+export function parseRepositorySummary(raw: unknown): GitHubRepositorySummary {
+  const repo = parseRepository(raw);
+  return {
+    repo: repo.fullName,
+    defaultBranch: repo.defaultBranch,
+    private: repo.private,
+    url: repo.url,
   };
 }
 
@@ -260,7 +271,7 @@ export async function executeGitHubOperation<K extends GitHubOperation>({
       const r = input as GitHubInputs['repo.list'];
       const query = `${pageQuery(r)}${r.sort ? `&sort=${encodeURIComponent(r.sort)}` : ''}${r.affiliation ? `&affiliation=${encodeURIComponent(r.affiliation)}` : ''}`;
       const rows = asArray(await api(`user/repos?${query}`));
-      const items = rows.map(parseRepository).filter(item => isRepoAllowed(repositories, item.fullName));
+      const items = rows.map(parseRepositorySummary).filter(item => isRepoAllowed(repositories, item.repo));
       return paginate(items, r, rows.length);
     }
     case 'repo.contents': {

@@ -160,7 +160,7 @@ test('GitHubRestProvider executes mainstream read and write ops with redaction a
   assert.equal(viewer.login, 'octocat');
 
   const repos = await tools.get('github.repo.list').execute({}, hostCtx(['github:read']));
-  assert.equal(repos.items[0].fullName, 'acme/app');
+  assert.equal(repos.items[0].repo, 'acme/app');
 
   const file = await tools.get('github.repo.contents').execute({ repo: 'acme/app', path: 'README.md', ref: 'main' }, hostCtx(['github:read']));
   assert.equal(file.kind, 'file');
