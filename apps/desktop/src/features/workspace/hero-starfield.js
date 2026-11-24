@@ -27,7 +27,7 @@ function paintScene(canvas, width, height) {
   const cloud = document.createElement('canvas');
   // The cloud is soft by design; sharp stars are drawn separately at display
   // resolution. A smaller source avoids blocking the renderer during resize.
-  cloud.width = Math.min(390, Math.ceil(width / 3.2));cloud.height = Math.min(100, Math.ceil(height / 3.2));
+  cloud.width = Math.min(192, Math.ceil(width / 5));cloud.height = Math.min(56, Math.ceil(height / 5));
   const cloudCtx = cloud.getContext('2d'), pixels = cloudCtx.createImageData(cloud.width, cloud.height);
   for (let y = 0; y < cloud.height; y++) {
     for (let x = 0; x < cloud.width; x++) {
@@ -48,7 +48,7 @@ function paintScene(canvas, width, height) {
   }
   cloudCtx.putImageData(pixels, 0, 0);ctx.drawImage(cloud, 0, 0, width, height);
 
-  const stars = Math.min(2400, Math.round(width * height / 160));
+  const stars = Math.min(700, Math.round(width * height / 420));
   for (let i = 0; i < stars; i++) {
     const x = hash(i, 4) * width, y = hash(i, 9) * height;
     const size = .18 + Math.pow(hash(i, 14), 4) * 1.05;
@@ -83,7 +83,7 @@ function paintScene(canvas, width, height) {
 export function mountHeroStarfield(hero) {
   const canvas = document.createElement('canvas');canvas.className = 'cc-hero-field';
   canvas.setAttribute('aria-hidden', 'true');hero.prepend(canvas);
-  let pending = 0, resizeTimer = 0, disposed = false, previous = '';
+  let pending = 0, resizeTimer = 0, delayTimer = 0, disposed = false, previous = '';
   const paint = () => {
     pending = 0;if (disposed || document.hidden) return;
     const {width, height} = hero.getBoundingClientRect(), signature = `${width}:${height}:${window.devicePixelRatio}`;
@@ -96,12 +96,13 @@ export function mountHeroStarfield(hero) {
   const resized = () => {if(disposed || document.hidden)return;clearTimeout(resizeTimer);resizeTimer=setTimeout(request,100);};
   const visibility = () => {
     hero.dataset.scenePaused = String(document.hidden);
-    if (document.hidden) {clearTimeout(resizeTimer);if(pending){cancelAnimationFrame(pending);pending=0;}}
+    if (document.hidden) {clearTimeout(delayTimer);delayTimer=0;clearTimeout(resizeTimer);if(pending){cancelAnimationFrame(pending);pending=0;}}
+    else if (!previous) {clearTimeout(delayTimer);delayTimer=setTimeout(()=>{delayTimer=0;request();},60);}
     else request();
   };
   const observer = new ResizeObserver(resized);observer.observe(hero);
   document.addEventListener('visibilitychange', visibility);visibility();
-  const dispose = () => {disposed = true;observer.disconnect();clearTimeout(resizeTimer);if (pending) cancelAnimationFrame(pending);document.removeEventListener('visibilitychange', visibility);window.removeEventListener('unload', dispose);};
+  const dispose = () => {disposed = true;observer.disconnect();clearTimeout(delayTimer);clearTimeout(resizeTimer);if (pending) cancelAnimationFrame(pending);document.removeEventListener('visibilitychange', visibility);window.removeEventListener('unload', dispose);};
   window.addEventListener('unload', dispose, {once:true});
   return {dispose};
 }

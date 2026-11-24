@@ -14,8 +14,14 @@ export type Payload<K extends Operation> = Extract<Request, {operation: K}>['pay
 export type Result<K extends Operation> = ProtocolContracts['results'][K];
 export const PROTOCOL_VERSION = '1.0.0';
 export const MAX_FRAME_BYTES = 1024 * 1024;
+/** Hard character ceiling. 1_000_001 is rejected; nothing is truncated. */
 export const MAX_COORDINATION_GOAL_CHARACTERS = 1_000_000;
-export const MAX_COORDINATION_INITIAL_QUERY_BYTES = 1_100_000;
+/**
+ * Query UTF-8 budget. One million BMP characters are at most 3_000_000 bytes.
+ * The remainder covers a tool catalog and continuation receipts inside the query.
+ * Bytes above this are rejected before credentials or transport.
+ */
+export const MAX_COORDINATION_INITIAL_QUERY_BYTES = 3_500_000;
 const ajv = new Ajv({allErrors: true, strict: false});
 ajv.addSchema(schema);
 const referenceValidators = new Map<string, ReturnType<typeof ajv.compile>>();

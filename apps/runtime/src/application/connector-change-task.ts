@@ -15,6 +15,11 @@ export interface ConnectorChangeDecisionTaskOptions {
   now?:()=>number;
 }
 const fail=(code:string):never=>{throw new ProtocolError(code,'Original connector change decision unavailable');};
+const isStopEpochCheckpoint=(runtime:TaskRuntime,task:TaskSnapshot,name:string):boolean=>
+  (name==='execution-epoch'||name==='execution-epoch:advance:task.cancel')
+  &&task.cancelRequested===true
+  &&isDeepStrictEqual(runtime.loadCheckpoint(task.taskId,'execution-epoch:advance:task.cancel'),
+    {reason:'stop',epoch:runtime.readExecutionEpoch(task.taskId)});
 /** Runtime Application owns the local bounded decision worker and task terminal state.
  * Desktop supplies trusted current-source projection ports, not an execution callback. */
 export async function runRuntimeConnectorChangeDecision(options:ConnectorChangeDecisionTaskOptions):Promise<TaskSnapshot> {
@@ -27,7 +32,7 @@ export async function runRuntimeConnectorChangeDecision(options:ConnectorChangeD
     const task=runtime.getTask(taskId);
     if(!isDeepStrictEqual(runtime.loadCheckpoint(taskId,'connector-change-origin'),origin)
       ||task.goal!=='判断是否告知用户：'+options.summary||runtime.readToolExecutions(taskId).length
-      ||runtime.listCheckpointKeys(taskId).some(key=>!allowed.has(key)))fail('RESULT_UNKNOWN');
+      ||runtime.listCheckpointKeys(taskId).some(key=>!allowed.has(key)&&!isStopEpochCheckpoint(runtime,task,key)))fail('RESULT_UNKNOWN');
     return task;
   }
   function current() {
@@ -136,7 +141,8 @@ export async function completeRuntimeConnectorWatchWake({application,scheduleId,
   if(task.state==='created')runtime.saveCheckpointOnce(task.taskId,key,binding);
   const saved=runtime.loadCheckpoint(task.taskId,key);
   if(!isDeepStrictEqual(saved,binding)||runtime.readToolExecutions(task.taskId).length
-    ||runtime.listCheckpointKeys(task.taskId).some(name=>![key,'runtime-interruption:v1','runtime-startup-recovery:v1'].includes(name)))fail('RESULT_UNKNOWN');
+    ||runtime.listCheckpointKeys(task.taskId).some(name=>![key,'runtime-interruption:v1','runtime-startup-recovery:v1'].includes(name)
+      &&!isStopEpochCheckpoint(runtime,task,name)))fail('RESULT_UNKNOWN');
   if(task.cancelRequested||task.state==='cancelling')return runtime.confirmCancellation(task.taskId);
   if(task.state!=='created') {
     // The original admission already began. This only settles that known local

@@ -345,8 +345,8 @@ test('history displays actual follow-up messages, errors, and missing replies as
   assert.ok(ui.content().textContent.includes(unsafe));
   assert.ok(!ui.content().textContent.includes('无任务绑定的消息不得显示'));
   assert.ok(ui.walk(ui.root).every(element => element.tag !== 'script'));
-  assert.equal(ui.content().children[0].tag, 'details');
-  assert.notEqual(ui.content().children[0].open, true);
+  assert.equal(ui.content().children[1].tag, 'details');
+  assert.notEqual(ui.content().children[1].open, true);
 });
 
 test('a rejected cancellation is shown without claiming the task stopped', async t => {

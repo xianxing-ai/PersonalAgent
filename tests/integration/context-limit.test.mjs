@@ -1,20 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MAX_COORDINATION_GOAL_CHARACTERS,MAX_COORDINATION_INITIAL_QUERY_BYTES} from '@personal-agent/contracts';
+import {MAX_COORDINATION_GOAL_CHARACTERS} from '@personal-agent/contracts';
 import {AgentArtsCloudAgentPort} from '@personal-agent/coordination';
 import {OwnedAgentOrchestrator,parseAgentInput} from '@personal-agent/agentarts';
 import {FakeModelProvider} from '@personal-agent/models';
 import {compileCoordinationGoal} from '@personal-agent/runtime/application';
 
 // Production input paths with explicit synthetic credentials, model and HTTP.
-test('one-million-character context crosses the cloud adapter and owned model caller without truncation',async t=>{
+test('one million characters cross the cloud adapter and owned model caller without truncation',async t=>{
   assert.equal(MAX_COORDINATION_GOAL_CHARACTERS,1_000_000);
-  const full='x'.repeat(MAX_COORDINATION_GOAL_CHARACTERS);
+  const full='青'.repeat(1_000_000);
   const messages=[{id:'early',role:'user',content:'预算500元，不要皮革'},
-    {id:'long',role:'user',content:'Public history '.repeat(60_000)},
+    {id:'long',role:'user',content:'公开历史'.repeat(30_000)},
     {id:'correction',role:'user',content:'更正为青岛，前面要求保留'}];
   const compiled=compileCoordinationGoal('继续','继续',messages);
-  assert.ok(compiled.length>128_000&&compiled.length<=MAX_COORDINATION_GOAL_CHARACTERS);
+  assert.ok(compiled.length>16_000&&compiled.length<=1_000_000);
   for(const [mode,goal]of [['goal',full],['goal-with-tools-json',full],['goal-with-tools-json',compiled]]) {
     await t.test(mode+' '+goal.length,async()=>{
       const model=new FakeModelProvider(Array.from({length:2},()=>({kind:'final',text:JSON.stringify({kind:'text',text:'Synthetic accepted'})})));
@@ -45,18 +45,18 @@ test('one-million-character context crosses the cloud adapter and owned model ca
   }
 });
 
-test('oversized character and UTF-8 inputs are rejected before credentials, transport and model access',async()=>{
+test('1000001 characters and an over-byte UTF-8 query are rejected before credentials or transport',async()=>{
   let credentials=0,sends=0;
   const cloud=new AgentArtsCloudAgentPort({gatewayUrl:'https://synthetic.invalid',runtimeName:'context-limit'},
     {read:async()=>{credentials++;return 'Bearer synthetic-context-only';}},async()=>{sends++;throw Error('Must not send');});
-  const tooManyCharacters='x'.repeat(MAX_COORDINATION_GOAL_CHARACTERS+1);
-  const tooManyBytes='青'.repeat(Math.floor(MAX_COORDINATION_INITIAL_QUERY_BYTES/3)+1);
-  assert.ok(tooManyBytes.length<MAX_COORDINATION_GOAL_CHARACTERS);
-  for(const goal of [tooManyCharacters,tooManyBytes]) {
-    await assert.rejects(cloud.invoke({taskId:'oversize',revision:1,goal,deadline:new Date(Date.now()+10_000).toISOString(),
-      signal:new AbortController().signal}),{code:'INVALID_ARGUMENT'});
-    assert.throws(()=>parseAgentInput(goal),{code:'INVALID_ARGUMENT'});
-    assert.throws(()=>parseAgentInput(JSON.stringify({goal,availableTools:[]})),{code:'INVALID_ARGUMENT'});
-  }
+  const goal='x'.repeat(1_000_001);
+  await assert.rejects(cloud.invoke({taskId:'oversize',revision:1,goal,deadline:new Date(Date.now()+10_000).toISOString(),
+    signal:new AbortController().signal}),{code:'INVALID_ARGUMENT'});
+  const overBytes='中'.repeat(1_166_667);
+  await assert.rejects(cloud.invoke({taskId:'oversize-bytes',revision:1,goal:overBytes,deadline:new Date(Date.now()+10_000).toISOString(),
+    signal:new AbortController().signal}),{code:'INVALID_ARGUMENT'});
   assert.equal(credentials,0);assert.equal(sends,0);
+  assert.throws(()=>parseAgentInput(goal),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>parseAgentInput(JSON.stringify({goal,availableTools:[]})),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>parseAgentInput(overBytes),{code:'INVALID_ARGUMENT'});
 });

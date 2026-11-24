@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Text.Json;
@@ -24,6 +25,7 @@ internal sealed class DesktopSession(InputController inputs)
         {
             "initialize" => Initialize(parameters),
             "list_windows" => List(parameters, context),
+            "launch_app" => Launch(parameters, context),
             "activate" => Activate(parameters, context),
             "observe" => Observe(parameters, context),
             "screenshot" => Screenshot(parameters, context),
@@ -58,7 +60,7 @@ internal sealed class DesktopSession(InputController inputs)
     {
         Fields(p);
         return new { protocol = "personal-agent-desktop/1", version = "1.0.0", capabilities = new[]
-        { "list_windows", "activate", "observe", "screenshot", "click", "type", "scroll", "move", "shortcut", "drag", "press", "invoke", "set_value", "select", "focus", "stop" } };
+        { "list_windows", "launch_app", "activate", "observe", "screenshot", "click", "type", "scroll", "move", "shortcut", "drag", "press", "invoke", "set_value", "select", "focus", "stop" } };
     }
     private void Prune()
     {
@@ -103,6 +105,135 @@ internal sealed class DesktopSession(InputController inputs)
         if (!Native.Same(listed.Window, facts)) throw new Refusal("TARGET_STALE");
         context.Check(); return listed;
     }
+
+    private object Launch(JsonElement p, RequestContext context)
+    {
+        Fields(p, "app", "text");
+        if (Text(p, "app", 32) != "notepad") throw new Refusal("UNSUPPORTED_CAPABILITY");
+        var text = p.TryGetProperty("text", out _) ? Text(p, "text") : null;
+        if (text is { Length: 0 }) throw new Refusal("INVALID_ARGUMENT");
+        var currentEpoch = Interlocked.Read(ref epoch);
+        var initialForeground = Native.GetForegroundWindow();
+        var existing = new HashSet<nint>();
+        if (!Native.EnumWindows((window, _) => { existing.Add(window); return true; }, 0))
+            throw new Refusal("EXTERNAL_FAILURE");
+
+        void GuardLifecycle()
+        {
+            context.Check();
+            if (Interlocked.Read(ref epoch) != currentEpoch)
+                throw new Refusal("USER_TAKEOVER", context.Dispatched);
+        }
+
+        GuardLifecycle();
+        var executable = Path.Combine(Environment.SystemDirectory, "notepad.exe");
+        using var launched = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
+        context.Dispatched = true;
+        var readyBy = Min(context.Deadline, DateTime.UtcNow.AddSeconds(8));
+        nint activationRequested = 0;
+        while (DateTime.UtcNow < readyBy)
+        {
+            GuardLifecycle();
+            var window = FreshNotepadWindow(existing);
+            if (window != 0)
+            {
+                var facts = Native.ReadWindow(window, false);
+                var check = NotepadAction.CheckSingleTabTarget(window, facts.Pid, new DateTime(facts.StartTicks, DateTimeKind.Utc));
+                if (check.Success)
+                {
+                    var root = AutomationElement.FromHandle(window);
+                    if (root.Current.ProcessId != facts.Pid
+                        || !NotepadAction.TryGetOnlyEditableTextControl(root, out var editControl, out var editor, out _))
+                    {
+                        context.Token.WaitHandle.WaitOne(75);
+                        continue;
+                    }
+                    if (editor!.Current.Value.Length != 0)
+                        throw new Refusal("RESULT_UNKNOWN", true);
+                    GuardLifecycle();
+                    var foreground = Native.GetForegroundWindow();
+                    if (foreground != window && foreground != initialForeground)
+                        throw new Refusal("USER_TAKEOVER", true);
+                    if (foreground != window && activationRequested != window)
+                    {
+                        activationRequested = window;
+                        Native.SetForegroundWindow(window);
+                    }
+                    if (Native.GetForegroundWindow() == window)
+                    {
+                        if (text is not null)
+                        {
+                            var generation = inputs.Generation;
+                            void CheckWindow()
+                            {
+                                GuardLifecycle();
+                                if (inputs.Generation != generation || Native.GetForegroundWindow() != window
+                                    || Native.GetWindowThreadProcessId(window, out var owner) == 0 || owner != facts.Pid)
+                                    throw new Refusal("TARGET_STALE", true);
+                            }
+                            CheckWindow();
+                            editControl!.SetFocus();
+                            var focusBy = Min(context.Deadline, DateTime.UtcNow.AddMilliseconds(500));
+                            while (!editControl.Current.HasKeyboardFocus && DateTime.UtcNow < focusBy)
+                            {
+                                CheckWindow();
+                                context.Token.WaitHandle.WaitOne(25);
+                            }
+                            void CheckEditor()
+                            {
+                                CheckWindow();
+                                if (!editControl.Current.HasKeyboardFocus) throw new Refusal("TARGET_STALE", true);
+                            }
+                            CheckEditor();
+                            if (editor.Current.Value.Length != 0) throw new Refusal("TARGET_STALE", true);
+                            inputs.TypeText(text, context, CheckEditor);
+                            var readBy = Min(context.Deadline, DateTime.UtcNow.AddSeconds(1));
+                            do
+                            {
+                                CheckEditor();
+                                var result = editor.Current.Value;
+                                if (result == text)
+                                    return new { verification = new { state = "verified", kind = "value" } };
+                                context.Token.WaitHandle.WaitOne(30);
+                            } while (DateTime.UtcNow < readBy);
+                            throw new Refusal("RESULT_UNKNOWN", true);
+                        }
+                        var snapshot = Capture(window, context);
+                        GuardLifecycle();
+                        return new { snapshot, verification = new { state = "verified", kind = "app_launched" } };
+                    }
+                }
+            }
+            context.Token.WaitHandle.WaitOne(75);
+        }
+        throw new Refusal("RESULT_UNKNOWN", true);
+    }
+
+    private static nint FreshNotepadWindow(IReadOnlySet<nint> existing)
+    {
+        var processes = Process.GetProcessesByName("notepad");
+        try
+        {
+            var pids = processes.Where(NotepadAction.IsTrustedNotepadProcess).Select(process => (uint)process.Id).ToHashSet();
+            nint result = 0;
+            var complete = Native.EnumWindows((window, _) =>
+            {
+                if (existing.Contains(window) || !Native.IsWindowVisible(window) || Native.GetWindow(window, 4) != 0
+                    || Native.GetWindowThreadProcessId(window, out var pid) == 0 || !pids.Contains(pid))
+                    return true;
+                if (result != 0) return false;
+                result = window;
+                return true;
+            }, 0);
+            if (!complete) throw new Refusal("RESULT_UNKNOWN", true);
+            return result;
+        }
+        finally
+        {
+            foreach (var process in processes) process.Dispose();
+        }
+    }
+
     private object Activate(JsonElement p, RequestContext context)
     {
         Fields(p, "windowRef"); var listed = ResolveWindow(Text(p, "windowRef", 128), false, context);

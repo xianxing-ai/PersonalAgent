@@ -3,7 +3,7 @@ export function mountUsageBudget(parent, invoke) {
   const section = document.createElement('section');
   section.className = 'sheet usage-budget';
   section.hidden = true;
-  section.innerHTML = `<div class="settings-list">
+  section.innerHTML = `<div class="usage-budget-head"><h3>预算上限与保护策略</h3><p class="muted">变更即时生效；手动发起的任务仍会执行并提示。</p></div><div class="settings-list">
       <label class="setting-row"><span><b>每日上限</b><small>元。留空表示不限制。模型 token 与云端时长都计入估算。</small></span><input data-usage="daily" type="number" min="0" step="0.01" inputmode="decimal" aria-label="每日上限" placeholder="不限制"></label>
       <label class="setting-row"><span><b>每月上限</b><small>元。留空表示不限制。</small></span><input data-usage="monthly" type="number" min="0" step="0.01" inputmode="decimal" aria-label="每月上限" placeholder="不限制"></label>
       <label class="setting-row"><span><b>超限后的处理</b><small>手动发起的任务仍会执行并提示。</small></span><select data-usage="action" aria-label="超限后的处理"><option value="degrade">降级到更便宜的模型</option><option value="pause">暂停非必要的自主任务</option></select></label>

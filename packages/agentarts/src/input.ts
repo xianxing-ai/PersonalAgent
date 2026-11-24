@@ -84,6 +84,7 @@ export function parseAgentInput(query: unknown): AgentInput {
   }
   exact(object, ['goal', 'availableTools',...('executionModel' in object?['executionModel']:[])]);
   boundedText(object.goal, MAX_COORDINATION_GOAL_CHARACTERS);
+  if (Buffer.byteLength(query, 'utf8') > MAX_COORDINATION_INITIAL_QUERY_BYTES) invalid();
   const availableTools = parseCoordinationAvailableTools(object.availableTools);
   return {...(hostInput(object.goal) ?? {kind: 'initial' as const, goal: object.goal, availableTools}),...executionModel};
 }

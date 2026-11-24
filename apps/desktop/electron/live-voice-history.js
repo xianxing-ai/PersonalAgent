@@ -1,6 +1,7 @@
 // Host-local overlay for the existing Conversations store, not a second task store.
 import {createLiveHistoryQueue} from './live-history-queue.js';
 import {compileCoordinationGoal} from '@personal-agent/runtime/application';
+const LIVE_CONTEXT_CHARACTERS=128_000;
 
 export function createLiveVoiceHistory({save, readContext = () => '', recentLimit = 20,
   recoveryStore, queue = createLiveHistoryQueue({store: recoveryStore})}) {
@@ -83,10 +84,10 @@ export function createLiveVoiceHistory({save, readContext = () => '', recentLimi
     }
     entries.push(...messagesById.values());
     const ordered=entries.sort((a,b)=>a.time-b.time).map(({id,role,text,taskState},index)=>({id:id??'live-context-'+index,role,content:String(text),...(taskState?{taskState}:{})}));
-    const compiled=ordered.length?JSON.parse(compileCoordinationGoal('衔接本会话前文','衔接本会话前文',ordered,'preserve-user-requests')).conversationContext:{messages:[]};
+    const compiled=ordered.length?JSON.parse(compileCoordinationGoal('衔接本会话前文','衔接本会话前文',ordered,'preserve-user-requests',LIVE_CONTEXT_CHARACTERS)).conversationContext:{messages:[]};
     const selected=compiled.messages.map(({role,content,taskState})=>({role,text:content,...(taskState?{taskState}:{})}));
     if(compiled.selection)selected.push({role:'assistant',text:JSON.stringify({contextSelection:compiled.selection})});
-    if(JSON.stringify(selected).length>128_000)throw Error('Live 关键上下文超过预算，无法完整发送，请缩小范围');
+    if(JSON.stringify(selected).length>LIVE_CONTEXT_CHARACTERS)throw Error('Live 关键上下文超过预算，无法完整发送，请缩小范围');
     return selected;
   }
   return {record, flush, context, messages, snapshot:()=>({...queue.snapshot(), contextDegraded,pendingCount:queue.snapshot().pending,

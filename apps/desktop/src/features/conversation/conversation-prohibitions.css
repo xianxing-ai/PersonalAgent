@@ -1,0 +1,104 @@
+.conversation-prohibitions-sidebar{
+  --pr-bg:var(--cc-solid,var(--surface,#1c1e24));
+  --pr-soft:var(--cc-soft,var(--surface-2,rgba(255,255,255,.05)));
+  --pr-hover:var(--cc-hover,rgba(255,255,255,.09));
+  --pr-input:var(--cc-input,rgba(255,255,255,.06));
+  --pr-text:var(--cc-text,var(--fg,#eceef2));
+  --pr-muted:var(--cc-muted,var(--fg-2,#9aa1ae));
+  --pr-line:var(--cc-line,var(--glass-border,rgba(255,255,255,.12)));
+  --pr-action:var(--cc-action,#eceef2);
+  --pr-action-ink:var(--cc-action-ink,#14161a);
+  --pr-danger:#ef6a72;
+  position:relative;padding:8px;z-index:20;color:var(--pr-text)
+}
+:root[data-theme="light"] .conversation-prohibitions-sidebar{
+  --pr-bg:var(--cc-solid,#f8f9fb);
+  --pr-soft:var(--cc-soft,rgba(0,0,0,.035));
+  --pr-hover:var(--cc-hover,rgba(0,0,0,.065));
+  --pr-input:var(--cc-input,#ffffff);
+  --pr-text:var(--cc-text,#1f2329);
+  --pr-muted:var(--cc-muted,#646b76);
+  --pr-line:var(--cc-line,rgba(0,0,0,.11));
+  --pr-action:var(--cc-action,#1f2329);
+  --pr-action-ink:var(--cc-action-ink,#ffffff)
+}
+.conversation-prohibitions-sidebar button{font:inherit;cursor:pointer;color:inherit}
+.conversation-prohibitions-sidebar>[data-prohibitions-toggle]{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  border:1px solid var(--pr-line);border-radius:8px;background:var(--pr-soft);color:var(--pr-muted);
+  padding:5px 10px;font-size:12px;transition:background .15s ease,color .15s ease,border-color .15s ease
+}
+.conversation-prohibitions-sidebar>[data-prohibitions-toggle]:hover{background:var(--pr-hover);color:var(--pr-text)}
+.conversation-prohibitions-editor{
+  position:absolute;top:0;right:0;z-index:90;
+  width:min(376px,calc(100vw - 24px));max-height:min(76vh,560px);overflow:auto;
+  display:flex;flex-direction:column;gap:12px;padding:18px;box-sizing:border-box;
+  border:1px solid var(--pr-line);border-radius:16px;
+  background:var(--pr-bg);color:var(--pr-text);
+  box-shadow:0 18px 48px rgba(0,0,0,.38);scrollbar-width:thin;scrollbar-color:var(--pr-line) transparent
+}
+.conversation-prohibitions-editor[hidden]{display:none}
+.prohibitions-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.prohibitions-head h3{margin:0;font-size:14px;font-weight:600;letter-spacing:-.2px;color:var(--pr-text)}
+.prohibitions-close{
+  padding:5px 10px;border:1px solid var(--pr-line);border-radius:8px;
+  background:transparent;color:var(--pr-muted);font-size:11.5px;transition:background .15s ease,color .15s ease
+}
+.prohibitions-close:hover{background:var(--pr-hover);color:var(--pr-text)}
+.prohibitions-desc{
+  margin:0;padding:10px 12px;border:1px solid var(--pr-line);border-radius:10px;
+  background:var(--pr-soft);color:var(--pr-muted);font-size:12px;line-height:1.55;
+  white-space:pre-wrap;overflow-wrap:anywhere
+}
+.cc-rail .conversation-prohibitions-sidebar{padding:8px 0 0}
+.cc-rail .conversation-prohibitions-sidebar>[data-prohibitions-toggle]{width:100%;padding:6px 8px}
+.cc-rail .conversation-prohibitions-editor{position:fixed;top:auto;bottom:18px;left:248px;right:auto}
+@media(max-width:760px){.cc-rail .conversation-prohibitions-editor{left:12px;right:12px;bottom:12px;width:auto}}
+.panel>.conversation-prohibitions-sidebar{position:absolute;top:62px;right:20px;z-index:4}
+.panel>.conversation-prohibitions-sidebar>[data-prohibitions-toggle]{padding:3px 8px;font-size:11px}
+.panel>.thread{padding-top:42px}
+.panel .conversation-prohibitions-editor{position:fixed;top:56px;left:12px;right:12px;width:auto;max-height:calc(100vh - 72px)}
+[data-prohibitions-list]{display:flex;flex-direction:column;gap:8px}
+[data-prohibitions-list]:empty{display:none}
+.conversation-prohibitions-editor article{
+  display:flex;flex-direction:column;gap:6px;padding:10px 12px;
+  border:1px solid var(--pr-line);border-radius:11px;background:var(--pr-soft)
+}
+.conversation-prohibitions-editor article strong{font-size:12px;font-weight:600;color:var(--pr-text)}
+.conversation-prohibitions-editor article p{margin:0;font-size:12px;line-height:1.5;color:var(--pr-muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.prohibitions-item-actions{display:flex;gap:8px;margin-top:2px}
+.prohibitions-item-actions button{
+  padding:4px 10px;border:1px solid var(--pr-line);border-radius:7px;
+  background:transparent;color:var(--pr-muted);font-size:11px
+}
+.prohibitions-item-actions button:hover{background:var(--pr-hover);color:var(--pr-text)}
+.prohibitions-item-actions button:last-child:hover{border-color:color-mix(in srgb,var(--pr-danger) 55%,transparent);color:var(--pr-danger)}
+[data-prohibitions-form]{display:flex;flex-direction:column;gap:10px}
+.conversation-prohibitions-editor label{display:grid;gap:6px;margin:0;font-size:12px;font-weight:500;color:var(--pr-muted)}
+.conversation-prohibitions-editor textarea,.conversation-prohibitions-editor select{
+  width:100%;box-sizing:border-box;padding:8px 10px;
+  border:1px solid var(--pr-line);border-radius:10px;
+  background:var(--pr-input);color:var(--pr-text);font:inherit;font-size:12.5px;line-height:1.5;
+  color-scheme:dark;outline:none
+}
+:root[data-theme="light"] .conversation-prohibitions-editor textarea,:root[data-theme="light"] .conversation-prohibitions-editor select{color-scheme:light}
+.conversation-prohibitions-editor textarea{resize:vertical;min-height:74px}
+.conversation-prohibitions-editor textarea::placeholder{color:var(--pr-muted);opacity:.72}
+.conversation-prohibitions-editor textarea:focus,.conversation-prohibitions-editor select:focus{border-color:var(--pr-text)}
+.prohibitions-actions{display:flex;align-items:center;gap:8px}
+[data-prohibitions-save]{
+  padding:7px 16px;border:0;border-radius:9px;
+  background:var(--pr-action);color:var(--pr-action-ink);font-size:12px;font-weight:600
+}
+[data-prohibitions-save]:disabled{opacity:.5;cursor:default}
+[data-prohibitions-cancel]{
+  padding:7px 12px;border:1px solid var(--pr-line);border-radius:9px;
+  background:transparent;color:var(--pr-muted);font-size:12px
+}
+[data-prohibitions-cancel]:hover{background:var(--pr-hover);color:var(--pr-text)}
+[data-prohibitions-status]{margin:0;font-size:11.5px;color:var(--pr-muted);min-height:0}
+[data-prohibitions-status]:empty{display:none}
+@media(forced-colors:active){
+  .conversation-prohibitions-editor{background:Canvas;color:CanvasText;border-color:CanvasText;box-shadow:none}
+  .conversation-prohibitions-editor button,.conversation-prohibitions-editor select,.conversation-prohibitions-editor textarea{background:Canvas;color:CanvasText;border:1px solid ButtonText}
+}

@@ -1,4 +1,5 @@
 import {createHash, randomBytes} from 'node:crypto';
+import {existsSync} from 'node:fs';
 import {mkdir, symlink, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {basename, dirname, join, resolve} from 'node:path';
@@ -95,9 +96,16 @@ if(depth<2){const child=cp.spawnSync(process.execPath,['--preserve-symlinks','--
     results.workspaceWrite = await run('workspace-write', [...scriptArgs, 'workspace-write', '0']);
     const noConnections = connections === baselineConnections;
     const abort = new AbortController();
-    const pending = run('workspace-write', ['-e', "require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});setInterval(()=>{},1000)"], abort.signal);
-    const timer = setTimeout(() => abort.abort(), 300);
-    results.cancel = await pending; clearTimeout(timer);
+    const cancelReady = join(workspace, 'cancel-descendant-ready');
+    const descendant = "require('fs').writeFileSync("+JSON.stringify(cancelReady)+",'ready');setInterval(()=>{},1000)";
+    const pending = run('workspace-write', ['-e', "require('child_process').spawn(process.execPath,['-e',"+JSON.stringify(descendant)+"],{stdio:'ignore'});setInterval(()=>{},1000)"], abort.signal);
+    // Cancel a running tree, not a still-verifying cold helper. The original execution deadline remains the bound.
+    const cancel = (): void => abort.abort();
+    options.signal.addEventListener('abort', cancel, {once:true});
+    const timer = setInterval(() => { if (existsSync(cancelReady)) abort.abort(); }, 20);
+    if (options.signal.aborted) abort.abort();
+    try { results.cancel = await pending; }
+    finally { clearInterval(timer); options.signal.removeEventListener('abort', cancel); }
     const readOnly = passed(results.readOnly) && results.readOnly.enforced;
     const workspaceWrite = passed(results.workspaceWrite) && results.workspaceWrite.enforced;
     const networkDeny = passed(results.baseline) && baselineConnections === 6 && noConnections && readOnly && workspaceWrite;

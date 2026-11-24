@@ -1,4 +1,5 @@
 import { ProtocolError } from '@personal-agent/contracts';
+import { CALENDAR_CERT_CODES, isTransportTimeout, transportErrorCode } from './read-context.js';
 import type {
   CalendarEventRecord,
   CalendarFetchPage,
@@ -232,10 +233,16 @@ export class ICalSubscriptionProvider implements CalendarProvider {
     try {
       response = await this.fetchImpl(this.url, {signal: signal ?? new AbortController().signal,
         headers: {'user-agent': USER_AGENT, accept: 'text/calendar, text/plain'}, redirect: 'error'});
-    } catch {
+    } catch (error) {
       if (signalAborted(signal)) throw new ProtocolError('CANCELLED', 'Calendar fetch cancelled', false);
+      const code = transportErrorCode(error);
+      if (isTransportTimeout(error, code)) throw new ProtocolError('TIMEOUT', 'iCal 订阅抓取超时', true);
+      if (code !== null && CALENDAR_CERT_CODES.has(code)) {
+        throw new ProtocolError('EXTERNAL_FAILURE', 'iCal 订阅 TLS 证书校验失败', false);
+      }
       throw new ProtocolError('EXTERNAL_FAILURE', 'iCal 订阅抓取失败', true);
     }
+    if (response.status === 408) throw new ProtocolError('TIMEOUT', 'iCal 订阅源请求超时（HTTP 408）', true);
     if (response.status === 429) throw new ProtocolError('RATE_LIMITED', 'iCal 订阅源限流', true, 60_000);
     if (!response.ok) {
       throw new ProtocolError('EXTERNAL_FAILURE', `iCal 订阅源返回异常（HTTP ${response.status}）`, response.status >= 500);

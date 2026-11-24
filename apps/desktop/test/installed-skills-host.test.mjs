@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -19,7 +20,7 @@ function fixture(instructions='Use three bullet points.',hooks={}) {
   writeFileSync(path.join(source,'binary.bin'),Buffer.from([0xff,0x00]));writeFileSync(path.join(source,'control.txt'),'\u0000text');writeFileSync(path.join(source,'large.txt'),'x'.repeat(65537));
   const store=openLocalSkillStore(path.join(root,'installed.json')),candidate=readLocalSkillDirectory(source);
   const confirmations=[],requests=[];let host,confirmAllowed=true,confirmHook=()=>{},credentialRead=()=>{},fetchReply,historyMessages=[];
-  const app=createAgentArtsRuntimeApplication({path:path.join(root,'runtime.sqlite'),
+  const app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(root,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-installed-skill',hostUserNamespace:'synthetic-skill',
     authorizationProvider:{read:async()=>{await credentialRead();return 'Bearer synthetic';}},
     coordinationInput:{prepareCoordinationGoal:async scope=>{host.prepareTask(scope);return hooks.prepare?.(scope)??scope.publicGoal;},
@@ -29,7 +30,7 @@ function fixture(instructions='Use three bullet points.',hooks={}) {
     fetchImpl:async(_url,init)=>{requests.push(JSON.parse(init.body));
       if(fetchReply)return fetchReply(init);
       return new Response(JSON.stringify({event:'message',data:{text:'Synthetic outline reply',index:0}}),{headers:{'content-type':'application/json'}});
-    }});
+    }}));
   const make=()=>createInstalledSkillsHost({store,runtime:app.runtime,selectDirectory:async()=>source,
     validateRunInput:async publicGoal=>checkInstalledSkillInput(compileCoordinationGoal(publicGoal,publicGoal,host.filterContext(app.readConversationContext({
       conversationId:'desktop-workspace',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,historyMessages})))),
@@ -108,12 +109,12 @@ for(const phase of ['before confirmation','during confirmation'])test(`final inp
     f.app.runtime.transitionTask(task.taskId,'planning');
     f.app.runtime.transitionTask(task.taskId,'running');
     f.app.runtime.transitionTask(task.taskId,'verifying');
-    f.app.runtime.transitionTask(task.taskId,'succeeded',{resultSummary:'Synthetic history '.repeat(8000)});
+    f.app.runtime.transitionTask(task.taskId,'succeeded',{resultSummary:'Synthetic history '.repeat(60_000)});
   };
   if(phase==='before confirmation')seed();
   else f.onConfirm(input=>{if(input.action==='run')seed();});
   let credentialReads=0;f.credential(()=>{credentialReads++;});
-  await assert.rejects(run(f),/128000/);
+  await assert.rejects(run(f),/1000000/);
   assert.equal(f.confirmations.filter(item=>item.action==='run').length,phase==='before confirmation'?0:1);
   assert.equal(f.app.runtime.listTasks({conversationId:'desktop-workspace'}).items.length,1);
   assert.equal(f.requests.length,0);assert.equal(credentialReads,0);
@@ -122,16 +123,16 @@ for(const phase of ['before confirmation','during confirmation'])test(`final inp
 test('Desktop history overlay without task IDs participates in the final budget before confirmation',async t=>{
   const f=fixture('x'.repeat(8000));t.after(()=>{f.host.close();f.app.close();});
   await f.host.install();await f.host.setEnabled({name:f.candidate.name,digest:f.candidate.digest,enabled:true});
-  f.history([{id:'desktop-history',role:'assistant',content:'Public synthetic history '.repeat(6000)}]);
+  f.history([{id:'desktop-history',role:'assistant',content:'Public synthetic history '.repeat(45_000)}]);
   let credentialReads=0;f.credential(()=>{credentialReads++;});
-  await assert.rejects(run(f),/128000/);
+  await assert.rejects(run(f),/1000000/);
   assert.equal(f.confirmations.filter(item=>item.action==='run').length,0);
   assert.equal(f.app.runtime.listTasks({}).items.length,0);assert.equal(f.requests.length,0);assert.equal(credentialReads,0);
 });
 
 test('overflow after trusted private preparation releases the input lease and stops before credentials or HTTP',async t=>{
   const released=[];
-  const f=fixture('Public fixture',{prepare:scope=>scope.publicGoal+'x'.repeat(128000),release:taskId=>released.push(taskId)});
+  const f=fixture('Public fixture',{prepare:scope=>scope.publicGoal+'x'.repeat(1_000_000),release:taskId=>released.push(taskId)});
   t.after(()=>{f.host.close();f.app.close();});
   await f.host.install();await f.host.setEnabled({name:f.candidate.name,digest:f.candidate.digest,enabled:true});
   let credentialReads=0;f.credential(()=>{credentialReads++;});
@@ -146,10 +147,10 @@ test('successful turns without summaries do not hide older usable history from t
   for(let i=0;i<=20;i++) {
     const task=f.app.runtime.submitTask({goal:'Public synthetic history',conversationId:'desktop-workspace',idempotencyKey:'empty-summary-'+i});
     for(const state of ['planning','running','verifying'])f.app.runtime.transitionTask(task.taskId,state);
-    f.app.runtime.transitionTask(task.taskId,'succeeded',i===0?{resultSummary:'Public fixture '.repeat(9000)}:{});
+    f.app.runtime.transitionTask(task.taskId,'succeeded',i===0?{resultSummary:'Public fixture '.repeat(70_000)}:{});
   }
   let credentialReads=0;f.credential(()=>{credentialReads++;});
-  await assert.rejects(run(f),/128000/);
+  await assert.rejects(run(f),/1000000/);
   assert.equal(f.confirmations.filter(item=>item.action==='run').length,0);
   assert.equal(f.app.runtime.listTasks({limit:100}).items.length,21);
   assert.equal(f.requests.length,0);assert.equal(credentialReads,0);
