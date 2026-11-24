@@ -118,4 +118,6 @@ test('createConversationEnvironmentContext reports github guidance when register
     readGitHubState: () => ({registered: true, configured: true}),
   })());
   assert.equal(configured.capabilityGuidance[0].state, 'check_task_catalog');
+  assert.match(configured.capabilityGuidance[0].guidance, /subagent\.dispatch/);
+  assert.match(configured.capabilityGuidance[0].guidance, /capability\.search/);
 });
