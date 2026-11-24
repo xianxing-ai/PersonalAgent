@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,readFile,rm} from 'node:fs/promises';
@@ -28,12 +29,17 @@ async function terminal(application,id) {
   }
   throw Error('Synthetic task did not settle');
 }
-async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,onTaskCallback=()=>{},largeScope=false}={}) {
+async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,repairProtocolOnly=false,onTaskCallback=()=>{},largeScope=false,teacherModel}={}) {
   const root=fileURLToPath(new URL('../../../.cache/desktop-goal-cognition/',import.meta.url));
   await mkdir(root,{recursive:true});const directory=await mkdtemp(path.join(root,'case-'));
   let host,layaCalls=0,goalWrites=0,updateCalls=0,releaseFetch,time=Date.now(),unavailable=unavailableInitially;const sent=[],announced=[];
-  const application=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+  const application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+    ...(repairProtocolOnly?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json'}:{}),
+    readConversationPreference:(_conversationId,taskId)=>{
+      const executionModel=teacherModel && host.readCognitionExecutionModel(taskId);
+      if(executionModel) return {depth:2,fast:false,executionModel};
+    },
     ...(controlledRepair?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json',localRepair:{graphNamespace:namespace,bindingVersion:'desktop-reviewed-execution-v1',
       withSourceLock:async work=>work(),reviewedSource:{resolve:input=>{
         const prepared=host.readPreparedRepair(input.sourceTaskId);return prepared?.kind==='prepared' && prepared.binding.reviewTaskId===input.reviewTaskId?prepared:undefined;
@@ -51,10 +57,10 @@ async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCred
       const context=controlledRepair?JSON.parse(payload.query.slice(payload.query.lastIndexOf('\n')+1)).repairContext:undefined;
       const text=context?JSON.stringify({kind:'repair_candidate',candidateVersion:'1.0',
         candidate:{expectedGraphRevision:context.expectedGraphRevision,changes:context.targets.map(item=>({node:item.node,
-          summary:item.summary,reason:'Synthetic semantic review of selected dependency change',dependencies:item.requestedDependencies}))}}):'合成规划已接收';
+          summary:item.summary,reason:'Synthetic semantic review of selected dependency change',dependencies:item.requestedDependencies}))}}):repairProtocolOnly?JSON.stringify({kind:'text',text:'合成规划已接收'}):'合成规划已接收';
       return new Response(JSON.stringify({event:'message',data:{text,index:0}}),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   const store=application.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],'PRIVATE_SOURCE_SENTINEL','private'));
   store.append(1,node('goal','goal',[ref('private-source')],'原目标','private'));
@@ -89,6 +95,7 @@ async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCred
       answer_confidence:probability,confidence:0.5}}};
   }});
   const options={application,client,facts,namespace,goalHost,chooser,ready:()=>true,
+    readTeacherExecutionModel:()=>teacherModel,
     createHost:input=>createProactiveCognitionHost({...input,now:()=>time}),onTask:item=>{announced.push(item);onTaskCallback(item);},onUpdate:()=>{updateCalls++;},now:()=>time};
   host=createDesktopGoalCognitionHost(options);
   t.after(async()=>{host.close();facts.close();application.close();await rm(directory,{recursive:true,force:true});});
@@ -122,13 +129,13 @@ async function savedGoalCards(t) {
       [key,key===selected?0.98:0.02/(keys.length-1)])),answer_confidence:0.98,confidence:0.5}}};
   }});
   async function open() {
-    application=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
       gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
       beforeCompetitionSend:request=>host.assertCloudSend(request),
       authorizationProvider:{read:async()=> 'Bearer synthetic-not-a-key'},
       fetchImpl:async(_url,input)=>{sent.push(JSON.parse(input.body));return new Response(
         JSON.stringify({event:'message',data:{text:'Synthetic saved planning receipt',index:0}}),
-        {headers:{'content-type':'application/json'}});}});
+        {headers:{'content-type':'application/json'}});}}));
     application.runtime.provisionCoordinationStore(namespace);
     facts=application.createCompetitionFactHost({memoryPath:path.join(directory,'memory.sqlite'),
       memoryNamespace:'synthetic-public-memory',graphNamespace:namespace,consumerKey:'saved-cards'});
@@ -248,22 +255,28 @@ test('uncertain Laya selection hands off one explicit machine review without cla
   assert.equal(f.store.read().revision,5);
 });
 
-test('legacy Goal marker resumes after a transient Laya outage without reopening the old terminal task',async t=>{
-  const f=await fixture(t,{unavailableInitially:true});
-  f.host().configure({enabled:true,cloudAllowed:true});await f.host().tick();
-  assert.equal(f.host().snapshot().status,'error');assert.equal(f.layaCalls(),1);
+test('Goal abstention uses the selected model once when cloud review is authorized',async t=>{
+  const teacherModel={catalogRevision:'a'.repeat(64),modelId:'selected-model'};
+  const f=await fixture(t,{unavailableInitially:true,teacherModel});
+  f.host().configure({enabled:true,cloudAllowed:false});await f.host().tick();
+  assert.equal(f.sent.length,0);assert.equal(f.layaCalls(),1);
   const old=f.application.runtime.listTasks({}).items.find(task=>
     f.application.runtime.loadCheckpoint(task.taskId,'proactive-cognition-review-v1')?.selection?.reason==='unavailable');
   assert.ok(old);assert.equal(old.state,'succeeded');
-  // Emulate the marker saved by older Desktop versions before unavailable propagation was fixed.
+  // Keep the original marker when consent changes after a local review.
   f.application.runtime.saveCheckpoint(f.sourceTaskId,'desktop-goal-cognition-review',old.taskId);
-  f.restoreLaya();f.restart().configure({enabled:true,cloudAllowed:true});await f.host().tick();
-  assert.equal(f.layaCalls(),1,'persisted cooldown survives Desktop restart');
-  f.advance(31_000);await f.host().tick();
+  f.host().configure({enabled:true,cloudAllowed:true});await f.host().tick();
   const taskId=f.announced[0]?.taskId;assert.ok(taskId);
   assert.equal((await terminal(f.application,taskId)).state,'succeeded');
-  assert.equal(f.sent.length,1);assert.equal(f.layaCalls(),2);
-  assert.notEqual(f.application.runtime.loadCheckpoint(f.sourceTaskId,'desktop-goal-cognition-review'),old.taskId);
+  assert.equal(f.sent.length,1);assert.equal(f.layaCalls(),1);
+  const {executionModel,goal}=JSON.parse(f.sent[0].query);
+  assert.deepEqual(executionModel,teacherModel);
+  const payload=JSON.parse(goal.slice(goal.indexOf('\n')+1));
+  assert.equal(payload.layaReason,'unavailable');
+  assert.equal(payload.selectedOption,null);
+  assert.equal(payload.repairContext,undefined);
+  assert.doesNotMatch(goal,/PRIVATE_SOURCE_SENTINEL/);
+  assert.equal(f.application.runtime.loadCheckpoint(f.sourceTaskId,'desktop-goal-cognition-review'),old.taskId);
   assert.equal(f.application.runtime.getTask(old.taskId).state,'succeeded');
   f.advance();await f.host().tick();assert.equal(f.sent.length,1);
 });
@@ -394,7 +407,7 @@ test('a selected strategy must still match the offered candidate and host bindin
 });
 
 test('a structured cloud repair translates only this selected scope and preserves private source omission',async t=>{
-  const f=await fixture(t);
+  const f=await fixture(t,{repairProtocolOnly:true});
   f.host().configure({enabled:true,cloudAllowed:true});await f.host().tick();
   const taskId=f.announced[0].taskId;await terminal(f.application,taskId);
   const binding=f.host().readRepairBinding(taskId);assert.ok(binding);
@@ -698,7 +711,7 @@ async function originalGoalTaskSurface() {
   }
   visit(ast);filter=declaration('conversationProjection').match(/const scoped=([^;]+);/)?.[1];assert.ok(notify&&filter);
   const conversations=new Conversations(undefined),taskGoals=new Map(),tasks=new TaskProjectionCache();
-  const context=vm.createContext({conversations,taskGoals,tasks,Date});
+  const context=vm.createContext({conversations,connectorChangeHost:undefined,taskGoals,tasks,Date});
   vm.runInContext(text.match(/const TASK_GOAL_LIMIT = \d+;/)[0]+'\n'+declaration('rememberTaskGoal')+'\n'+declaration('orderedTasks')+'\n'+declaration('taskSurface')+'\n'+declaration('visibleConversationTask'),context);
   return {conversations,taskGoals,tasks,notify:vm.runInContext('('+notify+')',context),
     panelTasks:()=>{context.surface='panel';context.ordered=context.orderedTasks();return vm.runInContext(filter,context);},

@@ -13,6 +13,8 @@ import type {RepairPolicyOptions,RepairTrace} from './repair-policy.js';
 import {codingRepairConfiguration,createCodingRepairFrontier,compactCodingSnapshot,acceptCodingChecks,parseCodingPatchCandidate,
   analyzeCodingPatches,codingPatchCost,codingPatchRepeated,codingSnapshotFingerprint,codingFailureFingerprint,codingPatchFingerprint,requiredCodingVerification,codingRepairDigestText} from './coding-repair.js';
 import type {CodingRepairFrontier} from './coding-repair.js';
+import {f20DocumentCandidateSchema,parseF20DocumentCandidate} from './f20-worker-trust.js';
+import type {F20DocumentCandidate} from './f20-worker-trust.js';
 
 export type OwnedWorkflowMode = 'main' | 'decision_shadow' | 'trace_replay' | 'isolated';
 export interface WorkflowSelector {
@@ -30,9 +32,12 @@ export interface WorkflowNodeContext {
   template:OwnedWorkflowTemplate;node:OwnedWorkflowNode;input:unknown;
   predecessorOutputs:Readonly<Record<string,unknown>>;availableTools:readonly CoordinationAvailableTool[];
   predecessorStates:Readonly<Record<string,string>>;
+  /** Correlation only; the local host must independently verify the original operation and authorization. */
+  predecessorOperations?:Readonly<Record<string,{operationId:string;toolName:string;toolVersion:string}>>;
   deadline:string;signal:AbortSignal;requestId:string;mode:OwnedWorkflowMode;namespace:string;
   /** Sealed F15 round plus SHA-bound current sources, never a tool grant. */
   codingRepair?:CodingRepairFrontier;
+  rejectedF20Draft?:F20DocumentCandidate;
 }
 export interface WorkflowHostPort {
   /** Discovery is trusted startup composition, never supplied in query by an end user. */
@@ -90,7 +95,8 @@ interface StepState {state:NodeState;value?:unknown;proposal?:WorkflowProposal;e
   repairTrace?:RepairTrace;repairHoldUntil?:string;
   shadow?:{plan:WorkflowShadowSelectedPlan;selectionDigest:string;evaluation?:WorkflowShadowEvaluationReceipt};
   /** Sealed original alternatives; a decision receipt is not a business-tool receipt. */
-  pendingSelection?:readonly WorkflowCandidate[];selectedCandidate?:WorkflowCandidate;pendingGuard?:true}
+  pendingSelection?:readonly WorkflowCandidate[];selectedCandidate?:WorkflowCandidate;pendingGuard?:true;
+  f20DraftReview?:{lastDraft:F20DocumentCandidate;rejectedDigests:readonly string[]}}
 interface CheckpointState {
   workflowVersion:typeof OWNED_WORKFLOW_VERSION;workflowId:string;templateVersion:string;templateDigest:string;
   taskId:string;sessionId:string;controlRevision:number;inputDigest:string;catalogDigest:string;mode:OwnedWorkflowMode;
@@ -116,6 +122,13 @@ export interface OwnedWorkflowAdvanceResult {
 }
 const plain = (value:unknown):value is Record<string,unknown> => !!value&&typeof value==='object'&&!Array.isArray(value);
 const digest = (value:unknown):string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const f20DraftDigest=(draft:F20DocumentCandidate)=>digest([draft.docMarkdown.trim(),draft.sampleSnippet.trim()]);
+/** Rejection memory applies only to real document drafts. Other node values are not drafts and must not abort the turn. */
+function f20DocumentDraft(value:unknown):F20DocumentCandidate|undefined {
+  if(!value||typeof value!=='object'||Array.isArray(value))return undefined;
+  if(!Object.hasOwn(value,'docMarkdown')||!Object.hasOwn(value,'sampleSnippet'))return undefined;
+  return parseF20DocumentCandidate(value);
+}
 const invalid = (message='Invalid owned workflow request'):never => {throw new ProtocolError('INVALID_ARGUMENT',message);};
 const safeId = (value:unknown):value is string => typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value);
 const control = (request:Pick<OwnedWorkflowAdvanceRequest,'signal'|'deadline'>):void => {
@@ -154,6 +167,10 @@ export function workflowCandidateMetadata(node:OwnedWorkflowNode,tools:readonly 
     selectionBasis:node.kind==='tool'?'published_schema_and_task_arguments'
       :node.kind==='host'?'bound_host_arguments_and_task_scope':'actual_sources_and_current_output_requirements',
     resultEvidenceStage:proposed?'after_actual_execution':'required_for_generated_claims'},
+    ...(['F20_N02','F20_N04'].includes(node.id)?{candidateValueSchema:f20DocumentCandidateSchema(),
+      candidateConstraint:node.id==='F20_N02'
+        ?'Use both original sources. Document the observable behavior the implementation actually performs, including exact return values and defaults. TypeScript declarations describe the static contract, not runtime validation: do not claim extra or invalid inputs are rejected unless the implementation actually rejects them. Do not infer operations or side effects from names or existing documentation. Omit unsupported behavior. Include documentation and a TypeScript example with an explicitly typed object, or abstain.'
+        :'Retain the exact original selected F20 document candidate after the verified check, or abstain. Do not claim publication.'}:{}),
     publishedTools:tools.filter(tool=>node.capabilities.some(cap=>cap.kind==='tool'&&cap.name===tool.name)
       ||node.kind==='host'&&tool.name===workflowHostToolName(node.id)).map(tool=>copy(tool))};
 }
@@ -313,22 +330,32 @@ export class OwnedWorkflowEngine {
     }
     const sourceTool=coding&&node.id==='F15_N01'?'workspace.coding_snapshot':coding&&node.id==='F15_N03'&&coding.readPath?'coding.repair.read':undefined;
     const effectiveNode=sourceTool?{...node,kind:'tool' as const,effect:'read' as const,capabilities:[{kind:'tool' as const,name:sourceTool,boundary:'local' as const}]}:node;
+    const predecessors=node.dependencies.map(dependency=>dependency.nodeId);
+    const rejectedF20Draft=state.nodes[node.id]?.f20DraftReview?.lastDraft;
+    // N03 already depends on N02. Carry the sealed selected draft into N04 without changing the imported graph.
+    if(template.workflowId==='F20'&&node.id==='F20_N04')predecessors.push('F20_N02');
     return {template:copy(template),node:copy(effectiveNode),input:copy(request.input),...(coding?{codingRepair:coding}:{}),
-      predecessorOutputs:copy(Object.fromEntries(node.dependencies.map(dep=>{
-        const value=state.nodes[dep.nodeId]?.value;
-        if(state.nodes[dep.nodeId]?.inputReference) {
-          if(!inputReferenced(value)||template.nodes.find(item=>item.id===dep.nodeId)?.kind!=='input'||value.valueDigest!==state.inputDigest
+      ...(rejectedF20Draft?{rejectedF20Draft:copy(rejectedF20Draft)}:{}),
+      predecessorOutputs:copy(Object.fromEntries(predecessors.map(nodeId=>{
+        const value=state.nodes[nodeId]?.value;
+        if(state.nodes[nodeId]?.inputReference) {
+          if(!inputReferenced(value)||template.nodes.find(item=>item.id===nodeId)?.kind!=='input'||value.valueDigest!==state.inputDigest
             ||digest(request.input)!==value.valueDigest) invalid('Workflow input reference does not match its sealed original input');
-          return [dep.nodeId,request.input];
+          return [nodeId,request.input];
         }
-        if(referenced(value)&&Object.hasOwn(request.resolvedValues??{},dep.nodeId)) {
-          const restored=request.resolvedValues![dep.nodeId];
+        if(referenced(value)&&Object.hasOwn(request.resolvedValues??{},nodeId)) {
+          const restored=request.resolvedValues![nodeId];
           if(digest(restored)!==value.valueDigest) invalid('Restored result does not match the original signed checkpoint');
-          return [dep.nodeId,restored];
+          return [nodeId,restored];
         }
-        return [dep.nodeId,value??null];
+        return [nodeId,value??null];
       }))),
-      predecessorStates:Object.fromEntries(node.dependencies.map(dep=>[dep.nodeId,state.nodes[dep.nodeId]!.state])),
+      predecessorStates:Object.fromEntries(predecessors.map(nodeId=>[nodeId,state.nodes[nodeId]!.state])),
+      ...(node.id==='F09_N02'&&state.nodes.F09_N01?.state==='completed'
+        &&state.nodes.F09_N01.proposal?.kind==='tool_proposal'&&state.nodes.F09_N01.proposal.toolName==='feeds.collect'
+        &&!!state.nodes.F09_N01.evidenceRefs?.length?{predecessorOperations:{F09_N01:{
+          operationId:state.nodes.F09_N01.proposal.operationId,toolName:state.nodes.F09_N01.proposal.toolName,
+          toolVersion:state.nodes.F09_N01.proposal.toolVersion}}}:{}),
       availableTools:copy(tools),deadline:request.deadline,signal:request.signal,requestId:request.requestId,
       mode:state.mode,namespace:state.namespace};
   }
@@ -387,7 +414,16 @@ export class OwnedWorkflowEngine {
           this.validateShadowEvaluation(evaluation,plan!,workflowShadowSelectionDigest(result),receipt.nodeId,state);
         }
         if(plan)step.shadow={plan:evaluation?copy(evaluation.plan):{...plan,mode:'ordinary'},selectionDigest:workflowShadowSelectionDigest(result),...(evaluation?{evaluation:copy(evaluation)}:{})};
-        step.state='pending';step.selectedCandidate=copy(selected!);
+        step.state='pending';
+        if(state.workflowId==='F20'&&receipt.nodeId==='F20_N02'&&selected!.abstain) {
+          const drafts=step.pendingSelection.filter(candidate=>!candidate.abstain).flatMap(candidate=>{
+            const draft=f20DocumentDraft(candidate.value);return draft?[draft]:[];
+          });
+          if(!drafts.length)invalid('F20 review requires an original draft');
+          step.f20DraftReview={lastDraft:drafts[0]!,rejectedDigests:[...new Set([
+            ...(step.f20DraftReview?.rejectedDigests??[]),...drafts.map(f20DraftDigest)])]};
+          delete step.selectedCandidate;
+        } else step.selectedCandidate=copy(selected!);
         step.evidenceRefs=[...(step.evidenceRefs??[]),...receipt.evidenceRefs];
         delete step.proposal;delete step.pendingSelection;delete step.reason;
         continue;
@@ -472,11 +508,20 @@ export class OwnedWorkflowEngine {
     if(this.options.decisionTool&&!context.availableTools.some(tool=>tool.name===this.options.decisionTool!.name&&tool.version===this.options.decisionTool!.version)) {
       return {state:'unavailable',reason:'Local decision tool is not published by the trusted Runtime'};
     }
-    const candidates=copy(await this.options.prepareCandidates(context));
+    let candidates=copy(await this.options.prepareCandidates(context));
     control(context);
     if(!Array.isArray(candidates)||candidates.length<2||candidates.length>16||new Set(candidates.map(item=>item.id)).size!==candidates.length
       ||candidates.some(item=>!safeId(item.id)||typeof item.description!=='string'||!item.description.trim()
         ||!Object.hasOwn(item,'value'))) throw new ProtocolError('EXTERNAL_FAILURE','Invalid executor candidates');
+    if(context.template.workflowId==='F20'&&context.node.id==='F20_N02') {
+      const rejected=new Set(state.nodes[context.node.id]!.f20DraftReview?.rejectedDigests??[]);
+      candidates=candidates.filter(candidate=>{
+        if(candidate.abstain)return true;
+        const draft=f20DocumentDraft(candidate.value);
+        return !draft||!rejected.has(f20DraftDigest(draft));
+      });
+      if(candidates.every(candidate=>candidate.abstain))return {state:'failed',reason:'F20 review rejected the original draft and no revised draft was produced'};
+    }
     for(const candidate of candidates)if(candidate.metadata)parseWorkflowSelectionResult({selectedId:candidate.id,metadata:candidate.metadata},candidates.map(item=>item.id));
     const selectionRequest={context:JSON.stringify({workflowId:context.template.workflowId,
       nodeId:context.node.id,label:context.node.label,
@@ -485,6 +530,7 @@ export class OwnedWorkflowEngine {
         ...(context.node.evidenceRequirement?{evidenceRequirement:context.node.evidenceRequirement}:{})},
       ...workflowCandidateMetadata(context.node,context.availableTools),
       ...decisionInput(context),predecessorStates:context.predecessorStates,predecessors:context.predecessorOutputs,
+      ...(context.predecessorOperations?{predecessorOperations:context.predecessorOperations}:{}),
       ...(context.codingRepair?{codingRepair:{round:context.codingRepair.round,scopePaths:context.codingRepair.scopePaths,
         currentSnapshot:context.codingRepair.snapshot,diagnostics:context.codingRepair.diagnostics,
         objective:'Prefer the smallest supported file/line repair among feasible candidates; size is not correctness. Actual current verification is mandatory.',
@@ -770,6 +816,7 @@ export class OwnedWorkflowEngine {
       const prior=state.nodes[id]!;
       state.nodes[id]={...result,...(prior.evidenceRefs?{evidenceRefs:prior.evidenceRefs}:{}),
         ...(prior.shadow?{shadow:prior.shadow}:{}),
+        ...(prior.f20DraftReview&&result.state!=='completed'?{f20DraftReview:prior.f20DraftReview}:{}),
         ...(prior.previousAttempts?{previousAttempts:prior.previousAttempts}:{}),
         ...(prior.repairTrace?{repairTrace:prior.repairTrace}:{}),
         ...(prior.retrySafe?{retrySafe:true}:{})};

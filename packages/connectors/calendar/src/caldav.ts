@@ -1,7 +1,7 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import {randomUUID} from 'node:crypto';
 import { unfoldLines, unescapeIcalText, parseIcalDate } from './ical-subscription.js';
-import { assertReadActive } from './read-context.js';
+import { assertReadActive, CALENDAR_CERT_CODES, transportErrorCode } from './read-context.js';
 import type {
   CalendarEventRecord,
   CalendarFetchPage,
@@ -41,6 +41,8 @@ export interface CalDavReadProviderOptions {
   readonly requestTimeoutMs?: number;
   /** 允许本机回环（localhost/127.0.0.1/[::1]）的明文 http://，仅供本地验收服务器（如 Radicale）；默认关闭。 */
   readonly allowLoopbackHttp?: boolean;
+  /** 可选时钟注入，供与 CalendarService 共享确定性时间源。 */
+  readonly now?: () => number;
 }
 
 /** 一次廉价轮询的快照：集合 ctag 与全部子资源 etag（href → etag）。 */
@@ -297,6 +299,7 @@ export class CalDavProvider implements CalendarProvider {
   private readonly calendarName: string | undefined;
   private readonly fetchImpl: CalDavFetchLike;
   private readonly requestTimeoutMs: number;
+  private readonly now: () => number;
 
   constructor(options: CalDavReadProviderOptions) {
     // 默认仅 HTTPS；allowLoopbackHttp 仅放行本机回环的 http://（本地 Radicale 等验收服务器），
@@ -313,6 +316,7 @@ export class CalDavProvider implements CalendarProvider {
     this.calendarName = options.calendarName;
     this.fetchImpl = options.fetchImpl ?? ((url, init) => fetch(url, init));
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.now = typeof options.now === 'function' ? options.now : Date.now;
     if (!Number.isSafeInteger(this.requestTimeoutMs) || this.requestTimeoutMs < 1 || this.requestTimeoutMs > 120_000) {
       throw new ProtocolError('INVALID_ARGUMENT', 'CalDAV request timeout must be 1..120000 ms');
     }
@@ -324,7 +328,7 @@ export class CalDavProvider implements CalendarProvider {
   }
 
   private async request(method: 'PROPFIND' | 'REPORT', body: string, depth: '0' | '1', context?: CalendarReadContext): Promise<string> {
-    assertReadActive(context);
+    assertReadActive(context, this.now);
     const headers: Record<string, string> = {
       'user-agent': USER_AGENT,
       'content-type': 'application/xml; charset=utf-8',
@@ -335,17 +339,17 @@ export class CalDavProvider implements CalendarProvider {
     const controller = new AbortController();
     const abort = (): void => controller.abort();
     context?.signal?.addEventListener('abort', abort, {once: true});
-    const startedAt = Date.now();
+    const startedAt = this.now();
     const remainingMs = context?.deadline === undefined ? this.requestTimeoutMs : Date.parse(context.deadline) - startedAt;
-    const timeoutAt = startedAt + Math.min(this.requestTimeoutMs, remainingMs);
+    const timeoutAt = startedAt + Math.max(0, Math.min(this.requestTimeoutMs, remainingMs));
     const expire = (): void => {
-      const remaining = timeoutAt - Date.now();
+      const remaining = timeoutAt - this.now();
       if (remaining > 0) {timeout = setTimeout(expire, remaining); return;}
       abort();
     };
-    let timeout = setTimeout(expire, Math.max(0, timeoutAt - Date.now()));
+    let timeout = setTimeout(expire, Math.max(0, timeoutAt - this.now()));
     const interrupted = (): ProtocolError => {
-      assertReadActive(context);
+      assertReadActive(context, this.now);
       return new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 请求超时', true);
     };
     // Bound both fetch and body reads even when an injected transport ignores abort.
@@ -367,10 +371,15 @@ export class CalDavProvider implements CalendarProvider {
         response = await read(() => this.fetchImpl(this.calendarUrl, {method, headers, body,
           signal: controller.signal, redirect: 'error'}));
       } catch (error) {
-        assertReadActive(context);
+        assertReadActive(context, this.now);
         if (error instanceof ProtocolError) throw error;
+        const code = transportErrorCode(error);
+        if (code !== null && CALENDAR_CERT_CODES.has(code)) {
+          throw new ProtocolError('EXTERNAL_FAILURE', 'CalDAV TLS 证书校验失败', false);
+        }
         throw new ProtocolError('EXTERNAL_FAILURE', controller.signal.aborted ? 'CalDAV 请求超时' : 'CalDAV 请求失败', true);
       }
+      if (response.status === 408) throw new ProtocolError('TIMEOUT', 'CalDAV 服务器请求超时（HTTP 408）', true);
       if (response.status === 429) throw new ProtocolError('RATE_LIMITED', 'CalDAV 服务器限流', true, 60_000);
       if (response.status === 401 || response.status === 403) {
         throw new ProtocolError('UNAUTHORIZED', `CalDAV 认证被拒绝（HTTP ${response.status}）`);
@@ -382,12 +391,12 @@ export class CalDavProvider implements CalendarProvider {
       let text: string;
       try { text = await read(() => response.text()); }
       catch (error) {
-        assertReadActive(context);
+        assertReadActive(context, this.now);
         if (error instanceof ProtocolError) throw error;
         throw new ProtocolError('EXTERNAL_FAILURE', controller.signal.aborted ? 'CalDAV 响应读取超时' : 'CalDAV 响应读取失败', true);
       }
       if (text.trim().length === 0) throw new ProtocolError('EXTERNAL_FAILURE', 'CalDAV 响应为空', false);
-      assertReadActive(context);
+      assertReadActive(context, this.now);
       return text;
     } finally {
       clearTimeout(timeout);
@@ -470,7 +479,7 @@ export class CalDavProvider implements CalendarProvider {
       this.selectLatest([candidate, current]);
       return current;
     });
-    assertReadActive(context);
+    assertReadActive(context, this.now);
     const matching = confirmed
       .filter(event => event.status !== 'cancelled'
         && event.startMs < Date.parse(window.toUtc) && event.endMs > Date.parse(window.fromUtc))
@@ -511,8 +520,12 @@ export class CalDavProvider implements CalendarProvider {
 
   /** 更新事件：GET 现值合并（SEQUENCE 递增）后 PUT，写后读回核对。 */
   async updateEvent(input: {uid: string; summary?: string; startUtc?: string; endUtc?: string;
-    location?: string; notes?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
+    location?: string; notes?: string; expectedSequence?: number; ifMatch?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
     const uid = assertWriteUid(input?.uid);
+    if (input.expectedSequence !== undefined && (!Number.isSafeInteger(input.expectedSequence) || input.expectedSequence < 0)) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Calendar expectedSequence must be a non-negative integer');
+    }
+    if (input.ifMatch !== undefined) this.writeEtag(input.ifMatch);
     // Reject unrepresentable instants before even reading the original resource.
     if (input.startUtc !== undefined) assertWriteUtc(input.startUtc, 'startUtc');
     if (input.endUtc !== undefined) assertWriteUtc(input.endUtc, 'endUtc');
@@ -520,8 +533,14 @@ export class CalDavProvider implements CalendarProvider {
     if (resourceUrl === undefined) throw new ProtocolError('NOT_FOUND', 'Calendar event UID is absent');
     const {text: current, etag} = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
     const version = this.writeEtag(etag);
+    if (input.ifMatch !== undefined && version !== this.writeEtag(input.ifMatch)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Calendar resource ETag changed before update; original write was not applied');
+    }
     const parsed = parseCalDavEvents(current).find(event => event.uid === uid);
     if (parsed === undefined) throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar event is unreadable after fetch', false);
+    if (input.expectedSequence !== undefined && parsed.sequence !== input.expectedSequence) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Calendar resource sequence changed before update; original write was not applied');
+    }
     if (parsed.allDay && (input.startUtc === undefined) !== (input.endUtc === undefined))
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Changing one boundary of an all-day event would mix DATE and DATE-TIME');
     const merged = {

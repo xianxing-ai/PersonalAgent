@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
-import type {CoordinationPort,CoordinationRequest,CoordinationResult} from '@personal-agent/coordination';
+import {parseExecutionModelSelection} from '@personal-agent/coordination';
+import type {CoordinationPort,CoordinationRequest,CoordinationResult,ExecutionModelSelection} from '@personal-agent/coordination';
 import type {LayaActionChoiceService} from '@personal-agent/cognition';
 import {actionArgumentsDigest} from '@personal-agent/cognition';
 import {proactiveWorkflowDigest} from '@personal-agent/agentarts';
@@ -12,6 +13,8 @@ export interface RuntimeProactiveDecisionToolOptions {
   teacher?:CoordinationPort;
   /** Trusted Runtime composition carries the original Gateway run; never a model request field. */
   teacherExchange?:(request:CoordinationRequest,context:ToolContext)=>Promise<CoordinationResult>;
+  /** A host-resolved selection from the same fixed deployment's model catalog. */
+  executionModelForTeacher?:(taskId:string)=>ExecutionModelSelection|undefined;
   readContext:(taskId:string,contextRef:string,lifetime:{deadline:string;signal:AbortSignal})=>unknown|Promise<unknown>;
   getRevision:(taskId:string)=>number;
 }
@@ -65,7 +68,10 @@ export function createRuntimeProactiveDecisionTools(options:RuntimeProactiveDeci
         }
         return {selections};
       }
+      const configuredModel=options.executionModelForTeacher?.(context.taskId);
+      const executionModel=configuredModel===undefined?undefined:parseExecutionModelSelection(configuredModel);
       const request:CoordinationRequest={taskId:context.taskId,revision:options.getRevision(context.taskId),deadline:context.deadline,
+        ...(executionModel===undefined?{}:{executionModel}),
         signal:context.signal,textOnly:true,goal:JSON.stringify({goal:'Compare every independent proactive item using only its original contract candidates and original context. '
           +'Return a text answer containing only JSON {"selections":[{"itemId":"original item","candidateId":"original candidate",'
           +'"uncertain":false,"complex":false,"importance":"important|normal|irrelevant","authorityRequired":false}]}. '
@@ -83,8 +89,11 @@ export function createRuntimeProactiveDecisionTools(options:RuntimeProactiveDeci
           ||!questions.some(question=>question.itemId===value.itemId)||seen.has(value.itemId)||!candidates.some(candidate=>candidate.id===value.candidateId)
           ||typeof value.uncertain!=='boolean'||typeof value.complex!=='boolean'||typeof value.authorityRequired!=='boolean'
           ||!['important','normal','irrelevant'].includes(String(value.importance)))throw new ProtocolError('EXTERNAL_FAILURE','Proactive teacher changed original decision bindings');
-        seen.add(value.itemId);return {...value,decidedBy:'deepseek',decisionRef:'proactive-teacher:'+proactiveWorkflowDigest({
-          taskId:context.taskId,runId:context.runId,contract,selection:value})};
+        seen.add(value.itemId);
+        // Older images use this wire value for the teacher stage. The selected model is bound to the receipt.
+        return {...value,decidedBy:'deepseek',decisionRef:'proactive-teacher:'+proactiveWorkflowDigest({
+          taskId:context.taskId,runId:context.runId,contract,selection:value,
+          ...(executionModel===undefined?{}:{executionModel})})};
       });
       return {selections};
     }});

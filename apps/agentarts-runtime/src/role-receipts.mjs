@@ -50,11 +50,15 @@ export function createRoleReceiptWriter({deploymentVersion, write = line => proc
         if (Number.isFinite(receipt.durationMs) && receipt.durationMs >= 0) output.durationMs = receipt.durationMs;
       }
       if (receipt.status === 'completed' && Number.isSafeInteger(receipt.totalTokens) && receipt.totalTokens >= 0) output.totalTokens = receipt.totalTokens;
-      if (receipt.status === 'failed' && ['model_gateway','response_shape','response_json','response_object'].includes(receipt.failureStage)) output.failureStage = receipt.failureStage;
+      if (receipt.status === 'failed' && ['model_gateway','response_shape','response_json','response_object','role_validation'].includes(receipt.failureStage)) output.failureStage = receipt.failureStage;
       if(receipt.status==='failed'&&receipt.failureStage==='response_json') {
         if(['object','array','fenced','other'].includes(receipt.responseJsonShape))output.responseJsonShape=receipt.responseJsonShape;
         if(Number.isSafeInteger(receipt.responseJsonChars)&&receipt.responseJsonChars>=0&&receipt.responseJsonChars<=16000)output.responseJsonChars=receipt.responseJsonChars;
         if(['stop','length','content_filter','tool_calls','other'].includes(receipt.responseStopReason))output.responseStopReason=receipt.responseStopReason;
+      }
+      if (receipt.status === 'failed' && receipt.failureStage === 'role_validation'
+        && ['world_report_invalid','plan_report_invalid','plan_scope_exceeded','plan_unsupported_operation','review_contract_invalid','review_plan_substituted','tool_proposal_invalid'].includes(receipt.validationReason)) {
+        output.validationReason = receipt.validationReason;
       }
       void Promise.resolve(write(JSON.stringify(output)+'\n')).catch(() => {});
     } catch { /* A failed observability sink cannot change model orchestration. */ }

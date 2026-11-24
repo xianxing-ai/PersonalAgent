@@ -12,6 +12,10 @@ export function mountMailControls(root, invoke) {
   cloudControls.className='sis-fields';
   cloudControls.innerHTML='<p class="notice">可让云端模型复核新收到的模糊邮件，仅发送信头，不含正文；历史积压不自动上传，随时可以停止。</p><button data-mail="cloudEnable" type="button">允许新模糊信头云端复核</button><button data-mail="cloudDisable" type="button">停止云端复核</button><p data-mail="cloudStatus" class="notice" role="status"></p>';
   field('status').before(cloudControls);
+  const dashboardControls=document.createElement('div');
+  dashboardControls.className='sis-fields';
+  dashboardControls.innerHTML='<p class="notice">个人数据看板可在本会话只读汇总邮件信头，不跨重启保留，随时可以停止。</p><button data-mail="dashboardEnable" type="button">允许看板只读汇总</button><button data-mail="dashboardRevoke" type="button">停止看板汇总</button><p data-mail="dashboardStatus" class="notice" role="status"></p>';
+  field('status').before(dashboardControls);
   let state = {}, revision=0;
   const pending=new Map();
   const buttons = () => {
@@ -31,6 +35,8 @@ export function mountMailControls(root, invoke) {
     field('disable').disabled = (busy&&!monitorStarting) || !state.configured;
     field('cloudDisable').disabled = busy || !state.cloudAnalysisAllowed;
     field('cloudEnable').disabled = busy || state.configurationPending===true || !state.configured || state.requiresRestart || state.cloudAnalysisAllowed;
+    field('dashboardRevoke').disabled = busy || !state.dashboardSessionAllowed;
+    field('dashboardEnable').disabled = busy || state.configurationPending===true || !state.configured || Boolean(state.requiresRestart) || Boolean(state.dashboardSessionAllowed);
   };
   const run = async (name, payload) => {
     const current=++revision;
@@ -54,6 +60,8 @@ export function mountMailControls(root, invoke) {
   field('disable').onclick = () => run('mail.disable');
   field('cloudDisable').onclick=()=>run('mail.disableCloud');
   field('cloudEnable').onclick=()=>run('mail.review.configure',{enabled:true});
+  field('dashboardEnable').onclick=()=>run('mail.dashboard.enable',{readConsent:true,scope:'personal-dashboard'});
+  field('dashboardRevoke').onclick=()=>run('mail.dashboard.revoke');
   function render(value = {}) {
     state = value;
     const counts = value.counts ?? {};
@@ -84,6 +92,7 @@ export function mountMailControls(root, invoke) {
     const reviewCounts=typeof value.analyses?.reviewed==='number'?` · 复核完成 ${value.analyses.reviewed}，处理中 ${value.analyses.pending??0}，未完成 ${value.analyses.failed??0}`
       :analyses.length?` · 已交接 ${analyses.length}，完成 ${analyses.filter(item=>item.state==='succeeded').length}`:'';
     field('cloudStatus').textContent=`${value.cloudAnalysisAllowed?'新模糊信头云复核已开启；分类结果保留在本机，重要邮件按通知策略提醒':'云复核未开启；本地分类可独立运行'}${reviewCounts}${value.analyses?.failed?' · 云复核未完成的邮件保留本地结果，不代表邮箱读取失败':''}${value.analyses?.reason?` · ${value.analyses.reason}`:''}`;
+    field('dashboardStatus').textContent=value.dashboardSessionAllowed?'本会话看板只读信头汇总已开启；不跨重启保留':'看板只读信头汇总未开启';
     buttons();
   }
   return {render, showSettings(show) {settings.hidden = !show;}, close() {field('key').value = ''; settings.remove();}};

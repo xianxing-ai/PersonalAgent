@@ -1,10 +1,13 @@
 import {
   TASK_FAILURE_READONLY_RETRY_CHECKPOINT,
   TASK_FAILURE_REPAIR_CHECKPOINT,
+  TASK_FAILURE_PARENT_REPLAN_CHECKPOINT,
   applyRepairOperatorChoice,
   goalContainsWriteIntent,
   repairCardView,
+  summarizeRepairFailure,
 } from '@personal-agent/agentarts';
+import {CREW_PARENT_AGENT_ID, parentReplanIntent} from '@personal-agent/crew';
 
 const actions = new Set(['retry', 'abandon', 'replan']);
 
@@ -31,8 +34,28 @@ function inspectReadRetryEligibility(runtime, task) {
   };
 }
 
+function parentReplanDecision(task, record) {
+  const summary = summarizeRepairFailure(record.trace);
+  const classification = summary.classification === 'transient' || summary.classification === 'unrecoverable'
+    ? summary.classification
+    : 'correctable';
+  const effect = record.effect === 'write' || record.effect === 'none' ? record.effect : 'read';
+  return {
+    version: 1,
+    childTaskId: task.taskId,
+    classification,
+    strategy: 'request_parent_replan',
+    reason: '操作者交给父 agent 重新规划',
+    effect,
+    executable: false,
+    requiresApproval: false,
+    risk: record.risk === 'high' ? 'high' : 'ordinary',
+    approved: true,
+  };
+}
+
 /** 桌面只转发三个操作。批准不能由渲染进程打开。 */
-export function createFailureRepairHost(runtime) {
+export function createFailureRepairHost(runtime, options = {}) {
   return {
     view(taskId) {
       const card = repairCardView(runtime.loadCheckpoint(taskId, TASK_FAILURE_REPAIR_CHECKPOINT));
@@ -70,6 +93,7 @@ export function createFailureRepairHost(runtime) {
       );
       runtime.saveCheckpoint(task.taskId, TASK_FAILURE_REPAIR_CHECKPOINT, result.record);
       let followUpTaskId;
+      let replanIntent;
       if (result.enqueueRead && eligibility.allowed) {
         const binding = {
           version: 1,
@@ -89,7 +113,48 @@ export function createFailureRepairHost(runtime) {
           runtime.saveCheckpoint?.(followUpTaskId, TASK_FAILURE_READONLY_RETRY_CHECKPOINT, binding);
         }
       }
-      return {accepted: result.accepted, reason: result.reason, ...(followUpTaskId ? {followUpTaskId} : {}), repair: this.view(task.taskId)};
+      if (result.accepted && input.action === 'replan') {
+        const decision = parentReplanDecision(task, result.record);
+        const intent = parentReplanIntent(CREW_PARENT_AGENT_ID, decision);
+        replanIntent = {action: intent.action, reason: intent.action === 'dispatch' ? intent.goal : intent.reason};
+        if (intent.action === 'dispatch') {
+          const dispatched = options.dispatchParentReplan?.({
+            sourceTaskId: task.taskId,
+            conversationId: task.conversationId,
+            decision,
+            intent,
+          });
+          if (typeof dispatched?.followUpTaskId === 'string' && dispatched.followUpTaskId.trim()) {
+            followUpTaskId = dispatched.followUpTaskId;
+          } else {
+            const binding = {
+              version: 1,
+              sourceTaskId: task.taskId,
+              parentReplan: true,
+              strategy: 'request_parent_replan',
+              classification: decision.classification,
+            };
+            const submitInput = {
+              goal: intent.goal,
+              conversationId: task.conversationId,
+              idempotencyKey: `repair-replan-${task.taskId}-${result.record.trace.attempts.length}`,
+            };
+            if (typeof runtime.submitTaskWithCheckpoint === 'function') {
+              followUpTaskId = runtime.submitTaskWithCheckpoint(submitInput, TASK_FAILURE_PARENT_REPLAN_CHECKPOINT, binding).taskId;
+            } else {
+              followUpTaskId = runtime.submitTask(submitInput).taskId;
+              runtime.saveCheckpoint?.(followUpTaskId, TASK_FAILURE_PARENT_REPLAN_CHECKPOINT, binding);
+            }
+          }
+        }
+      }
+      return {
+        accepted: result.accepted,
+        reason: result.reason,
+        ...(followUpTaskId ? {followUpTaskId} : {}),
+        ...(replanIntent ? {replanIntent} : {}),
+        repair: this.view(task.taskId),
+      };
     },
   };
 }

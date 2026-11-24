@@ -19,23 +19,30 @@ export async function loadExecutionModelConfiguration(environment,{read=readFile
   }catch{fail();}
 }
 /** Trusted startup data only. The digest binds all public routing/capability declarations. */
-export function createExecutionModelRegistry({configuration,createProvider}={}) {
+export function createExecutionModelRegistry({configuration,createProvider,unavailableRoutes=[]}={}) {
   let value=configuration;
   if(typeof value==='string'){try{value=JSON.parse(value);}catch{fail();}}
   if(!fields(value,['version','defaultModelId','models'])||value.version!=='1.0'||!text(value.defaultModelId)
     ||!Array.isArray(value.models)||!value.models.length||typeof createProvider!=='function')fail();
   const ids=new Set();
   const models=value.models.map(entry=>{
-    if(!fields(entry,['id','displayName','reasoningEfforts','requestProfile','route','type','availability'])
+    if(!fields(entry,['id','providerModelId','vendor','tier','displayName','reasoningEfforts','requestProfile','route','type','availability'])
       ||!text(entry.id)||!text(entry.displayName)||ids.has(entry.id)||!Array.isArray(entry.reasoningEfforts)
+      ||entry.providerModelId!==undefined&&!text(entry.providerModelId)
+      ||entry.vendor!==undefined&&!text(entry.vendor)
+      ||entry.tier!==undefined&&!['flagship','flash'].includes(entry.tier)
       ||new Set(entry.reasoningEfforts).size!==entry.reasoningEfforts.length||entry.reasoningEfforts.some(item=>!efforts.includes(item))
       ||!['standard','deepseek-native-v1','bailian-deepseek-v1','huawei-openai-v1'].includes(entry.requestProfile)
-      ||!['agentarts-proxy','runtime-bailian'].includes(entry.route??'agentarts-proxy')
+      ||!['agentarts-proxy','runtime-bailian','runtime-huawei-maas'].includes(entry.route??'agentarts-proxy')
       ||!['text','audio','embedding','image','unknown'].includes(entry.type??'text')
       ||!['available','unverified','unavailable'].includes(entry.availability??'unverified'))fail();
     ids.add(entry.id);
+    const route=entry.route??'agentarts-proxy';
     return {id:entry.id,displayName:entry.displayName,reasoningEfforts:[...entry.reasoningEfforts].sort(),requestProfile:entry.requestProfile,
-      route:entry.route??'agentarts-proxy',type:entry.type??'text',availability:entry.availability??'unverified'};
+      route,type:entry.type??'text',availability:unavailableRoutes.includes(route)?'unavailable':entry.availability??'unverified',
+      ...(entry.providerModelId===undefined?{}:{providerModelId:entry.providerModelId}),
+      ...(entry.vendor===undefined?{}:{vendor:entry.vendor}),
+      ...(entry.tier===undefined?{}:{tier:entry.tier})};
   }).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
   const defaultEntry=models.find(entry=>entry.id===value.defaultModelId);
   if(!defaultEntry||defaultEntry.type!=='text'||defaultEntry.availability==='unavailable')fail();

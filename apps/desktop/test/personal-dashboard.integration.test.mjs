@@ -4,9 +4,12 @@ import {mkdtempSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {TaskRuntime} from '@personal-agent/runtime';
-import {dispatchPersonalDashboardTask} from '@personal-agent/runtime/application';
-import {FakeCalendarProvider} from '@personal-agent/calendar';
+import {dispatchPersonalDashboardTask, createCalendarEventReadTool} from '@personal-agent/runtime/application';
+import {CalDavProvider, FakeCalendarProvider} from '@personal-agent/calendar';
 import {FakeMailProvider} from '@personal-agent/mail';
+import {createCalendarConfig} from '../electron/calendar-config.js';
+import {createDesktopCalendarMeetingHost} from '../electron/calendar-meeting-host.js';
+import {createMailConfig} from '../electron/mail-config.js';
 import {createPersonalDashboardHost} from '../electron/personal-dashboard-host.js';
 import {createDesktopDashboardSources, readSpend, readTime} from '../electron/personal-dashboard-sources.js';
 import {adminAuxiliaryDocument, recordFollowingNodes} from '../test-support/admin-history-dom.mjs';
@@ -208,4 +211,125 @@ test('unauthorized calendar and mail stay hidden, while budget and activity adap
   }, window, signal);
   assert.equal(spend.connected, true);
   assert.equal(spend.samples[0].amountMinor, 250);
+});
+
+test('real calendarConfig, calendarMeetingHost, and question-mode mailConfig authorize dashboard rollup and stop reading immediately after revoke', async t => {
+  const userData = mkdtempSync(path.join(tmpdir(), 'personal-dashboard-p02-'));
+  let clock = Date.parse('2026-03-11T12:00:00.000Z');
+  const runtime = new TaskRuntime(path.join(userData, 'runtime.sqlite'), {now: () => new Date(clock)});
+  t.after(() => runtime.close());
+  const question = {
+    readResourceGeneration: () => 'gen-1',
+    rotateResourceGeneration: () => 'gen-2',
+    prepare() {},
+    currentRequirement() { return false; },
+  };
+  const calendarConfig = createCalendarConfig({userData, safeStorage, question});
+  calendarConfig.configure({
+    providerKind: 'caldav',
+    calendarUrl: 'http://127.0.0.1:5232/alice/work/',
+    calendarName: 'Work CalDAV',
+    username: 'alice',
+    password: 'secret-password',
+  });
+  const readTool = createCalendarEventReadTool({
+    getBinding: () => calendarConfig.binding(),
+    readAuthorization: () => calendarConfig.readAuthorization(calendarConfig.binding()),
+    fetchImpl: async () => ({ok: true, status: 207, text: async () => '<multistatus/>'}),
+  });
+  const meetingHost = createDesktopCalendarMeetingHost({
+    config: calendarConfig,
+    namespace: 'desk-user',
+    question,
+    readTool,
+    readArguments: (binding, externalId) => ({accountRef: binding.accountRef, externalId}),
+    now: () => clock,
+  });
+  meetingHost.bindApplication({
+    runtime: {
+      bindCoordinationStore: () => ({read: () => ({history: []})}),
+      listTasks: () => ({items: [], snapshotSequence: 1}),
+      loadCheckpoint: () => undefined,
+      policy: {revoke() {}},
+      requestCancel() {},
+    },
+    readHostToolTask: () => ({}),
+  });
+  const mailConfig = createMailConfig({userData, safeStorage, namespace: 'desk-user', question, now: () => clock});
+  await mailConfig.configure({user: 'alice@qq.com', authCode: 'QqImapAuthCode123'});
+  mailConfig.markBound(mailConfig.current().revision);
+
+  // Initially neither calendar nor mail session is allowed.
+  assert.equal(calendarConfig.snapshot().sessionAllowed, false);
+  assert.equal(meetingHost.snapshot().sessionAllowed, false);
+  assert.equal(mailConfig.isSessionAllowed(mailConfig.current().revision), false);
+
+  let caldavRequests = 0;
+  let mailRequests = 0;
+  const icsBody = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Test//EN', 'BEGIN:VEVENT',
+    'UID:caldav-evt-1', 'SUMMARY:PRIVATE-MEETING-TITLE',
+    'DTSTART:20260310T090000Z', 'DTEND:20260310T110000Z',
+    'STATUS:CONFIRMED', 'SEQUENCE:1', 'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+  const sources = createDesktopDashboardSources({
+    calendarConfig,
+    meetingSnapshot: () => meetingHost.snapshot(),
+    mailConfig,
+    createCalendarProvider: options => new CalDavProvider({
+      ...options,
+      fetchImpl: async () => {
+        caldavRequests += 1;
+        const escaped = icsBody.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        const xml = `<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>/alice/work/caldav-evt-1.ics</D:href><D:propstat><D:prop><D:getetag>"e1"</D:getetag><C:calendar-data>${escaped}</C:calendar-data></D:prop></D:propstat></D:response></D:multistatus>`;
+        return {ok: false, status: 207, headers: {get: () => null}, text: async () => xml};
+      },
+    }),
+    createMailProvider: () => {
+      const provider = new FakeMailProvider({
+        inbox: [
+          message({uid: 11, folder: 'INBOX', sentAt: '2026-03-10T03:00:00.000Z'}),
+          message({uid: 12, folder: 'INBOX', sentAt: '2026-03-10T05:00:00.000Z'}),
+        ],
+        sent: [
+          message({uid: 21, folder: 'Sent Messages', sentAt: '2026-03-10T06:00:00.000Z'}),
+        ],
+      });
+      const fetchPage = provider.fetchPage.bind(provider);
+      provider.fetchPage = (...args) => { mailRequests += 1; return fetchPage(...args); };
+      return provider;
+    },
+    now: () => clock,
+  });
+
+  // Authorize both calendar and mail for the dashboard session.
+  calendarConfig.enableSession({readConsent: true, scope: 'personal-dashboard'});
+  mailConfig.enableDashboardSession({readConsent: true, scope: 'personal-dashboard'});
+  assert.equal(calendarConfig.snapshot().sessionAllowed, true);
+  assert.equal(meetingHost.snapshot().sessionAllowed, true);
+
+  const host = createPersonalDashboardHost({
+    userData, safeStorage, namespace: 'desk-user', runtime, dispatchTask: dispatchPersonalDashboardTask,
+    now: () => clock, timeZone: 'UTC', sources,
+  });
+  await host.start();
+  clock = Date.parse('2026-03-16T00:00:01.000Z');
+  await host.tick(true);
+  const view = host.snapshot();
+  assert.equal(view.cards.find(card => card.id === 'time')?.value, '2.0');
+  assert.equal(view.cards.find(card => card.id === 'mail')?.value, '3');
+  assert.ok(caldavRequests >= 1);
+  assert.ok(mailRequests >= 1);
+
+  // Revoke both sessions and verify the next period performs zero reads.
+  calendarConfig.releaseSession();
+  mailConfig.revokeDashboardSession();
+  assert.equal(calendarConfig.snapshot().sessionAllowed, false);
+  assert.equal(meetingHost.snapshot().sessionAllowed, false);
+  caldavRequests = 0;
+  mailRequests = 0;
+  clock = Date.parse('2026-03-23T00:00:02.000Z');
+  await host.tick(true);
+  assert.equal(caldavRequests, 0);
+  assert.equal(mailRequests, 0);
 });
