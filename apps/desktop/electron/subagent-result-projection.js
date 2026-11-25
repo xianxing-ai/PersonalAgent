@@ -1,11 +1,10 @@
 import {resultMetadata,resultText} from '../src/features/conversation/result-text.js';
-import {MAX_COORDINATION_GOAL_CHARACTERS} from '@personal-agent/contracts';
 
 /** Host-owned bounded JSON projection; authorization remains in Runtime. */
 export const projectSubagentResult = async ({result, signal, userRequest}) => {
   if (signal?.aborted) throw Error('次级智能体结果导出已取消');
   if (!result || typeof result !== 'object') throw Error('次级智能体结果无效');
-  if (userRequest!==undefined && (typeof userRequest!=='string' || !userRequest.trim() || userRequest.length>MAX_COORDINATION_GOAL_CHARACTERS)) throw Error('用户请求无效');
+  if (userRequest!==undefined && (typeof userRequest!=='string' || !userRequest.trim() || userRequest.length>128_000)) throw Error('用户请求无效');
   const r = result;
   const structured=Array.isArray(r.subtasks)&&r.subtasks.length>0;
   if (!structured&&String(r.summary ?? r.aggregatedSummary ?? '').length>16384

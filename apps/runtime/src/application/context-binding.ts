@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {MAX_COORDINATION_GOAL_CHARACTERS,ProtocolError} from '@personal-agent/contracts';
+import {MAX_COORDINATION_GOAL_CHARACTERS,MAX_COORDINATION_INITIAL_QUERY_BYTES,ProtocolError} from '@personal-agent/contracts';
 import type {bindF27ContextSourceMap} from './f27-context-source-map.js';
 
 export const COMPETITION_CONTEXT_CHECKPOINT = 'competition-context:v1';
@@ -34,6 +34,8 @@ export function measureCompiledGoal(compiledGoal: string, budget?: CoordinationG
   if (compiledGoal.length > COORDINATION_GOAL_CHARACTER_LIMIT) {
     throw new ProtocolError('INVALID_ARGUMENT','Compiled goal exceeds the character budget');
   }
+  if(Buffer.byteLength(compiledGoal)>MAX_COORDINATION_INITIAL_QUERY_BYTES)
+    throw new ProtocolError('INVALID_ARGUMENT','Compiled goal exceeds the AgentArts UTF-8 query byte limit');
   let tokens: {state:'unmeasured'} | {state:'measured';tokenizerRef:string;inputTokens:number;
     contextTokens:number;reservedOutputTokens:number} = {state:'unmeasured'};
   if (budget !== undefined) {
