@@ -97,7 +97,9 @@ export function createGitHubConversationTools({
   const host = {
     register(tool) {
       if (!GITHUB_TOOL_NAMES.has(tool.descriptor.name)) return () => {};
-      const descriptor = tool.descriptor;
+      // Conversation connector writes gate via authorizationQuestionHost approval cards (like mail.send / calendar.create),
+      // rather than native hardware hotkey presence (toolPresenceHost).
+      const descriptor = {...tool.descriptor, requiresPresence: false};
       tools.push({
         descriptor,
         execute: async (input, context) => {
@@ -348,7 +350,7 @@ export function createGitHubConversationTools({
                 argumentsDigest: entry.argumentsDigest,
                 deadline: scope.deadline,
               }),
-              ruleBindingDigest,
+              ...(isWrite ? {} : {ruleBindingDigest}),
               summary: isWrite
                 ? `向 GitHub 发起外部写入 ${tool.descriptor.name}${repoHint}（将产生远端变更）；卡片不能替代账号配置`
                 : `读取已配置 GitHub 账号/仓库范围 ${tool.descriptor.name}${repoHint}；仅限本次任务`,

@@ -3518,7 +3518,7 @@ async function initializeRuntime() {
       const githubExportMap=new Map((githubConversationTools?.competitionToolExports??[]).map(item=>[item.toolName,item]));
       const muxedDeveloperTools=(developerDeployment?.host.tools??[]).map(tool=>{
         const ghTool=githubToolMap.get(tool.descriptor.name);
-        return ghTool ? {descriptor:tool.descriptor,execute:(input,ctx)=>useDeveloperGitHub()?tool.execute(input,ctx):ghTool.execute(input,ctx)} : tool;
+        return ghTool ? {descriptor:ghTool.descriptor,execute:(input,ctx)=>useDeveloperGitHub()?tool.execute(input,ctx):ghTool.execute(input,ctx)} : tool;
       });
       const muxedDeveloperAvailability=(developerDeployment?.host.competitionToolAvailability??[]).map(item=>{
         const ghAvail=githubAvailMap.get(item.toolName);

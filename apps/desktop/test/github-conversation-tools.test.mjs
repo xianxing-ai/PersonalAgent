@@ -149,12 +149,15 @@ test('createGitHubConversationTools exposes 29 mainstream tools with fail-closed
   assert.notEqual(classifyKnownEgressContent(JSON.stringify(projectedRepoGet)), 'forbidden');
   assert.equal(repoGetExport.accepts({taskId: repoGetScope.taskId, proposalId: repoGetScope.proposal.proposalId, arguments: {repo: 'acme/app'}, phase: 'final', projection: projectedRepoGet}), true);
 
-  // External writes have presence flag and write summary.
+  // External writes keep external_write + non-idempotent flags, omit standing ruleBindingDigest, and use card approval rather than hardware hotkey presence.
   const issueTool = host.tools.find(x => x.descriptor.name === 'github.issue.create');
-  assert.equal(issueTool.descriptor.requiresPresence, true);
+  assert.equal(issueTool.descriptor.sideEffect, 'external_write');
+  assert.equal(issueTool.descriptor.idempotencySupport, false);
+  assert.equal(issueTool.descriptor.requiresPresence, false);
   const issueScope = makeScope(issueTool, {repo: 'acme/app', title: 'Track bug'});
   await host.prepareExport({...issueScope, phase: 'preflight'});
   assert.ok(question.prepared.get(issueScope.runId).spec.requirements[0].summary.includes('外部写入'));
+  assert.equal(question.prepared.get(issueScope.runId).spec.requirements[0].ruleBindingDigest, undefined);
   const issueResult = await issueTool.execute({repo: 'acme/app', title: 'Track bug'}, issueScope);
   assert.equal(issueResult.externalId, '42');
 
