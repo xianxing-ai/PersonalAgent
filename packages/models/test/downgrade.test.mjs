@@ -25,3 +25,22 @@ test('downgrade uses the fallback gateway only when one is configured', async ()
   assert.equal(moved.response.text, 'fallback');
   assert.equal(moved.deployment.model, 'fallback-model');
 });
+
+test('token usage is metered on the gateway that actually completed, including downgrade', async () => {
+  const seen = [];
+  const meter = info => seen.push(info);
+  const primary = new ModelGateway(new FakeModelProvider([{kind: 'final', text: 'primary'}], {model: 'primary-model'}), undefined, undefined, meter);
+  const direct = await primary.complete(request());
+  assert.equal(direct.deployment.model, 'primary-model');
+  assert.deepEqual(seen, [{modelId: 'primary-model', usage: {promptTokens: 1, completionTokens: 1, totalTokens: 2}}]);
+  const fallbackSeen = [];
+  const fallback = new ModelGateway(new FakeModelProvider([{kind: 'final', text: 'fallback'}], {model: 'fallback-model'}), undefined, undefined, info => fallbackSeen.push(info));
+  const switched = new ModelGateway(new FakeModelProvider([{kind: 'final', text: 'primary'}], {model: 'primary-model'}), undefined, {fallback, shouldDowngrade: () => true}, meter);
+  const moved = await switched.complete(request());
+  assert.equal(moved.deployment.model, 'fallback-model');
+  assert.deepEqual(seen, [{modelId: 'primary-model', usage: {promptTokens: 1, completionTokens: 1, totalTokens: 2}}]);
+  assert.deepEqual(fallbackSeen, [{modelId: 'fallback-model', usage: {promptTokens: 1, completionTokens: 1, totalTokens: 2}}]);
+  const hostile = new ModelGateway(new FakeModelProvider([{kind: 'final', text: 'still-ok'}], {model: 'primary-model'}), undefined, undefined, () => { throw new Error('meter sink failed'); });
+  const survived = await hostile.complete(request());
+  assert.equal(survived.response.text, 'still-ok');
+});

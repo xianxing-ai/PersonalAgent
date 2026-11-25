@@ -656,10 +656,13 @@ else {
       updateConversationTurns(tasksNode,html,{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     }
     syncCancelButtons();restoreTaskActionFocus(focused);
-    refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;
+    refreshApprovalCards();scheduleApprovalExpiry();
+    const approvalFocus=data.approvalFocus,approvalFocusKey=approvalFocus?.focusId??(approvalFocus?.taskId?`${approvalFocus.taskId}:${approvalFocus.approvalId??''}`:undefined);
+    let focusedCardThisRender=false;
+    if(approvalFocus?.taskId&&approvalFocusKey!==focusedApproval&&focusApprovalCard(tasksNode,approvalFocus.taskId,approvalFocus.approvalId)){focusedApproval=approvalFocusKey;focusedCardThisRender=true;followLock.markProgrammatic();}
     setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
     if(emptyThread){followLock.markProgrammatic();thread.scrollTop=0;}
-    else if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    else if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();if(!focusedCardThisRender)requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
     if(emptyThread&&taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();}
     applyOperatorBrake({button:operatorBrakeButton,status:operatorBrakeStatus,state:root.querySelector('#state'),snapshot:data.operatorBrake});
 };
@@ -671,7 +674,7 @@ if(bridge&&authorizationThread) {
   const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
   const workflowQuestionRoot=document.createElement('div');authorizationThread.append(workflowQuestionRoot);
   const previousRender=render;
-  let questionClosed=false;
+  let questionClosed=false,focusedQuestionApproval;
   const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onPending:({questionId})=>{
     // Run after the ordinary task projection's follow-to-bottom callback. A new
     // question must be discoverable at its heading, without repeatedly moving
@@ -688,6 +691,11 @@ if(bridge&&authorizationThread) {
     const conversationId=data.conversationState?.activeId;
     questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
     workflowQuestions.update(data.workflowQuestions,{conversationId});
+    const focus=data.approvalFocus,focusKey=focus?.focusId??(focus?.taskId?`${focus.taskId}:${focus.approvalId??''}`:undefined);
+    if(focus?.taskId&&focusKey!==focusedQuestionApproval&&focusApprovalCard(questionRoot,focus.taskId,focus.approvalId)){
+      focusedQuestionApproval=focusKey;
+      requestAnimationFrame(()=>{if(!questionClosed&&focusedQuestionApproval===focusKey)focusApprovalCard(questionRoot,focus.taskId,focus.approvalId);});
+    }
   };
   render.setAudioLevel=previousRender.setAudioLevel;
   render.setResourceBudget=previousRender.setResourceBudget;

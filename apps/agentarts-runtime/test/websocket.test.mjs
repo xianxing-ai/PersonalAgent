@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {once} from 'node:events';
 import {WebSocket} from 'ws';
-import {digestAgentArtsPayload, parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
+import {digestAgentArtsPayload, MAX_AGENTARTS_TRANSPORT_BYTES, parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 import {createAgentServer} from '../src/server.mjs';
 
 const token = 'synthetic-wss-secret-for-offline-tests';
@@ -161,7 +161,7 @@ test('bad versions, extra fields, binary and invalid UTF8 never reach the provid
   const utf8=await connect(t,wsUrl),utf8Closed=once(utf8.socket,'close');
   utf8.socket.send(Buffer.from([0xc3,0x28]),{binary:false}); assert.equal((await utf8Closed)[0],1007);
   const oversized=await connect(t,wsUrl),oversizedClosed=once(oversized.socket,'close');
-  oversized.socket.send('x'.repeat(1_200_001)); assert.equal((await oversizedClosed)[0],1009);
+  oversized.socket.send('x'.repeat(MAX_AGENTARTS_TRANSPORT_BYTES + 1)); assert.equal((await oversizedClosed)[0],1009);
   assert.equal(calls.length,0);
 });
 

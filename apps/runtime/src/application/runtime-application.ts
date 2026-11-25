@@ -577,7 +577,8 @@ export function serializeCoordinationGoal(publicGoal:string,preparedGoal:string,
     ...(preparedGoal===publicGoal ? {} : {ephemeralGoal:preparedGoal}),
     conversationContext:{treatment:'untrusted_data',messages}}) : preparedGoal;
 }
-export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[],selection?:'preserve-user-requests'):string {
+export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[],
+  selection?:'preserve-user-requests',characterLimit=COORDINATION_GOAL_CHARACTER_LIMIT):string {
   const selected=[...messages];
   const omitted:string[]=[];
   const encode=()=>messages.length ? JSON.stringify({publicGoal,
@@ -585,11 +586,11 @@ export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,me
     conversationContext:{treatment:'untrusted_data',messages:selected,
       ...(omitted.length?{selection:{policy:'preserve-user-requests-v1',omittedAssistantIds:omitted}}:{})}}) : preparedGoal;
   let goal=encode();
-  if(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT && selection!=='preserve-user-requests')
-    throw new ProtocolError('INVALID_ARGUMENT',`任务、Skill 与对话上下文合并后超过 ${COORDINATION_GOAL_CHARACTER_LIMIT} 字符限制；不能完整发送，请缩小范围`);
-  while(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT) {
+  if(goal.length>characterLimit && selection!=='preserve-user-requests')
+    throw new ProtocolError('INVALID_ARGUMENT',`任务、Skill 与对话上下文合并后超过 ${characterLimit} 字符限制；不能完整发送，请缩小范围`);
+  while(goal.length>characterLimit) {
     const index=selected.findIndex(message=>message.role==='assistant'&&!message.id.startsWith('knowledge-watch-'));
-    if(index<0)throw new ProtocolError('INVALID_ARGUMENT',`关键用户上下文超过 ${COORDINATION_GOAL_CHARACTER_LIMIT} 字符预算，无法完整发送；请拆分问题或明确缩小范围`);
+    if(index<0)throw new ProtocolError('INVALID_ARGUMENT',`关键用户上下文超过 ${characterLimit} 字符预算，无法完整发送；请拆分问题或明确缩小范围`);
     omitted.push(selected[index]!.id);selected.splice(index,1);goal=encode();
   }
   return goal;

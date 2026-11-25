@@ -1,14 +1,14 @@
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
-import {MAX_AGENTARTS_RESULT_BYTES} from '@personal-agent/contracts/agentarts-transport';
+import {MAX_AGENTARTS_RESULT_BYTES, MAX_AGENTARTS_TRANSPORT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {attachAgentWebSocketTransport, equalInboundToken} from './websocket-transport.mjs';
 import {createBindingDispatcher} from './binding-dispatch.mjs';
 import {ownedRequestPath} from './request-path.mjs';
 import {createStageTimeline} from './stage-timeline.mjs';
 import {invocationExpiry,scheduleExpiry} from './invocation-timeout.mjs';
 
-const MAX_BYTES = 1_200_000;
+const MAX_BYTES = MAX_AGENTARTS_TRANSPORT_BYTES;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const resultEvents = result => [{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}];
 const json = (response, status, data) => {
