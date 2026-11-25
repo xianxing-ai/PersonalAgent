@@ -221,7 +221,7 @@ test('72 actual fixture file write/read/check actions cross old depth and 32-pri
 
 test('final conversation compilation rebudgets original recent receipts before the real image parser', async t => {
   const conversationContext = [{id: 'synthetic-large-user-context', role: 'user',
-    content: 'SYNTHETIC_CONTEXT_BODY_ONLY_' + 'h'.repeat(80_000)}];
+    content: 'SYNTHETIC_CONTEXT_BODY_ONLY_' + '中'.repeat(850_000)}];
   const f = await fixture(t, {actions: 36, projectedCharacters: 40_000, conversationContext});
   const {taskId} = await f.submit('compiled-budget');
   const task = await waitFor(f.app, taskId);

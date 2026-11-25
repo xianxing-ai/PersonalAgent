@@ -220,7 +220,7 @@ import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
 import {createPersonalDashboardHost} from './personal-dashboard-host.js';
 import {createDailyBriefingHost} from './daily-briefing-host.js';
-import {presentBriefingDecision} from './briefing-decision.js';
+import {isBriefingDecisionAllowed, isTrustedBriefingDecisionSender, presentBriefingDecision} from './briefing-decision.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
 import {createMailMetadataStorage} from './mail-metadata-storage.js';
 import {createLocalLayaHost} from './laya-local-host.js';
@@ -1042,8 +1042,23 @@ function conversationProjection(surface) {
 function orbSnapshot() {
   const visible=orderedTasks().filter(task=>visibleConversationTask(task,'panel'));
   const task=visible.findLast(task=>!terminalTaskStates.has(task.state))??visible.at(-1);
+  const active=Boolean(task&&!terminalTaskStates.has(task.state));
+  const rawChildren=active&&!fakeMode?(runtimeApplication?.readSubagentTasks?.(task.taskId)??[]):[];
+  const subagentTasks=rawChildren.map(child=>{
+    let state=child?.state??child?.taskState;
+    if(!state&&child?.taskId){try{state=runtimeApplication?.runtime?.getTask?.(child.taskId)?.state;}catch{}}
+    return {taskId:child?.taskId??child?.childTaskId,parentTaskId:task.taskId,state};
+  }).filter(item=>typeof item.taskId==='string'&&item.taskId);
+  const now=Date.now();
+  const pendingUnexpired=item=>item?.state==='pending'&&(!item.expiresAt||!Number.isFinite(Date.parse(item.expiresAt))||Date.parse(item.expiresAt)>now);
+  const relatedIds=new Set(active?[task.taskId,...subagentTasks.map(item=>item.taskId)]:[]);
+  const panelConversationId=conversations?.activeConversationId('panel');
+  const pendingQuestion=active&&(authorizationQuestionHost?.snapshot(panelConversationId)??[]).some(q=>pendingUnexpired(q)
+    &&(relatedIds.has(q.taskId)||(panelConversationId&&q.conversationId===panelConversationId)));
+  const pendingApproval=active&&[...approvals.values()].some(a=>pendingUnexpired(a)&&relatedIds.has(a.taskId));
+  const hasPendingApproval=active&&(task.state==='waiting_approval'||subagentTasks.some(item=>item.state==='waiting_approval')||pendingQuestion||pendingApproval);
   const live=liveVoice?.snapshot()??liveConfig?.snapshot();
-  return {tasks:task?[{taskId:task.taskId,state:task.state}]:[],audioLevel,orbStateOverride,
+  return {tasks:task?[{taskId:task.taskId,state:task.state}]:[],subagentTasks,hasPendingApproval,audioLevel,orbStateOverride,
     orbDocked:desktopHost?.settings.orbPlacement==='right',
     live:live?{active:live.active,status:live.status}:undefined,resourceBudget:resourcePolicy.snapshot()};
 }
@@ -1429,7 +1444,11 @@ function openPanel(focus = false) {
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
   if (panelPageLoaded && !panel.isVisible()) panel.setBackgroundColor('#00000000');
   placePanelNearOrb();
-  if (focus) panel.show(); else panel.showInactive();
+  if (focus) {
+    if (panel.isMinimized?.()) panel.restore();
+    panel.show();
+    panel.focus?.();
+  } else panel.showInactive();
   away = 0;
 }
 
@@ -4074,11 +4093,11 @@ async function initializeRuntime() {
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
       referenceApplication=runtimeApplication;
-      const cloudSkillSelector=referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
+      referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
       runtimeApplication.configureCloudSkillSelection({
         cloudSkillCatalog:input=>referenceHost.cloudSkillCatalog(input),
         dispatchCloudSkillProposal:(proposal,context)=>referenceHost.dispatchCloudSkillProposal(proposal,context),
-        assertReceiptAllowed:(selection,receipt,context)=>cloudSkillSelector.assertReceiptAllowed(selection,receipt,context),
+        assertReceiptAllowed:(selection,receipt,context)=>referenceHost.assertCloudSkillReceiptAllowed(selection,receipt,context),
       });
       knowledgeTools.bindApplication(runtimeApplication);
       const {openSqliteLearningHost}=await import('@personal-agent/learning');
@@ -6349,10 +6368,12 @@ async function action(event, name, payload) {
     return dailyBriefingHost.update(payload);
   }
   if (name === 'briefing.openDecision') {
-    if ((sender !== admin && sender !== panel && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame || !dailyBriefingHost) throw Error('请从每日简报打开审批卡');
+    if (!dailyBriefingHost || !isTrustedBriefingDecisionSender(sender, event.senderFrame, [admin, panel, workspace])) throw Error('请从每日简报打开审批卡');
+    if (!isBriefingDecisionAllowed(dailyBriefingHost.snapshot()?.briefing?.decisions, payload)) throw Error('该审批项已不在当前每日简报中');
+    panelBriefingRequested = false;
     return presentBriefingDecision({taskId: payload?.taskId, approvalId: payload?.approvalId,
       tasks: {get: id => tasks.get(id) ?? runtimeApplication?.runtime.getTask(id)}, conversations, sourceSurface: taskSurface,
-      openPanel: () => openPanel(true), openWorkspace, publish, rememberFocus: focus => {approvalFocus = focus;}});
+      openPanel: () => { pinned = true; return openPanel(true); }, openWorkspace, publish, rememberFocus: focus => {approvalFocus = focus;}});
   }
   if (name === 'settings.get') return client.call('settings.get', {namespace: String(payload ?? 'desktop')});
   if (name === 'settings.update') return client.call('settings.update', payload);

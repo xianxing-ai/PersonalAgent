@@ -253,7 +253,7 @@ export class ModelGateway implements ModelPort {
   /**
    * 第三参是可选降模配置。不传、shouldDowngrade 不为 true、或没有备用网关时，仍调用构造时的 provider。
    */
-  constructor(private readonly provider: ModelProvider, deployment: ModelDeployment = provider.deployment, private readonly downgradeOptions?: {fallback?: ModelGateway; shouldDowngrade?: () => boolean}) {
+  constructor(private readonly provider: ModelProvider, deployment: ModelDeployment = provider.deployment, private readonly downgradeOptions?: {fallback?: ModelGateway; shouldDowngrade?: () => boolean}, private readonly onTokenUsage?: (info: {modelId: string; usage: ModelUsage}) => void) {
     this.deployment = structuredClone(deployment);
   }
 
@@ -310,6 +310,10 @@ export class ModelGateway implements ModelPort {
     if (!Number.isFinite(result.latencyMs) || result.latencyMs < 0) throw new ProtocolError('EXTERNAL_FAILURE', 'Model provider returned an invalid latency');
     for (const count of Object.values(result.usage ?? {})) {
       if (!Number.isSafeInteger(count) || count < 0) throw new ProtocolError('EXTERNAL_FAILURE', 'Model provider returned invalid usage');
+    }
+    if (result.usage && Object.keys(result.usage).length) {
+      try { this.onTokenUsage?.({modelId: this.deployment.model, usage: structuredClone(result.usage)}); }
+      catch { /* A metering sink cannot invalidate a completed model call. */ }
     }
     return structuredClone(result);
   }

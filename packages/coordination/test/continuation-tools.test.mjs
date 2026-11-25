@@ -71,7 +71,7 @@ test('continuation directory and complete-query size limits remain enforced befo
   try {
     const tooMany=Array.from({length:65},(_,index)=>({...directory[0],name:'fixture.tool'+index}));
     await assert.rejects(cloud.invoke(input({availableTools:tooMany})),{code:'INVALID_ARGUMENT'});
-    await assert.rejects(cloud.invoke(input({continuation:{...continuation,result:'x'.repeat(1_000_000)},
+    await assert.rejects(cloud.invoke(input({goal:'中'.repeat(1_000_000),continuation:{...continuation,result:'x'.repeat(1_000_000)},
       priorContinuations:[{proposalId:'older',state:'confirmed',result:'y'.repeat(150_000)}]})),{code:'INVALID_ARGUMENT'});
     assert.equal(credentials,0);assert.equal(sends,0);
   }finally{cloud.close();}

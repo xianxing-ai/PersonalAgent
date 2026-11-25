@@ -41,8 +41,8 @@ test('compiled context stores only detached version metadata and enforces final 
   messages[0].content='Changed body';
   assert.throws(()=>assertCompiledContextUnchanged(snapshot,bindCompiledContext(input)),{code:'REVISION_CONFLICT'});
   assert.equal(compileCoordinationGoal('a','x'.repeat(128_000),[]).length,128_000);
-  assert.throws(()=>compileCoordinationGoal('a','x'.repeat(128_001),[]),{code:'INVALID_ARGUMENT'});
-  const escaped=[{id:'escaped',role:'user',content:'"\\'.repeat(32000)}];
+  assert.throws(()=>compileCoordinationGoal('a','x'.repeat(1_000_001),[]),{code:'INVALID_ARGUMENT'});
+  const escaped=[{id:'escaped',role:'user',content:'"\\'.repeat(300000)}];
   assert.throws(()=>compileCoordinationGoal('a','a',escaped),{code:'INVALID_ARGUMENT'});
 });
 

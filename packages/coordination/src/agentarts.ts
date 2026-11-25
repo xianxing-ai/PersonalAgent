@@ -1,5 +1,5 @@
 import {MAX_COORDINATION_GOAL_CHARACTERS,MAX_COORDINATION_INITIAL_QUERY_BYTES,ProtocolError} from '@personal-agent/contracts';
-import {AGENTARTS_TRANSPORT_VERSION, digestAgentArtsPayload, parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
+import {AGENTARTS_TRANSPORT_VERSION, digestAgentArtsPayload, MAX_AGENTARTS_TRANSPORT_BYTES, parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult,parseExecutionModelSelection} from './index.js';
 import type {ExecutionModelSelection} from './index.js';
@@ -1414,11 +1414,11 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           ...(availableTools===undefined?{}:{availableTools}),
           ...(priorContinuations?.length?{priorContinuations}:{})}:{}),...modelSelection});
     const query=executionEpoch===undefined?originalQuery:JSON.stringify({executionEpochVersion:1,executionEpoch,query:originalQuery});
-    if(new TextEncoder().encode(query).byteLength>1_100_000)invalid('AgentArts complete query exceeds the byte limit');
-    if (continuation === undefined && availableTools !== undefined
-      && new TextEncoder().encode(query).byteLength > MAX_INITIAL_QUERY_BYTES) {
-      invalid('AgentArts initial tool query exceeds the byte limit');
-    }
+    if(Buffer.byteLength(query)>MAX_INITIAL_QUERY_BYTES)
+      invalid(`AgentArts query exceeds ${MAX_INITIAL_QUERY_BYTES} UTF-8 bytes; compact or reduce the context`);
+    const body = JSON.stringify(this.workflowGoalInput === undefined ? {query} : {inputs: {[this.workflowGoalInput]: query}});
+    if(Buffer.byteLength(body)>MAX_AGENTARTS_TRANSPORT_BYTES)
+      invalid(`AgentArts JSON request exceeds ${MAX_AGENTARTS_TRANSPORT_BYTES} UTF-8 bytes; compact or reduce the context`);
     const combined = makeCombinedSignal(signal, deadlineMs);
     const sendRequest: CoordinationRequest = Object.freeze({
       taskId, revision, goal, deadline, signal: combined.signal,
@@ -1490,9 +1490,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           'X-PA-Deadline': deadline,
           ...(websocketAuthorization === undefined ? {} : {'X-PA-Agent-Token': websocketAuthorization}),
         },
-        body: JSON.stringify(this.workflowGoalInput === undefined
-          ? {query}
-          : {inputs: {[this.workflowGoalInput]: query}}),
+        body,
         signal: combined.signal,
         redirect: 'error',
       };

@@ -34,7 +34,7 @@ export function authorizationQuestionMarkup(question,{now=Date.now(),busy=false,
   const status=expired?'请求已过期':states[question.state];
   const purpose=question.title||'允许这次操作吗？';
   const summary=question.description||question.requirements.find(item=>item.requirementId==='tool')?.summary||'完成这项操作。';
-  return `<section class="authorization-question-card" data-question-id="${escape(question.questionId)}" role="group" aria-label="操作授权提问">
+  return `<section class="authorization-question-card" data-question-id="${escape(question.questionId)}"${question.taskId?` data-task-id="${escape(question.taskId)}"`:''}${question.sourceApprovalId?` data-approval-id="${escape(question.sourceApprovalId)}"`:''} role="group" aria-label="操作授权提问">
     <h3 class="authorization-question-title" tabindex="-1">${escape(purpose)}</h3>
     <p class="authorization-question-summary">${escape(summary)}</p>
     ${authorizationQuestionDefaultDecision(question)==='allow_task'?'<p class="authorization-question-hint">本任务内相同范围不再询问。</p>':''}

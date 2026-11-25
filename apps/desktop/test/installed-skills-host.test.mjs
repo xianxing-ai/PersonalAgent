@@ -109,12 +109,12 @@ for(const phase of ['before confirmation','during confirmation'])test(`final inp
     f.app.runtime.transitionTask(task.taskId,'planning');
     f.app.runtime.transitionTask(task.taskId,'running');
     f.app.runtime.transitionTask(task.taskId,'verifying');
-    f.app.runtime.transitionTask(task.taskId,'succeeded',{resultSummary:'Synthetic history '.repeat(8000)});
+    f.app.runtime.transitionTask(task.taskId,'succeeded',{resultSummary:'Synthetic history '.repeat(60_000)});
   };
   if(phase==='before confirmation')seed();
   else f.onConfirm(input=>{if(input.action==='run')seed();});
   let credentialReads=0;f.credential(()=>{credentialReads++;});
-  await assert.rejects(run(f),/128000/);
+  await assert.rejects(run(f),/1000000/);
   assert.equal(f.confirmations.filter(item=>item.action==='run').length,phase==='before confirmation'?0:1);
   assert.equal(f.app.runtime.listTasks({conversationId:'desktop-workspace'}).items.length,1);
   assert.equal(f.requests.length,0);assert.equal(credentialReads,0);
@@ -123,16 +123,16 @@ for(const phase of ['before confirmation','during confirmation'])test(`final inp
 test('Desktop history overlay without task IDs participates in the final budget before confirmation',async t=>{
   const f=fixture('x'.repeat(8000));t.after(()=>{f.host.close();f.app.close();});
   await f.host.install();await f.host.setEnabled({name:f.candidate.name,digest:f.candidate.digest,enabled:true});
-  f.history([{id:'desktop-history',role:'assistant',content:'Public synthetic history '.repeat(6000)}]);
+  f.history([{id:'desktop-history',role:'assistant',content:'Public synthetic history '.repeat(45_000)}]);
   let credentialReads=0;f.credential(()=>{credentialReads++;});
-  await assert.rejects(run(f),/128000/);
+  await assert.rejects(run(f),/1000000/);
   assert.equal(f.confirmations.filter(item=>item.action==='run').length,0);
   assert.equal(f.app.runtime.listTasks({}).items.length,0);assert.equal(f.requests.length,0);assert.equal(credentialReads,0);
 });
 
 test('overflow after trusted private preparation releases the input lease and stops before credentials or HTTP',async t=>{
   const released=[];
-  const f=fixture('Public fixture',{prepare:scope=>scope.publicGoal+'x'.repeat(128000),release:taskId=>released.push(taskId)});
+  const f=fixture('Public fixture',{prepare:scope=>scope.publicGoal+'x'.repeat(1_000_000),release:taskId=>released.push(taskId)});
   t.after(()=>{f.host.close();f.app.close();});
   await f.host.install();await f.host.setEnabled({name:f.candidate.name,digest:f.candidate.digest,enabled:true});
   let credentialReads=0;f.credential(()=>{credentialReads++;});
@@ -147,10 +147,10 @@ test('successful turns without summaries do not hide older usable history from t
   for(let i=0;i<=20;i++) {
     const task=f.app.runtime.submitTask({goal:'Public synthetic history',conversationId:'desktop-workspace',idempotencyKey:'empty-summary-'+i});
     for(const state of ['planning','running','verifying'])f.app.runtime.transitionTask(task.taskId,state);
-    f.app.runtime.transitionTask(task.taskId,'succeeded',i===0?{resultSummary:'Public fixture '.repeat(9000)}:{});
+    f.app.runtime.transitionTask(task.taskId,'succeeded',i===0?{resultSummary:'Public fixture '.repeat(70_000)}:{});
   }
   let credentialReads=0;f.credential(()=>{credentialReads++;});
-  await assert.rejects(run(f),/128000/);
+  await assert.rejects(run(f),/1000000/);
   assert.equal(f.confirmations.filter(item=>item.action==='run').length,0);
   assert.equal(f.app.runtime.listTasks({limit:100}).items.length,21);
   assert.equal(f.requests.length,0);assert.equal(credentialReads,0);
