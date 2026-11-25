@@ -97,7 +97,7 @@ async function readMailFolder(port, created, folder, direction, window, signal) 
   for (let page = 0; page < 20; page += 1) {
     if (signal?.aborted || (port.isAuthorized && !port.isAuthorized())) return {authorized: false, samples: [], truncated: false};
     const result = await created.service.fetchInbox(created.accountRef, {
-      folder, limit: 100, signal, ...(cursor ? {cursor: decodeMailCursor(cursor)} : {}),
+      folder, limit: 100, since: window.fromUtc, signal, ...(cursor ? {cursor: decodeMailCursor(cursor)} : {}),
     });
     if (signal?.aborted || (port.isAuthorized && !port.isAuthorized())) return {authorized: false, samples: [], truncated: false};
     for (const item of result.items) {

@@ -145,7 +145,11 @@ export class QQMailProvider implements MailProvider {
         throw new ProtocolError('CURSOR_EXPIRED', `Folder ${folder} uidValidity changed; restart sync from scratch`);
       }
       const lastUid = input.cursor?.lastUid ?? 0;
-      const uids = await client.search({uid: `${lastUid + 1}:*`}, {uid: true});
+      const sinceMs = input.since ? Date.parse(input.since) : Number.NaN;
+      const criteria = Number.isFinite(sinceMs)
+        ? {uid: `${lastUid + 1}:*`, since: new Date(sinceMs - 24 * 3_600_000)}
+        : {uid: `${lastUid + 1}:*`};
+      const uids = await client.search(criteria, {uid: true});
       if(input.signal?.aborted)throw new ProtocolError('CANCELLED','Mail fetch cancelled');
       if(!Array.isArray(uids))throw new ProtocolError('EXTERNAL_FAILURE','Mail UID search did not return a confirmed result');
       const available = uids

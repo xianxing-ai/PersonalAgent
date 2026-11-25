@@ -564,6 +564,7 @@ let dailyBriefingHost;
 let approvalFocus;
 let todoFailure = '';
 let personalDashboardHost;
+let personalDashboardFailure = '';
 let todoClosing;
 let todoClosed = false;
 let notepadHost;
@@ -1138,7 +1139,7 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
-    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'}}),
+    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:personalDashboardFailure || '个人数据看板将在 Runtime 连接后开始汇总'}}),
     dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
@@ -2876,7 +2877,8 @@ async function initializeRuntime() {
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
-      if (!syntheticMvp && runtimeApplication) {
+      const startPersonalDashboard = async () => {
+        if (syntheticMvp || !runtimeApplication || personalDashboardHost) return;
         try {
           personalDashboardHost = createPersonalDashboardHost({
             userData: app.getPath('userData'), safeStorage, namespace,
@@ -2889,8 +2891,13 @@ async function initializeRuntime() {
             },
           });
           await personalDashboardHost.start();
-        } catch { personalDashboardHost = undefined; }
-      }
+          personalDashboardFailure = '';
+        } catch (error) {
+          personalDashboardHost = undefined;
+          personalDashboardFailure = `个人数据看板初始化失败：${error?.message || '请检查本机安全存储与 Runtime 状态'}`;
+        }
+      };
+      await startPersonalDashboard();
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
         toolPresenceHost=createToolPresenceHost({
@@ -4014,6 +4021,7 @@ async function initializeRuntime() {
       wikiImportHost.bind(runtimeApplication.wikiImport);
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
+      await startPersonalDashboard();
       codingWorkspace.bindApplication(runtimeApplication);
       f15ReviewHost?.close();f15ReviewViewer?.close();f15ReviewInstalled=false;
       if(!syntheticMvp&&typeof runtimeModule.createRuntimeCodingRepairSignedReview==='function'){
