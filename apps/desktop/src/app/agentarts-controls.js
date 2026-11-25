@@ -8,15 +8,16 @@ export function mountAgentArtsControls(root,invoke) {
   root.append(section);const form=section.querySelector('form'),status=section.querySelector('[data-status]'),revokeBtn=section.querySelector('[data-revoke]'),restoreBtn=section.querySelector('[data-restore-default]');let dirty=false,busy=false,canRestoreDefault=false,feedbackKind='host',lastHostReason='',feedbackMessage='';
   const evaluationControls=mountF23EvaluationControls(section,invoke);
   const observationBox=section.querySelector('[data-observation-controls]'),observationForm=observationBox?.querySelector?.('[data-observation-form]'),observationState=observationBox?.querySelector?.('[data-observation-state]'),observationStatus=observationBox?.querySelector?.('[data-observation-status]'),observationRevoke=observationBox?.querySelector?.('[data-observation-revoke]');
-  let observationBusy=false,lastObservation={};
-  const displayObservation=(obs={})=>{
-    lastObservation=obs??{};
+  let observationBusy=false,observationDirty=false,lastObservation={};
+  const displayObservation=(obs={},confirmed=false)=>{
+    obs=obs??{};lastObservation=obs;
     if(!observationState)return;
     observationState.textContent=typeof obs.reason==='string'&&obs.reason?obs.reason:(obs.configured?'观测 AK/SK 已配置（需重启应用生效）':'未配置观测 AK/SK；平台观测读回保持显式 unavailable，不复用 invoke Bearer');
-    if(observationForm?.elements?.applicationId&&!observationBusy&&!observationForm.elements.applicationId.value)observationForm.elements.applicationId.value=obs.applicationId??'';
+    if(observationForm?.elements?.applicationId&&(confirmed||(!observationBusy&&!observationDirty)))observationForm.elements.applicationId.value=obs.applicationId??'';
     if(observationRevoke)observationRevoke.disabled=observationBusy||(!obs.configured&&!obs.applicationIdConfigured);
   };
   if(observationForm&&observationStatus){
+    observationForm.addEventListener('input',()=>{observationDirty=true;});
     const clearObservationSecrets=()=>{
       if(observationForm.elements.secretKey)observationForm.elements.secretKey.value='';
       if(observationForm.elements.securityToken)observationForm.elements.securityToken.value='';
@@ -39,7 +40,7 @@ export function mountAgentArtsControls(root,invoke) {
       try{
         const result=await invoke('agentarts.observation.configure',payload);
         if(result?.configured!==true)throw Error('观测凭据配置未获确认');
-        displayObservation(result);
+        observationDirty=false;displayObservation(result,true);
         observationStatus.textContent=result.reason||'观测凭据已加密保存；请重启应用以注入 observationAuthorization。';
       }catch(error){
         if(observationForm.elements.secretKey&&!observationForm.elements.secretKey.value)observationForm.elements.secretKey.value=pendingSecrets.secretKey;
@@ -54,7 +55,7 @@ export function mountAgentArtsControls(root,invoke) {
       try{
         const result=await invoke('agentarts.observation.revoke');
         if(result?.configured!==false)throw Error('撤销结果未获确认');
-        observationForm.reset?.();displayObservation(result);
+        observationForm.reset?.();observationDirty=false;displayObservation(result,true);
         observationStatus.textContent=result.reason||'已清除本机观测 AK/SK。';
       }catch(error){
         observationStatus.textContent=typeof error?.message==='string'&&/观测|撤销|任务/.test(error.message)?error.message:'观测凭据撤销未获确认，请检查状态后重试。';
