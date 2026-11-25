@@ -152,7 +152,9 @@ export class QQMailProvider implements MailProvider {
         .map(uid => Number(uid))
         .filter(uid => uid > lastUid)
         .sort((left, right) => left - right);
-      const fresh = available.slice(0, input.limit);
+      const fresh = input.order === 'newest'
+        ? available.slice(-input.limit)
+        : available.slice(0, input.limit);
       const messages: MailMessage[] = [];
       if (fresh.length > 0) {
         for await (const message of client.fetch(fresh, {uid: true, envelope: true, flags: true}, {uid: true})) {

@@ -4181,6 +4181,7 @@ async function initializeRuntime() {
         runtimePath: dbPath, userNamespace: namespace,
       });
       if(startupRecovered)await competitionFactBridge?.recover();
+      if(startupRecovered)publish();
     } else {
       const createApplication = process.argv.includes('--weather-tools')
         ? (await import('@personal-agent/runtime/weather')).createOpenMeteoApplication
@@ -5097,7 +5098,9 @@ async function action(event, name, payload) {
     const clean = requirePlainRecord(payload, ['assistantId'], '读取助手对话参数无效');
     const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
     if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
-    return runtimeApplication.readAssistantThread(assistantId);
+    const thread = runtimeApplication.readAssistantThread(assistantId);
+    publish();
+    return thread;
   }
   if (name === 'assistant.submit') {
     if (sender !== panel && sender !== workspace) throw Error('请从对话里给助手发消息');

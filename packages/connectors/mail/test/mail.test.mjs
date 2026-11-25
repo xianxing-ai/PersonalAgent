@@ -465,3 +465,21 @@ test('复合键无歧义：a:b+c 与 a+b:c 在旧拼接下同键，结构化编�
   assert.deepEqual(first, replay);
   assert.equal(providerSends, 2, '重放不新增 provider 调用');
 });
+
+test('order=newest 返回最新收到的 limit 封邮件（从新到旧排列）', async () => {
+  const provider = new FakeMailProvider({
+    inbox: [1, 2, 3, 4, 5].map(uid => ({
+      uid,
+      folder: 'INBOX',
+      from: `u${uid}@example.com`,
+      to: 'me@example.com',
+      subject: `subj-${uid}`,
+      sentAt: `2026-11-2${uid}T00:00:00.000Z`,
+      seen: false,
+    })),
+  }, {pageSize: 10});
+  const service = new MailService(provider, {now: () => NOW});
+  const page = await service.fetchInbox(ACCOUNT, {limit: 3, order: 'newest'});
+  assert.deepEqual(page.items.map(item => item.externalId), ['INBOX:5', 'INBOX:4', 'INBOX:3']);
+  assert.equal(page.hasMore, true);
+});

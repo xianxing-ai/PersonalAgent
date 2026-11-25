@@ -1672,7 +1672,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         {
           toolName: WORKER_LIST_TOOL_NAME,
           toolVersion: WORKER_LIST_TOOL_VERSION,
-          publicDescription: '查看当前助手已有工人及状态；若 workers 为空且需要干活，直接调用 subagent.dispatch 新建工人，不要回复没有可用工作线程。',
+          publicDescription: '查看当前助手已有工人及状态；若 workers 为空或没有合适/可用的工人且需要干活（如查邮件、日历、文件或外部数据），直接调用 subagent.dispatch 新建工人，不要回复没有可用工作线程或缺少读取通道。',
           available: ({taskId}: {taskId: string}) => this.canSendInternalChat(taskId),
         },
         {
@@ -6473,7 +6473,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           assistantId:item.assistantId,displayName:item.displayName,role:item.role,status:item.status,
         }))});
         // Host-owned hint: users speak naturally; do not ask for tool names or IDs.
-        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
+        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。主对话自身不直接挂载邮件、日历、文件、GitHub 等连接器工具，遇到需要查询或操作外部数据时，必须直接用 subagent.dispatch 派工人（或通过 assistant.send 交给合适助手）执行，切勿直接回复缺少读取通道。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
       }
       if(this.delegateUserTasks&&!manualCompaction&&!this.frontDeskTurn(taskId)) {
         const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
@@ -6543,7 +6543,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const assistants=this.runtime.listAssistants();
     return assistants.map(assistant=>{
       const child=this.latestAssistantChild(assistant.role);
-      if(!child||['succeeded','failed','cancelled'].includes(child.state))return assistant;
+      if(!child||['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))return assistant;
       return {...assistant,status:child.state==='waiting_approval'?'waiting_approval' as const:'working' as const,activeTaskId:child.taskId};
     });
   }

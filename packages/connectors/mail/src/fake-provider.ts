@@ -74,7 +74,7 @@ export class FakeMailProvider implements MailProvider {
     const lastUid = input.cursor?.lastUid ?? 0;
     const fresh = pool.filter(message => message.uid > lastUid).sort((left, right) => left.uid - right.uid);
     const size = Math.min(this.pageSize, input.limit);
-    const page = fresh.slice(0, size);
+    const page = input.order === 'newest' ? fresh.slice(-size) : fresh.slice(0, size);
     const consumed = page.map(message => message.uid).reduce((max, uid) => Math.max(max, uid), lastUid);
     const stamped = page.map(message => ({...message, uidValidity: validity}));
     return {

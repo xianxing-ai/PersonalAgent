@@ -30,6 +30,7 @@ const inboxInputSchema: ToolDescriptor['inputSchema'] = {
     cursor: {type: 'string', minLength: 1, description: '上一页的 nextCursor；空串或省略表示从头开始。'},
     limit: {type: 'integer', minimum: 1, maximum: 100, description: '单页条数上限，默认 20。'},
     folder: {type: 'string', minLength: 1, description: 'IMAP 文件夹路径，默认 INBOX。'},
+    order: {type: 'string', enum: ['oldest', 'newest'], description: '排序方向：oldest 按 UID 从旧到新增量同步（默认）；newest 返回最新收到的 limit 封（从新到旧排列）。'},
   },
   additionalProperties: false,
 };
@@ -101,7 +102,7 @@ export function register(host: ToolHost, options: MailModuleOptions): () => void
       requiresPresence: false,
     },
     execute: async (input: unknown, context) => {
-      const raw = input as {account?: string; cursor?: string; limit?: number; folder?: string};
+      const raw = input as {account?: string; cursor?: string; limit?: number; folder?: string; order?: 'oldest' | 'newest'};
       const accountRef = typeof raw.account === 'string' && raw.account.length > 0
         ? raw.account
         : provider.defaultAccount();
@@ -112,10 +113,11 @@ export function register(host: ToolHost, options: MailModuleOptions): () => void
       const cursor = typeof raw.cursor === 'string' && raw.cursor.length > 0
         ? decodeMailCursor(raw.cursor)
         : undefined;
-      const fetchArgs: {cursor?: ReturnType<typeof decodeMailCursor>; limit?: number; folder?: string; signal?: AbortSignal} = {signal: context.signal};
+      const fetchArgs: {cursor?: ReturnType<typeof decodeMailCursor>; limit?: number; folder?: string; order?: 'oldest' | 'newest'; signal?: AbortSignal} = {signal: context.signal};
       if (cursor !== undefined) fetchArgs.cursor = cursor;
       if (raw.limit !== undefined) fetchArgs.limit = raw.limit;
       if (typeof raw.folder === 'string') fetchArgs.folder = raw.folder;
+      if (raw.order === 'oldest' || raw.order === 'newest') fetchArgs.order = raw.order;
       const page = await service.fetchInbox(accountRef, fetchArgs);
       return {...page, account: accountRef};
     },
