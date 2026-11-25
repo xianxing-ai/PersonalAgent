@@ -5,6 +5,7 @@ import path from 'node:path';
 import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication, createConfiguredSubagentModelGateway} from '@personal-agent/runtime/application';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
+import {syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createModelApiConfig} from '../electron/model-api-config.js';
 import {createAgentArtsTransportConfig} from '../electron/agentarts-transport-config.js';
 import {createProactiveSourceHost} from '../electron/proactive-source-host.js';
@@ -193,6 +194,7 @@ test('WSS cloud runs record duration to usage-budget.json across restart without
     ...transport,
     path: ':memory:',
     authorizationProvider: outer,
+    preparePayload: syntheticPublicPayloadGate,
     websocketFactory: () => {
       if (mode === 'fallback') {
         const socket = new SyntheticWebSocket(undefined, {autoReady: false});
@@ -265,6 +267,7 @@ test('proactive directory schedule keeps autonomous origin and is blocked before
     ...transport,
     path: ':memory:',
     authorizationProvider: outer,
+    preparePayload: syntheticPublicPayloadGate,
     beforeCompetitionSend: request => {
       const proactive = isAutonomousRuntimeTask(app.runtime, request.taskId);
       current.beforeCloudSend({userInitiated: !proactive, modelId: request.executionModel?.modelId});
