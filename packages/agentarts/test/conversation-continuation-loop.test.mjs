@@ -31,7 +31,7 @@ test('goal-bound continuation preserves its bounded frozen catalog, prior receip
   assert.equal(parsed.kind,'continuation');assert.equal(parsed.goal,goal);assert.deepEqual(parsed.availableTools,tools);
   assert.deepEqual(parsed.priorContinuations,priorContinuations);assert.deepEqual(parsed.executionModel,executionModel);
   assert.equal(Object.isFrozen(parsed.availableTools),true);assert.equal(Object.isFrozen(parsed.availableTools[1].inputSchema),true);
-  assert.equal(PROMPT_VERSION,'owned-1.10');
+  assert.equal(PROMPT_VERSION,'owned-1.15');
 });
 
 test('ordinary conversation can propose read, preview, apply and check before answering from explicit Fake receipts',async()=>{
@@ -56,6 +56,20 @@ test('ordinary conversation can propose read, preview, apply and check before an
     assert.match(prompt,/由原统一宿主卡片处理审批/);assert.doesNotMatch(prompt,/独立审批执行|不追加动作/);
     assert.doesNotMatch(prompt,/只输出text类型的合法JSON对象/);assert.equal(request.maxOutputTokens,512);
   }
+});
+
+test('a confirmed git diff receipt stays in a catalog-bound continuation instead of INVALID_ARGUMENT',async()=>{
+  const answer={kind:'text',text:'文档与实现一致；隔离 TypeScript 编译退出码 0。'};
+  const f=fixture([answer]);
+  const output=await f.agent.invoke(control(continued({recipeId:'git-diff-check',exitCode:1,passed:false})));
+  assert.deepEqual(output,answer);
+  assert.equal(f.fast.requests.length,1);
+  const sent=JSON.parse(f.fast.requests[0].messages[1].content);
+  assert.equal(sent.continuation.result.recipeId,'git-diff-check');
+  assert.equal(sent.continuation.result.exitCode,1);
+  const inconsistent=fixture([answer]);
+  await assert.rejects(inconsistent.agent.invoke(control(continued({recipeId:'git-diff-check',exitCode:1,passed:true}))),{code:'INVALID_ARGUMENT'});
+  assert.equal(inconsistent.fast.requests.length,0);
 });
 
 test('a consistent command receipt does not terminate a larger goal while a permitted next read remains',async()=>{

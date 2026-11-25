@@ -746,6 +746,7 @@ test('maps provider failures onto protocol error codes', async () => {
       routes: [geoRoute(beijingCandidates), ['api.open-meteo.com', () => jsonResponse({error: true, reason: 'Cannot initialize DailyParameter'}, 400)]],
       query: {location: '北京', date: DATE}, code: 'INVALID_ARGUMENT',
     },
+    {name: 'request timeout http 408', routes: [geoRoute(beijingCandidates), ['api.open-meteo.com', () => jsonResponse({}, 408)]], query: {location: '北京', date: DATE}, code: 'TIMEOUT', retryable: true},
     {name: 'rate limited', routes: [geoRoute(beijingCandidates), ['api.open-meteo.com', () => jsonResponse({}, 429)]], query: {location: '北京', date: DATE}, code: 'RATE_LIMITED', retryable: true},
     {name: 'upstream error', routes: [geoRoute(beijingCandidates), ['api.open-meteo.com', () => jsonResponse({}, 503)]], query: {location: '北京', date: DATE}, code: 'EXTERNAL_FAILURE', retryable: true},
   ];
@@ -769,6 +770,18 @@ test('a date outside the horizon surfaces the provider allowed range', async () 
 test('network failure is retryable and cancellation is distinct', async () => {
   const offline = makeProvider([geoRoute(beijingCandidates), ['api.open-meteo.com', () => { throw new Error('ENOTFOUND'); }]]);
   await assert.rejects(offline.fetchForecast({location: '北京', date: DATE, units: 'metric'}, signal()), {code: 'EXTERNAL_FAILURE', retryable: true});
+
+  const timedOut = makeProvider([geoRoute(beijingCandidates), ['api.open-meteo.com', () => {
+    throw new TypeError('fetch failed', {cause: Object.assign(new Error('connect ETIMEDOUT'), {code: 'ETIMEDOUT'})});
+  }]]);
+  await assert.rejects(timedOut.fetchForecast({location: '北京', date: DATE, units: 'metric'}, signal()),
+    {code: 'TIMEOUT', retryable: true, message: /ETIMEDOUT/});
+
+  const badCert = makeProvider([geoRoute(beijingCandidates), ['api.open-meteo.com', () => {
+    throw new TypeError('fetch failed', {cause: Object.assign(new Error('unable to verify'), {code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'})});
+  }]]);
+  await assert.rejects(badCert.fetchForecast({location: '北京', date: DATE, units: 'metric'}, signal()),
+    {code: 'EXTERNAL_FAILURE', retryable: false});
 
   const aborted = new AbortController();
   aborted.abort();
@@ -1014,11 +1027,18 @@ test('live read-back labels the reported misresolutions and the hint that repair
   const sig = signal();
   const report = {};
 
-  for (const location of ['东京', '伦敦', '罗马', '丽江', '广东']) {
+  for (const location of ['东京', '伦敦', '罗马', '广东']) {
     const resolved = await provider.resolvePlace(location, undefined, sig);
     assert.equal(resolved.confidence, 'low', `${location} must be labelled weak`);
     report[location] = {name: resolved.name, admin1: resolved.admin1, timezone: resolved.timezone, confidence: resolved.confidence};
   }
+
+  // `丽江` falls back through the municipal retry (`丽江市`, PPLA2 in Yunnan) to high confidence.
+  const lijiangRecovered = await provider.resolvePlace('丽江', undefined, sig);
+  assert.equal(lijiangRecovered.admin1, '云南');
+  assert.equal(lijiangRecovered.timezone, 'Asia/Shanghai');
+  assert.equal(lijiangRecovered.confidence, 'high');
+  report['丽江'] = {name: lijiangRecovered.name, admin1: lijiangRecovered.admin1, timezone: lijiangRecovered.timezone, confidence: lijiangRecovered.confidence};
 
   const repairs = [['东京', 'Tokyo', 'Asia/Tokyo'], ['伦敦', 'London', 'Europe/London'], ['罗马', 'Rome', 'Europe/Rome'], ['丽江', 'Lijiang', 'Asia/Shanghai'], ['纽约', 'New York', 'America/New_York'], ['首尔', 'Seoul', 'Asia/Seoul']];
   for (const [location, hint, timezone] of repairs) {

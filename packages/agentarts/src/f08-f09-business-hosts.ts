@@ -1,9 +1,11 @@
-// F08/F09 业务工作流 host 端口实现（Potatos 分区）
+// F08/F09 业务工作流 host 端口与生产适配器实现（Potatos 分区）
 // F08_N03 mail.registered_archive
 // F08_N07 mail.registered_send
 // F09_N02 feeds.validate_and_deduplicate
 import {createHash} from 'node:crypto';
-import {isProtocolError} from '@personal-agent/contracts';
+import {ProtocolError, isProtocolError} from '@personal-agent/contracts';
+import type {RegisteredTool} from '@personal-agent/contracts';
+import {createOwnedWorkflowAdapter} from './workflow-adapters.js';
 import type {WorkflowHostPort, WorkflowNodeContext} from './owned-workflows.js';
 
 const text = (value: unknown): value is string => typeof value === 'string' && !!value.trim();
@@ -170,29 +172,117 @@ export interface RawFeedItem {
   readonly title?: string;
   readonly publishedAt?: string;
   readonly content?: string;
+  readonly summary?: string;
+  readonly record?: {
+    readonly accountRef?: string;
+    readonly externalId?: string;
+    readonly dedupeKey?: string;
+    readonly contentRef?: string;
+    readonly occurredAt?: string;
+    readonly source?: string;
+  };
+}
+
+export interface FeedsSourceGrantCheck {
+  readonly granted: boolean;
+  readonly authorizationRef?: string;
+  readonly reason?: string;
+}
+
+export interface FeedsValidationResult {
+  readonly validItems: readonly RawFeedItem[];
+  readonly uniqueCount: number;
+  readonly duplicateDiscarded: number;
+  readonly totalCount: number;
+  readonly validCount: number;
+  readonly duplicateCount: number;
+  readonly invalidCount: number;
+  readonly fingerprints: readonly string[];
+  readonly validatedAt: string;
+  readonly authorizationRef?: string;
+  readonly source: 'feeds_validation_receipt';
 }
 
 export interface FeedsValidationOptions {
   resolveItems?(context: WorkflowNodeContext): readonly RawFeedItem[] | undefined;
-  readonly knownFingerprints?: ReadonlySet<string>;
+  readonly knownFingerprints?: ReadonlySet<string> | undefined;
+  authorizeSource?: ((
+    context: WorkflowNodeContext,
+    items: readonly RawFeedItem[],
+  ) => FeedsSourceGrantCheck | Promise<FeedsSourceGrantCheck>) | undefined;
+  readKnownFingerprints?: ((
+    context: WorkflowNodeContext,
+  ) => ReadonlySet<string> | readonly string[] | Promise<ReadonlySet<string> | readonly string[]>) | undefined;
+  commitValidation?: ((entry: {
+    fingerprints: readonly string[];
+    validItems: readonly RawFeedItem[];
+    result: FeedsValidationResult;
+    context: WorkflowNodeContext;
+  }) => void | Promise<void>) | undefined;
+  now?: (() => number) | undefined;
+}
+
+function extractRawItems(input: unknown): readonly RawFeedItem[] | undefined {
+  if (Array.isArray(input)) return input as readonly RawFeedItem[];
+  if (!isPlainObject(input)) return undefined;
+  if (Array.isArray(input.items)) return input.items as readonly RawFeedItem[];
+  if (Array.isArray(input.events)) return input.events as readonly RawFeedItem[];
+  return undefined;
+}
+
+function feedIdentityOf(item: unknown): {feedId: string; identity: string} | null {
+  if (!isPlainObject(item)) return null;
+  const record = isPlainObject(item.record) ? item.record : undefined;
+  const identity =
+    (text(item.guid) ? item.guid.trim() : undefined)
+    ?? (text(item.id) ? item.id.trim() : undefined)
+    ?? (text(item.url) ? item.url.trim() : undefined)
+    ?? (record && text(record.dedupeKey) ? record.dedupeKey.trim() : undefined)
+    ?? (record && text(record.externalId) ? record.externalId.trim() : undefined)
+    ?? (record && text(record.contentRef) ? record.contentRef.trim() : undefined);
+  if (!identity) return null;
+  const feedId =
+    (text(item.feedId) ? item.feedId.trim() : undefined)
+    ?? (record && text(record.accountRef) ? record.accountRef.trim() : undefined)
+    ?? '';
+  return {feedId, identity};
 }
 
 export function createFeedsValidateAndDeduplicateHostPort(options?: FeedsValidationOptions): WorkflowHostPort {
+  const clock = options?.now ?? Date.now;
   return {
     capabilities: ['feeds.validate_and_deduplicate'],
     async read(context: WorkflowNodeContext) {
       let rawItems: readonly RawFeedItem[] | undefined;
       if (options?.resolveItems) {
         rawItems = options.resolveItems(context);
-      } else if (Array.isArray(context.input)) {
-        rawItems = context.input as readonly RawFeedItem[];
-      } else if (isPlainObject(context.input) && Array.isArray((context.input as {items?: unknown}).items)) {
-        rawItems = (context.input as {items: readonly RawFeedItem[]}).items;
+      } else {
+        rawItems = extractRawItems(context.input)
+          ?? extractRawItems(context.predecessorOutputs?.F09_N01);
       }
       if (!Array.isArray(rawItems)) {
         return fail('unavailable', 'feed_items_unavailable');
       }
-      const known = options?.knownFingerprints ?? new Set<string>();
+
+      let authorizationRef: string | undefined;
+      if (options?.authorizeSource) {
+        const auth = await options.authorizeSource(context, rawItems);
+        if (!auth?.granted) {
+          return fail('unavailable', auth?.reason ?? 'feed_source_grant_unavailable', {
+            source: 'feeds_validation_receipt',
+          });
+        }
+        if (text(auth.authorizationRef)) authorizationRef = auth.authorizationRef;
+      }
+
+      const known = new Set<string>(options?.knownFingerprints ?? []);
+      if (options?.readKnownFingerprints) {
+        const persisted = await options.readKnownFingerprints(context);
+        for (const fp of persisted ?? []) {
+          if (text(fp)) known.add(fp);
+        }
+      }
+
       const seenInBatch = new Set<string>();
       const validItems: RawFeedItem[] = [];
       const fingerprints: string[] = [];
@@ -200,13 +290,13 @@ export function createFeedsValidateAndDeduplicateHostPort(options?: FeedsValidat
       let duplicateCount = 0;
 
       for (const item of rawItems) {
-        if (!isPlainObject(item) || (!text(item.url) && !text(item.id) && !text(item.guid))) {
+        const identity = feedIdentityOf(item);
+        if (!identity) {
           invalidCount++;
           continue;
         }
-        const identityStr = item.guid ?? item.id ?? item.url!;
         const fp = createHash('sha256')
-          .update(JSON.stringify({feedId: item.feedId ?? '', identity: identityStr}))
+          .update(JSON.stringify(identity))
           .digest('hex');
 
         if (known.has(fp) || seenInBatch.has(fp)) {
@@ -218,19 +308,99 @@ export function createFeedsValidateAndDeduplicateHostPort(options?: FeedsValidat
         validItems.push(item);
       }
 
+      const value: FeedsValidationResult = {
+        validItems,
+        uniqueCount: validItems.length,
+        duplicateDiscarded: duplicateCount,
+        totalCount: rawItems.length,
+        validCount: validItems.length,
+        duplicateCount,
+        invalidCount,
+        fingerprints,
+        validatedAt: new Date(clock()).toISOString(),
+        ...(authorizationRef ? {authorizationRef} : {}),
+        source: 'feeds_validation_receipt',
+      };
+
+      if (options?.commitValidation) {
+        await options.commitValidation({fingerprints, validItems, result: value, context});
+      }
+
       return {
         state: 'completed' as const,
-        value: {
-          validItems,
-          totalCount: rawItems.length,
-          validCount: validItems.length,
-          duplicateCount,
-          invalidCount,
-          fingerprints,
-          validatedAt: new Date().toISOString(),
-          source: 'feeds_validation_receipt',
-        },
+        value,
       };
     },
   };
+}
+
+export function createFeedsValidateAndDeduplicateAdapter(options?: {
+  requiredScopes?: readonly string[] | undefined;
+  authorizeSource?: FeedsValidationOptions['authorizeSource'];
+  readKnownFingerprints?: FeedsValidationOptions['readKnownFingerprints'];
+  commitValidation?: FeedsValidationOptions['commitValidation'];
+  knownFingerprints?: ReadonlySet<string> | undefined;
+  now?: (() => number) | undefined;
+}): RegisteredTool {
+  const hostPort = createFeedsValidateAndDeduplicateHostPort({
+    knownFingerprints: options?.knownFingerprints,
+    authorizeSource: options?.authorizeSource,
+    readKnownFingerprints: options?.readKnownFingerprints,
+    commitValidation: options?.commitValidation,
+    now: options?.now,
+  });
+  return createOwnedWorkflowAdapter({
+    nodeId: 'F09_N02',
+    kind: 'host',
+    sideEffect: 'read',
+    requiredScopes: [...(options?.requiredScopes ?? ['feeds:read'])],
+    inputSchema: {
+      type: 'object',
+      additionalProperties: true,
+      properties: {
+        events: {type: 'array', items: {type: 'object'}},
+        items: {type: 'array', items: {type: 'object'}},
+        subscriptionId: {type: 'string', minLength: 1},
+      },
+    },
+    outputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['uniqueCount', 'duplicateDiscarded', 'validCount', 'duplicateCount', 'invalidCount', 'totalCount', 'validItems', 'fingerprints', 'validatedAt', 'source'],
+      properties: {
+        validItems: {type: 'array'},
+        uniqueCount: {type: 'integer', minimum: 0},
+        duplicateDiscarded: {type: 'integer', minimum: 0},
+        totalCount: {type: 'integer', minimum: 0},
+        validCount: {type: 'integer', minimum: 0},
+        duplicateCount: {type: 'integer', minimum: 0},
+        invalidCount: {type: 'integer', minimum: 0},
+        fingerprints: {type: 'array', items: {type: 'string'}},
+        validatedAt: {type: 'string', minLength: 1},
+        authorizationRef: {type: 'string', minLength: 1},
+        source: {const: 'feeds_validation_receipt'},
+      },
+    },
+    execute: async (input, context) => {
+      const nodeContext = {
+        input,
+        taskId: context.taskId,
+        signal: context.signal,
+        deadline: context.deadline,
+        requestId: context.runId ?? context.taskId,
+        mode: 'main',
+        predecessorStates: {F09_N01: 'completed'},
+        predecessorOutputs: {},
+      } as unknown as WorkflowNodeContext;
+      const observation = await hostPort.read(nodeContext);
+      if (observation.state !== 'completed') {
+        const reason = isPlainObject(observation.value) && text(observation.value.reason)
+          ? observation.value.reason
+          : 'feeds_validation_unavailable';
+        const code = /grant|auth|revoked/.test(reason) ? 'UNAUTHORIZED' : 'UNSUPPORTED_CAPABILITY';
+        throw new ProtocolError(code, reason);
+      }
+      return observation.value;
+    },
+  });
 }

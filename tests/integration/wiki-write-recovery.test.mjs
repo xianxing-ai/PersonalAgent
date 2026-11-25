@@ -25,7 +25,7 @@ async function fixture(t){
   const binding={sourceId:'synthetic-source',namespace:'synthetic',configRevision:1,available:true,
     writeAvailable:true,dataLevel:'public',cloudExportAllowed:false,publicQueries:[],allowedNotePaths:['one.md']};
   const reader=await openReadOnlyVault({vaultId:binding.sourceId,rootPath:root});
-  let writes=0,projections=0,failProjection=true,crash=false,controller,app,factory;
+  let writes=0,projections=0,failProjection=true,crash=false,controller,app,factory,projectionInput;
   const openWriter=()=>openControlledVaultWriter({rootPath:root,recoveryRootPath:recovery,powerShellPath,
     sourceId:binding.sourceId,configRevision:binding.configRevision,allowedNotePaths:binding.allowedNotePaths,bindingCurrent:()=>binding.available});
   let writer=openWriter();
@@ -47,6 +47,7 @@ async function fixture(t){
     controller=createPrivateMemoryController(memoryPath,async()=>true,async()=>true,{knowledgeSource:()=>host});
     factory=createTrustedKnowledgeTools(host,{revalidate:async(input,context)=>{
       projections++;
+      projectionInput=structuredClone(input);
       if(failProjection)throw Error('synthetic SQLite projection failure');
       await controller.revalidateSource(input,context);
     }});
@@ -70,6 +71,7 @@ async function fixture(t){
   const args={sourceId:binding.sourceId,configRevision:1,path:'one.md',expectedSha256:hash(original),
     edits:[{oldText:'hello original',newText:'hello organized'}]};
   return {root,recovery,first,other,args,get app(){return app;},get factory(){return factory;},get controller(){return controller;},
+    get projectionInput(){return projectionInput;},
     counts:()=>writes,fail:value=>{failProjection=value;},crash:value=>{crash=value;},
     projections:()=>projections,advanceConfiguration(){binding.configRevision++;writer=openWriter();},
     heads(){const store=openSqliteMemoryHost(memoryPath);try{return [store.readUserFactHead('desktop-private',first.id),
@@ -89,7 +91,10 @@ test('real write/readback survives projection failure and restart; recovery chan
   assert.deepEqual(await f.factory.recoverProjection(taskId,scope()),{pending:0,unknown:0});
   const [changed,unrelated]=f.heads();assert.equal(changed.state,'withdrawn');assert.equal(changed.ref.revision,2);
   assert.equal(changed.confirmation,'external_observation');assert.deepEqual(unrelated.ref,f.other);assert.equal(unrelated.state,'active');
-  await f.factory.recoverProjection(taskId,scope());await f.controller.revalidateSource(f.args,scope());
+  await f.factory.recoverProjection(taskId,scope());
+  await assert.rejects(f.controller.revalidateSource(f.args,scope()),/原写入来源已变化/);
+  assert.equal(f.projectionInput.expectedSha256,hash(body),'projection must bind the confirmed post-write source');
+  await f.controller.revalidateSource(f.projectionInput,scope());
   assert.equal(f.heads()[0].ref.revision,2);assert.equal(f.counts(),1);assert.equal(await readFile(join(f.root,'one.md'),'utf8'),body);
   assert.equal(await readFile(join(f.root,'two.md'),'utf8'),'hello unrelated\n');
   assert.equal(f.app.runtime.getTask(taskId).state,'succeeded');

@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {mkdir, mkdtemp, rm} from 'node:fs/promises';
 import {test} from 'node:test';
@@ -135,7 +137,7 @@ async function terminal(app, taskId) {
 
 test('Competition HTTP goal carries bounded untrusted context without checkpointing the overlay', async t => {
   const requests = [], guards = [];
-  const app = createAgentArtsRuntimeApplication({path: ':memory:', gatewayUrl: 'https://agentarts.example.test',
+  const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:', gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'context-fixture', authorizationProvider: {read: async () => 'Bearer synthetic-only'},
     fetchImpl: async (_url, input) => {
       requests.push(JSON.parse(input.body));
@@ -174,7 +176,7 @@ test('Competition cancellation while reading context blocks credentials and HTTP
   let credentials = 0, sends = 0;
   const entered = new Promise(resolve => {enteredContext = resolve;});
   const reading = new Promise(resolve => {resolveContext = resolve;});
-  app = createAgentArtsRuntimeApplication({path: ':memory:', gatewayUrl: 'https://agentarts.example.test',
+  app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:', gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'context-fixture', authorizationProvider: {read: async () => {credentials++; return 'Bearer synthetic-only';}},
     fetchImpl: async () => {sends++; throw Error('Cancelled context must not reach HTTP');},
     coordinationInput: {readConversationContext: async () => {enteredContext(); return reading;}, beforeCoordinationSend() {}}});
@@ -191,7 +193,7 @@ test('Competition cancellation while reading context blocks credentials and HTTP
 
 test('Competition deadline expiry while reading context blocks credentials and HTTP', async t => {
   let now = Date.now(), credentials = 0, sends = 0;
-  const app = createAgentArtsRuntimeApplication({path: ':memory:', now: () => new Date(now),
+  const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:', now: () => new Date(now),
     gatewayUrl: 'https://agentarts.example.test', runtimeName: 'context-fixture',
     authorizationProvider: {read: async () => {credentials++; return 'Bearer synthetic-only';}},
     fetchImpl: async () => {sends++; throw Error('Expired context must not reach HTTP');},

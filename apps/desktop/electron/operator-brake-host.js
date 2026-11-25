@@ -125,3 +125,53 @@ export function createDesktopOperatorBrake({getRuntime, continueTask, extensions
 export function operatorBrakeTrayLabel(snapshot) {
   return snapshot?.paused === true ? '恢复运行' : '暂停全部';
 }
+
+export function operatorBrakeTrayTooltip(snapshot) {
+  return snapshot?.paused === true ? 'PersonalAgent · 已暂停' : 'PersonalAgent';
+}
+
+/** Single-flight tray controller synchronizing tray menu/tooltip and desktop surfaces. */
+export function createOperatorBrakeTrayController({
+  operatorBrake, setToolTip, setMenu, publish, onError,
+} = {}) {
+  if (!operatorBrake || typeof operatorBrake.snapshot !== 'function'
+    || typeof operatorBrake.isPaused !== 'function'
+    || typeof operatorBrake.engage !== 'function'
+    || typeof operatorBrake.release !== 'function') {
+    throw Error('托盘总暂停控制器需要原 operatorBrake 宿主');
+  }
+  let inFlight = null;
+
+  function refresh() {
+    const snapshot = operatorBrake.snapshot();
+    const label = operatorBrakeTrayLabel(snapshot);
+    const tooltip = operatorBrakeTrayTooltip(snapshot);
+    setToolTip?.(tooltip);
+    setMenu?.(snapshot, label);
+    return {snapshot, label, tooltip};
+  }
+
+  function toggle() {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        if (operatorBrake.isPaused()) await operatorBrake.release();
+        else await operatorBrake.engage();
+      } catch (error) {
+        onError?.(error);
+      } finally {
+        refresh();
+        publish?.();
+        inFlight = null;
+      }
+      return operatorBrake.snapshot();
+    })();
+    return inFlight;
+  }
+
+  return Object.freeze({
+    refresh,
+    toggle,
+    isToggling: () => inFlight !== null,
+  });
+}

@@ -17,7 +17,7 @@ const CAP_RE = /['"](?:([a-z_]+)\.([a-z_.0-9]+))['"]/g;
 
 const DOMAIN_PREFIXES = {
   business: ['todo.', 'reminder.', 'calendar.', 'mail.', 'feeds.', 'notification.', 'research.', 'weather.'],
-  foundation: ['memory.', 'knowledge.', 'model.', 'policy.', 'mcp_skill.', 'configuration.', 'system.', 'workspace.', 'github.', 'runtime.'],
+  foundation: ['memory.', 'knowledge.', 'model.', 'policy.', 'mcp_skill.', 'configuration.', 'system.', 'workspace.', 'coding.', 'github.', 'runtime.'],
   'device-cloud': ['voice.', 'desktop.', 'executor.', 'responsibility.', 'deployment.', 'evaluation.', 'shadow.'],
 };
 

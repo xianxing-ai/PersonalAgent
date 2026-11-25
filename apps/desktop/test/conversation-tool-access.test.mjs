@@ -4,7 +4,8 @@ import {Client} from '@personal-agent/client';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createRuntimeApplication,createDesktopSubagentDispatchTool,
   SUBAGENT_DISPATCH_TOOL_NAME,SUBAGENT_DISPATCH_TOOL_VERSION} from '@personal-agent/runtime/application';
-import {createConversationToolAccess,projectComputerConversationStatus} from '../electron/conversation-tool-access.js';
+import {createConversationToolAccess,isEgressReviewConversationCurrent,projectComputerConversationStatus,
+  resolveEgressReviewConversation} from '../electron/conversation-tool-access.js';
 import {createDesktopVoiceCommandHost} from '../electron/voice-command-host.js';
 import {createVoiceRuntimeApprovalBridge} from '../electron/voice-runtime-approval-bridge.js';
 
@@ -105,4 +106,67 @@ for(const count of [1,2])test(`same-conversation approval bridge: ${count} real 
     }
     assert.equal(executions,0,'reading/preparing a question neither authorizes nor executes the tool');
   } finally {application.close();}
+});
+
+test('egress review maps peer assistant threads onto the active panel conversation',()=>{
+  const assistantConversation='desktop-assistant:user-a28534b10ab9';
+  const panelConversation='desktop-panel:11111111-1111-1111-1111-111111111111';
+  const task={taskId:'mail-task',conversationId:assistantConversation};
+  const ports={
+    resolveConversation:()=>undefined,
+    readTask:id=>id==='mail-task'?task:undefined,
+    readToolConversation:id=>id==='mail-task'?assistantConversation:undefined,
+    activePanelConversationId:()=>panelConversation,
+  };
+  const binding=resolveEgressReviewConversation({taskId:'mail-task',...ports});
+  assert.deepEqual(binding,{
+    conversationId:panelConversation,assistantOwned:true,assistantConversationId:assistantConversation,
+  });
+  assert.equal(isEgressReviewConversationCurrent({...binding,taskId:'mail-task'},ports),true);
+  assert.equal(isEgressReviewConversationCurrent({...binding,taskId:'mail-task'},{
+    ...ports,activePanelConversationId:()=>'desktop-panel:other',
+  }),false);
+  assert.equal(resolveEgressReviewConversation({
+    taskId:'mail-task',...ports,readToolConversation:()=>'desktop-panel:not-assistant',
+  }),undefined);
+});
+
+test('egress review also allows workers dispatched by a peer assistant thread',()=>{
+  const assistantConversation='desktop-assistant:user-577143211e13';
+  const workerConversation='desktop-subtask:6aff2a1c-4ad8-417d-bbda-deb9c7b6ab7b';
+  const panelConversation='desktop-panel:11111111-1111-1111-1111-111111111111';
+  const workerTask={taskId:'worker-task',conversationId:workerConversation};
+  const ports={
+    resolveConversation:()=>undefined,
+    readTask:id=>id==='worker-task'?workerTask:undefined,
+    readToolConversation:id=>id==='worker-task'?assistantConversation:undefined,
+    activePanelConversationId:()=>panelConversation,
+  };
+  const binding=resolveEgressReviewConversation({taskId:'worker-task',...ports});
+  assert.deepEqual(binding,{
+    conversationId:panelConversation,
+    assistantOwned:true,
+    assistantConversationId:assistantConversation,
+    taskConversationId:workerConversation,
+  });
+  assert.equal(isEgressReviewConversationCurrent({...binding,taskId:'worker-task'},ports),true);
+  assert.equal(isEgressReviewConversationCurrent({...binding,taskId:'worker-task'},{
+    ...ports,readTask:()=>({taskId:'worker-task',conversationId:'desktop-subtask:other-parent'}),
+  }),false);
+  assert.equal(resolveEgressReviewConversation({
+    taskId:'worker-task',...ports,readTask:()=>({taskId:'worker-task',conversationId:'foreign-thread'}),
+  }),undefined);
+});
+
+test('egress review keeps ordinary session ownership without inventing an assistant binding',()=>{
+  const panelConversation='desktop-panel:22222222-2222-2222-2222-222222222222';
+  const ports={
+    resolveConversation:id=>id==='front-desk'?panelConversation:undefined,
+    readTask:()=>{throw Error('session ownership must not read assistant task');},
+    readToolConversation:()=>{throw Error('session ownership must not read assistant conversation');},
+    activePanelConversationId:()=>{throw Error('session ownership must not read panel id');},
+  };
+  const binding=resolveEgressReviewConversation({taskId:'front-desk',...ports});
+  assert.deepEqual(binding,{conversationId:panelConversation,assistantOwned:false});
+  assert.equal(isEgressReviewConversationCurrent({...binding,taskId:'front-desk'},ports),true);
 });

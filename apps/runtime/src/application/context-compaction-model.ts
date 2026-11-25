@@ -5,7 +5,8 @@ import {awaitContextCompactionScope,mustPreserveContextMessage} from './context-
 
 /** Source material is always a user data block, never appended to this instruction. */
 export const CONTEXT_SUMMARY_SYSTEM='Summarize only the supplied prior conversation data for an execution subagent. '
-  +'Preserve decisions, unresolved work, constraints, corrections and source uncertainty. '
+  +'Preserve confirmed facts, decisions and their reasons, unresolved work, constraints, corrections and source uncertainty. '
+  +'Keep source references that already appear in the conversation so the original material can be checked. '
   +'Keep concrete names, dates, locations, quantities and identifiers when relevant to those decisions or unresolved work. '
   +'Distinguish user requests from assistant claims and confirmed outcomes; keep unanswered requests explicit. '
   +'Record corrections in chronological order and identify the latest stated value without silently resolving conflicts. '

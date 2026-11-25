@@ -1,5 +1,6 @@
-import {CalendarService, CalDavProvider} from '@personal-agent/calendar';
+import {CalendarService} from '@personal-agent/calendar';
 import {MailService, QQMailProvider, decodeMailCursor} from '@personal-agent/mail';
+import {resolveCalendarProvider} from './calendar-provider-factory.js';
 
 const disconnected = async () => ({connected: false});
 
@@ -10,7 +11,8 @@ export function createDesktopDashboardSources({
   calendarConfig,
   meetingSnapshot = () => undefined,
   mailConfig,
-  createCalendarProvider = options => new CalDavProvider(options),
+  createCalendarProvider,
+  createWindowsCalendarProvider,
   createMailProvider = options => new QQMailProvider(options),
   spendLedger = {isAuthorized: () => false, async list() { return []; }},
   budgetCap = {read: disconnected},
@@ -21,7 +23,7 @@ export function createDesktopDashboardSources({
   return {
     readTime: (window, signal) => readTime({
       isAuthorized: () => calendarAuthorized(calendarConfig, meetingSnapshot),
-      createService: () => createCalendarService(calendarConfig, createCalendarProvider, now),
+      createService: () => createCalendarService(calendarConfig, createCalendarProvider, createWindowsCalendarProvider, now),
       activity,
       now,
     }, window, signal),
@@ -102,7 +104,7 @@ async function readMailFolder(port, created, folder, direction, window, signal) 
     if (signal?.aborted || (port.isAuthorized && !port.isAuthorized())) return {authorized: false, samples: [], truncated: false};
     for (const item of result.items) {
       const at = Date.parse(item.occurredAt);
-      if (at >= from && at < to) samples.push({occurredAt: item.occurredAt, direction});
+      if (at >= from && at < to) samples.push(Object.freeze({occurredAt: String(item.occurredAt), direction}));
     }
     if (!result.hasMore || !result.nextCursor) return {authorized: true, samples, truncated};
     cursor = result.nextCursor;
@@ -124,25 +126,46 @@ export async function readSpend(port, window, signal) {
 
 function calendarAuthorized(config, meetingSnapshot) {
   const binding = config?.binding?.();
+  if (!binding) return false;
+  const dashboardScope = {
+    kind: 'connector_session',
+    scope: 'personal-dashboard',
+    requirementId: 'calendar-local-read',
+    scopes: ['calendar:read'],
+    revision: binding.revision,
+  };
+  if (typeof config?.isSessionAllowed === 'function') {
+    if (config.isSessionAllowed(binding.revision, dashboardScope)) return true;
+  }
   const meeting = meetingSnapshot?.() ?? config?.snapshot?.();
-  return Boolean(binding && meeting?.sessionAllowed === true);
+  return Boolean(meeting?.sessionAllowed === true);
 }
 
-function createCalendarService(config, createProvider, now) {
+function createCalendarService(config, createProvider, createWindowsProvider, now) {
   const binding = config.binding();
   const authorization = config.readAuthorization(binding);
-  const provider = createProvider({
-    calendarUrl: binding.calendarUrl,
+  const provider = resolveCalendarProvider({
+    binding,
     authorization,
-    allowLoopbackHttp: true,
-    ...(binding.calendarName ? {calendarName: binding.calendarName} : {}),
+    createCalendarProvider: createProvider,
+    createWindowsCalendarProvider: createWindowsProvider,
+    now,
   });
   return {service: new CalendarService(provider, {now}), accountRef: binding.accountRef};
 }
 
 function mailAuthorized(config) {
   const saved = config?.current?.();
-  return Boolean(saved && config.isSessionAllowed?.(saved.revision));
+  if (!saved) return false;
+  const dashboardScope = {
+    kind: 'connector_session',
+    scope: 'personal-dashboard',
+    requirementId: 'mail-dashboard-read',
+    scopes: ['mail:read'],
+    headersOnly: true,
+    revision: saved.revision,
+  };
+  return Boolean(config.isSessionAllowed?.(saved.revision, dashboardScope));
 }
 
 function createMailService(config, createProvider, now) {

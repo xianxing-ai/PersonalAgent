@@ -135,3 +135,63 @@ test('refresh consumes exact confirmed pair and restored checkpoint; unrelated o
   restored.close();
   assert.equal(restored.snapshot().readAvailable, false);
 });
+
+test('windows-system binding accepts non-caldav calendarId segment in dedupeKey when binding meeting facts', () => {
+  const clock = Date.parse('2026-09-30T08:00:00.000Z');
+  const account = {providerKind: 'windows-system', accountRef: 'account-win', secretRef: 'secret-win', revision: 1, calendarName: 'Windows 系统日历'};
+  const checkpoints = new Map(), reads = new Map(), facts = [];
+  const runtime = {
+    loadCheckpoint: (id, key) => structuredClone(checkpoints.get(`${id}:${key}`)),
+    saveCheckpointOnce(id, key, value) {
+      const address = `${id}:${key}`;
+      if (checkpoints.has(address)) return false;
+      checkpoints.set(address, structuredClone(value)); return true;
+    },
+    saveCheckpointOnceForCreatedTask: (id, key, value) => runtime.saveCheckpointOnce(id, key, value),
+    bindCoordinationStore: () => ({read: () => ({history: structuredClone(facts)})}),
+    listTasks: () => ({items: [], snapshotSequence: 1}),
+    policy: {revoke: () => {}},
+    requestCancel: () => {},
+  };
+  const host = createDesktopCalendarMeetingHost({
+    config: {binding: () => structuredClone(account), snapshot: () => ({configured: true, providerKind: 'windows-system'})},
+    namespace: 'desktop',
+    readTool: {descriptor: {name: 'fixture.calendar.read', version: '1.0.0', sideEffect: 'read', requiresPresence: false, requiredScopes: ['calendar:read']}, async execute() {}},
+    readArguments: (b, externalId) => ({providerKind: b.providerKind, externalId}),
+    now: () => clock,
+  });
+  host.bindApplication({
+    runtime,
+    prepareHostToolTask: ({commandId}) => {
+      const task = {taskId: `t-${commandId}`, state: 'created', revision: 1};
+      reads.set(task.taskId, {toolName: 'fixture.calendar.read', toolVersion: '1.0.0', task});
+      return task;
+    },
+    finalizeHostToolTask: () => {},
+    readHostToolTask: id => reads.get(id),
+  });
+  const pending = host.read({externalId: 'win-evt-1'});
+  const rec = reads.get(pending.taskId);
+  rec.task.state = 'succeeded';
+  rec.confirmed = {
+    runId: `host-tool-${pending.taskId}`,
+    evidenceRefs: ['ev-1'],
+    result: {
+      source: 'calendar',
+      accountRef: 'account-win',
+      externalId: 'win-evt-1',
+      dedupeKey: 'calendar:b,5,13:win-evt-1:5',
+      contentRef: '[confirmed] 系统会议',
+      validFor: '2026-10-01T08:00:00.000Z/2026-10-01T09:00:00.000Z',
+      occurredAt: '2026-10-01T08:00:00.000Z',
+      fetchedAt: new Date(clock).toISOString(),
+    },
+  };
+  facts.push({id: 'meeting-win', kind: 'fact', revision: 1, state: 'active',
+    validFrom: '2026-09-29T00:00:00.000Z', validUntil: '2026-10-10T00:00:00.000Z',
+    sourceRef: calendarMeetingSourceRef('account-win', 'win-evt-1'),
+    summary: '[confirmed] 系统会议', reason: '[sourceRevision: 5]'});
+  const bound = host.bindMeeting({taskId: pending.taskId, meetingFactId: 'meeting-win'});
+  assert.equal(bound.bound, true);
+  assert.equal(runtime.loadCheckpoint(pending.taskId, 'desktop-calendar-meeting-v1').binding.calendarId, 'b,5,13');
+});

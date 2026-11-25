@@ -11,6 +11,7 @@ using Microsoft.Win32.SafeHandles;
 [assembly: InternalsVisibleTo("ManualNotepadProbe")]
 [assembly: InternalsVisibleTo("WindowsHost.Host")]
 [assembly: InternalsVisibleTo("WindowsHost.HostFixture")]
+[assembly: InternalsVisibleTo("WindowsHost.Desktop")]
 
 namespace PersonalAgent.WindowsHost;
 
@@ -268,13 +269,18 @@ public static class NotepadAction
         errorCode = null;
         try
         {
-            var edits = root.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+            // Windows 11 Notepad exposes its RichEdit editor as a Document.
+            var edits = root.FindAll(TreeScope.Descendants, new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                new AndCondition(
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
+                    new PropertyCondition(AutomationElement.ClassNameProperty, "RichEditD2DPT"))));
+            var owner = root.Current.ProcessId;
             var candidates = new List<(AutomationElement Edit, ValuePattern Value)>();
             for (var i = 0; i < edits.Count; i++)
             {
                 var edit = edits[i];
-                if (edit.Current.IsOffscreen || !edit.Current.IsEnabled) continue;
+                if (edit.Current.ProcessId != owner || edit.Current.IsOffscreen || !edit.Current.IsEnabled) continue;
                 if (!edit.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)) continue;
                 var value = (ValuePattern)pattern;
                 if (value.Current.IsReadOnly) continue;
@@ -307,9 +313,10 @@ public static class NotepadAction
             return ReadPackageFamily(process, out _) == 15700; // Only classic Notepad may lack tabs.
         }
         if (tabs.Count != 1) return false;
-        var items = tabs[0].FindAll(TreeScope.Children,
+        // The TabView places its TabItems inside an internal list.
+        var items = tabs[0].FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
-        if (items.Count != 1 ||
+        if (items.Count != 1 || items[0].Current.ProcessId != pid ||
             !items[0].TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selected) ||
             !((SelectionItemPattern)selected).Current.IsSelected) return false;
         selectedTab = items[0];

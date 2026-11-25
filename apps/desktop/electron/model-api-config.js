@@ -1,7 +1,8 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {DEFAULT_CONTEXT_OUTPUT_TOKENS,DEFAULT_CONTEXT_POLICY,DEFAULT_HARNESS_STEPS,validateHarnessConfiguration} from './harness-configuration.js';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {DEFAULT_CONTEXT_OUTPUT_TOKENS,DEFAULT_CONTEXT_POLICY,DEFAULT_HARNESS_STEPS,upgradeSavedContextDefaults,validateHarnessConfiguration} from './harness-configuration.js';
 
 const providers = new Set(['pangu', 'openai-compatible']);
 const efforts = ['none', 'low', 'medium', 'high'];
@@ -65,8 +66,9 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
   if (beforeCall !== undefined && typeof beforeCall !== 'function') fail('模型用量门禁无效');
   if (onModelUsage !== undefined && typeof onModelUsage !== 'function') fail('模型用量记录无效');
   const target = path.join(userData, 'model-api-config.json');
-  let entries = new Map(), defaultId, restoreFailed = false, disposed = false;
-  let harness={version:1,revision:'unconfigured',enabled:false,context:{enabled:false},events:{enabled:false,quiet:false}};
+  let entries = new Map(), defaultId, restoreFailed = false, disposed = false, egressHost;
+  const sends=new AsyncLocalStorage();
+  let harness={version:1,revision:'unconfigured',enabled:true,maxExecutorSteps:DEFAULT_HARNESS_STEPS,context:{enabled:false},events:{enabled:false,quiet:false}};
   const gateways = new Map();
   const controllers = new Map();
   const requestBudgets = new Map();
@@ -84,7 +86,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
         restored.set(clean.id, {...clean, enabled: value.enabled});
       }
       if (data.defaultId !== undefined && (!restored.has(data.defaultId) || !restored.get(data.defaultId).enabled)) throw Error();
-      const restoredHarness=data.harness===undefined?harness:validateHarnessConfiguration(data.harness);
+      const restoredHarness=data.harness===undefined?harness:upgradeSavedContextDefaults(validateHarnessConfiguration(data.harness));
       entries = restored; defaultId = data.defaultId;harness=restoredHarness;
     } catch {restoreFailed = true;}
   }
@@ -168,12 +170,19 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
       model: entry.model, deployment: `${entry.id}@${entry.bindingId}`,
       ...(entry.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(entry.nativeReasoning)}),
       apiKey: () => {assertCurrent(); return entry.apiKey;},
-      ...(beforeSend===undefined?{}:{fetch:(...args)=>{
+      fetch:async(url,init)=>{
         assertCurrent();
-        const guarded=beforeSend();
+        const host=egressHost,request=sends.getStore();
+        if(!host||!request)throw Object.assign(Error('模型本机出机门禁尚未装配'),{code:'UNSUPPORTED_CAPABILITY'});
+        const destination=url instanceof URL?url.href:url;
+        const lease=await host.prepare({...request,destination,payload:init?.body,
+          isCurrent:()=>{assertCurrent();return egressHost===host&&!request.signal.aborted;}});
+        assertCurrent();
+        const guarded=beforeSend?.();
         if(guarded!==undefined){void Promise.resolve(guarded).catch(()=>undefined);fail('模型发送门禁必须同步完成');}
-        return fetchImpl(...args);
-      }})});
+        lease.assertBeforeSend({destination,payload:init?.body});
+        return fetchImpl(url,init);
+      }});
     if (!modelGateway || typeof modelGateway.complete !== 'function') fail('受信模型网关不可用');
     let latestRequest = 0;
     const gateway = {deployment: modelGateway.deployment, async complete(request) {
@@ -213,7 +222,8 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
             requestForCall = rest;
           }
         }
-        const result = await activeGateway.complete({...requestForCall, signal: controller.signal});
+        const result = await sends.run({requestId:randomUUID(),deadline:request.deadline,signal:controller.signal},
+          ()=>activeGateway.complete({...requestForCall, signal: controller.signal}));
         try { onModelUsage?.({modelId: activeEntry.model, usage: result?.usage, latencyMs: result?.latencyMs}); }
         catch { /* A ledger failure must not rewrite a completed model result. */ }
         assertCurrent();
@@ -242,6 +252,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
     return entry?buildGateway(entry,createGuardedGateway,beforeSend):undefined;
   }
   return Object.freeze({
+    setEgressHost(host){if(typeof host?.prepare!=='function')fail('模型本机出机门禁不可用');egressHost=host;},
     snapshot, getModelGateway, getGuardedModelGateway, getModelReasoningEfforts, getModelReasoningState,
     readHarnessConfiguration(){active();return structuredClone(harness);},
     configureHarness(input){

@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import WebSocket from 'ws';
 import {ProtocolError} from '@personal-agent/contracts';
 import {QwenRealtimeModelGateway} from './realtime.js';
-import type {RealtimeConnectionPort, RealtimeRequest, RealtimeSession} from './realtime.js';
+import type {RealtimeConnectionPort, RealtimeRequest, RealtimeSession,RealtimePayloadPreparer} from './realtime.js';
 
 export interface RealtimeAuthorizationProvider {
   read(signal: AbortSignal): Promise<string>;
@@ -12,6 +12,7 @@ export interface AgentArtsRealtimeModelGatewayOptions {
   websocketUrl?: string;
   authorizationProvider: RealtimeAuthorizationProvider;
   websocketAuthorizationProvider?: RealtimeAuthorizationProvider;
+  preparePayload?:RealtimePayloadPreparer;
 }
 
 function liveRemaining(request: Pick<RealtimeRequest, 'signal' | 'deadline'>): number {
@@ -86,6 +87,11 @@ export function createAgentArtsRealtimeConnection(
         'x-invoke-mode': 'published', 'x-pa-deadline': request.deadline});
       return {
         failureMessage: 'AgentArts Live 连接失败，请检查 WSS 配置、凭据和网络',
+        ...(options.preparePayload?{prepareSend:async(payload:string)=>{
+          const lease=await options.preparePayload!({requestId:randomUUID(),destination:url,payload,deadline:request.deadline,signal:request.signal,
+            isCurrent:()=>{liveRemaining(request);return true;}});
+          return ()=>{liveRemaining(request);lease.assertBeforeSend({destination:url,payload});};
+        }}:{}),
         createSocket() {
           const remaining = liveRemaining(request);
           try {

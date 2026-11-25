@@ -21,23 +21,38 @@ const configurationId = calendarConfigurationId;
 export const calendarMeetingSourceRef = (accountRef, externalId) =>
   `calendar:${createHash('sha256').update(JSON.stringify([accountRef, externalId])).digest('hex')}`;
 
-function itemIdentity(item, accountRef, externalId) {
+function itemIdentity(item, accountRef, externalId, providerKind = 'caldav') {
   const utc = value => typeof value === 'string'
     && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(value)
     && Number.isFinite(Date.parse(value));
   if (!item || item.source !== 'calendar' || item.accountRef !== accountRef
     || item.externalId !== externalId || typeof item.contentRef !== 'string' || !item.contentRef.trim()
     || !utc(item.fetchedAt)) return;
-  // P1 CalDAV's fixed calendarId; UID may itself contain colons.
-  const prefix = `calendar:caldav:${externalId}:`;
-  if (typeof item.dedupeKey !== 'string' || !item.dedupeKey.startsWith(prefix)) return;
-  const sequence = item.dedupeKey.slice(prefix.length);
+  let calendarId;
+  let sequence;
+  if (providerKind === 'windows-system') {
+    if (typeof item.dedupeKey !== 'string' || !item.dedupeKey.startsWith('calendar:')) return;
+    const rest = item.dedupeKey.slice('calendar:'.length);
+    const firstColon = rest.indexOf(':');
+    if (firstColon <= 0) return;
+    calendarId = rest.slice(0, firstColon);
+    const tail = rest.slice(firstColon + 1);
+    const extPrefix = `${externalId}:`;
+    if (!tail.startsWith(extPrefix)) return;
+    sequence = tail.slice(extPrefix.length);
+  } else {
+    // P1 CalDAV's fixed calendarId; UID may itself contain colons.
+    const prefix = `calendar:caldav:${externalId}:`;
+    if (typeof item.dedupeKey !== 'string' || !item.dedupeKey.startsWith(prefix)) return;
+    calendarId = 'caldav';
+    sequence = item.dedupeKey.slice(prefix.length);
+  }
   const interval = typeof item.validFor === 'string' ? item.validFor.split('/') : [];
   if (!/^(0|[1-9]\d*)$/.test(sequence) || !Number.isSafeInteger(Number(sequence))
     || interval.length !== 2 || interval.some(value => !utc(value)) || !utc(item.occurredAt)
     || Date.parse(interval[0]) >= Date.parse(interval[1])
     || Date.parse(item.occurredAt) !== Date.parse(interval[0])) return;
-  return {sequence, interval};
+  return {calendarId, sequence, interval};
 }
 
 /** Trusted shared composition only. A read factory must supply a registered
@@ -61,7 +76,7 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool, q
   const publish = () => {try {onUpdate();} catch {}};
   const binding = () => {
     const value = config.binding();
-    if (closed || !value || value.providerKind !== 'caldav') {
+    if (closed || !value || !['caldav', 'windows-system'].includes(value.providerKind)) {
       throw error('UNSUPPORTED_CAPABILITY', '日历配置未绑定或已撤销');
     }
     return value;
@@ -99,7 +114,7 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool, q
       throw error('UNAUTHORIZED', '日历读取尚未确认或属于其他配置');
     }
     const item = readback.confirmed.result;
-    const identity = itemIdentity(item, account.accountRef, intent.externalId);
+    const identity = itemIdentity(item, account.accountRef, intent.externalId, account.providerKind);
     if (!identity || Date.parse(item.fetchedAt) > now()) {
       throw error('EXTERNAL_FAILURE', '日历读取结果身份或时间无效');
     }
@@ -122,7 +137,7 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool, q
       || record.configurationId !== read.intent.configurationId
       || record.baselineTaskId !== taskId || record.sequence !== read.sequence
       || record.binding?.accountRef !== read.account.accountRef
-      || record.binding?.calendarId !== 'caldav' || record.binding?.externalId !== read.intent.externalId
+      || record.binding?.calendarId !== read.calendarId || record.binding?.externalId !== read.intent.externalId
       || record.binding?.sourceRef !== calendarMeetingSourceRef(read.account.accountRef, read.intent.externalId)
       || !isDeepStrictEqual(record.baseline, read.item)
       || !isDeepStrictEqual(record.evidenceRefs, read.readback.confirmed.evidenceRefs)) {
@@ -192,11 +207,16 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool, q
     snapshot() {
       const saved = config.snapshot();
       const available = !closed && questionReady() && Boolean(application && readTool && saved.configured);
+      const currentBinding = config.binding?.();
+      const sessionAllowed = Boolean(available && (
+        saved.sessionAllowed === true
+        || (currentBinding && config.isSessionAllowed?.(currentBinding.revision) === true)
+      ));
       let readTask;
       if (available && lastTaskId) {
         try {readTask = host.readTask(lastTaskId);} catch {readTask = {state: 'unavailable', calendarWriteVerified: false};}
       }
-      return {...saved, readAvailable: available, sessionAllowed: false,
+      return {...saved, readAvailable: available, sessionAllowed,
         reason: available ? '单条读取逐次经过 Runtime 审批；会议变化还需匹配现有事实'
           : saved.reason, meetingBindingAvailable: available,
         ...(readTask ? {readTask} : {}),
@@ -247,7 +267,7 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool, q
       const fact = store.read().history.findLast(node => node.id === payload.meetingFactId);
       const record = {version: 1, namespace, configurationId: read.intent.configurationId,
         baselineTaskId: payload.taskId, factRevision: fact?.revision, sequence: read.sequence,
-        binding: {accountRef: read.account.accountRef, calendarId: 'caldav', externalId: read.intent.externalId,
+        binding: {accountRef: read.account.accountRef, calendarId: read.calendarId, externalId: read.intent.externalId,
           sourceRef: calendarMeetingSourceRef(read.account.accountRef, read.intent.externalId), meetingFactId: payload.meetingFactId},
         baseline: read.item, evidenceRefs: [...read.readback.confirmed.evidenceRefs]};
       assertFact(record);

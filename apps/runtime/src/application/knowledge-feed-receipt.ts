@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {TaskRuntime} from '../index.js';
+import type {CollectResult} from '@personal-agent/feeds';
 
 export interface KnowledgeFeedItem {
   dedupeKey: string;
@@ -172,11 +173,11 @@ export function createKnowledgeFeedReceiptFromCollectResult(input: {
 }
 
 /** Trusted root reader: rebuild ONLY from the original confirmed tool result and persisted input identity. */
-export function createKnowledgeFeedReceiptFromConfirmedExecution(input: {
+export function readConfirmedFeedCollection(input: {
   namespace: string; sourceId: string; taskId: string; runId: string; toolVersion: string;
   query: Record<string, unknown>; scopeRef: string;
   runtime: Pick<TaskRuntime, 'getTask' | 'readToolExecutions' | 'matchesToolExecutionInput' | 'loadCheckpoint' | 'readEvidence'>;
-}): KnowledgeFeedReceiptV2 | undefined {
+}): CollectResult | undefined {
   const {namespace, sourceId, taskId, runId, toolVersion, query, scopeRef, runtime} = input;
   if (!identifier(namespace) || !identifier(sourceId) || !text(taskId) || !text(runId)
     || !text(toolVersion) || !text(scopeRef) || !object(query) || query.subscriptionId !== sourceId
@@ -197,8 +198,19 @@ export function createKnowledgeFeedReceiptFromConfirmedExecution(input: {
     if (saved.result.items.some(item => !object(item) || !object(item.record)
       || item.record.accountRef !== sourceId || !instant(item.record.fetchedAt)
       || !['public', 'private', 'restricted'].includes(item.record.sensitivity as string))) return undefined;
-    return createKnowledgeFeedReceiptFromCollectResult({namespace, sourceId, result: saved.result});
+    const result=saved.result;
+    if(!Array.isArray(result.items)||!object(result.collection)||result.collection.subscriptionId!==sourceId
+      ||!['fetched','unchanged'].includes(result.collection.state as string)||!instant(result.collection.fetchedAt)
+      ||typeof result.hasMore!=='boolean'||!text(result.nextCursor)
+      ||result.collection.state==='unchanged'&&(result.items.length!==0||result.hasMore))return undefined;
+    return result as unknown as CollectResult;
   } catch { return undefined; }
+}
+
+/** Complete knowledge snapshots keep their existing nonempty, final-page contract. */
+export function createKnowledgeFeedReceiptFromConfirmedExecution(input: Parameters<typeof readConfirmedFeedCollection>[0]): KnowledgeFeedReceiptV2 | undefined {
+  const result=readConfirmedFeedCollection(input);
+  return result?createKnowledgeFeedReceiptFromCollectResult({namespace:input.namespace,sourceId:input.sourceId,result}):undefined;
 }
 
 /** Bind a structurally valid receipt to the exact consumer's observed context. Keep Runtime ownership checks outside. */

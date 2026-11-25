@@ -12,6 +12,8 @@ export { ICalSubscriptionProvider, parseIcalEvents, unfoldLines, unescapeIcalTex
 export type { FetchLike, FetchResponseLike, ICalSubscriptionOptions } from './ical-subscription.js';
 export { CalDavProvider, parseCalDavEvents, zonedWallToUtc } from './caldav.js';
 export type { CalDavFetchLike, CalDavFetchResponseLike, CalDavReadProviderOptions, CalDavChangeSnapshot } from './caldav.js';
+export { WindowsSystemCalendarProvider } from './windows-system.js';
+export type { WindowsAppointmentRaw, WindowsCalendarRequest, WindowsCalendarTransport, WindowsSystemCalendarOptions, WindowsSystemCalendarSummary } from './windows-system.js';
 export { CalendarService, eventToItem } from './service.js';
 export { FakeCalendarProvider, defaultCalendarFixtures } from './fake-provider.js';
 export type { CalendarEventRecord, CalendarFetchPage, CalendarProvider, CalendarReadContext, CalendarRespondInput, CalendarRespondResult, CalendarSummary, CalendarWindow } from './provider.js';
@@ -53,6 +55,22 @@ const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
   },
 };
 
+const createEventInputSchema: ToolDescriptor['inputSchema'] = {
+  type: 'object',
+  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。给 externalId/uid 时同标识同内容重放幂等。',
+  required: ['summary', 'startUtc', 'endUtc'],
+  additionalProperties: false,
+  properties: {
+    summary: {type: 'string', minLength: 1, maxLength: 512},
+    startUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
+    endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
+    location: {type: 'string', maxLength: 512},
+    notes: {type: 'string', maxLength: 4096},
+    externalId: {type: 'string', minLength: 1, maxLength: 512, pattern: '^[^\\u0000-\\u001f\\u007f]+$', description: '可选：显式事件外部标识（与 calendar.events 返回字段同名）；缺省由提供商生成。'},
+    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '可选：显式资源 UID（用于重放幂等）；缺省由提供商生成。'},
+  },
+};
+
 /**
  * 读工具返回的事件标识字段叫 `externalId`，写工具历史上叫 `uid`。云端工具目录由
  * `safeSchema()` 投影，只保留 type/properties/required 等结构字段、**不发送 description**，
@@ -66,21 +84,6 @@ const eventIdProperties = {
   uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},
 } as const;
 
-const createEventInputSchema: ToolDescriptor['inputSchema'] = {
-  type: 'object',
-  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。缺省标识时每次创建新事件（idempotencySupport=false）；显式提供 externalId 或 uid 时按该标识重放幂等。',
-  required: ['summary', 'startUtc', 'endUtc'],
-  additionalProperties: false,
-  properties: {
-    summary: {type: 'string', minLength: 1, maxLength: 512},
-    startUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
-    endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
-    location: {type: 'string', maxLength: 512},
-    notes: {type: 'string', maxLength: 4096},
-    ...eventIdProperties,
-  },
-};
-
 /** 恰好一个标识：两者都给（即使相同）说明调用方意图不明确，直接拒绝而不是猜。 */
 function resolveEventId(raw: {externalId?: unknown; uid?: unknown}): string {
   const externalId = typeof raw.externalId === 'string' && raw.externalId.length > 0 ? raw.externalId : undefined;
@@ -91,7 +94,7 @@ function resolveEventId(raw: {externalId?: unknown; uid?: unknown}): string {
   return (externalId ?? uid) as string;
 }
 
-/** 可选标识：至多给一个；两者都给直接拒绝而不是猜。缺省返回 undefined 由提供商生成。 */
+/** 创建时的可选标识：至多一个；两者都给直接拒绝。 */
 function resolveOptionalEventId(raw: {externalId?: unknown; uid?: unknown}): string | undefined {
   const externalId = typeof raw.externalId === 'string' && raw.externalId.length > 0 ? raw.externalId : undefined;
   const uid = typeof raw.uid === 'string' && raw.uid.length > 0 ? raw.uid : undefined;

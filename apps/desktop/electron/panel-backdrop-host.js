@@ -10,7 +10,8 @@ async function buildBackdrop() {
   const framework=path.join(process.env.WINDIR??'C:\\Windows','Microsoft.NET','Framework64','v4.0.30319');
   const kits=path.join(process.env['ProgramFiles(x86)']??'C:\\Program Files (x86)','Windows Kits','10','UnionMetadata');
   const versions=(await readdir(kits)).filter(name=>/^10\.0\.\d+\.0$/.test(name)).sort((a,b)=>Number(b.split('.')[2])-Number(a.split('.')[2]));
-  const metadata=path.join(kits,versions[0]??'','Windows.winmd');
+  if(!versions.length)throw Error('Windows SDK UnionMetadata unavailable');
+  const metadata=path.join(kits,versions[0],'Windows.winmd');
   const runtime=path.join(process.env['ProgramFiles(x86)']??'C:\\Program Files (x86)','Reference Assemblies','Microsoft','Framework','.NETFramework','v4.8','Facades','System.Runtime.dll');
   const vectorsRoot=path.join(process.env.WINDIR??'C:\\Windows','Microsoft.NET','assembly','GAC_MSIL','System.Numerics.Vectors');
   const vectors=path.join(vectorsRoot,(await readdir(vectorsRoot)).find(name=>name.startsWith('v4.0_4.0.0.0_'))??'','System.Numerics.Vectors.dll');

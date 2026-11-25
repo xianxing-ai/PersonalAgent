@@ -1,7 +1,9 @@
+import {randomUUID} from 'node:crypto';
 import {createVoiceEchoGuard} from '@personal-agent/voice';
 
 const CAPTURE_MS = 60_000;
 const SESSION_MS = 10 * 60_000;
+const MAX_DIRECT_SPEECH_CHARS = 2000;
 const VOICE_ERROR_CODES = new Set(['INVALID_ARGUMENT', 'INVALID_STATE', 'UNSUPPORTED_CAPABILITY',
   'CANCELLED', 'TIMEOUT', 'STALE_SESSION', 'EXTERNAL_FAILURE']);
 
@@ -69,6 +71,10 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       try { record.subscription?.unsubscribe(); } catch (error) { releaseError = error; }
       try { await record.subscription?.closed; } catch (error) { releaseError = error; }
       try { record.buffer?.dispose(); } catch (error) { releaseError ??= error; }
+      if (record.directSpeech && record.speechOperation) {
+        try { await record.speechOperation.stop('user'); }
+        catch (error) { releaseError ??= error; }
+      }
       if (record.startingSession) {
         try {record.sessionId = (await record.startingSession).sessionId;} catch {}
       }
@@ -120,7 +126,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       || sharedDeadline > now() + SESSION_MS || !lease.signal || lease.signal.aborted
       || typeof lease.signal.addEventListener !== 'function' || typeof lease.signal.removeEventListener !== 'function'
       || !microphoneHost.snapshot().authorized)) throw Error('共享麦克风租约无效');
-    const conversationId=readConversationId?.();
+    const conversationId=readConversationId?.(senderId);
     const controller = new AbortController();
     let captureDeadline = new Date(Math.min(now() + CAPTURE_MS, sharedDeadline)).toISOString();
     const sessionDeadline = new Date(sharedDeadline).toISOString();
@@ -143,7 +149,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
     let stage = 'pcm_acquire';
     try {
       if (record.controller.signal.aborted) throw Error('语音采集已取消');
-      if(!lease)await microphoneHost.authorize({deadline:sessionDeadline,purpose:'dictation',signal:controller.signal});
+      if(!lease)await microphoneHost.authorize({deadline:sessionDeadline,purpose:'dictation',senderId,signal:controller.signal});
       if(active!==record||controller.signal.aborted)throw Error('语音采集已取消');
       captureDeadline = new Date(Math.min(now() + CAPTURE_MS, sharedDeadline)).toISOString();
       record.captureDeadline = captureDeadline;
@@ -298,10 +304,82 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
     }
   }
 
+  async function speakText(senderId, text) {
+    if (!enabled || disposed) throw Error('语音播报当前不可用');
+    if (!Number.isSafeInteger(senderId) || senderId <= 0) throw Error('语音操作来源不受信任');
+    if (releaseUnknown) throw Error('语音资源释放未确认，请重启应用后再启用');
+    const normalized = typeof text === 'string' ? text.trim() : '';
+    if (!normalized) throw Error('没有可播报的回答正文');
+    const boundedText = [...normalized].slice(0, MAX_DIRECT_SPEECH_CHARS).join('');
+    if (active) {
+      if (active.directSpeech && active.phase === 'speaking') {
+        await stopSpeaking(senderId);
+      } else {
+        throw Error('请先结束当前语音会话');
+      }
+    }
+    const controller = new AbortController();
+    const replyId = randomUUID();
+    const sessionId = randomUUID();
+    const deadline = new Date(now() + 120_000).toISOString();
+    const record = {
+      senderId,
+      controller,
+      phase: 'speaking',
+      directSpeech: true,
+      interrupted: false,
+      speechOperation: undefined,
+    };
+    active = record;
+    lastError = '';
+    lastFailure = null;
+    publish();
+    const speech = guard.beginSpeechOutput(replyId);
+    try {
+      const operation = ports.output.speak({
+        sessionId,
+        replyId,
+        text: boundedText,
+        locale: 'zh-CN',
+        deadline,
+        signal: controller.signal,
+      });
+      record.speechOperation = operation;
+      await operation.result;
+      await cleanup(record);
+      lastError = '';
+      lastFailure = null;
+      return {completed: !record.interrupted, interrupted: record.interrupted, voice: snapshot()};
+    } catch (error) {
+      if (record.interrupted || controller.signal.aborted) {
+        try { await cleanup(record); }
+        catch (releaseError) { recordFailure('cleanup', releaseError, '语音资源释放未确认'); throw Error(lastError); }
+        return {completed: false, interrupted: true, voice: snapshot()};
+      }
+      recordFailure('playback', error);
+      try { await cleanup(record); }
+      catch (releaseError) { recordFailure('cleanup', releaseError, '语音资源释放未确认'); }
+      throw Error(lastError);
+    } finally {
+      guard.endSpeechOutput(speech.replyId);
+    }
+  }
+
   async function stopSpeaking(senderId) {
     assertOwner(senderId);
     const record = active;
     if (record.phase !== 'speaking') return {stopped: false, reason: '当前没有正在播报的回答'};
+    if (record.directSpeech) {
+      record.interrupted = true;
+      record.controller.abort();
+      try {
+        await record.speechOperation?.stop('user');
+        await cleanup(record);
+        return {stopped: true, resourcesReleased: true};
+      } catch {
+        throw Error('播报停止未确认');
+      }
+    }
     try {
       const result = await manager.stopSpeaking(record.sessionId);
       publish();
@@ -334,7 +412,8 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
     if (failure) throw failure;
   }
 
-  return {snapshot, beginCapture, finishCapture, playReply, stopSpeaking, cancelCapture, dispose,
+  return {snapshot, beginCapture, finishCapture, playReply, speakText, stopSpeaking, cancelCapture, dispose,
     beginSharedCapture, cancelSharedCapture, subscribePlayback: listener => manager.subscribe(listener),
-    hasActive: () => Boolean(active || releaseUnknown)};
+    hasActive: senderId => Boolean(releaseUnknown || active && (senderId===undefined || active.senderId===senderId)),
+    ownsCapture:senderId => Boolean(active && active.senderId===senderId)};
 }

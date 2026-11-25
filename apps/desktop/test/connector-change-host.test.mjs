@@ -288,9 +288,9 @@ test('existing connector mail silent policy stops reminder inference without dis
 
 test('production conversation projection hides persisted connector decisions including legacy user-conversation tasks',()=>{
   const source=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8');
-  const declaration=source.match(/function visibleConversationTask\(task,surface\)\{[^\r\n]+/)[0];
+  const declaration=source.match(/function visibleConversationTask\(task,surface\)\{[\s\S]*?\r?\n\}/)[0];
   const visible=new Function('connectorChangeHost','taskSurface','conversations','return '+declaration)(
-    {ownsDecisionTask:id=>id==='internal'},()=> 'panel',{conversationIdForTask:()=> 'desktop-panel',activeConversationId:()=> 'desktop-panel'});
+    {ownsDecisionTask:id=>id==='internal'},()=> 'panel',{conversationIdForTask:()=> 'desktop-panel',activeConversationId:()=> 'desktop-panel',canAccessSurface:()=>true});
   assert.equal(visible({taskId:'internal',goal:'判断是否告知用户：收到一封新邮件'},'panel'),false);assert.equal(visible({taskId:'question',goal:'普通问题'},'panel'),true);
   const wiring=source.slice(source.indexOf('connectorChangeHost=createDesktopConnectorChangeHost'),source.indexOf('if(competitionMode && memoryLearningHost'));
   assert.doesNotMatch(wiring,/conversations\.add|onDecisionTask/);
@@ -530,9 +530,10 @@ test('cancelled saved local decision never recovers into a notification',async t
   assert.equal(f.host.snapshot().withheld,1);assert.equal(f.host.snapshot().pending,0);
 });
 
-test('an interrupted decision carrying any cloud intent cannot use the pure local recovery path',async t=>{
+for(const cancel of [false,true])test(`an interrupted decision carrying any cloud intent cannot use the pure local recovery path (cancel=${cancel})`,async t=>{
   const f=await fixture(t);await f.mail();f.addMail(2);await f.mail();
   const original=f.seedInterruptedDecision();f.app.runtime.saveCheckpointOnce(original.taskId,'competition-cloud-inflight',{synthetic:true});
+  if(cancel)f.app.runtime.requestCancel(original.taskId,'Explicit test user cancellation');
   await f.restart();f.app.runtime.recoverInterruptedTasks();await f.host.flush();
   assert.equal(f.app.runtime.getTask(original.taskId).state,'waiting_reconciliation');
   assert.equal(f.choices.length,0);assert.equal(f.native.length,0);assert.equal(f.host.snapshot().deferred,1);

@@ -75,3 +75,21 @@ test('a repair trace can be viewed beside an existing replay without new executi
   assert.equal(replay.repairTimeline[0].executedDuringReplay, false);
   assert.equal(replay.repairSummary.sideEffectsEmitted, 0);
 });
+
+test('retryable EXTERNAL_FAILURE on read is transient and non-retryable EXTERNAL_FAILURE stops', () => {
+  const transientRecord = planRuntimeTaskFailure({
+    taskId: 'weather-retryable', effect: 'read', outcome: 'failed',
+    errorCode: 'EXTERNAL_FAILURE', retryable: true, occurredAt: at, evidenceRefs: ['read-w1'],
+  });
+  assert.equal(transientRecord.trace.attempts[0].classification, 'transient');
+  assert.equal(transientRecord.trace.attempts[0].strategy, 'backoff_retry');
+  assert.equal(card(transientRecord).canRetryRead, true);
+
+  const fatalRecord = planRuntimeTaskFailure({
+    taskId: 'weather-fatal', effect: 'read', outcome: 'failed',
+    errorCode: 'EXTERNAL_FAILURE', retryable: false, occurredAt: at, evidenceRefs: ['read-w2'],
+  });
+  assert.equal(fatalRecord.trace.attempts[0].classification, 'unrecoverable');
+  assert.equal(fatalRecord.trace.attempts[0].strategy, 'stop');
+  assert.equal(card(fatalRecord).canRetryRead, false);
+});
