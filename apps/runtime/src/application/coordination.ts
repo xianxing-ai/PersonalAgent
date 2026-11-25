@@ -5,7 +5,9 @@ import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminal
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
 import {isDeepStrictEqual} from 'node:util';
+import {createHash} from 'node:crypto';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
+import {TOOL_DISCOVERY_NAME} from './tool-discovery.js';
 import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
 
@@ -206,6 +208,7 @@ export interface CompetitionToolExport {
 }
 
 interface CompetitionCheckpoint {
+  executionEpoch?:number;
   step: number;
   continuation?: CoordinationContinuation;
   pending?: CoordinationToolProposalResult;
@@ -220,6 +223,7 @@ export interface CoordinationWorkerCapabilityPort {
   dispatch(proposal:CoordinationToolProposalResult,context:WorkerContext & {revision:number}):Promise<
     {state:'pending'|'unknown'|'confirmed';result:unknown;evidenceRefs:readonly string[];selection:unknown}>;
   assertReceiptAllowed(proposal:CoordinationToolProposalResult,selection:unknown,receipt:unknown,context:WorkerContext & {revision:number}):void;
+  canReuseReceipt?(proposal:CoordinationToolProposalResult,original:CoordinationToolProposalResult,receipt:unknown):boolean;
 }
 export type PrepareCompetitionToolExport=(input:{phase:'preflight'|'projection';taskId:string;runId?:string;
   proposal:CoordinationToolProposalResult;deadline:string;signal:AbortSignal})=>Promise<void>;
@@ -319,6 +323,7 @@ async function exchange(
   onActivity?: (event: {kind: 'reasoning' | 'answer_delta' | 'status'; label: string; text?: string}) => void,
   injectedGoalSuffix = '',
 ): Promise<CoordinationResult> {
+  const executionEpoch=runtime.readExecutionEpoch(taskId);
   if (runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
     throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation before another send');
   }
@@ -345,6 +350,7 @@ async function exchange(
           taskId,
           goal: goal + injectedGoalSuffix,
           revision,
+          executionEpoch,
           deadline: context.deadline,
           signal: context.signal,
           ...(continuation === undefined ? {} : {continuation}),
@@ -352,7 +358,11 @@ async function exchange(
           ...(availableTools === undefined ? {} : {availableTools: structuredClone(availableTools)}),
           });
           if (injectedGoalSuffix) injectedGoalSuffixes.set(request, injectedGoalSuffix);
-          return await port.execute(request);
+          const result = await port.execute(request);
+          runtime.assertExecutionEpoch(taskId,executionEpoch);
+          if(result.verification!=='mock'&&result.executionEpoch!==executionEpoch)
+            throw new ProtocolError('REVISION_CONFLICT','Cloud proposal belongs to a stale execution epoch');
+          return result;
         } catch (error) {
           runtime.saveCheckpoint(taskId, 'competition-coordination-failure',
             coordinationFailureDiagnostic(error, continuation !== undefined));
@@ -370,6 +380,9 @@ async function exchange(
             // model response. The same loop cannot automatically resend it.
             markCompetitionCloudUnknown(runtime, taskId, error.receipt, suffix);
             throw new ProtocolError('RESULT_UNKNOWN', `Original cloud invocation requires reconciliation${suffix}`);
+          }
+          if (error instanceof ProtocolError && error.message.startsWith('任务执行未完成；')) {
+            throw error;
           }
           // Adapter errors may contain credentials or private response bodies.
           throw new ProtocolError('EXTERNAL_FAILURE', `Coordination adapter failed${suffix}`);
@@ -445,12 +458,15 @@ export async function runCoordinationWorker(
       throw new ProtocolError('UNAUTHORIZED','Original Competition execution capacity binding changed');
     let maxSteps=capacity?.windowEndStep??originalMaxSteps;
     const saved = context.loadCheckpoint('competition-loop') as CompetitionCheckpoint | undefined;
+    const executionEpoch=saved?.executionEpoch??0;
+    runtime.assertExecutionEpoch(taskId,executionEpoch);
     let evidenceRefs = saved?.evidenceRefs ?? [];
     let continuation = saved?.continuation;
     let pending = saved?.pending;
     const receipts = saved?.receipts ?? [];
 
     for (let step = saved?.step ?? 1; step <= maxSteps; step++) {
+      runtime.assertExecutionEpoch(taskId,executionEpoch);
       if(capacity&&step===maxSteps) {
         const records=runtime.readToolExecutions(taskId);
         const recordsByEvidence=new Map(records.map(record=>[record.evidenceId,record]));
@@ -500,13 +516,18 @@ export async function runCoordinationWorker(
           });
         }
       }
+      const discovery = receipts.find(item => item.proposal.proposalId === continuation?.proposalId);
+      const discoveryArguments = discovery?.proposal.arguments;
       let streamedAnswer = false;
       const onActivity = (event: {kind: 'reasoning' | 'answer_delta' | 'status'; label: string; text?: string}) => {
         if (event.kind === 'status') {
           context.reportProgress({stepId: `competition-node-${step}`, label: event.label, completedUnits: step - 1, totalUnits: maxSteps});
           return;
         }
-        if (event.kind === 'answer_delta') streamedAnswer = true;
+        if (event.kind === 'answer_delta') {
+          if (executionDiscovery) return;
+          streamedAnswer = true;
+        }
         context.noteActivity?.({kind: event.kind === 'reasoning' ? 'reasoning' : 'answer_delta', stepId: `competition-${step}`, ...(event.text === undefined ? {} : {text: event.text}), label: event.label});
       };
       context.reportProgress({
@@ -527,6 +548,10 @@ export async function runCoordinationWorker(
       if (availableTools && availableTools.length === 0) {
         throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'No Competition tools are available for this task');
       }
+      const executionDiscovery = discovery?.proposal.toolName === TOOL_DISCOVERY_NAME
+        && discovery.proposal.verification !== 'mock' && discoveryArguments?.purpose !== 'inspect'
+        && availableTools?.some(tool => tool.name !== TOOL_DISCOVERY_NAME
+          && (discoveryArguments?.purpose === 'execute' || discoveryArguments?.query === tool.name));
       let proposalRevision = runtime.getTask(taskId).revision;
       // A fresh read with the same input may supersede a receipt exported under an older policy.
       // Never carry the older, wider projection into the new continuation or supersede a write.
@@ -568,9 +593,25 @@ export async function runCoordinationWorker(
         }
       }, availableTools, revision => { proposalRevision = revision; },
         continuation?priorReceipts.map(item=>item.continuation):undefined, onActivity, injectedGoalSuffix);
+      runtime.assertExecutionEpoch(taskId,executionEpoch);
       if (result.kind === 'text') {
+        if (executionDiscovery) {
+          context.saveCheckpoint('competition-completion-conflict',{version:1,executionEpoch,
+            cloudResultDigest:createHash('sha256').update(JSON.stringify(result)).digest('hex'),
+            localVerdict:'discovered_action_not_executed'});
+          consumeCompetitionCloudReceipt(runtime,taskId);
+          throw new ProtocolError('EXTERNAL_FAILURE','云端只查到了工具，尚未执行用户要求的操作');
+        }
         if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: result.text, label: '回答'});
-        const completion:unknown=options.assertCompletion?.();
+        let completion:unknown;
+        try {completion=options.assertCompletion?.();}
+        catch(error){
+          runtime.assertExecutionEpoch(taskId,executionEpoch);
+          context.saveCheckpoint('competition-completion-conflict',{version:1,executionEpoch,
+            cloudResultDigest:createHash('sha256').update(JSON.stringify(result)).digest('hex'),
+            localVerdict:'required_delegation_incomplete'});
+          throw error;
+        }
         if(completion!==undefined){void Promise.resolve(completion).catch(()=>undefined);
           throw new ProtocolError('INVALID_ARGUMENT','Competition completion check must be synchronous');}
         return {resultSummary: summary(result.text, result.verification), evidenceRefs};
@@ -597,8 +638,20 @@ export async function runCoordinationWorker(
         }
         continuation = receipt.continuation;
         pending = undefined;
-        context.saveCheckpoint('competition-loop', {step: step + 1, continuation, evidenceRefs, receipts});
+        context.saveCheckpoint('competition-loop', {executionEpoch,step: step + 1, continuation, evidenceRefs, receipts});
         consumeCompetitionCloudReceipt(runtime, taskId);
+        continue;
+      }
+
+      const capabilities=options.workerCapabilities;
+      const original=pending===undefined&&capabilities?.canReuseReceipt?receipts.find(item=>item.workerRevision!==undefined
+        &&capabilities.canReuseReceipt?.(result,item.proposal,item.continuation.result)):undefined;
+      if(original&&capabilities) {
+        capabilities.assertReceiptAllowed(original.proposal,original.workerSelection,original.continuation.result,
+          {...context,revision:original.workerRevision!});
+        continuation=original.continuation;
+        context.saveCheckpoint('competition-loop',{step:step+1,continuation,evidenceRefs,receipts});
+        consumeCompetitionCloudReceipt(runtime,taskId);
         continue;
       }
 
@@ -612,7 +665,7 @@ export async function runCoordinationWorker(
       const inputRevision=pending===undefined?proposalRevision:saved?.pendingRevision??proposalRevision;
       // This is a parsed proposal, not a receipt or permission. Trusted host
       // preflight readers must be able to verify it before any grant/execution.
-      context.saveCheckpoint('competition-loop', {step, continuation, pending: result,pendingRevision:inputRevision,evidenceRefs, receipts});
+      context.saveCheckpoint('competition-loop', {executionEpoch,step, continuation, pending: result,pendingRevision:inputRevision,evidenceRefs, receipts});
       consumeCompetitionCloudReceipt(runtime, taskId);
       const worker=options.workerCapabilities?.accepts(result)?options.workerCapabilities:undefined;
       if(result.verification!=='mock') {
@@ -634,6 +687,7 @@ export async function runCoordinationWorker(
       if(Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Export preflight expired');
       const exportBinding=worker?undefined:requireExportBinding(result,taskId,tools,options.toolExports,
         options.toolCatalog!==undefined,'preflight',undefined,context.signal);
+      runtime.assertExecutionEpoch(taskId,executionEpoch);
       const workerResult=worker?await worker.dispatch(result,{...context,revision:inputRevision}):undefined;
       const toolStarted = Date.now();
       const toolArgs = (() => { try { const text = JSON.stringify(result.arguments); return text.length > 180 ? text.slice(0, 179) + '…' : text; } catch { return '[无法显示]'; } })();
@@ -697,7 +751,7 @@ export async function runCoordinationWorker(
         runId,...(workerResult?{workerSelection:workerResult.selection,workerRevision:inputRevision}:{}),
         ...(exportBinding ? {exportPolicyVersion: exportBinding.exportPolicyVersion} : {})});
       pending = undefined;
-      context.saveCheckpoint('competition-loop', {step: step + 1, continuation, evidenceRefs, receipts});
+      context.saveCheckpoint('competition-loop', {executionEpoch,step: step + 1, continuation, evidenceRefs, receipts});
     }
     throw new ProtocolError('TIMEOUT', `Competition coordination reached maxSteps=${maxSteps}`);
 }

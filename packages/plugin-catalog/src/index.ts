@@ -12,3 +12,4 @@ export {
 export type {PluginPermissionManifest} from './permissions.js';
 export {createPluginSandbox} from './sandbox.js';
 export type {PluginAccessDecision, PluginAccessLookup, PluginAccessReason, PluginSandboxViolation} from './sandbox.js';
+export {minimalPermissionHighRiskPlugin, minimalPermissionPositivePlugin} from './fixtures.js';

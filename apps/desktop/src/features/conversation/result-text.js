@@ -12,3 +12,36 @@ export function resultText(value, provenance) {
   if (typeof value !== 'string') return '';
   return resultMetadata(value, provenance) ? value.replace(competitionFooter, '') : value;
 }
+
+function friendlyChatFailure(error) {
+  const raw = typeof error?.message === 'string' ? error.message.trim() : '';
+  if (!raw) return '模型暂时不可用，请稍后重试。';
+  const cleaned = raw
+    .replace(/\s*\[(?:stage|errorId)=[^\]]+\]/g, '')
+    .replace(/\s*\[cloud:[^\]]+\]/g, '')
+    .replace(/^云端已返回明确失败：\s*/, '')
+    .trim();
+  return cleaned || '模型暂时不可用，请稍后重试。';
+}
+
+// The main chat delivers the parent model's reply first; failed child worker errors stay in trace/worker status
+// so the model can answer naturally, and chat only shows a fallback error when the model itself failed with no answer.
+export function mainChatReplies(task, children = [], streamed = '') {
+  if (task.bodyWithheld) return [];
+  const ownAnswer = resultText(task.resultSummary, task.resultMetadata);
+  if (task.outputTruncated) return children.length ? [] : ownAnswer ? [ownAnswer] : [];
+  if (ownAnswer || streamed) return [ownAnswer || streamed];
+  const replies = children
+    .filter(child => child.state === 'succeeded' && child.finalReply)
+    .map(child => child.finalReply);
+  if (!replies.length && task.state === 'failed') {
+    replies.push(friendlyChatFailure(task.error));
+  }
+  if (!replies.length) {
+    if (task.state === 'cancelled') return ['已停止。'];
+    if (task.state === 'waiting_reconciliation') return ['这次执行的结果还需要核实。'];
+    if (task.state === 'succeeded' && children.length && children.every(child => child.state === 'succeeded'))
+      return ['子助手已结束，未返回文字结论。'];
+  }
+  return replies;
+}

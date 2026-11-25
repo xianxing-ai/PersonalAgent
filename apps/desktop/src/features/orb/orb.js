@@ -81,6 +81,9 @@ const SHAPES = {
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = (t) => 1 - Math.pow(1 - t, 3);
 const EARTH_TILT = 23.44 * Math.PI / 180;
+const COLLAPSE_HALO_PTS = fibonacciSphere(84);
+const CORE_PAD = 2;
+const LUMINOUS_STAR_PX = 64;
 /* 一个周期：靠近、变远、再靠近、再靠近。亮度和半径一起走。 */
 const BREATH_KEYS = [
   { t: 0, r: 1, b: 0.7 },
@@ -124,10 +127,13 @@ export class Orb {
     this.count = options.count ?? 170;
     // Workspace-only presentation; other orb surfaces keep their original appearance.
     this.luminous = options.luminous === true;
-    this.dust = this.luminous ? Array.from({length: 320}, (_, i) => {
+    this.dust = this.luminous ? Array.from({length: 180}, (_, i) => {
       const fraction = n => {const value = Math.sin(n * 127.1 + 311.7) * 43758.5453;return value - Math.floor(value);};
-      return {angle:fraction(i + 1) * Math.PI * 2, radius:1.14 + fraction(i + 201) * 1.3,
-        size:.22 + fraction(i + 401) * .45, alpha:.12 + fraction(i + 601) * .48, phase:fraction(i + 801) * Math.PI * 2};
+      const radius = 1.14 + fraction(i + 201) * 1.3;
+      const alpha = .12 + fraction(i + 601) * .48;
+      const edge = Math.max(0, 1 - (radius - 1.14) / 1.8);
+      return {angle:fraction(i + 1) * Math.PI * 2, radius,
+        size:.22 + fraction(i + 401) * .45, alpha, edge, baseAlpha: Math.min(.7, alpha * 1.45) * edge, phase:fraction(i + 801) * Math.PI * 2};
     }) : [];
     this.breathRate = options.breathRate ?? 0.78;
     this.breathMin = 0.35;
@@ -151,7 +157,15 @@ export class Orb {
     // Ambient Canvas animation does not need to repaint at a 120/144/240Hz display rate.
     this._frameInterval = 1000 / 30;
     this._maxDpr = 2;
+    this._dpr = 1;
     this._tokenCache = null;
+    this._coreCache = null;
+    this._luminousCoreCache = null;
+    this._starSprite = null;
+    this._dotPool = [];
+    this._particlePool = [];
+    this._collapsePool = [];
+    this._luminousPts = null;
     this._rebuild();
     this._resize();
     this._observer = new ResizeObserver(() => {
@@ -161,15 +175,28 @@ export class Orb {
     this._observer.observe(canvas.parentElement ?? canvas);
     // Theme and calm live in CSS custom properties; one event replaces per-frame getComputedStyle.
     this._onPreferences = () => {
-      this._tokenCache = null;
+      this._dropRenderCaches();
       if (!this.running) this._draw();
     };
     window.addEventListener?.("preferences-changed", this._onPreferences);
     this.start();
   }
 
+  _buildLuminousPts(points) {
+    return points.map(pt => {
+      let x = pt.x + Math.sin(pt.seed * 71) * 0.055;
+      let y = pt.y + Math.sin(pt.seed * 113) * 0.055;
+      let z = pt.z + Math.cos(pt.seed * 97) * 0.055;
+      const length = Math.hypot(x, y, z) || 1;
+      return { x: x / length, y: y / length, z: z / length, u: pt.u, seed: pt.seed };
+    });
+  }
+
   _rebuild() {
     this.points = this.layout === "lattice" ? latticeRings() : fibonacciSphere(this.count);
+    this._luminousPts = this.luminous ? this._buildLuminousPts(this.points) : null;
+    this._dotPool = [];
+    this._particlePool = [];
   }
 
   setVariant(v) {
@@ -189,6 +216,7 @@ export class Orb {
   _resize() {
     const rect = this.canvas.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, this._maxDpr ?? 2);
+    this._dpr = dpr;
     this.w = Math.max(rect.width, 24);
     this.h = Math.max(rect.height, 24);
     const width = Math.round(this.w * dpr), height = Math.round(this.h * dpr);
@@ -278,9 +306,14 @@ export class Orb {
   }
 
   _params() {
-    const out = {};
-    for (const k of Object.keys(this.to)) out[k] = lerp(this.from[k], this.to[k], ease(this.mix));
-    return out;
+    const m = ease(this.mix);
+    return {
+      spin: lerp(this.from.spin, this.to.spin, m),
+      breath: lerp(this.from.breath, this.to.breath, m),
+      scale: lerp(this.from.scale, this.to.scale, m),
+      bright: lerp(this.from.bright, this.to.bright, m),
+      tilt: lerp(this.from.tilt, this.to.tilt, m),
+    };
   }
 
   start() {
@@ -335,10 +368,39 @@ export class Orb {
     return this._tokenCache;
   }
 
+  _releaseCacheCanvas(cache) {
+    if (cache?.canvas) { cache.canvas.width = 0; cache.canvas.height = 0; }
+  }
+
+  _dropRenderCaches() {
+    this._tokenCache = null;
+    this._releaseCacheCanvas(this._coreCache);
+    this._coreCache = null;
+    this._releaseCacheCanvas(this._luminousCoreCache);
+    this._luminousCoreCache = null;
+    this._releaseCacheCanvas(this._starSprite);
+    this._starSprite = null;
+  }
+
   /** Drop cached design tokens after a theme, calm or palette change. */
   refreshTokens() {
-    this._tokenCache = null;
+    this._dropRenderCaches();
     if (!this.running) this._draw();
+  }
+
+  _makeOffscreen(w, h) {
+    if (typeof document === "undefined" || typeof document.createElement !== "function") return null;
+    const canvas = document.createElement("canvas");
+    if (!canvas) return null;
+    canvas.width = Math.max(1, Math.ceil(w));
+    canvas.height = Math.max(1, Math.ceil(h));
+    const ctx = canvas.getContext?.("2d");
+    if (!ctx) return null;
+    return { canvas, ctx };
+  }
+
+  _effectiveDpr() {
+    return this._dpr ?? Math.min((typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1, this._maxDpr ?? 2);
   }
 
   _geom(p) {
@@ -372,6 +434,34 @@ export class Orb {
   }
 
   _core(ctx, cx, cy, r, t) {
+    const dpr = this._effectiveDpr();
+    const key = `${Math.round(r * dpr)}:${t.core1}:${t.core2}`;
+    if (!this._coreCache || this._coreCache.key !== key) {
+      const cssSize = (r + CORE_PAD) * 2;
+      const offscreen = this._makeOffscreen(cssSize * dpr, cssSize * dpr);
+      if (offscreen) {
+        this._releaseCacheCanvas(this._coreCache);
+        const { canvas, ctx: octx } = offscreen;
+        octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const oc = cssSize / 2;
+        const g = octx.createRadialGradient(oc - r * 0.34, oc - r * 0.38, r * 0.05, oc, oc, r);
+        g.addColorStop(0, t.core2);
+        g.addColorStop(0.7, t.core1);
+        g.addColorStop(1, t.core1);
+        octx.fillStyle = g;
+        octx.beginPath();
+        octx.arc(oc, oc, r, 0, Math.PI * 2);
+        octx.fill();
+        this._coreCache = { key, canvas, cssSize };
+      } else {
+        this._coreCache = null;
+      }
+    }
+    if (this._coreCache?.key === key) {
+      const half = this._coreCache.cssSize / 2;
+      ctx.drawImage(this._coreCache.canvas, cx - half, cy - half, this._coreCache.cssSize, this._coreCache.cssSize);
+      return;
+    }
     const g = ctx.createRadialGradient(cx - r * 0.34, cy - r * 0.38, r * 0.05, cx, cy, r);
     g.addColorStop(0, t.core2);
     g.addColorStop(0.7, t.core1);
@@ -388,10 +478,15 @@ export class Orb {
     const pulse = 0.86 + 0.14 * Math.sin(this.time * 2.2);
     ctx.save();
     ctx.lineCap = "round";
+    // Lightweight soft stroke replaces per-frame shadowBlur.
+    ctx.strokeStyle = `rgba(255,255,255,${(0.18 * settle * pulse).toFixed(3)})`;
+    ctx.lineWidth = 3.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.035, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.strokeStyle = `rgba(255,255,255,${(0.68 * settle * pulse).toFixed(3)})`;
     ctx.lineWidth = 1.25;
-    ctx.shadowColor = "rgba(255,255,255,0.72)";
-    ctx.shadowBlur = 4.5;
     ctx.beginPath();
     ctx.arc(cx, cy, r * 1.035, 0, Math.PI * 2);
     ctx.stroke();
@@ -401,27 +496,31 @@ export class Orb {
     for (let i = 0; i < rays; i++) {
       const seed = 0.5 + 0.5 * Math.sin(i * 12.9898 + 2.41);
       const a = (i / rays) * Math.PI * 2 + Math.sin(this.time * 0.72 + i * 1.73) * 0.012;
+      const ca = Math.cos(a), sa = Math.sin(a);
       const inner = r * (1.05 + Math.sin(i * 2.37 + this.time * 1.2) * 0.008);
       const outer = r * (1.19 + Math.sin(i * 1.91 - this.time * 1.05) * 0.012);
-      const alpha = (0.3 + seed * 0.5) * settle * pulse;
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = (0.3 + seed * 0.5) * settle * pulse;
       ctx.lineWidth = 0.45 + seed * 0.75;
       ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
-      ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+      ctx.moveTo(cx + ca * inner, cy + sa * inner);
+      ctx.lineTo(cx + ca * outer, cy + sa * outer);
       ctx.stroke();
     }
 
+    ctx.globalAlpha = 0.07 * settle;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.19, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.globalAlpha = 0.2 * settle;
     ctx.lineWidth = 0.7;
-    ctx.shadowBlur = 3;
     ctx.beginPath();
     ctx.arc(cx, cy, r * 1.19, 0, Math.PI * 2);
     ctx.stroke();
 
     // 最内层保持完全实心，白边只存在于黑核外侧。
     ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
     ctx.fillStyle = "#010205";
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -463,19 +562,32 @@ export class Orb {
     ctx.save();
     const mist=ctx.createLinearGradient(cx-R*2.9,cy,cx+R*2.9,cy);
     mist.addColorStop(0,'rgba(255,255,255,0)');mist.addColorStop(.3,'rgba(255,255,255,.08)');mist.addColorStop(.58,'rgba(255,255,255,.2)');mist.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.strokeStyle=mist;ctx.lineWidth=.6;ctx.shadowColor='rgba(255,255,255,.12)';ctx.shadowBlur=4;ctx.globalAlpha=fade;
+    ctx.strokeStyle=mist;ctx.lineWidth=.6;ctx.globalAlpha=fade;
     for(let line=0;line<7;line++){
       const offset=line*2.2;
       ctx.beginPath();ctx.moveTo(cx-R*2.9,cy+R*.96+offset);
       ctx.bezierCurveTo(cx-R*.6,cy+R*1.18-offset,cx+R*.4,cy+R*.22+offset,cx+R*2.9,cy+R*.5+offset);ctx.stroke();
     }
+    ctx.lineWidth=2.2;ctx.globalAlpha=fade*.22;
+    for(let line=0;line<7;line+=2){
+      const offset=line*2.2;
+      ctx.beginPath();ctx.moveTo(cx-R*2.9,cy+R*.96+offset);
+      ctx.bezierCurveTo(cx-R*.6,cy+R*1.18-offset,cx+R*.4,cy+R*.22+offset,cx+R*2.9,cy+R*.5+offset);ctx.stroke();
+    }
     ctx.restore();
-    for (const dust of this.dust) {
+    ctx.fillStyle='#ffffff';
+    const rY = R * 0.72, shimmerTime = this.time * 0.55;
+    for (let i = 0; i < this.dust.length; i++) {
+      const dust = this.dust[i];
       const angle = dust.angle + turn;
-      const edge = Math.max(0, 1 - (dust.radius - 1.14) / 1.8);
-      const shimmer = this.calm ? 1 : .84 + .16 * Math.sin(this.time * .55 + dust.phase);
-      this._dot(ctx, cx + Math.cos(angle) * R * dust.radius,
-        cy + Math.sin(angle) * R * dust.radius * .72, dust.size, '#ffffff', Math.min(.7,dust.alpha * 1.45) * edge * shimmer * fade);
+      const base = dust.baseAlpha ?? (Math.min(.7, dust.alpha * 1.45) * Math.max(0, 1 - (dust.radius - 1.14) / 1.8));
+      const shimmer = this.calm ? 1 : .84 + .16 * Math.sin(shimmerTime + dust.phase);
+      const alpha = base * shimmer * fade;
+      if (alpha <= 0.004) continue;
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(angle) * R * dust.radius, cy + Math.sin(angle) * rY * dust.radius, dust.size, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
@@ -488,12 +600,13 @@ export class Orb {
       [2.78,.73,.09,-.065],[2.36,.7,-.58,.09],[1.83,.64,1.22,-.075]];
     ctx.save();ctx.lineCap='round';
     for(const [index,[major,minor,rotation,speed]] of planes.entries()){
-      const point=angle=>{const x=Math.cos(angle)*R*major,y=Math.sin(angle)*R*minor,c=Math.cos(rotation),s=Math.sin(rotation);return {x:cx+x*c-y*s,y:cy+x*s+y*c};};
+      const c=Math.cos(rotation),s=Math.sin(rotation),rMaj=R*major,rMin=R*minor;
+      const point=angle=>{const x=Math.cos(angle)*rMaj,y=Math.sin(angle)*rMin;return {x:cx+x*c-y*s,y:cy+x*s+y*c};};
       const start=front?0:Math.PI;
       ctx.beginPath();
       for(let step=0;step<=80;step++){const pointAt=point(start+step*Math.PI/80);if(step===0)ctx.moveTo(pointAt.x,pointAt.y);else ctx.lineTo(pointAt.x,pointAt.y);}
       const strength=index<3?1:.55;
-      ctx.strokeStyle=`rgba(255,255,255,${(front?.36:.11)*fade*strength})`;ctx.lineWidth=front?.65:.5;ctx.shadowBlur=0;ctx.stroke();
+      ctx.strokeStyle=`rgba(255,255,255,${(front?.36:.11)*fade*strength})`;ctx.lineWidth=front?.65:.5;ctx.stroke();
       const phase=(time*speed+index*2.1+.6)%(Math.PI*2),isFront=Math.sin(phase)>=0;
       if(isFront===front){
       // A short bright wake gives the moving node direction without a hard UI ring.
@@ -511,28 +624,75 @@ export class Orb {
   }
 
   _drawLuminousStar(ctx,x,y,size,alpha){
-    ctx.save();ctx.globalAlpha=alpha;
+    const clamped=Math.max(0,Math.min(1,alpha));
+    if(clamped<=0.004)return;
+    if(!this._starSprite){
+      const offscreen=this._makeOffscreen(LUMINOUS_STAR_PX,LUMINOUS_STAR_PX);
+      if(offscreen){
+        const {canvas,ctx:octx}=offscreen;
+        const c=LUMINOUS_STAR_PX/2,starR=c/6;
+        const glow=octx.createRadialGradient(c,c,0,c,c,c);
+        glow.addColorStop(0,'rgba(255,255,255,.65)');glow.addColorStop(.2,'rgba(255,255,255,.15)');glow.addColorStop(1,'rgba(255,255,255,0)');
+        octx.fillStyle=glow;octx.beginPath();octx.arc(c,c,c,0,Math.PI*2);octx.fill();
+        octx.strokeStyle='rgba(255,255,255,.32)';octx.lineWidth=Math.max(.5,starR*.35);
+        octx.beginPath();octx.moveTo(c-starR*3.5,c);octx.lineTo(c+starR*3.5,c);octx.moveTo(c,c-starR*2.8);octx.lineTo(c,c+starR*2.8);octx.stroke();
+        octx.fillStyle='#ffffff';octx.beginPath();octx.arc(c,c,starR,0,Math.PI*2);octx.fill();
+        this._starSprite={canvas};
+      }
+    }
+    if(this._starSprite){
+      const r=size*6,prev=ctx.globalAlpha;
+      ctx.globalAlpha=clamped;
+      ctx.drawImage(this._starSprite.canvas,x-r,y-r,r*2,r*2);
+      ctx.globalAlpha=prev;
+      return;
+    }
+    ctx.save();ctx.globalAlpha=clamped;
     const glow=ctx.createRadialGradient(x,y,0,x,y,size*6);
     glow.addColorStop(0,'rgba(255,255,255,.65)');glow.addColorStop(.2,'rgba(255,255,255,.15)');glow.addColorStop(1,'rgba(255,255,255,0)');
     ctx.fillStyle=glow;ctx.beginPath();ctx.arc(x,y,size*6,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,.32)';ctx.lineWidth=.5;ctx.beginPath();ctx.moveTo(x-size*3.5,y);ctx.lineTo(x+size*3.5,y);ctx.moveTo(x,y-size*2.8);ctx.lineTo(x,y+size*2.8);ctx.stroke();
-    this._dot(ctx,x,y,size,'#ffffff',alpha);ctx.restore();
+    this._dot(ctx,x,y,size,'#ffffff',clamped);ctx.restore();
+  }
+
+  _paintLuminousCore(targetCtx,cx,cy,R){
+    targetCtx.save();
+    const bloom=targetCtx.createRadialGradient(cx,cy,R*.4,cx,cy,R*1.3);
+    bloom.addColorStop(0,'rgba(255,255,255,0)');bloom.addColorStop(.69,'rgba(255,255,255,0)');bloom.addColorStop(.8,'rgba(255,255,255,.11)');bloom.addColorStop(1,'rgba(255,255,255,0)');
+    targetCtx.fillStyle=bloom;targetCtx.beginPath();targetCtx.arc(cx,cy,R*1.3,0,Math.PI*2);targetCtx.fill();
+    const surface=targetCtx.createRadialGradient(cx-R*.52,cy-R*.58,R*.06,cx,cy,R*1.04);
+    surface.addColorStop(0,'#33363a');surface.addColorStop(.24,'#181b1f');surface.addColorStop(.6,'#08090b');surface.addColorStop(1,'#010203');
+    targetCtx.fillStyle=surface;targetCtx.beginPath();targetCtx.arc(cx,cy,R*1.025,0,Math.PI*2);targetCtx.fill();
+    const rim=targetCtx.createLinearGradient(cx-R,cy-R,cx+R,cy+R);
+    rim.addColorStop(0,'rgba(255,255,255,1)');rim.addColorStop(.3,'rgba(255,255,255,.95)');rim.addColorStop(.54,'rgba(255,255,255,.18)');rim.addColorStop(.8,'rgba(255,255,255,.72)');rim.addColorStop(1,'rgba(255,255,255,.4)');
+    targetCtx.strokeStyle=rim;targetCtx.lineWidth=1.35;targetCtx.shadowColor='rgba(255,255,255,.65)';targetCtx.shadowBlur=5;targetCtx.beginPath();targetCtx.arc(cx,cy,R*1.025,0,Math.PI*2);targetCtx.stroke();
+    targetCtx.shadowBlur=0;targetCtx.strokeStyle='rgba(255,255,255,.15)';targetCtx.lineWidth=.5;targetCtx.beginPath();targetCtx.arc(cx,cy,R*.985,0,Math.PI*2);targetCtx.stroke();
+    targetCtx.strokeStyle='rgba(255,255,255,.9)';targetCtx.shadowColor='#fff';targetCtx.shadowBlur=9;targetCtx.lineWidth=1.9;targetCtx.beginPath();targetCtx.arc(cx,cy,R*1.025,Math.PI*1.02,Math.PI*1.57);targetCtx.stroke();
+    targetCtx.restore();
   }
 
   _drawLuminousCore(ctx,cx,cy,R){
-    ctx.save();
-    const bloom=ctx.createRadialGradient(cx,cy,R*.4,cx,cy,R*1.3);
-    bloom.addColorStop(0,'rgba(255,255,255,0)');bloom.addColorStop(.69,'rgba(255,255,255,0)');bloom.addColorStop(.8,'rgba(255,255,255,.11)');bloom.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=bloom;ctx.beginPath();ctx.arc(cx,cy,R*1.3,0,Math.PI*2);ctx.fill();
-    const surface=ctx.createRadialGradient(cx-R*.52,cy-R*.58,R*.06,cx,cy,R*1.04);
-    surface.addColorStop(0,'#33363a');surface.addColorStop(.24,'#181b1f');surface.addColorStop(.6,'#08090b');surface.addColorStop(1,'#010203');
-    ctx.fillStyle=surface;ctx.beginPath();ctx.arc(cx,cy,R*1.025,0,Math.PI*2);ctx.fill();
-    const rim=ctx.createLinearGradient(cx-R,cy-R,cx+R,cy+R);
-    rim.addColorStop(0,'rgba(255,255,255,1)');rim.addColorStop(.3,'rgba(255,255,255,.95)');rim.addColorStop(.54,'rgba(255,255,255,.18)');rim.addColorStop(.8,'rgba(255,255,255,.72)');rim.addColorStop(1,'rgba(255,255,255,.4)');
-    ctx.strokeStyle=rim;ctx.lineWidth=1.35;ctx.shadowColor='rgba(255,255,255,.65)';ctx.shadowBlur=5;ctx.beginPath();ctx.arc(cx,cy,R*1.025,0,Math.PI*2);ctx.stroke();
-    ctx.shadowBlur=0;ctx.strokeStyle='rgba(255,255,255,.15)';ctx.lineWidth=.5;ctx.beginPath();ctx.arc(cx,cy,R*.985,0,Math.PI*2);ctx.stroke();
-    ctx.strokeStyle='rgba(255,255,255,.9)';ctx.shadowColor='#fff';ctx.shadowBlur=9;ctx.lineWidth=1.9;ctx.beginPath();ctx.arc(cx,cy,R*1.025,Math.PI*1.02,Math.PI*1.57);ctx.stroke();
-    ctx.restore();
+    const dpr=this._effectiveDpr();
+    const key=String(Math.round(R*dpr));
+    if(!this._luminousCoreCache||this._luminousCoreCache.key!==key){
+      const cssSize=Math.ceil(R*2.8);
+      const offscreen=this._makeOffscreen(cssSize*dpr,cssSize*dpr);
+      if(offscreen){
+        this._releaseCacheCanvas(this._luminousCoreCache);
+        const {canvas,ctx:octx}=offscreen;
+        octx.setTransform(dpr,0,0,dpr,0,0);
+        this._paintLuminousCore(octx,cssSize/2,cssSize/2,R);
+        this._luminousCoreCache={key,canvas,cssSize};
+      }else{
+        this._luminousCoreCache=null;
+      }
+    }
+    if(this._luminousCoreCache?.key===key){
+      const half=this._luminousCoreCache.cssSize/2;
+      ctx.drawImage(this._luminousCoreCache.canvas,cx-half,cy-half,this._luminousCoreCache.cssSize,this._luminousCoreCache.cssSize);
+      return;
+    }
+    this._paintLuminousCore(ctx,cx,cy,R);
   }
 
   /* 形态 1：粒子球壳 */
@@ -549,24 +709,47 @@ export class Orb {
     const fade = this._errorFade();
     const flash = this._flash();
     const collapse = 0.55 + 0.45 * fade;
-    const pts = [];
+    const pts = (this._particlePool ??= []);
+    let count = 0;
     if (fade > 0.02) {
+      const ca = Math.cos(this.angle), sa = Math.sin(this.angle);
+      const ct = Math.cos(tilt), st = Math.sin(tilt);
       for (const pt of this.points) {
         const a = fA(pt), b = fB(pt);
         const c = pt.u < mixA ? b : a;
         const j = jitA * Math.sin(this.time * 1.5 + pt.seed * 26);
-        pts.push(this._project([c[0] + j, c[1] + j * 0.6, c[2]], R * this._spread(pt) * collapse, cx, cy, tilt, this.angle));
+        const px = c[0] + j, py = c[1] + j * 0.6, pz = c[2];
+        const vx = px * ca - pz * sa;
+        const rz = px * sa + pz * ca;
+        const vy = py * ct - rz * st;
+        const vz = py * st + rz * ct;
+        const r = R * this._spread(pt) * collapse;
+        const slot = pts[count] ?? (pts[count] = { sx: 0, sy: 0, z: 0, front: false });
+        slot.sx = cx + vx * r;
+        slot.sy = cy + vy * r;
+        slot.z = vz;
+        slot.front = vz > 0;
+        count++;
       }
     }
+    pts.length = count;
     pts.sort((a2, b2) => a2.z - b2.z);
-    for (const d of pts) {
+    ctx.fillStyle = t.particle;
+    const baseSize = (big ? 1.4 : 1.05) * (0.6 + 0.5 * 0.6);
+    const occludeR = coreR * 1.02;
+    for (let i = 0; i < count; i++) {
+      const d = pts[i];
       // 遮住黑核的那批粒子不画：否则正面密集成一片白，读不出「黑核 + 白粒」
-      if (Math.hypot(d.sx - cx, d.sy - cy) < coreR * 1.02) continue;
+      if (Math.hypot(d.sx - cx, d.sy - cy) < occludeR) continue;
       const depth = Math.max(0, (d.z + 1.3) / 2.3);
       // 正面粒子接近纯白满亮度，背面只留轮廓
       const alpha = p.bright * (d.front ? 0.72 + depth * 0.28 : 0.16 + depth * 0.18) * flash * fade;
-      const size = (big ? 1.4 : 1.05) * (0.6 + (d.seed ?? 0.5) * 0.6) * (d.front ? 1.15 : 0.8);
-      this._dot(ctx, d.sx, d.sy, size, t.particle, alpha);
+      if (alpha <= 0.004) continue;
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      const size = baseSize * (d.front ? 1.15 : 0.8);
+      ctx.beginPath();
+      ctx.arc(d.sx, d.sy, size, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
@@ -585,50 +768,72 @@ export class Orb {
     const tilt = kind === "earth" ? EARTH_TILT : kind === "breath" ? 0.5 : 0.28;
     const gestured = this.breathUntil != null && this.time < this.breathUntil;
     const breathPhase = gestured ? (this.time - this.breathOrigin) / 3.2 : this.time / 3.2;
-    const dots = [];
-    for (const pt of this.points) {
-      let x = pt.x;
-      let y = pt.y;
-      let z = pt.z;
-      if(this.luminous){
-        x+=Math.sin(pt.seed*71)*.055;y+=Math.sin(pt.seed*113)*.055;z+=Math.cos(pt.seed*97)*.055;
-        const length=Math.hypot(x,y,z)||1;x/=length;y/=length;z/=length;
-      }
-      let radial = 1.04;
-      let gain = 1;
+    const ca = Math.cos(this.angle), sa = Math.sin(this.angle);
+    const ct = Math.cos(tilt), st = Math.sin(tilt);
+    const sourcePts = this.luminous ? (this._luminousPts ??= this._buildLuminousPts(this.points)) : this.points;
+    const dots = (this._dotPool ??= []);
+    const voiceAmp = this.level;
+    const freqWobble = 2.6 + voiceAmp * 8.5, freqSway = 1.8 + voiceAmp * 4.2;
+    for (let i = 0; i < sourcePts.length; i++) {
+      const pt = sourcePts[i];
+      let x = pt.x, y = pt.y, z = pt.z;
+      let radial = 1.04, gain = 1;
       if (kind === "voice") {
-        const amp = this.level;
-        const wobble = Math.sin(this.time * (2.6 + amp * 8.5) + pt.seed * 29);
-        const sway = amp * 0.2 * Math.sin(this.time * (1.8 + amp * 4.2) + pt.u * 13);
+        const wobble = Math.sin(this.time * freqWobble + pt.seed * 29);
+        const sway = voiceAmp * 0.2 * Math.sin(this.time * freqSway + pt.u * 13);
         x += z * sway;
         z -= pt.x * sway;
         y += x * sway * 0.28;
         const len = Math.hypot(x, y, z) || 1;
         x /= len; y /= len; z /= len;
-        radial *= 1 + amp * (0.08 + 0.5 * (0.5 + 0.5 * wobble));
-        gain = 0.88 + 0.12 * amp * (0.5 + 0.5 * wobble);
+        radial *= 1 + voiceAmp * (0.08 + 0.5 * (0.5 + 0.5 * wobble));
+        gain = 0.88 + 0.12 * voiceAmp * (0.5 + 0.5 * wobble);
       } else if (kind === "breath") {
         const sample = breathSample(breathPhase + pt.seed * 0.03);
         radial *= sample.radius;
         gain = 0.74 + 0.26 * sample.bright;
       }
-      const placed = this._place([x, y, z], R * radial, cx, cy, tilt, this.angle);
-      const depth = Math.max(0, Math.min(1, (placed.z + 1.15) / 2.15));
+      const vx = x * ca - z * sa;
+      const rz = x * sa + z * ca;
+      const vy = y * ct - rz * st;
+      const vz = y * st + rz * ct;
+      const radius = R * radial;
+      const depth = Math.max(0, Math.min(1, (vz + 1.15) / 2.15));
       let light = 0.78 + 0.22 * depth;
       if (kind === "earth") {
-        const sun = placed.x * 0.62 + placed.z * 0.72 + placed.y * 0.18;
+        const sun = vx * 0.62 + vz * 0.72 + vy * 0.18;
         light = 0.74 + 0.26 * Math.max(0, Math.min(1, sun * 0.5 + 0.5));
       }
-      dots.push({ ...placed, seed: pt.seed, alpha: Math.max(0, Math.min(1, gain * light)) });
+      const slot = dots[i] ?? (dots[i] = { sx: 0, sy: 0, z: 0, seed: 0, alpha: 0 });
+      slot.sx = cx + vx * radius;
+      slot.sy = cy + vy * radius;
+      slot.z = vz;
+      slot.seed = pt.seed;
+      slot.alpha = Math.max(0, Math.min(1, gain * light));
     }
+    dots.length = sourcePts.length;
     dots.sort((a, b) => a.z - b.z);
-    for (const dot of dots) {
+    ctx.fillStyle = "#ffffff";
+    const starSizeMul = big ? 1.6 : 1.2;
+    for (let i = 0; i < dots.length; i++) {
+      const dot = dots[i];
       const depth = Math.max(0, Math.min(1, (dot.z + 1.15) / 2.15));
-      const size = this.luminous ? .35 + depth * .85 + dot.seed * .38 : (big ? 1.6 : 1.2) * (0.82 + 0.38 * depth);
-      const silhouette=Math.hypot(dot.sx-cx,dot.sy-cy)/R;
-      const alpha=this.luminous?dot.alpha*(dot.z<0?.09+.22*Math.pow(silhouette,5):.52+.48*depth):dot.alpha;
-      this._dot(ctx, dot.sx, dot.sy, size, "#ffffff",alpha);
-      if(this.luminous&&dot.z>0&&dot.seed>.96)this._drawLuminousStar(ctx,dot.sx,dot.sy,size*.72,alpha*.7);
+      const size = this.luminous ? .35 + depth * .85 + dot.seed * .38 : starSizeMul * (0.82 + 0.38 * depth);
+      let alpha = dot.alpha;
+      if (this.luminous) {
+        const silhouette = Math.hypot(dot.sx - cx, dot.sy - cy) / R;
+        alpha *= dot.z < 0 ? .09 + .22 * Math.pow(silhouette, 5) : .52 + .48 * depth;
+      }
+      if (alpha > 0.004) {
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.beginPath();
+        ctx.arc(dot.sx, dot.sy, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (this.luminous && dot.z > 0 && dot.seed > .96) {
+        this._drawLuminousStar(ctx, dot.sx, dot.sy, size * .72, alpha * .7);
+        ctx.fillStyle = "#ffffff";
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -637,16 +842,31 @@ export class Orb {
   _drawCollapse(ctx, g, coreR) {
     const { cx, cy, R, big } = g;
     const fall = this.calm ? 1 : ease(this.mix);
+    const pool = (this._collapsePool ??= []);
     if (fall < 0.985) {
-      const falling = [];
-      for (const pt of this.points) {
-        const radius = R * lerp(1.04, 0.16, fall);
-        falling.push(this._place([pt.x, pt.y, pt.z], radius, cx, cy, EARTH_TILT, this.angle + fall * 6));
+      const spin = this.angle + fall * 6, ca = Math.cos(spin), sa = Math.sin(spin);
+      const ct = Math.cos(EARTH_TILT), st = Math.sin(EARTH_TILT);
+      const radius = R * lerp(1.04, 0.16, fall);
+      for (let i = 0; i < this.points.length; i++) {
+        const pt = this.points[i];
+        const vx = pt.x * ca - pt.z * sa;
+        const rz = pt.x * sa + pt.z * ca;
+        const vy = pt.y * ct - rz * st;
+        const vz = pt.y * st + rz * ct;
+        const slot = pool[i] ?? (pool[i] = { sx: 0, sy: 0, z: 0 });
+        slot.sx = cx + vx * radius; slot.sy = cy + vy * radius; slot.z = vz;
       }
-      falling.sort((a, b) => a.z - b.z);
-      for (const dot of falling) {
+      pool.length = this.points.length;
+      pool.sort((a, b) => a.z - b.z);
+      ctx.fillStyle = "#ffffff";
+      const fSize = big ? 1.45 : 1.15;
+      for (let i = 0; i < pool.length; i++) {
+        const dot = pool[i];
         const depth = Math.max(0, (dot.z + 1.1) / 2.1);
-        this._dot(ctx, dot.sx, dot.sy, big ? 1.45 : 1.15, "#ffffff", (1 - fall) * (0.55 + 0.45 * depth));
+        ctx.globalAlpha = Math.max(0, Math.min(1, (1 - fall) * (0.55 + 0.45 * depth)));
+        ctx.beginPath();
+        ctx.arc(dot.sx, dot.sy, fSize, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
     const hole = coreR * (1 + 0.16 * fall);
@@ -660,27 +880,36 @@ export class Orb {
     ctx.fill();
 
     const haloR = hole * 1.18;
-    const count = 84;
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    const halo = [];
-    for (let i = 0; i < count; i++) {
-      const y = 1 - (i / (count - 1)) * 2;
-      const ring = Math.sqrt(Math.max(0, 1 - y * y));
-      const theta = golden * i;
-      halo.push(this._place(
-        [Math.cos(theta) * ring, y, Math.sin(theta) * ring],
-        haloR, cx, cy, 0.46, this.angle * 0.45,
-      ));
+    const hSpin = this.angle * 0.45, hca = Math.cos(hSpin), hsa = Math.sin(hSpin);
+    const hct = Math.cos(0.46), hst = Math.sin(0.46);
+    for (let i = 0; i < COLLAPSE_HALO_PTS.length; i++) {
+      const pt = COLLAPSE_HALO_PTS[i];
+      const vx = pt.x * hca - pt.z * hsa;
+      const rz = pt.x * hsa + pt.z * hca;
+      const vy = pt.y * hct - rz * hst;
+      const vz = pt.y * hst + rz * hct;
+      const slot = pool[i] ?? (pool[i] = { sx: 0, sy: 0, z: 0 });
+      slot.sx = cx + vx * haloR; slot.sy = cy + vy * haloR; slot.z = vz;
     }
-    halo.sort((a, b) => a.z - b.z);
-    for (const dot of halo) {
+    pool.length = COLLAPSE_HALO_PTS.length;
+    pool.sort((a, b) => a.z - b.z);
+    ctx.fillStyle = "#ffffff";
+    const hBase = big ? 1.9 : 1.45;
+    for (let i = 0; i < pool.length; i++) {
+      const dot = pool[i];
       const depth = Math.max(0, Math.min(1, (dot.z + 1) / 2));
-      this._dot(ctx, dot.sx, dot.sy, (big ? 1.9 : 1.45) * (0.92 + 0.2 * depth), "#ffffff", fall * (0.62 + 0.38 * depth));
+      ctx.globalAlpha = Math.max(0, Math.min(1, fall * (0.62 + 0.38 * depth)));
+      ctx.beginPath();
+      ctx.arc(dot.sx, dot.sy, hBase * (0.92 + 0.2 * depth), 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.save();
+    ctx.strokeStyle = `rgba(255,255,255,${(0.14 * fall).toFixed(3)})`;
+    ctx.lineWidth = big ? 4.4 : 3.2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.strokeStyle = `rgba(255,255,255,${(0.42 * fall).toFixed(3)})`;
-    ctx.shadowColor = "rgba(255,255,255,0.75)";
-    ctx.shadowBlur = big ? 10 : 6;
     ctx.lineWidth = big ? 1.6 : 1.15;
     ctx.beginPath();
     ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
@@ -697,6 +926,7 @@ export class Orb {
     const n = this.state === "waiting" ? 2 : 5;
     for (let o = 0; o < orbits; o++) {
       const tilt = p.tilt + o * 1.15;
+      const ct = Math.cos(tilt), st = Math.sin(tilt);
       const spin = o ? this.angle2 : this.angle;
       ctx.strokeStyle = t.particle;
       ctx.lineWidth = 0.8;
@@ -704,14 +934,20 @@ export class Orb {
       ctx.beginPath();
       for (let i = 0; i <= 64; i++) {
         const a = (i / 64) * Math.PI * 2;
-        const d = this._project([Math.cos(a) * 1.24, 0, Math.sin(a) * 1.24], R, cx, cy, tilt, 0);
-        i ? ctx.lineTo(d.sx, d.sy) : ctx.moveTo(d.sx, d.sy);
+        const x = Math.cos(a) * 1.24, z = Math.sin(a) * 1.24;
+        const sx = cx + x * R, sy = cy + (-z * st) * R;
+        i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy);
       }
       ctx.stroke();
+      ctx.fillStyle = t.particle;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2 + spin * 2;
-        const d = this._project([Math.cos(a) * 1.24, 0, Math.sin(a) * 1.24], R, cx, cy, tilt, 0);
-        this._dot(ctx, d.sx, d.sy, d.front ? 2.1 : 1.2, t.particle, p.bright * (d.front ? 1 : 0.22));
+        const x = Math.cos(a) * 1.24, z = Math.sin(a) * 1.24;
+        const vy = -z * st, vz = z * ct, front = vz > 0;
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.bright * (front ? 1 : 0.22)));
+        ctx.beginPath();
+        ctx.arc(cx + x * R, cy + vy * R, front ? 2.1 : 1.2, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
     ctx.globalAlpha = 1;
@@ -721,29 +957,34 @@ export class Orb {
   _drawWire(ctx, g, p, t) {
     const { cx, cy, R } = g;
     const tilt = p.tilt + 0.2;
+    const ct = Math.cos(tilt), st = Math.sin(tilt);
     ctx.lineWidth = 0.9;
     ctx.strokeStyle = t.particle;
     const rings = this.state === "thinking" ? 10 : 7;
     for (let i = 1; i < rings; i++) {
       const phi = (i / rings) * Math.PI;
       const y = Math.cos(phi), r = Math.sin(phi);
-      ctx.globalAlpha = p.bright * (0.1 + 0.26 * Math.abs(Math.sin(phi)));
+      ctx.globalAlpha = p.bright * (0.1 + 0.26 * Math.abs(r));
       ctx.beginPath();
       for (let j = 0; j <= 48; j++) {
         const a = (j / 48) * Math.PI * 2 + this.angle;
-        const d = this._project([Math.cos(a) * r, y, Math.sin(a) * r], R, cx, cy, tilt, 0);
-        j ? ctx.lineTo(d.sx, d.sy) : ctx.moveTo(d.sx, d.sy);
+        const px = Math.cos(a) * r, pz = Math.sin(a) * r;
+        const sx = cx + px * R, sy = cy + (y * ct - pz * st) * R;
+        j ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy);
       }
       ctx.stroke();
     }
     for (let k = 0; k < 5; k++) {
       const a0 = (k / 5) * Math.PI + this.angle;
+      const ca0 = Math.cos(a0), sa0 = Math.sin(a0);
       ctx.globalAlpha = p.bright * 0.14;
       ctx.beginPath();
       for (let j = 0; j <= 40; j++) {
         const phi = (j / 40) * Math.PI;
-        const d = this._project([Math.cos(a0) * Math.sin(phi), Math.cos(phi), Math.sin(a0) * Math.sin(phi)], R, cx, cy, tilt, 0);
-        j ? ctx.lineTo(d.sx, d.sy) : ctx.moveTo(d.sx, d.sy);
+        const sp = Math.sin(phi), cp = Math.cos(phi);
+        const px = ca0 * sp, pz = sa0 * sp;
+        const sx = cx + px * R, sy = cy + (cp * ct - pz * st) * R;
+        j ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy);
       }
       ctx.stroke();
     }
@@ -892,6 +1133,10 @@ export class Orb {
   dispose() {
     this.stop();
     this._observer?.disconnect();
+    this._dropRenderCaches();
+    this._dotPool = [];
+    this._particlePool = [];
+    this._collapsePool = [];
     if (this._onPreferences) window.removeEventListener?.("preferences-changed", this._onPreferences);
   }
 }

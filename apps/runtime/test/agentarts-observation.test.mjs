@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {mkdir, mkdtemp, rm} from 'node:fs/promises';
 import {test} from 'node:test';
@@ -53,7 +55,7 @@ function observationExtras({body, onRead, authorize = true, signature = syntheti
 
 function httpsComposition(path, extras = {}) {
   const httpsCalls = [];
-  const app = createAgentArtsRuntimeApplication({
+  const app = createSyntheticAgentArtsRuntimeApplication({
     path,
     gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'pa-runtime',
@@ -574,7 +576,7 @@ test('the default local composition exposes no observation surface at all', () =
 /** Bounded record bookkeeping unit behavior: dedup, attempts, conflicts, newest-first binding. */
 test('competition request identity records stay bounded and binding-consistent', async () => {
   const {directory, path} = await staging('identity-units');
-  const app = createAgentArtsRuntimeApplication({
+  const app = createSyntheticAgentArtsRuntimeApplication({
     path,
     gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'pa-runtime',
@@ -646,7 +648,7 @@ test('WSS composition records frame identities and appends observation evidence 
   let traceBody = {total: 0, span_list: []};
   const observation = observationExtras({body: () => traceBody});
   const socketIds = [];
-  const app = createAgentArtsRuntimeApplication({
+  const app = createSyntheticAgentArtsRuntimeApplication({
     path,
     gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'synthetic',
@@ -662,7 +664,7 @@ test('WSS composition records frame identities and appends observation evidence 
       socketIds.push(frame.requestId);
       invocations += 1;
       socket.accepted(frame);
-      socket.result(frame, JSON.stringify(invocations === 1 ? syntheticProposal
+      socket.result(frame, syntheticAgentArtsResult(frame.payload,invocations === 1 ? syntheticProposal
         : {kind: 'text', text: 'Synthetic WSS analysis done'}));
     }),
     ...syntheticToolOptions(async () => ({value: 'synthetic local value'})),

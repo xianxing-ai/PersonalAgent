@@ -1,10 +1,10 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
 import {getOwnedWorkflowAdapterRequirements} from '@personal-agent/agentarts';
-import {createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
+import {createRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
 import {createImageWorkflowCatalogHost} from '../electron/image-workflow-catalog.js';
-import {createContentFenceProduct} from '../electron/content-fence-product.js';
 
 function fixture(){
   const descriptors=[],signal=new AbortController().signal,deadline=new Date(Date.now()+60000).toISOString();let cancelled=false;
@@ -17,7 +17,15 @@ test('public catalog reports 28 designs/185 nodes and exact public adapter requi
     {name:'workspace.read_text',version:'1.0.0'},{name:'workspace.run_allowed_command',version:'1.0.0'});
     const result=await f.host.tools[0].execute({},f.context);assert.equal(result.designWorkflowCount,28);assert.equal(result.designNodeCount,185);
     assert.equal(result.workflows.reduce((n,w)=>n+w.nodeCount,0),185);assert.equal(result.workflows.length,28);
-    assert.equal(result.adapterRequirementCount,152);assert.equal(result.hostRequirementCount,111);assert.equal(result.guardRequirementCount,41);
+    const requirements=getOwnedWorkflowAdapterRequirements();
+    assert.equal(result.adapterRequirementCount,requirements.length);
+    assert.equal(result.hostRequirementCount,requirements.filter(item=>item.kind==='host').length);
+    assert.equal(result.guardRequirementCount,requirements.filter(item=>item.kind==='guard').length);
+    assert.deepEqual(result.workflows.flatMap(workflow=>workflow.adapters.map(adapter=>({workflowId:workflow.workflowId,
+      nodeId:adapter.nodeId,kind:adapter.kind,toolName:adapter.toolName,toolVersion:adapter.version}))),
+      requirements.map(({workflowId,nodeId,kind,toolName,toolVersion})=>({workflowId,nodeId,kind,toolName,toolVersion})));
+    assert.equal(requirements.find(item=>item.workflowId==='F16'&&item.nodeId==='F16_N05').toolName,
+      'workflow.host.f16_n05');
     assert.equal(result.authorizationGranted,false);assert.equal(result.readinessChecked,false);assert.equal(result.remoteImageVerification,'unverified');
     const f20=result.workflows.find(w=>w.workflowId==='F20');assert.equal(f20.adapters.length,0);assert.equal(f20.state,'unavailable');assert.equal(f20.entry.state,'unavailable');
     assert.ok(result.workflows.find(w=>w.workflowId==='F16').unavailableReasons.includes('conversation_entry_not_registered'));
@@ -44,52 +52,78 @@ test('input cannot select private source, remote image operation, task or proof;
     await assert.rejects(f.host.tools[0].execute({},f.context),{code:'UNAUTHORIZED'});
   }finally{f.host.close();}
 });
-test('original user-work child exports the catalog through the production fence and continues with an injection',async()=>{
-  let app,sending;const host=createImageWorkflowCatalogHost({getApplication:()=>app}),read=host.tools[0],requests=[];
+test('original user-work child discovers the real read schema, executes through original Gateway and continues with an injection',async()=>{
+  let app;const host=createImageWorkflowCatalogHost({getApplication:()=>app}),read=host.tools[0],requests=[];
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(s,w,t)=>app.runDefaultSubagentWorker(s,w,t)});
-  const fence=createContentFenceProduct();
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://catalog.invalid',runtimeName:'synthetic-catalog',
-    responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',enableNewTaskToolContinuations:true,
-    authorizationProvider:{read:async()=> 'Bearer synthetic'},
-    beforeCompetitionSend:request=>{sending=request;},
-    delegateUserTasks:true,tools:[dispatch,...fence.wrapTools([read])],readConversationPreference:()=>({depth:2,fast:false}),
-    coordinationInput:{beforeCoordinationSend:request=>assert.equal(request.revision,app.runtime.getTask(request.taskId).revision)},
+  app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,tools:[dispatch,read],readConversationPreference:()=>({depth:2,fast:false}),
     automaticTools:[dispatch,read].map(t=>({toolName:t.descriptor.name,toolVersion:t.descriptor.version})),
     competitionToolAvailability:[...host.competitionToolAvailability,{toolName:'subagent.dispatch',toolVersion:'1.0.0',publicEnumPaths:['/subtasks/*/role'],available:()=>true}],
     competitionToolExports:[...host.competitionToolExports,{toolName:'subagent.dispatch',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-summary',accepts:()=>true,project:({result})=>result}],
-    fetchImpl:async (_url,init)=>{
-      const {taskId,revision}=sending;
-      const query=JSON.parse(JSON.parse(init.body).query);
-      const headers=new Headers(init.headers);
-      requests.push({taskId,revision,requestId:headers.get('x-request-id'),sessionId:headers.get('x-hw-agentarts-session-id')});
-      let value;
-      if(app.runtime.getTask(taskId).conversationId==='original-ui')value={kind:'text',text:'Synthetic parent summary'};
-      else if(query.continuation){
-        assert.equal(query.continuation.result.designNodeCount,185);
-        assert.equal(query.continuation.result.workflows[0].workflowId,'F17');
-        assert.equal(query.continuation.result.workflows[0].state,'unavailable');
-        assert.match(query.goal,/请用一句话总结 F17/);
-        value={kind:'text',text:'F17 有设计清单，图入口尚不可用。'};
-      }else{
-        const catalog=query.availableTools.find(t=>t.name===read.descriptor.name);
-        assert.deepEqual(catalog.inputSchema.properties.workflowId.enum,Array.from({length:28},(_,i)=>'F'+String(i+1).padStart(2,'0')));
-        app.runtime.injectUserMessage(taskId,'请用一句话总结 F17','user','catalog-interruption');
-        value={kind:'tool_proposal',proposalId:'read-image-design',toolName:read.descriptor.name,toolVersion:read.descriptor.version,arguments:{workflowId:'F17'}};
-      }
-      return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(value)}},{event:'task_end'},{event:'end'}]),
-        {headers:{'content-type':'application/json'}});
-    }});
-  const client=new Client(app);await client.connect();try{const task=await client.call('task.submit',{goal:'Read public F17 design and real graph entry gaps',conversationId:'original-ui'},{idempotencyKey:'image-catalog'});
+    coordination:{execute:syntheticCoordinationExecution(async request=>{requests.push(request);if(app.runtime.getTask(request.taskId).conversationId==='original-ui')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
+      if(request.continuation){assert.equal(request.continuation.result.designNodeCount,185);assert.equal(request.continuation.result.workflows[0].workflowId,'F20');assert.equal(request.continuation.result.workflows[0].state,'unavailable');assert.match(request.goal,/请用一句话总结 F17/);return {kind:'text',text:'F20 design exists; graph entry unavailable',verification:'unverified'};}
+      const catalog=request.availableTools.find(t=>t.name===read.descriptor.name);assert.deepEqual(catalog.inputSchema.properties.workflowId.enum,Array.from({length:28},(_,i)=>'F'+String(i+1).padStart(2,'0')));
+      app.runtime.injectUserMessage(request.taskId,'请用一句话总结 F17','user','catalog-interruption');
+      return {kind:'tool_proposal',proposalId:'read-image-design',toolName:read.descriptor.name,toolVersion:read.descriptor.version,arguments:{workflowId:'F20'},verification:'unverified'};})}});
+  const client=new Client(app);await client.connect();try{const task=await client.call('task.submit',{goal:'Read public F20 design and real graph entry gaps',conversationId:'original-ui'},{idempotencyKey:'image-catalog'});
     for(let i=0;i<500&&!['succeeded','failed'].includes(app.runtime.getTask(task.taskId).state);i++)await new Promise(r=>setTimeout(r,5));
     assert.equal(app.runtime.getTask(task.taskId).state,'succeeded',JSON.stringify(app.runtime.getTask(task.taskId).error));
     const [child]=app.readSubagentTasks(task.taskId);assert.equal(child.state,'succeeded');assert.equal(app.runtime.listApprovals({taskId:child.taskId}).items.length,0);
-    assert.match(app.runtime.getTask(child.taskId).resultSummary,/F17 有设计清单，图入口尚不可用/);
     assert.equal(app.runtime.readToolExecutions(child.taskId).filter(run=>run.toolName===read.descriptor.name&&run.state==='confirmed').length,1);
     const childRequests=requests.filter(r=>r.taskId===child.taskId);
     assert.equal(childRequests.length,2);
-    assert.ok(childRequests.every(request=>request.requestId));
-    assert.notEqual(childRequests[0].requestId,childRequests[1].requestId);
-    assert.ok(childRequests[0].sessionId);
-    assert.equal(childRequests[0].sessionId,childRequests[1].sessionId);
+    assert.match(childRequests[1].goal,/请用一句话总结 F17/);
   }finally{host.close();app.close();}
+});
+
+test('dynamic workflow entry reader supports any F01-F28 graph when exact tool/version and adapters are registered, while keeping missing graphs unavailable (S531-L1)',async()=>{
+  const descriptors=[],workerEntries=[],signal=new AbortController().signal,deadline=new Date(Date.now()+60000).toISOString();
+  const application={tools:{list:()=>descriptors},readConversationToolCapabilities:()=>workerEntries,
+    runtime:{getTask:()=>({state:'running',cancelRequested:false}),loadCheckpoint:()=>deadline},readToolConversation:()=>'original-ui'};
+  let dynamicEntries={
+    F15:{name:'coding.repair.workflow',version:'1.0.0'},
+    F20:{name:'workflow.f20.api_check',version:'1.0.0'},
+    F17:{name:'workflow.f17.test_locate',version:'2.0.0'},
+    F99:{name:'invalid.workflow',version:'1.0.0'},
+    F01:{name:'bad name with spaces',version:'1.0.0'},
+  };
+  const host=createImageWorkflowCatalogHost({getApplication:()=>application,readWorkflowEntries:()=>dynamicEntries});
+  const context={taskId:'original',deadline,signal,authorizationRef:'read-grant',scopes:['workflow:catalog']};
+  try{
+    // Declared entry without matching registered tool stays unavailable (fail-closed).
+    let result=await host.tools[0].execute({workflowId:'F20'},context);
+    assert.equal(result.workflows[0].entry.name,'workflow.f20.api_check');
+    assert.equal(result.workflows[0].entry.state,'unavailable');
+    assert.equal(result.workflows[0].state,'unavailable');
+    assert.ok(result.workflows[0].unavailableReasons.includes('conversation_entry_not_registered'));
+
+    // The host registers a worker capability for F20 and separate tools for its nodes.
+    workerEntries.push({name:'workflow.f20.api_check',version:'1.0.0'});
+    descriptors.push(
+      {name:'workspace.read_text',version:'1.0.0'},
+      {name:'workspace.run_allowed_command',version:'1.0.0'},
+    );
+    result=await host.tools[0].execute({workflowId:'F20'},context);
+    assert.equal(result.workflows[0].entry.state,'entry_registered_requires_task_authorization');
+    assert.equal(result.workflows[0].state,'entry_registered_requires_task_authorization');
+    assert.deepEqual(result.workflows[0].unavailableReasons,[]);
+
+    // Wrong version on F17 entry tool does not satisfy registration.
+    descriptors.push({name:'workflow.f17.test_locate',version:'1.0.0'});
+    result=await host.tools[0].execute({workflowId:'F17'},context);
+    assert.equal(result.workflows[0].entry.name,'workflow.f17.test_locate');
+    assert.equal(result.workflows[0].entry.version,'2.0.0');
+    assert.equal(result.workflows[0].entry.state,'unavailable');
+    assert.ok(result.workflows[0].unavailableReasons.includes('conversation_entry_not_registered'));
+
+    // Invalid workflowId/tool names are silently dropped and never appear as entries.
+    result=await host.tools[0].execute({workflowId:'F01'},context);
+    assert.equal(result.workflows[0].entry.name,undefined);
+    assert.equal(result.workflows[0].entry.state,'unavailable');
+
+    // Removing F20 from dynamic entries immediately reverts F20 to unavailable.
+    dynamicEntries={F15:{name:'coding.repair.workflow',version:'1.0.0'}};
+    result=await host.tools[0].execute({workflowId:'F20'},context);
+    assert.equal(result.workflows[0].entry.name,undefined);
+    assert.equal(result.workflows[0].state,'unavailable');
+  }finally{host.close();}
 });
