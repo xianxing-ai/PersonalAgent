@@ -142,8 +142,7 @@ test('main wires Windows handleActivation, crew replan, locate open, and briefin
   assert.match(main, /Notification\.handleActivation/);
   assert.match(main, /parseNotificationActivationTag/);
   assert.match(main, /activateByNativeTag/);
-  assert.match(main, /sender !== admin && sender !== panel && sender !== workspace/);
-  assert.match(main, /name === 'briefing\.openDecision'/);
+  assert.match(main, /if \(name === 'briefing\.openDecision'\) \{\s*if \(!dailyBriefingHost \|\| !isTrustedBriefingDecisionSender\(sender, event\.senderFrame, \[admin, panel, workspace\]\)\)/);
   assert.match(main, /createCrewReplanDispatcher/);
   assert.match(main, /dispatchParentReplan/);
   assert.match(main, /name === 'task\.locate\.open'/);
