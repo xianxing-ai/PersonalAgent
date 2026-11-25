@@ -205,7 +205,7 @@ export function createAgentArtsRuntimeApplication(
         ...(websocketFactory === undefined ? {} : {factory: websocketFactory}),
         ...(recoverAcceptedStatus===true?{recoverAcceptedStatus:true as const}:{}),
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
-        ...(onWssRun===undefined?{}:{onRunDuration:info=>onWssRun({...info,origin:application.readTaskUsageOrigin(info.taskId)})}),
+        ...(onWssRun===undefined?{}:{onRunDuration:(info:{taskId:string;requestId:string;durationMs:number})=>onWssRun({...info,origin:application.readTaskUsageOrigin(info.taskId)})}),
         onDispatch: (request, receipt) => {
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
           recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt,request);

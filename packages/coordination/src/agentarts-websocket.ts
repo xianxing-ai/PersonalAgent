@@ -196,6 +196,8 @@ interface Connection {
   serverInstanceId?: string;
 }
 export interface AgentArtsSendGuards {
+  /** Duration of an invocation that reached socket send. Metering cannot change the outcome. */
+  onRunDuration?: (durationMs: number) => void;
   /** A workflow returning from local work can renew an idle socket before its single send. */
   renewIdleConnection?: boolean;
   /** On disconnect, read this invocation on its original image instance. */
@@ -548,6 +550,7 @@ export class AgentArtsWebSocketTransport {
     }
     const selected = connection;
     selected.leases++;
+    let sentAt: number | undefined;
     try {
       await waitForReady(selected, init.signal);
       if (init.signal.aborted) throw new ProtocolError('CANCELLED', 'AgentArts request cancelled');
@@ -589,6 +592,7 @@ export class AgentArtsWebSocketTransport {
           if (init.signal.aborted) { abort(); return; }
           // Once send is attempted, delivery/acceptance may be unknown even if the callback fails.
           pending.sent = true;
+          if (guards.onRunDuration) sentAt = performance.now();
           selected.socket.send(frame, error => {
             if (error) this.breakConnection(selected, failProtocol());
           });
@@ -625,6 +629,10 @@ export class AgentArtsWebSocketTransport {
       throw error;
     } finally {
       selected.leases--;
+      if (sentAt !== undefined) {
+        try { guards.onRunDuration?.(Math.max(1, Math.ceil(performance.now() - sentAt))); }
+        catch { /* Metering never changes the transport outcome. */ }
+      }
       if (!selected.negotiated && selected.leases === 0 && selected.pending.size === 0) {
         this.breakConnection(selected, new ProtocolError('CANCELLED', 'AgentArts connection setup abandoned'));
       }
