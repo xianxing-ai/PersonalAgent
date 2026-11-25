@@ -3944,9 +3944,13 @@ async function initializeRuntime() {
           await computerVisionHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
           await feedsHost?.prepareExport?.(scope);
-          if(useDeveloperGitHub()||!githubToolMap.has(proposal?.toolName))await developerDeployment?.prepareExport(scope);
+          const ghTools=typeof githubConversationTools!=='undefined'?githubConversationTools:undefined;
+          const devConfigured=developerDeployment?.snapshot?.()?.configured===true;
+          const ghOwns=Boolean(ghTools?.tools?.some(item=>item.descriptor.name===proposal?.toolName));
+          const devOwns=Boolean(developerDeployment?.host?.tools?.some(item=>item.descriptor.name===proposal?.toolName));
+          if(devConfigured||!ghOwns)await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
-          if(!useDeveloperGitHub()||!developerToolNames.has(proposal?.toolName)) await githubConversationTools?.prepareExport?.(scope);
+          if(!devConfigured||!devOwns)await ghTools?.prepareExport?.(scope);
           const configuredDecision=phase==='preflight'&&prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
           if(!configuredDecision)await codingWorkspace?.prepareExport?.(scope);
           await goalCloudHost?.prepareExport?.(scope);
