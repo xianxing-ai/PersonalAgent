@@ -104,7 +104,7 @@ function mountCompactLiveVoiceControls(root, invoke) {
   controls.innerHTML='<p class="notice" role="status" id="live-runtime-status"></p><button type="button" class="btn btn-sm" id="live-open-settings">语音设置</button>';
   root.querySelector('#error').before(controls);
   const status=controls.querySelector('#live-runtime-status');
-  let liveActive=false,pendingToggle,toggleRevision=0;
+  let liveActive=false,pendingToggle,toggleRevision=0,toggleError='';
   controls.querySelector('#live-open-settings').onclick=()=>invoke('admin.open',{page:'voice'}).catch(error=>{status.textContent=error.message;});
   return {
     showSettings(){},
@@ -112,12 +112,15 @@ function mountCompactLiveVoiceControls(root, invoke) {
       const action=liveActive?'stop':'start';
       if(pendingToggle&&!(pendingToggle==='start'&&action==='stop'))return;
       pendingToggle=action;const revision=++toggleRevision;
+      toggleError='';
       try{await invoke('live.toggle');}
-      catch(error){if(revision===toggleRevision)status.textContent=error.message;}
+      catch(error){if(revision===toggleRevision){toggleError=error.message;controls.hidden=false;status.textContent=toggleError;}}
       finally{if(revision===toggleRevision)pendingToggle=undefined;}
     },
     render(live={}){
       liveActive=live.active===true;
+      controls.hidden=!liveActive&&live.status!=='error'&&!toggleError;
+      if(toggleError){status.textContent=toggleError;return;}
       const names={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'主智能体正在处理任务',stopping:'正在关闭',
         idle:live.configured?'配置已保存，未开启麦克风':'未配置',error:live.audioSendFailure?'音频发送失败':'连接失败'};
       status.textContent=`实时语音：${names[live.status]??'状态未报告'} · ${live.shortcut?.key??live.hotkey??'F8'} 开启 / 关闭`;

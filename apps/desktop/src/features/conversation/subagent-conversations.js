@@ -1,5 +1,7 @@
 import {stateNames} from './state.js';
 import {isStopRequest} from './stop-request.js';
+import {answerCardHtml,liveFromTranscript,rememberActivity,replaceAnswerCard,syncContainerAnswerDisclosures} from './answer-block.js';
+import {resultText} from './result-text.js';
 
 /** Compact workspace history; the trusted host opens each independent child window. */
 export function mountSubagentConversations(root, invoke, escape) {
@@ -125,6 +127,7 @@ export function mountSubagentConversations(root, invoke, escape) {
 export function mountSubagentConversationPage(root, invoke, {embedded=false}={}) {
   ensureStylesheet();
   const page = node('section', '', 'subagent-conversation-page');
+  page.dataset.presentation = embedded ? 'embedded' : 'window';
   page.setAttribute('aria-label', '独立子对话');
   const header = node('div', '', 'subagent-conversation-page-header');
   const title = node('h1', '子智能体对话');
@@ -136,8 +139,8 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
   original.append(node('summary', '查看原始子任务记录'), originalBody);
   const messages = node('div', '', 'subagent-conversation-messages');
   messages.setAttribute('aria-label', '追加对话记录');
-  const origin=embedded?node('article','','subagent-conversation-origin-turn'):null;
-  if(origin)content.append(origin);
+  const origin=node('article','','subagent-conversation-origin-turn');
+  content.append(origin);
   content.append(original, node('h2', '对话记录'), messages);
 
   const composer = node('form', '', 'subagent-conversation-composer');
@@ -151,10 +154,10 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
   const composerActions = node('div', '', 'subagent-conversation-compose-actions');
   const sendButton = action('发送', () => submit());
   const stopButton = action('停止', () => cancel());
-  const headerStopButton = action('停止子智能体', () => cancel());
-  headerStopButton.className='subagent-conversation-stop';
-  const bindingLabel=embedded?node('span','','subagent-conversation-model'):null;
-  if(embedded){sendButton.textContent='↑';sendButton.setAttribute('aria-label','发送');sendButton.className='subagent-conversation-send';input.placeholder='给这个子智能体发送消息…';composerActions.append(bindingLabel);}
+  const bindingLabel=node('span','','subagent-conversation-model');
+  sendButton.setAttribute('aria-label','发送');sendButton.className='subagent-conversation-send';
+  if(embedded)sendButton.textContent='↑';
+  input.placeholder='给这个子智能体发送消息…';composerActions.append(bindingLabel);
   composerActions.append(stopButton, sendButton);
   composer.append(input, composerStatus, availability, composerActions);
   composer.onsubmit = event => { event.preventDefault(); return submit(); };
@@ -167,18 +170,26 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     }
   };
 
-  const footer = node('div', '', 'subagent-conversations-actions');
   const refreshButton = action('刷新子对话', () => refresh());
+  original.append(refreshButton);
   const mainButton = action('返回主对话', () => navigate('subagentConversation.main', '无法返回主对话'));
   const closeButton = action('关闭子对话', () => navigate('subagentConversation.close', '无法关闭子对话'));
-  header.append(title, closeButton);
-  footer.append(mainButton);
-  page.append(header, status, content, composer, footer);
+  header.append(title);
+  if (!embedded) header.append(mainButton);
+  header.append(closeButton);
+  page.append(header, status, content, composer);
+  if (embedded) {
+    const footer = node('div', '', 'subagent-conversations-actions');
+    footer.append(mainButton);
+    page.append(footer);
+  }
   root.append(page);
 
   let identity = null, readVersion = 0, draftVersion = 0, navigating = false, closed = false;
   let activeTaskId = null, canSubmit = false, sending = null, cancelling = null, retryRequest = null;
   let submitUnavailableReason = '';
+  const liveTurns=new Map(), turns=new Map(), answerSlots=new Map(), watermarks=new Map();
+  let pendingActivities,refreshQueued=false;
   // Set when the user stops: the composer stays usable even if the host still reports the old
   // task as active, because waiting for the runtime to unwind is what made stop feel broken.
   let truncated = false;
@@ -186,7 +197,29 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
   const beforeUnload=event=>{
     if(!closed&&(input.value.trim()||sending)){event.preventDefault();event.returnValue=false;}
   };
-  const dispose=()=>{closed=true;readVersion++;globalThis.window?.removeEventListener('beforeunload',beforeUnload);globalThis.window?.removeEventListener('unload',dispose);};
+  const nearBottom=()=>content.scrollHeight-content.scrollTop-content.clientHeight<72;
+  const visible=()=>!embedded||!root.hidden;
+  const unsubscribeActivity=globalThis.window?.desktop?.onTaskActivity?.(event=>{
+    if(!visible()||event.kind==='reasoning')return;
+    if(event.kind==='reasoning_summary')event={...event,kind:'reasoning'};
+    pendingActivities?.push(event);
+    if(!turns.has(event.taskId)||event.sequence<=(watermarks.get(event.taskId)??0))return;
+    watermarks.set(event.taskId,event.sequence);
+    const live=rememberActivity(liveTurns,event);
+    const slot=answerSlots.get(event.taskId);
+    if(!slot)return;
+    const follow=nearBottom();
+    answerSlots.set(event.taskId,replaceAnswerCard(slot,turns.get(event.taskId),live,escapeHtml));
+    if(follow)content.scrollTop=content.scrollHeight;
+  });
+  const unsubscribeUpdates=globalThis.window?.desktop?.onSubagentUpdate?.(taskId=>{
+    if(visible()&&(turns.has(taskId)||taskId===activeTaskId))void refresh();
+  });
+  const dispose=()=>{
+    closed=true;readVersion++;unsubscribeActivity?.();unsubscribeUpdates?.();
+    globalThis.window?.removeEventListener('beforeunload',beforeUnload);
+    globalThis.window?.removeEventListener('unload',dispose);
+  };
   globalThis.window?.addEventListener('beforeunload',beforeUnload);
   globalThis.window?.addEventListener('unload',dispose,{once:true});
 
@@ -196,21 +229,60 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     // A stop request never blocks the composer: the local truncation already released the task.
     sendButton.disabled = busy || Boolean(sending) || !canSubmit || !input.value.trim();
     stopButton.disabled = busy || Boolean(sending || cancelling) || !activeTaskId;
-    headerStopButton.disabled=stopButton.disabled;
     refreshButton.disabled = busy || Boolean(sending || cancelling);
     mainButton.disabled = closeButton.disabled = busy;
     sendButton.setAttribute('aria-busy', String(Boolean(sending)));
     stopButton.setAttribute('aria-busy', String(Boolean(cancelling)));
-    headerStopButton.setAttribute('aria-busy',String(Boolean(cancelling)));
     availability.textContent = activeTaskId
       ? '正在工作，现在发送会插到下一步。'
       : canSubmit ? '' : submitUnavailableReason || '当前子对话暂不能发送新消息。';
+  }
+
+  function renderAnswer(container,record){
+    const task={...record,resultSummary:resultText(record.resultSummary??record.replyText,record.resultMetadata)};
+    const segments=record.transcript?.segments?.filter(segment=>segment.kind!=='reasoning')
+      .map(segment=>segment.kind==='reasoning_summary'?{...segment,kind:'reasoning'}:segment);
+    const live=liveFromTranscript({segments});
+    const previous=liveTurns.get(task.taskId);
+    if(previous?.openDisclosures)live.openDisclosures=previous.openDisclosures;
+    turns.set(task.taskId,task);
+    liveTurns.set(task.taskId,live);
+    watermarks.set(task.taskId,record.transcript?.activityThrough??0);
+    for(const event of pendingActivities??[]){
+      if(event.taskId!==task.taskId||event.sequence<=watermarks.get(task.taskId))continue;
+      rememberActivity(liveTurns,event);
+      watermarks.set(task.taskId,event.sequence);
+    }
+    for(const entry of record.injections??[])container.append(node('p',entry.text,'subagent-conversation-user'));
+    const progress=record.steps?.at(-1)?.label;
+    if(!task.resultSummary)container.append(node('p',progress||'回答尚未记录','subagent-conversations-metadata'));
+    const card=node('section','','answer-card');
+    card.setAttribute('data-answer-for',task.taskId);
+    if(live.reasoning||live.steps.length){
+      const details=node('details','','answer-trace');
+      details.append(node('summary',live.steps.length?`已执行 ${live.steps.length} 步`:'思考过程'));
+      if(live.reasoning)details.append(node('pre',live.reasoning,'answer-reasoning'));
+      if(live.steps.length){
+        const list=node('ol','','subagent-conversations-steps');
+        for(const step of live.steps)list.append(node('li',text(step.label)||text(step.toolName)||'步骤'));
+        details.append(list);
+      }
+      card.append(details);
+    }
+    if(task.resultSummary)card.append(node('div',task.resultSummary,'assistant-message'));
+    else if(task.error)card.append(node('p',errorText(task.error),'subagent-conversations-error'));
+    answerSlots.set(task.taskId,card);
+    container.append(card);
+    if(Number.isSafeInteger(record.evidenceRefCount)&&record.evidenceRefCount>0)
+      container.append(node('p',record.evidenceRefCount+' 条执行证据','subagent-conversations-metadata'));
+    if(record.toolActivity?.length)container.append(renderToolActivity(record.toolActivity));
   }
 
   function applySnapshot(record) {
     if (!validIdentity(record)) throw Error('子对话记录缺少任务标识');
     const nextIdentity = JSON.stringify([record.parentTaskId, record.taskId]);
     if (identity && identity !== nextIdentity) throw Error('子对话记录与当前窗口不匹配');
+    const follow=!identity||nearBottom();
     identity = nextIdentity;
     const reportedActive = text(record.activeTaskId) || null;
     if (reportedActive && truncated) {
@@ -224,26 +296,32 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
       submitUnavailableReason = text(record.submitUnavailableReason);
       if (!reportedActive) truncated = false;
     }
-    title.textContent = embedded?(text(record.goal).replace(/^\[任务执行\]\s*/,'').trim()||text(record.role)||'分对话'):(text(record.role)||'子智能体')+' · '+record.taskId.slice(-8);
+    title.textContent = text(record.goal).replace(/^\[任务执行\]\s*/,'').trim()||text(record.role)||'子智能体';
+    if(!embedded)title.append(node('small',' #'+record.taskId.slice(-8),'subagent-window-id'));
     title.setAttribute('title', '子任务 ' + record.taskId + '\n父任务 ' + record.parentTaskId);
     status.setAttribute('role', 'status');
-    status.textContent = record.transcriptAvailable === true
-      ? '以下内容来自已保存的执行记录。'
-      : '仅展示已保存的任务与回答；完整逐轮会话暂不可读。';
+    status.textContent = '';
     originalBody.replaceChildren();
     renderRecord(originalBody, record);
-    if(origin)origin.replaceChildren(node('p',text(record.goal)||'任务目标未记录','subagent-conversation-user'),
-      node('p',text(record.resultSummary)||stateLabel(record.state),'subagent-conversation-reply'));
-    if(bindingLabel)bindingLabel.textContent=text(record.modelId)||'原子任务模型';
-    renderMessages(messages, record.messages);
+    syncContainerAnswerDisclosures(content,liveTurns);
+    turns.clear();answerSlots.clear();
+    origin.replaceChildren(node('p',text(record.goal).replace(/^\[任务执行\]\s*/,'')||'任务目标未记录','subagent-conversation-user'));
+    renderAnswer(origin,record);
+    bindingLabel.textContent=text(record.modelId)||'原子任务模型';
+    renderMessages(messages,record.messages,renderAnswer);
+    for(const taskId of liveTurns.keys())if(!turns.has(taskId)){liveTurns.delete(taskId);watermarks.delete(taskId);}
+    if(follow)content.scrollTop=content.scrollHeight;
     syncControls();
   }
 
   async function refresh() {
-    if (closed || navigating || sending || cancelling) return;
+    if (closed || navigating || sending || cancelling || !visible()) return;
+    if(pendingActivities){refreshQueued=true;return;}
     const version = ++readVersion;
+    const events=[];
+    pendingActivities=events;
     status.setAttribute('role', 'status');
-    status.textContent = '正在读取子对话…';
+    if(!identity)status.textContent = '正在读取子对话…';
     content.setAttribute('aria-busy', 'true');
     try {
       const record = await invoke('subagentConversation.snapshot');
@@ -251,7 +329,9 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     } catch (error) {
       if (current(version)) showError(status, error, '无法读取子对话');
     } finally {
+      pendingActivities=undefined;
       if (current(version)) content.setAttribute('aria-busy', 'false');
+      if(refreshQueued){refreshQueued=false;void refresh();}
     }
   }
 
@@ -264,7 +344,7 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
       composerStatus.textContent = '当前没有正在执行的任务。';
       return;
     }
-    if (activeTaskId || !canSubmit) return;
+    if (!canSubmit) return;
     const value = input.value;
     if (!retryRequest || retryRequest.text !== value) {
       try {
@@ -285,21 +365,17 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     try {
       const result = await invoke('subagentConversation.submit', {...request});
       if (!current(version)) return;
-      let acceptedTaskId;
       // A newly accepted message owns the composer again; the earlier truncation is over.
       truncated = false;
       if (validIdentity(result)) {
         applySnapshot(result);
-        acceptedTaskId = activeTaskId;
       } else if (text(result?.acceptedTaskId)) {
-        acceptedTaskId = result.acceptedTaskId;
-        activeTaskId = acceptedTaskId;
-        canSubmit = false;
+        activeTaskId = result.acceptedTaskId;
+        canSubmit = result.injected===true;
       } else throw Error('未收到可核实的受理记录，请刷新后使用同一消息重试');
       if (draftVersion === sentDraftVersion && input.value === value) input.value = '';
       if (retryRequest === request) retryRequest = null;
-      composerStatus.textContent = '消息已受理' + (acceptedTaskId ? '：' + acceptedTaskId : '')
-        + '。是否完成以消息记录中的执行状态为准。';
+      composerStatus.textContent = result?.injected===true?'已发送给当前执行的子智能体':(text(result?.acceptedTaskId)?'消息已受理：'+result.acceptedTaskId:'消息已受理');
     } catch (error) {
       if (current(version)) {
         // The host refuses a new message while the stopped turn is still unwinding.
@@ -374,10 +450,24 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
 
   syncControls();
   void refresh();
-  return {refresh,dispose,hasUnsentChanges:()=>Boolean(input.value.trim()||sending||cancelling)};
+  return {refresh,dispose,focus:()=>input.focus({preventScroll:true}),hasUnsentChanges:()=>Boolean(input.value.trim()||sending||cancelling)};
 }
 
-function renderMessages(container, values) {
+function renderToolActivity(rows) {
+  const history=node('details','','subagent-conversation-original');
+  const list=node('ol','','subagent-conversations-steps');
+  const names={running:'已调用',returned:'已返回',waiting_approval:'等待授权',allowed:'已授权',denied:'已拒绝',expired:'已过期',revoked:'已撤销'};
+  for(const row of rows){
+    const element=node('li');
+    const details=node('details');
+    details.append(node('summary',text(row.label)||text(row.toolName)),node('p',names[row.state]??stateLabel(row.state),'subagent-conversations-metadata'));
+    element.append(details);list.append(element);
+  }
+  history.append(node('summary','工具与授权记录'),list);
+  return history;
+}
+
+function renderMessages(container, values, renderAnswer) {
   container.replaceChildren();
   const messages = (Array.isArray(values) ? values : []).filter(message => text(message?.taskId));
   if (!messages.length) {
@@ -389,10 +479,7 @@ function renderMessages(container, values) {
     article.setAttribute('data-task-id', message.taskId);
     article.append(node('h3', '你'), node('p', text(message.userText) || '用户消息未记录',
       'subagent-conversation-user'), node('h3', '子智能体'));
-    article.append(node('p', text(message.replyText) || '回答尚未记录', 'subagent-conversation-reply'));
-    article.append(node('p', stateLabel(message.state), 'subagent-conversations-metadata'));
-    const error = errorText(message.error);
-    if (error) article.append(node('p', error, 'subagent-conversations-error'));
+    renderAnswer(article,message);
     container.append(article);
   }
 }
@@ -418,6 +505,9 @@ function renderRecord(content, record) {
   if (Number.isSafeInteger(record.evidenceRefCount) && record.evidenceRefCount >= 0) {
     content.append(node('p', '执行记录引用 ' + record.evidenceRefCount + ' 条', 'subagent-conversations-metadata'));
   }
+  if (record.transcriptAvailable === false) {
+    content.append(node('p', '完整逐轮会话暂不可读，当前仅显示已保存摘要与步骤。', 'subagent-conversations-metadata'));
+  }
   content.append(node('p', '执行回执不等于独立验证。', 'subagent-conversations-metadata'));
 }
 
@@ -435,6 +525,9 @@ function validIdentity(record) {
 }
 function stateLabel(state) { return text(stateNames[state]) || text(state) || '状态未记录'; }
 function text(value) { return typeof value === 'string' ? value : ''; }
+function escapeHtml(value) {
+  return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+}
 function errorText(error) { return text(error?.message) || text(error); }
 function notice() {
   const element = node('p', '', 'subagent-conversations-notice');

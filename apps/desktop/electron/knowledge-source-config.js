@@ -216,6 +216,11 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   };
   return {
     snapshot,
+    readDataScopeConfiguration() {
+      if(!current())throw Error('原知识源配置不可用');
+      return {sourceId:saved.sourceId,configRevision:saved.configRevision,enabled:saved.enabled,dataLevel:saved.dataLevel,
+        writeAllowed,cloudExportAllowed,publicQueries:[...publicQueries]};
+    },
     prepareAuthorization(scope) {
       if(!['knowledge.search','knowledge.apply_note_patch'].includes(scope.toolName))return;
       if(!current()||!question)throw Error('知识源或原对话授权卡不可用');
@@ -257,7 +262,9 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
         allowedNotePaths: [...new Set(selected.map(value => note(saved.rootPath, value)))]};
       invalidate(); persist(record); await bind(record); return snapshot();
     });},
-    async configure(input) {return mutate(async () => {
+    async configure(input,{assertCurrent,signal,deadline}={}) {return mutate(async () => {
+      if(assertCurrent!==undefined&&typeof assertCurrent!=='function')throw Error('配置复核端口无效');
+      assertCurrent?.();
       if (!input || Object.keys(input).some(key => !['sourceId', 'configRevision', 'enabled', 'dataLevel',
         'writeAllowed', 'cloudExportAllowed', 'publicQueries'].includes(key)) || !saved
         || input.sourceId !== saved.sourceId || input.configRevision !== saved.configRevision
@@ -272,7 +279,8 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
         displayName: path.basename(saved.rootPath), noteCount: saved.allowedNotePaths.length,
         allowedNotePaths:[...saved.allowedNotePaths],isCurrent:()=>current()&&input.sourceId===saved.sourceId&&input.configRevision===saved.configRevision,
         writeAllowed: input.writeAllowed, cloudExportAllowed: input.cloudExportAllowed,
-        publicQueries: [...input.publicQueries]})) return snapshot();
+        publicQueries: [...input.publicQueries]}, {signal,deadline})) return snapshot();
+      assertCurrent?.();
       const record = {...saved, configRevision: saved.configRevision + 1,
         enabled: input.enabled, dataLevel: input.dataLevel};
       invalidate(); persist(record); await bind(record, input); return snapshot();

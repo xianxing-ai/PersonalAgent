@@ -75,7 +75,26 @@ const reminderTriggerSchema: object = {
   },
 };
 
-
+/** Executable compensation call remembered by risk autonomy after mid-risk auto-create. */
+const recoveryCallSchema: object = {
+  type: 'object',
+  required: ['toolName', 'toolVersion', 'arguments'],
+  additionalProperties: false,
+  properties: {
+    toolName: {type: 'string', minLength: 1, maxLength: 120},
+    toolVersion: {type: 'string', minLength: 1, maxLength: 40},
+    arguments: {
+      type: 'object',
+      required: ['id', 'status', 'expectedRevision'],
+      additionalProperties: false,
+      properties: {
+        id: {type: 'string', minLength: 1},
+        status: {enum: ['cancelled']},
+        expectedRevision: {type: 'integer', minimum: 1},
+      },
+    },
+  },
+};
 
 const whenInputProperties: Record<string, object> = {
   utc: {type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$', description: 'UTC 瞬间（ISO-8601，Z 或数值偏移结尾；偏移会被规范化存储）。'},
@@ -156,14 +175,18 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
       },
       outputSchema: {
         type: 'object',
-        required: ['item', 'reminderTrigger'],
+        required: ['item', 'reminderTrigger', 'recovery'],
         additionalProperties: false,
-        properties: {item: todoItemSchema, reminderTrigger: reminderTriggerSchema},
+        properties: {
+          item: todoItemSchema,
+          reminderTrigger: reminderTriggerSchema,
+          recovery: recoveryCallSchema,
+        },
       },
       sideEffect: 'local_write',
       requiredScopes: ['todo:write'],
       idempotencySupport: false,
-      recoverySupport: false,
+      recoverySupport: true,
       requiresPresence: false,
     },
     execute: async (input: unknown) => {
@@ -189,7 +212,15 @@ export function register(host: ToolHost, options: ProductivityModuleOptions): ()
         if (raw.missedPolicy === 'run_once' || raw.missedPolicy === 'skip') create.reminder.missedPolicy = raw.missedPolicy;
       }
       const item = service.create(create);
-      return {item, reminderTrigger: buildReminderTrigger(item, conversationId)};
+      return {
+        item,
+        reminderTrigger: buildReminderTrigger(item, conversationId),
+        recovery: {
+          toolName: 'todo.update',
+          toolVersion: PRODUCTIVITY_MODULE_VERSION,
+          arguments: {id: item.id, status: 'cancelled', expectedRevision: item.revision},
+        },
+      };
     },
   };
 

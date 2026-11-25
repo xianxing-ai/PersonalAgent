@@ -3,6 +3,12 @@ export function handleConversationAction({name,payload,surface,conversations,tas
   if(!['panel','workspace'].includes(surface))throw Error('请从受信对话窗口管理会话');
   if(surface==='panel'&&['conversation.new','conversation.switch','conversation.archive','conversation.restore'].includes(name))throw Error('小工作区只保留一个主对话');
   const input=payload??{};if(!input||typeof input!=='object'||Array.isArray(input))throw Error('对话操作格式无效');
+  if(name==='conversation.prohibitions.update'){
+    if(Object.keys(input).some(key=>!['conversationId','expectedConversationId','expectedRevision','items'].includes(key))
+      ||input.expectedConversationId!==conversations.activeConversationId(surface)||input.conversationId!==input.expectedConversationId)
+      throw Error('当前对话已切换，请在原对话侧边栏修改禁止项');
+    conversations.setProhibitions(surface,input.conversationId,input);publish();return conversations.snapshot(surface);
+  }
   if(name==='conversation.readDraft'){if(Object.keys(input).some(k=>k!=='conversationId'))throw Error('草稿读取格式无效');const session=conversations.session(input.conversationId,surface);return {conversationId:session.id,text:session.draft};}
   if(name==='conversation.draft'){
     if(Object.keys(input).some(k=>!['conversationId','text'].includes(k)))throw Error('草稿格式无效');
@@ -15,7 +21,8 @@ export function handleConversationAction({name,payload,surface,conversations,tas
   else if(name==='conversation.switch')conversations.switch(surface,input.conversationId);
   else if(name==='conversation.rename')conversations.rename(surface,input.conversationId,input.title);
   else if(['conversation.archive','conversation.restore'].includes(name)){
-    if(name==='conversation.archive'&&[...tasks.values()].some(t=>taskSurface(t)===surface&&conversations.conversationIdForTask(t)===input.conversationId&&!['succeeded','failed','cancelled'].includes(t.state)))throw Error('任务尚未结束，请先停止或核实后归档');
+    const owner=conversations.session(input.conversationId,surface).surface;
+    if(name==='conversation.archive'&&[...tasks.values()].some(t=>taskSurface(t)===owner&&conversations.conversationIdForTask(t)===input.conversationId&&!['succeeded','failed','cancelled'].includes(t.state)))throw Error('任务尚未结束，请先停止或核实后归档');
     conversations.archive(surface,input.conversationId,name==='conversation.archive');
   }else throw Error('不支持的对话管理操作');
   publish();return conversations.snapshot(surface);

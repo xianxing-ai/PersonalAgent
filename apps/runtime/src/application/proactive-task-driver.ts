@@ -36,14 +36,14 @@ export function createRuntimeProactiveTaskDriver(runtime: TaskRuntime, host: Run
     // A lost pure-frontier response may be recomputed only with the explicit trusted capability.
     const snapshot = host.inspect();
     for (const [id, request] of Object.entries(snapshot.application.state.requests)) {
-      if (request.acknowledged) continue;
+      if (request.acknowledged || (request.executionEpoch ?? 0) !== runtime.readExecutionEpoch(host.taskId)) continue;
       const original = snapshot.session.state.requests[id];
       if (original?.state === 'committed') await host.advance({...context, requestId: id, deadline: request.input.deadline});
       else await host.recoverPendingRequest(id, {signal: context.signal});
     }
     let inspected = host.inspect();
-    if (!inspected.session.state.checkpoint || Object.values(inspected.session.state.requests).some(request => request.state !== 'committed')
-      || Object.values(inspected.application.state.requests).some(request => !request.acknowledged)) fail('RESULT_UNKNOWN', 'Original signed proactive frontier is not confirmed');
+    if (!inspected.session.state.checkpoint || Object.values(inspected.session.state.requests).some(request => request.state !== 'committed' && (request.executionEpoch ?? 0) === runtime.readExecutionEpoch(host.taskId))
+      || Object.values(inspected.application.state.requests).some(request => !request.acknowledged && (request.executionEpoch ?? 0) === runtime.readExecutionEpoch(host.taskId))) fail('RESULT_UNKNOWN', 'Original signed proactive frontier is not confirmed');
     for (const [operationId, operation] of Object.entries(inspected.session.state.operations)) {
       if (operation.state === 'settled') continue;
       const result = await host.reconcileOperation(operationId, context);
@@ -93,7 +93,8 @@ export function createRuntimeProactiveTaskDriver(runtime: TaskRuntime, host: Run
                 // Wait for an actual source/host event or explicit native control; no automatic repair/retrieval algorithm.
                 await wait(observed); continue frontiers;
               }
-              if (proposal.originControlRevision >= host.binding.controlRevision) throw error;
+              if (proposal.originControlRevision >= host.binding.controlRevision &&
+                (host.inspect().session.state.proposalEpochs?.[proposal.proposalId] ?? 0) === runtime.readExecutionEpoch(host.taskId)) throw error;
               // A native control can revoke execution between frontier delivery and its guarded invocation.
               // If an operation already exists, independently read it; never turn an unknown write into a withdrawal.
               const original = host.inspect().session.state.operations[proposal.operationId];
@@ -111,7 +112,13 @@ export function createRuntimeProactiveTaskDriver(runtime: TaskRuntime, host: Run
         state = host.inspect();
         const requestId = 'runtime-proactive-' + createHash('sha256').update(JSON.stringify([host.taskId, host.sessionId,
           host.binding.controlRevision, Object.keys(state.application.state.requests).length + 1])).digest('hex');
-        const frontier = await host.advance({requestId, deadline: context.deadline, signal: context.signal});
+        const executionEpoch = runtime.readExecutionEpoch(host.taskId);
+        let frontier;
+        try {frontier = await host.advance({requestId, deadline: context.deadline, signal: context.signal});}
+        catch (error) {
+          if (!context.signal.aborted && executionEpoch !== runtime.readExecutionEpoch(host.taskId)) continue;
+          throw error;
+        }
         if (frontier.proposals.length) continue;
         // Idle, blocked, paused, waiting_user and waiting_device are workflow states, never task success.
         await wait(observed);
@@ -120,7 +127,7 @@ export function createRuntimeProactiveTaskDriver(runtime: TaskRuntime, host: Run
     } catch (error) {
       if (!context.signal.aborted && runtime.getTask(host.taskId).state === 'running') {
         const state = host.inspect();
-        if (Object.values(state.session.state.requests).some(request => request.state === 'pending')
+        if (Object.values(state.session.state.requests).some(request => request.state === 'pending' && (request.executionEpoch ?? 0) === runtime.readExecutionEpoch(host.taskId))
           || Object.values(state.session.state.operations).some(operation => operation.state === 'pending')) {
           runtime.transitionTask(host.taskId, 'waiting_reconciliation');
           return {resultSummary: 'Original proactive request or operation requires readback'};

@@ -9,6 +9,7 @@ import {conversationTimeline} from '../src/features/conversation/timeline.js';
 test('Live messages survive restart with legacy tasks, deduplicate and remain panel-only',()=>{
   const cache=fileURLToPath(new URL('../.cache/',import.meta.url));mkdirSync(cache,{recursive:true});
   const folder=mkdtempSync(path.join(cache,'conversation-live-'));
+  let journal,reloaded,afterBlocked;
   try {
     const file=path.join(folder,'turns.json');
     writeFileSync(file,JSON.stringify({version:1,turns:[
@@ -16,7 +17,7 @@ test('Live messages survive restart with legacy tasks, deduplicate and remain pa
       {taskId:'next',surface:'panel',goal:'继续',createdAt:'2026-01-01T00:00:03Z'},
       {taskId:'workspace',surface:'workspace',goal:'私有窗口',createdAt:'2026-01-01T00:00:04Z'},
     ]}));
-    const journal=new Conversations(file);
+    journal=new Conversations(file);
     const user={id:'voice-user',sessionId:'s1',role:'user',text:'语音问题 <b>',createdAt:'2026-01-01T00:00:01Z'};
     journal.addLiveMessage(user);journal.addLiveMessage(user);
     assert.equal(journal.addLiveMessage({...user,createdAt:'2026-01-01T00:00:06Z'}).createdAt,'2026-01-01T00:00:01.000Z');
@@ -26,8 +27,9 @@ test('Live messages survive restart with legacy tasks, deduplicate and remain pa
     assert.equal(journal.messagesFor('panel').find(m=>m.id===user.id).text,'修订后的问题');
     assert.throws(()=>journal.addLiveMessage({...user,sessionId:'different-session'}),/冲突/);
     assert.throws(()=>journal.addLiveMessage({...user,role:'assistant'}),/冲突/);
-    for (const invalid of [{role:'system'},{surface:'workspace'},{text:' '},{createdAt:'bad'},{extra:true},{sessionId:''}]) assert.throws(()=>journal.addLiveMessage({...user,...invalid}),/无效/);
-    const reloaded=new Conversations(file);
+    for (const invalid of [{role:'system'},{surface:'unknown'},{text:' '},{createdAt:'bad'},{extra:true},{sessionId:''}]) assert.throws(()=>journal.addLiveMessage({...user,...invalid}),/无效/);
+    assert.throws(()=>journal.addLiveMessage({...user,surface:'workspace'}),/不属于当前窗口/);
+    reloaded=new Conversations(file);
     assert.equal(reloaded.messagesFor('panel').length,3);
     assert.deepEqual(reloaded.messagesFor(),reloaded.messagesFor('panel'));
     assert.equal(reloaded.messagesFor('panel')[0].createdAt,'2026-01-01T00:00:01.000Z');
@@ -44,9 +46,8 @@ test('Live messages survive restart with legacy tasks, deduplicate and remain pa
     const blocked=path.join(folder,'directory');mkdirSync(blocked);reloaded.file=blocked;
     assert.throws(()=>reloaded.addLiveMessage({...user,id:'failed'}));
     assert.equal(reloaded.messagesFor('panel').length,3);
-    const afterBlocked=new Conversations(file);assert.equal(afterBlocked.messagesFor('panel').length,3);
-    afterBlocked.close();reloaded.close();journal.close();
-  } finally {rmSync(folder,{recursive:true,force:true});}
+    afterBlocked=new Conversations(file);assert.equal(afterBlocked.messagesFor('panel').length,3);
+  } finally {afterBlocked?.close();reloaded?.close();journal?.close();rmSync(folder,{recursive:true,force:true});}
 });
 
 test('two conversations retain independent metadata and context after restart',()=>{

@@ -20,7 +20,23 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
   const descriptor=service.tools[0].descriptor;
   const current=()=>!closed && binding && workspace.isWorkspaceBindingCurrent(binding)
     && service.health().connected ? configurationRef : undefined;
-  let cloudSkill;
+  let cloudSkill,cloudSkillWorker;
+  function createCloudSkillPort(versionedSkillworker) {
+    return createCloudSkillSelectionPort({versionedSkillworker,
+      publicReferenceExport:{currentConfigurationRef:current,
+        readPreflight:query=>{assertTask(query.taskId);return publicReferenceExport?.readPreflight?.(query);},
+        readAuthorization:query=>{assertTask(query.taskId);return publicReferenceExport?.readAuthorization?.(query);},
+        readConfirmed:query=>{assertTask(query.taskId);return publicReferenceExport?.readConfirmed?.(query);}},
+      resolvePublicSource:input=>{
+      assertTask(input.taskId);
+      const ref=current();
+      const source=resolvePublicSkillSource?.({...input,configurationRef:ref});
+      assertTask(input.taskId);
+      if(!source || !ref || source.configurationRef!==ref || current()!==ref)
+        throw new ProtocolError('UNAUTHORIZED','Native public Skill permission is unavailable');
+      return source;
+    }});
+  }
   const exporter=createPublicReferenceExport({currentConfigurationRef:current,
     readPreflight(query) {
       assertTask(query.taskId);
@@ -168,6 +184,13 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
   }
   function serialize(work) {const next=mutation.then(work);mutation=next.catch(()=>{});return next;}
   return {tools,competitionToolAvailability,competitionToolExports,snapshot,bindTask,assertTask,
+    /** Original native workspace selection and fixed owned Skill, including while disabled. */
+    readF21Configuration(){
+      const selected=workspace.readWorkspaceBinding(),manifest=application?.referenceSkillSnapshot().manifest;
+      if(closed||!selected||!workspace.isWorkspaceBindingCurrent(selected)||!manifest)return;
+      return structuredClone({workspace:selected,manifest,descriptor});
+    },
+    readF21Connection(){const ref=current();return ref?{configurationRef:ref,mcp:service.health(),skill:application.referenceSkillSnapshot().health}:undefined;},
     readPublicReferencePreflightCandidate(query) {
       try {return freezeCandidate(publicOrigin(query));} catch {return undefined;}
     },
@@ -184,20 +207,8 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
     },
     configureCloudSkillWorker(versionedSkillworker) {
       cloudSkill?.close();
-      cloudSkill=createCloudSkillSelectionPort({versionedSkillworker,
-        publicReferenceExport:{currentConfigurationRef:current,
-          readPreflight:query=>{assertTask(query.taskId);return publicReferenceExport?.readPreflight?.(query);},
-          readAuthorization:query=>{assertTask(query.taskId);return publicReferenceExport?.readAuthorization?.(query);},
-          readConfirmed:query=>{assertTask(query.taskId);return publicReferenceExport?.readConfirmed?.(query);}},
-        resolvePublicSource:input=>{
-        assertTask(input.taskId);
-        const ref=current();
-        const source=resolvePublicSkillSource?.({...input,configurationRef:ref});
-        assertTask(input.taskId);
-        if(!source || !ref || source.configurationRef!==ref || current()!==ref)
-          throw new ProtocolError('UNAUTHORIZED','Native public Skill permission is unavailable');
-        return source;
-      }});
+      cloudSkillWorker=versionedSkillworker;
+      cloudSkill=!closed && cloudSkillWorker ? createCloudSkillPort(cloudSkillWorker) : undefined;
       return cloudSkill;
     },
     async cloudSkillCatalog(input) {
@@ -222,6 +233,11 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
       bindTask(context.taskId);
       return cloudSkill.dispatch(proposal,context);
     },
+    assertCloudSkillReceiptAllowed(selection,receipt,context) {
+      if(!cloudSkill) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Cloud Skill worker is unavailable');
+      assertTask(context.taskId);
+      return cloudSkill.assertReceiptAllowed(selection,receipt,context);
+    },
     bindApplication(value) {
       application=value;
       application.configureReferenceSkill({enabled:false,isToolAvailable:()=>Boolean(current()),
@@ -232,27 +248,37 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
         }});
     },
     invalidate:()=>serialize(stop),
-    setMcpEnabled(enabled) {return serialize(async()=>{
+    setMcpEnabled(enabled,request={}) {return serialize(async()=>{
       if(typeof enabled!=='boolean' || closed) throw Error('参考服务设置无效');
+      const assertCurrent=()=>{if(request.signal?.aborted||request.deadline!==undefined&&(!Number.isFinite(Date.parse(request.deadline))||Date.parse(request.deadline)<=Date.now())
+        ||request.assertCurrent&&request.assertCurrent()!==true)throw Error('原参考连接操作已失效');};
+      assertCurrent();
       await stop();
       if(enabled) {
+        assertCurrent();
         binding=workspace.readWorkspaceBinding();
         if(!binding) throw Error('请先选择工作区、可信 Node，并许可本会话读取');
         // Reconnecting the same permitted root must not revive prior session
         // receipts or complete Skill caches after stop/revocation.
         configurationRef=digest({binding,connectionId:randomUUID()});
+        if(request.onBound){const result=request.onBound({configurationRef});if(result!==undefined){void Promise.resolve(result).catch(()=>{});throw Error('参考连接绑定须同步保存');}}
         service=createMcp({rootPath:binding.rootPath,nodeExecutable:binding.nodeExecutable,enabled:true});
-        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+        const duration=Math.max(1,Math.min(15000,request.deadline===undefined?15000:Date.parse(request.deadline)-Date.now()));
+        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),duration);
+        const signal=request.signal?AbortSignal.any([controller.signal,request.signal]):controller.signal;
         try {
-          await service.start({signal:controller.signal,deadline:new Date(Date.now()+15000).toISOString()});
+          await service.start({signal,deadline:new Date(Date.now()+duration).toISOString()});assertCurrent();
           if(!workspace.isWorkspaceBindingCurrent(binding)) throw Error('工作区许可在连接期间已改变');
+          if(!closed && cloudSkillWorker) cloudSkill=createCloudSkillPort(cloudSkillWorker);
         } catch(error) {await stop();throw error;} finally {clearTimeout(timer);}
       }
       onUpdate();return snapshot();
     });},
     setSkillEnabled(enabled) {
       if(typeof enabled!=='boolean' || (enabled && !current())) throw Error('请先连接只读参考服务');
-      application.setReferenceSkillEnabled(enabled);onUpdate();return snapshot();
+      application.setReferenceSkillEnabled(enabled);
+      if(enabled && !closed && !cloudSkill && cloudSkillWorker) cloudSkill=createCloudSkillPort(cloudSkillWorker);
+      onUpdate();return snapshot();
     },
     submit({path}) {
       if(!current() || typeof path!=='string') throw Error('参考读取尚未就绪');
@@ -263,6 +289,6 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
       onUpdate();return {taskId:task.taskId,state:task.state};
     },
     async reconcile(taskId) {assertTask(taskId);const task=await application.reconcileReferenceSkillTask(taskId);onUpdate();return {taskId:task.taskId,state:task.state};},
-    dispose() {return serialize(async()=>{closed=true;exporter.dispose();await stop();await service.dispose();});},
+    dispose() {return serialize(async()=>{closed=true;cloudSkillWorker=undefined;exporter.dispose();await stop();await service.dispose();});},
   };
 }
