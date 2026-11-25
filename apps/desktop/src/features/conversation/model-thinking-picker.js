@@ -1,5 +1,5 @@
 import {nativeReasoningState} from './native-reasoning.js';
-import {defaultThinkingSelection} from '../../../shared/thinking-selection.js';
+import {defaultThinkingSelection,groupTextModels,modelOptionLabel,textModels} from '../../../shared/thinking-selection.js';
 
 const depthLabels=['最低','轻度','平衡','深入','高','极高'];
 const effortLabels={none:'关闭',minimal:'最低',low:'低',medium:'平衡',high:'高',xhigh:'极高',max:'最高'};
@@ -7,7 +7,7 @@ const effortDepth={none:0,minimal:0,low:1,medium:2,high:4,xhigh:5,max:5};
 const modelKey=value=>JSON.stringify([value.modelId||'',value.executionModel??null,value.modelSelection??null]);
 const preferenceKey=value=>JSON.stringify([modelKey(value),value.depth,value.fast]);
 const clamp=value=>Math.max(0,Math.min(5,Number.isFinite(Number(value))?Math.round(Number(value)):1));
-export const availableThinkingModels=snapshot=>(snapshot?.agentArtsModels?.catalog?.models??[]).filter(model=>model.type==='text'&&model.availability!=='unavailable'&&model.available!==false);
+export const availableThinkingModels=snapshot=>textModels(snapshot?.agentArtsModels?.catalog);
 
 /** Shared writer for both conversation surfaces. A drag previews locally until released. */
 export function createModelThinkingController(invoke,report,{onChange=()=>{},readFeedbackRevision,clearFeedback}={}){
@@ -29,7 +29,7 @@ export function createModelThinkingController(invoke,report,{onChange=()=>{},rea
     const level=nativeSlider?(effortLabels[values[index]]??'默认'):depthLabels[index];
     const models=availableThinkingModels(snapshot),model=models.find(item=>item.id===native.modelId);
     const defaults=snapshot.agentArtsModels?.preferences,catalog=snapshot.agentArtsModels?.catalog;
-    const submodel=defaults?.catalogRevision===catalog?.revision?models.find(item=>item.id===defaults?.defaultSubmodelId):undefined;
+    const submodel=models.find(item=>item.id===(defaults?.defaultSubmodelId??catalog?.defaultModelId));
     const configured=snapshot.agentArts?.configured===true||snapshot.model?.configured===true;
     const fakeModel=snapshot.fakeModel===true;
     const customModel=snapshot.model?.provider==='pangu';
@@ -41,11 +41,11 @@ export function createModelThinkingController(invoke,report,{onChange=()=>{},rea
     const catalogDetail=fakeModel?'当前使用明确的离线测试模型，云模型连接及原生思考强度需另行确认。':customModel
       ?snapshot.model?.configured===true?'自定义模型入口；模型选择与连接测试请前往模型设置。':'模型连接未配置，请在模型设置完成配置。':!catalog?(configured
       ?'模型目录未加载；AgentArts 已配置，具体模型和原生思考强度待目录确认。'
-      :'模型连接未配置，请在模型设置完成配置。'):undefined;
-    return {preference,native,models,manual,nativeSlider,index,max:nativeSlider?values.length-1:5,level,
+      :'模型连接未配置，请在模型设置完成配置。'):!models.length?'当前部署没有已发布的可用模型':undefined;
+    return {preference,native,models,manual,nativeSlider,index,max:nativeSlider?values.length-1:5,level,selectionError,
       modelLabel,
       detail:catalogDetail??selectionError??(manual?(native.available?nativeSlider?'调整当前模型的原生思考强度': '原生思考由供应商管理；滑块调整执行深度':native.reason):`默认组合：低两档使用${submodel?.displayName??'默认子模型'}，其余使用已配置主模型；当前原生强度：${effortLabels[native.reasoningEffort]??'供应商默认'}。不支持原生调节时仅调整执行深度。`),
-      busy, saving:Boolean(optimistic),failure,disabled:busy||!catalog};
+      busy,saving:Boolean(optimistic),failure,disabled:busy||!models.length};
   }
   const project=()=>onChange(state());
   function update(value){
@@ -107,10 +107,17 @@ export function createModelThinkingController(invoke,report,{onChange=()=>{},rea
     chooseModel(modelId){if(modelId&&!availableThinkingModels(snapshot).some(model=>model.id===modelId))return;return save({...effective(),modelId,executionModel:undefined,modelSelection:modelId?undefined:'default'});},
     setFast(fast){return save({...effective(),fast:Boolean(fast)});},
     setBusy(value){busy=value;project();},
-    async flush(){const token=generation;if(preview)await save(preview);while(draining)await draining;if(token!==generation)throw Error('当前对话或模型目录已切换，请重新发送');if(failure)throw Error('模型或思考设置未保存，请重试后发送');}};
+    async flush(){
+      const token=generation;if(preview)await save(preview);while(draining)await draining;
+      if(token!==generation)throw Error('当前对话或模型目录已切换，请重新发送');
+      if(failure)throw Error('模型或思考设置未保存，请重试后发送');
+      const current=state();
+      if(current.selectionError)throw Error(current.selectionError);
+      if(current.manual&&!current.native.available)throw Error(current.native.reason);
+    }};
 }
 
-/** A compact model + thinking entry, with one slider and all published text models. */
+/** A compact model and thinking entry shared by both chat surfaces. */
 export function mountModelThinkingPicker(root,invoke,report,options={}){
   root.classList.add('model-thinking-picker');
   root.innerHTML=`<button type="button" class="model-thinking-trigger" aria-label="模型与思考" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13.5 3.5a7 7 0 1 0 3 7M15.5 5.5a5 5 0 1 0 0 7"/></svg><span data-picker-model>默认组合</span><span data-picker-level>平衡</span><svg class="picker-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg></button>
@@ -125,15 +132,51 @@ export function mountModelThinkingPicker(root,invoke,report,options={}){
   const slider=root.querySelector('[type=range]'),fast=root.querySelector('.picker-fast'),search=root.querySelector('[type=search]'),list=root.querySelector('.picker-model-list'),heading=root.querySelector('.picker-model-heading'),choices=root.querySelector('.picker-model-choices');
   const hideChoices=()=>{choices.hidden=true;heading.setAttribute('aria-expanded','false');};
   let catalogSignature='',lastState;
-  function filter(){let visible=0;for(const item of list.children){item.hidden=!item.textContent.toLowerCase().includes(search.value.trim().toLowerCase());if(!item.hidden)visible++;}list.dataset.empty=String(visible===0);}
+  function filter(){
+    const query=search.value.trim().toLowerCase();
+    let matched=false;
+    for(const group of list.children){
+      const sourceMatches=group.getAttribute('aria-label').toLowerCase().includes(query);
+      let groupMatched=false;
+      for(const item of group.querySelectorAll('[data-model-id]')){
+        item.hidden=!sourceMatches&&!item.dataset.search.includes(query);
+        if(!item.hidden)groupMatched=true;
+      }
+      group.hidden=!groupMatched;
+      if(groupMatched)matched=true;
+    }
+    list.dataset.empty=String(!matched);
+  }
+  function renderChoices(models){
+    const groups=groupTextModels(models).map(({id,label,models:entries})=>{
+      const group=document.createElement('section');
+      group.setAttribute('role','group');
+      group.setAttribute('aria-label',label);
+      group.dataset.source=id;
+      const title=document.createElement('div');
+      title.className='picker-model-source';title.textContent=label;
+      group.append(title);
+      for(const model of entries){
+        const item=document.createElement('button');
+        item.type='button';item.className='picker-model-option';
+        item.dataset.modelId=model.id;
+        item.textContent=modelOptionLabel(model);
+        item.dataset.search=[item.textContent,model.vendor,model.providerModelId,model.id].join(' ').toLowerCase();
+        item.onclick=()=>{control.chooseModel(model.id);hideChoices();};
+        group.append(item);
+      }
+      return group;
+    });
+    list.replaceChildren(...groups);filter();
+  }
   const control=createModelThinkingController(invoke,report,{...options,onChange:state=>{
     lastState=state;
     root.querySelector('[data-picker-model]').textContent=state.modelLabel;root.querySelector('[data-picker-level]').textContent=state.level;
     root.querySelector('[data-power-model]').textContent=state.modelLabel;heading.title=state.detail;
     button.title=`${state.modelLabel} · ${state.level}`;button.setAttribute('aria-busy',String(state.saving));
-    const signature=JSON.stringify(state.models.map(model=>[model.id,model.displayName]));
-    if(signature!==catalogSignature){catalogSignature=signature;list.replaceChildren();for(const model of state.models){const item=document.createElement('button');item.type='button';item.className='picker-model-option';item.dataset.modelId=model.id;item.textContent=model.displayName??model.id;item.title=model.id;item.onclick=()=>{control.chooseModel(model.id);hideChoices();};list.append(item);}filter();}
-    for(const item of list.children){item.setAttribute('aria-pressed',String(state.manual&&item.dataset.modelId===state.native.modelId));item.disabled=state.disabled;}
+    const signature=JSON.stringify(state.models.map(model=>[model.id,model.displayName,model.route,model.vendor,model.tier,model.providerModelId,model.availability]));
+    if(signature!==catalogSignature){catalogSignature=signature;renderChoices(state.models);}
+    for(const item of list.querySelectorAll('[data-model-id]')){item.setAttribute('aria-pressed',String(state.manual&&item.dataset.modelId===state.native.modelId));item.disabled=state.disabled;}
     const defaults=root.querySelector('[data-default]');defaults.setAttribute('aria-pressed',String(!state.manual));defaults.disabled=state.disabled;
     slider.max=String(state.max);slider.value=String(state.index);slider.disabled=state.disabled;slider.setAttribute('aria-valuetext',state.level);slider.setAttribute('aria-busy',String(state.saving));slider.style.setProperty('--picker-fill',`${6+88*state.index/(state.max||1)}%`);
     const ticks=Array.from({length:state.max+1},(_,i)=>`radial-gradient(circle at ${6+88*i/(state.max||1)}% 50%,rgba(255,255,255,.3) 0 1.8px,transparent 2.1px)`);slider.style.setProperty('--picker-track',[...ticks,'linear-gradient(90deg,#0877d9 0 var(--picker-fill),#414141 var(--picker-fill) 100%)'].join(','));

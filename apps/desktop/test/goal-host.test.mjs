@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGoalHostCore} from '../electron/goal-host-core.js';
+import {createGoalHostCore,createPlanExecutionFactReader} from '../electron/goal-host-core.js';
 
 const namespace = 'desktop-user-v1:00000000-0000-4000-8000-000000000001';
 const input = {id: 'goal-1', summary: '完成计划', validFrom: '2026-09-25T00:00:00.000Z',
@@ -123,4 +123,41 @@ test('Goal approval expiry comes only from the matching native record and lookup
   const error = Object.assign(Error('storage unavailable'), {code: 'UNAVAILABLE'});
   application.runtime.getApproval = () => {throw error;};
   assert.throws(() => host.readTask(task.taskId), candidate => candidate === error);
+});
+
+test('native Plan selection confirms the original summary/deployment once and observes an existing task without new admission',async()=>{
+  const {host,application}=fixture();host.bind(application);
+  const payload={plan:{id:'plan',revision:2},expectedGraphRevision:4,requestId:'synthetic-plan-click'},submissions=[];
+  let prior,confirmations=0,release;
+  application.readPlanExecutionTask=()=>prior;
+  application.previewPlanExecution=async selection=>({source:{...selection,summary:'Actual selected summary',configurationRef:'fixed-deployment',nodes:[{}],facts:[]},sourceDigest:'a'.repeat(64)});
+  application.submitPlanExecutionTask=async input=>{submissions.push(input);return prior={taskId:'original-root',state:'waiting_approval',conversationId:input.conversationId};};
+  const context={conversationId:'original-chat',deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal,
+    confirm:async dto=>{confirmations++;assert.equal(dto.summary,'Actual selected summary');assert.equal(dto.configurationRef,'fixed-deployment');
+      assert.equal(Object.hasOwn(dto,'facts'),false);await new Promise(resolve=>{release=resolve;});return true;}};
+  const first=host.executePlan(payload,context),duplicate=host.executePlan(payload,context);
+  await new Promise(resolve=>setImmediate(resolve));context.conversationId='changed-chat';release();
+  assert.deepEqual(await first,await duplicate);assert.equal(confirmations,1);assert.equal(submissions.length,1);
+  assert.equal(submissions[0].conversationId,'original-chat');assert.equal(submissions[0].graphNamespace,namespace);
+  application.previewPlanExecution=()=>{throw Error('Plan revoked');};
+  assert.equal((await host.executePlan({...payload,requestId:'new-renderer-click'},context)).task.taskId,'original-root');
+  assert.equal(confirmations,1);assert.equal(submissions.length,1);
+});
+
+test('declined native confirmation creates no Plan task and Memory source adapter refuses replaced namespaces or heads',async()=>{
+  const {host,application}=fixture();host.bind(application);let submits=0;
+  application.readPlanExecutionTask=()=>undefined;application.previewPlanExecution=async()=>({source:{plan:{id:'plan',revision:1},summary:'summary',
+    configurationRef:'deployment',nodes:[{}],facts:[]},sourceDigest:'a'.repeat(64)});
+  application.submitPlanExecutionTask=()=>{submits++;};
+  const context={conversationId:'chat',deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal,confirm:async()=>false};
+  assert.deepEqual(await host.executePlan({plan:{id:'plan',revision:1},expectedGraphRevision:1,requestId:'synthetic-decline'},context),{state:'declined'});
+  assert.equal(submits,0);
+  let sources;const current={ref:{id:'fact',revision:1},state:'active'};
+  const facts={readCurrentPublicFact:()=>current};sources=[{memoryNamespace:'bound',facts}];
+  const read=createPlanExecutionFactReader(()=>sources);
+  assert.equal(read({memoryNamespace:'bound',fact:current.ref},context),current);
+  assert.equal(read({memoryNamespace:'bound',fact:{id:'fact',revision:2}},context),undefined);
+  assert.throws(()=>read({memoryNamespace:'foreign',fact:current.ref},context),/未接通/);
+  facts.readCurrentPublicFact=()=>{sources=[];return current;};
+  assert.throws(()=>read({memoryNamespace:'bound',fact:current.ref},context),/已变化/);
 });

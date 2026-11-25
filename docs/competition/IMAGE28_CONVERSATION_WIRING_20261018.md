@@ -1,5 +1,7 @@
 # 镜像 28 图与主对话接线矩阵（2026-10-18）
 
+> **2026-10-28 Owner 授权更新：** 本轮明确允许代实现原分工中的公共口和业务图适配，无需等待原负责人 PR；下文历史的禁止代实现及文件 fence 仅保留当时记录，不再约束本工作包。真实授权、Policy、证据和 unavailable 边界继续适用。节点级进度见 [152 项清单](evidence/IMAGE28_HOST_GUARD_CHECKLIST_20261028.md)，逐图当前状态见 [工作记录](evidence/IMAGE28_FULL_WIRING_20261028.md)。该清单未勾选的节点仍不能声称本轮完成；下表为历史基线，不能替代当前运行时配置及验收。
+
 目标 profile：`huawei_ict_agentarts`。首轮接线已发布于 #406 提交 `2e45faa5885ed5370eaa654aa0802f79f7c69450`；本次通用驱动增量以该提交为基线，位于独立 `.worktrees/image28-driver-plan-20261018`，不改 primary。主线另到 `4168bd19`。本文件独占维护，不接管 goo122、Potatos498 或 2511375597-lab 的模块和 Renderer。
 
 本轮只读源码与 Local 静态目录：28 图、185 节点、模板 `2026.10.15.2`，外部 adapterRequirements 共 **152 项：111 host、41 guard**。它们是接口要求，不是已注册能力。没有启动 Laya、镜像进程、真实模型、Windows、账号或云服务，没有全量测试。后续本地显式替身回归单列 **Synthetic**，不能提高真实验收等级。
@@ -30,18 +32,18 @@
 | --- | --- | --- | --- | --- |
 | F01 主对话与责任理解 / 9 | zemeng；记忆公共口 goo122 | 6/3 | 原用户 root→user-work、goals、context 已有 | N02 memory/responsibility/model snapshot host 未注册；N04/N05 scope/native-config、N06/N09 task/responsibility commit、补问及条件 guard 未接；普通对话不等于F01整图 |
 | F02 语音交互与确认 / 11 | zemeng 14/15 | 10/3 | Live/final transcript、当前审批桥已有 | N01 pending-question/guard 即缺；N02/N03播报/最终转写、N05/N06原审批核验恢复、取消/急停/效果读回未提供对应graph adapter；物理音频未验 |
-| F03 世界状态、目标与局部重规划 / 10 | zemeng 27/28；Runtime goo122 | 8/4 | goals create/revise、原 localRepair/proactive 链 | N05 memory.query host、N03失效子图、N06原效果绑定、N07核实、N08补偿授权/N09执行、N04调度与guards缺；不能把模型建议当实际变更 |
+| F03 世界状态、目标与局部重规划 / 10 | zemeng 27/28；Runtime goo122 | 8/4 | goals create/revise、原 localRepair/proactive 链；N05/N07 可选工厂 | 缺原 N06 效果与因果绑定、生产来源与权限注入，以及失效/补偿/调度与guards；未知写不得重试 |
 | F04 Wiki与作用域记忆 / 7 | goo122 08/09 | 4/2 | knowledge.search/apply_note_patch与公开记忆消费 | N05 memory query、N06来源/写许可、N07隔离候选、N04投影失效及N03/N07 guard缺；Owner不改Wiki提供者 |
-| F05 记忆搜索与来源回答 / 7 | goo122 08/09 | 3/2 | knowledge.search、来源出口 | N02组合memory host先缺；N05 citation revision、N07发布来源答案及N04/N06 guards缺；独立检索不是整图完成 |
-| F06 待办、提醒与跟进 / 5 | Potatos498 20/23 | 3/0 | todo-host原持久工具与Reminder/NotificationHost | N03 registered_write、N04 clock/revision、N05 deliver graph aliases缺；实际待办能力可用性按本业务宿主判断 |
-| F07 日历安排与冲突 / 5 | Potatos498 20 | 2/0 | calendar.events和calendar-meeting-host | N04 freshness、N05 registered_write缺；账号/provider/读写许可缺失则unavailable，不代选提供商 |
-| F08 邮件分类、草稿与发送 / 13 | Potatos498 21 | 6/4 | mail.inbox/reconcile_send及mail-analysis-host | N03 archive、N10 operation scope、N06补问、N07 send、N12 wait reconciliation、N13 replan/guards缺；本轮禁止邮件真实调用 |
+| F05 记忆搜索与来源回答 / 7 | goo122 08/09 | 3/2 | knowledge.search、来源出口；N02 可选工厂 | N02 缺受信 Gateway 调用口及生产注入；N05 citation revision、N07发布来源答案及N04/N06 guards缺；独立检索不是整图完成 |
+| F06 待办、提醒与跟进 / 5 | Potatos498 20/23 | 3/0 | todo-host原持久工具与Reminder/NotificationHost；N03/N04/N05 可选工厂 | 缺受信 Gateway、N03 提醒与 revision、同图回执绑定及实际送达；未生产注入，见 F06 Evidence |
+| F07 日历安排与冲突 / 5 | Potatos498 20 | 2/0 | calendar.events和calendar-meeting-host；N04/N05 可选工厂 | N04 缺真实版本与原回执绑定；N05 缺受信 Gateway 和读回；账号/provider/读写许可缺失则unavailable |
+| F08 邮件分类、草稿与发送 / 13 | Potatos498 21 | 6/4 | mail.inbox/reconcile_send及mail-analysis-host；N10/N13 可选工厂 | N03/N07/N12 暂时 unavailable：标已读不等于归档、保存草稿不等于发送，须真正操作和原 Gateway；其余补问、replan/guards 和真实 Sent 读回待接，见 F08 Evidence |
 | F09 订阅、信号发现 / 4 | Potatos498 22/23 | 2/0 | feeds.collect、持久cursor和通知消费 | N02 validate/deduplicate、N04 enqueue_research的graph adapter缺；独立collect证据不算整图 |
-| F10 深度研究与证据汇总 / 6 | Potatos498 24；knowledge goo122 | 1/0 | research.search/knowledge.search动态工具 | N05 supported_claims host缺；需实际来源/引用出口与固定模型，研究provider缺配置仍unavailable |
-| F11 天气、出行及计划影响 / 5 | Potatos498 20/25；语音zemeng | 2/2 | weather.forecast、calendar.events、已有问答 | N04 voice.ask/guard、N05 calendar update/invalidate_reminder/guard缺；不凭天气读回推断日程已改 |
-| F12 通知/安静时段 / 5 | Potatos498 23 | 3/2 | 单个Runtime NotificationHost+原设置/CAS | N02 quiet_hours、N04即时投递、N05到期投递及guards缺；Fake静默/配额不是实机送达 |
-| F13 系统检查与诊断 / 4 | zemeng 16/17 | 2/0 | computer.system.observe已注册聚合探测 | N02 system.registered_probe graph alias缺；N04 confirmed_recovery缺，TraceGuard治理/恢复本来排除，不能为凑整图恢复旧需求 |
-| F14 浏览器与桌面操作 / 6 | zemeng 16/14 | 5/2 | 新独立安装Windows-MCP受控对话工具；旧Notepad强目标工具 | N01 observation/N02唯一输入锁/N03 registered_input/N05补问/N06 submit的graph aliases和guards缺；本轮跨引擎锁已通过Synthetic互斥/未知结果封闭测试，真实Windows、坐标/DPI与设备并发仍未验证，不把MCP观察当强OS绑定 |
+| F10 深度研究与证据汇总 / 6 | Potatos498 24；knowledge goo122 | 1/0 | research.search/knowledge.search动态工具；N05 可选工厂 | N05 缺原回执、实际来源读回、独立 ModelGateway 审核和出机许可的生产装配；provider缺配置仍unavailable |
+| F11 天气、出行及计划影响 / 5 | Potatos498 20/25；语音zemeng | 2/2 | weather.forecast、calendar.events、已有问答；新增 N05 只读回执验证器 | N04 voice.ask/guard 和 N05 实际写入/提醒失效/guard 仍缺；不凭天气或日程读回推断日程已改 |
+| F12 通知/安静时段 / 5 | Potatos498 23 | 3/2 | 单个Runtime NotificationHost+原设置/CAS；N02/N04 可选工厂 | N04 缺真实渠道回执和生产注入；N05到期投递及guards缺；Fake静默/配额不是实机送达 |
+| F13 系统检查与诊断 / 4 | zemeng 16/17 | 2/0 | computer.system.observe已注册聚合探测；N02 可选工厂 | N02 缺受信 Gateway 与云/配额/锁来源；N04 confirmed_recovery缺，不能推断恢复成功 |
+| F14 浏览器与桌面操作 / 6 | zemeng 16/14 | 5/2 | 新独立安装Windows-MCP受控对话工具；旧Notepad强目标工具；N01 可选工厂 | N01 缺生产观察提供者及授权；N02/N03/N05/N06 aliases和guards缺；跨任务设备会话引用、真实Windows及设备并发仍未验证 |
 | F15 代码/补丁/命令 / 6 | zemeng 18/29/30 | 3/0 | 自动ownedImage、隔离coding工具与N04/05/06别名、原Graph runner；本轮same-worker capability已接 | 主对话root→user-work→原F15 runner已Synthetic通过，start与两次原HostTask审批恢复同Task；原decision.choose_candidate仍依赖本机Laya ready/资格及回执，本轮未启动或改算法。未做当前Windows/Live/云实机验收；固定version、receipt secret、工作区读写/命令/元数据及exact正文许可缺失仍unavailable |
 | F16 CI检查与修复 / 5 | Potatos498 34；GitHub goo122 33 | 2/0 | developer.ci_list/ci_fix虚拟worker及原工具（条件配置） | N01 bound_ci_failure/N04 test_intent_check graph aliases缺；独立developer worker不等于F16图。Owner不接管CI业务 |
 | F17 测试失败定位 / 4 | Potatos498 35 | 1/0 | workspace.locate_test_failures、固定命令与CI消费 | N04 deliver_failure_report graph alias缺；其余model/tool节点还需真实目录/配方与元数据出口 |

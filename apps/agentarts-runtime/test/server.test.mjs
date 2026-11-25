@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {request as httpRequest} from 'node:http';
+import {MAX_AGENTARTS_TRANSPORT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {createAgentServer} from '../src/server.mjs';
 
 async function host(t, options={}) {
@@ -11,6 +12,17 @@ async function host(t, options={}) {
   return {server,calls,url:`http://127.0.0.1:${server.address().port}`};
 }
 const post=(url,body,headers={})=>fetch(url+'/invocations',{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body)});
+test('AgentArts HTTP keeps health public and requires its independent inner token',async t=>{
+  assert.throws(()=>createAgentServer({mode:'agentarts',orchestrator:{invoke(){}}}),{code:'INVALID_ARGUMENT'});
+  const token='inner-fixture-token'.repeat(2),{url,calls}=await host(t,{mode:'agentarts',wssAuthToken:token});
+  assert.equal((await fetch(url+'/ping')).status,200);
+  const outer={authorization:'Bearer platform-fixture'};
+  assert.equal((await post(url,{query:'x'},outer)).status,503);
+  assert.equal((await post(url,{query:'x'},{...outer,'x-pa-agent-token':'Bearer wrong'})).status,401);
+  assert.equal(calls.length,0);
+  assert.equal((await post(url,{query:'x'},{...outer,'x-pa-agent-token':`Bearer ${token}`})).status,200);
+  assert.equal(calls.length,1);
+});
 test('request deadline mode preserves deadlines beyond 60s and requires a deadline',async t=>{
   const {url,calls}=await host(t,{timeoutMode:'request-deadline'});
   assert.equal((await post(url,{query:'x'})).status,400);
@@ -58,7 +70,7 @@ test('ping and strict invocation preserve deadline/session and contract events',
 test('auth, malformed input, forged fields, expired deadlines and oversized bodies never reach model',async t=>{
   const token='s'.repeat(32), {url,calls}=await host(t,{authToken:token});
   assert.equal((await post(url,{query:'x'})).status,401);
-  for (const [body,extra] of [[{query:'x',grant:true},{}],[{inputs:{goal:'x'}},{}],[{query:'x'},{'x-pa-deadline':'yesterday'}],[{query:'x'},{'x-pa-deadline':'2020-01-01T00:00:00.000Z'}],[{query:'x'.repeat(1_200_000)},{}]]) {
+  for (const [body,extra] of [[{query:'x',grant:true},{}],[{inputs:{goal:'x'}},{}],[{query:'x'},{'x-pa-deadline':'yesterday'}],[{query:'x'},{'x-pa-deadline':'2020-01-01T00:00:00.000Z'}],[{query:'x'.repeat(MAX_AGENTARTS_TRANSPORT_BYTES)},{}]]) {
     assert.notEqual((await post(url,body,{authorization:`Bearer ${token}`,...extra})).status,200);
   }
   assert.equal(calls.length,0);

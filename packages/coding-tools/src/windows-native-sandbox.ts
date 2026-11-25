@@ -2,6 +2,8 @@ import {spawn} from 'node:child_process';
 import {createHash, randomBytes} from 'node:crypto';
 import {lstatSync, readFileSync, realpathSync, statSync} from 'node:fs';
 import {basename, dirname, isAbsolute, join, relative, sep, win32} from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
+import {readSelfContainedHelperBundle} from '../native/helper-bundle.mjs';
 import type {SandboxExecutionResult, TrustedSandboxBinding, TrustedSandboxExecutionRequest,
   TrustedSandboxExecutor, WindowsNativeSandboxExecutorOptions} from './native-sandbox.js';
 
@@ -14,6 +16,8 @@ const hashFile = (path: string): string => createHash('sha256').update(readFileS
 export function readWindowsNativeHelperAttestation(helperPath: string): Pick<WindowsNativeSandboxExecutorOptions, 'helperPath' | 'helperSha256' | 'helperFilesSha256'> {
   const helper = canonical(helperPath, false);
   if (basename(helper) !== 'WindowsJobProcessHost.exe') throw Error('invalid-helper');
+  const bundle=readSelfContainedHelperBundle(helper);
+  if(bundle)return {helperPath:helper,...bundle};
   const names = ['WindowsJobProcessHost.dll', 'WindowsJobProcessHost.deps.json', 'WindowsJobProcessHost.runtimeconfig.json'];
   return {helperPath: helper, helperSha256: hashFile(helper), helperFilesSha256: Object.fromEntries(
     names.map(name => [name, hashFile(canonical(join(dirname(helper), name), false))]))};
@@ -107,19 +111,25 @@ export function createWindowsNativeSandboxExecutor(options: WindowsNativeSandbox
       request = checkedRequest(raw, now());
       if (request.signal.aborted) return {...failure(request, 'cancelled-before-start'), outcome: 'cancelled'};
       helper = canonical(helperPath, false);
-      if (basename(helper) !== 'WindowsJobProcessHost.exe' || !shaPattern.test(helperSha256)
-        || hashFile(helper) !== helperSha256) throw Error('helper-integrity');
-      const required = ['WindowsJobProcessHost.dll', 'WindowsJobProcessHost.deps.json', 'WindowsJobProcessHost.runtimeconfig.json'];
-      for (const name of required) {
-        const pin = pins[name];
-        if (!pin || !shaPattern.test(pin) || hashFile(canonical(join(dirname(helper), name), false)) !== pin) throw Error('helper-integrity');
-      }
+      const checkHelper=()=>{
+        if (basename(helper) !== 'WindowsJobProcessHost.exe' || !shaPattern.test(helperSha256)
+          || hashFile(canonical(helper,false)) !== helperSha256) throw Error('helper-integrity');
+        const required = ['WindowsJobProcessHost.dll', 'WindowsJobProcessHost.deps.json', 'WindowsJobProcessHost.runtimeconfig.json'];
+        for (const name of required) {
+          const pin = pins[name];
+          if (!pin || !shaPattern.test(pin) || hashFile(canonical(join(dirname(helper), name), false)) !== pin) throw Error('helper-integrity');
+        }
+        const bundle=readSelfContainedHelperBundle(helper);
+        if(bundle&&(bundle.helperSha256!==helperSha256||!isDeepStrictEqual(bundle.helperFilesSha256,pins)))throw Error('helper-integrity');
+      };
+      checkHelper();
       if (request.profile.writeRoots.some(root => inside(root, helper) || inside(root, dirname(helper)))) throw Error('helper-writable');
       identities = [...request.profile.readRoots, ...request.profile.writeRoots, request.cwd, request.executable, helper].map(path => {
         const stat = statSync(path, {bigint: true}); return {path, dev: stat.dev, ino: stat.ino};
       });
       await assertCurrent(bind(request));
       checkedRequest(request, now());
+      checkHelper();
     } catch { return failure(raw, 'invalid-or-unavailable-trusted-configuration'); }
     return new Promise(resolve => {
       let child: ReturnType<typeof spawn>;

@@ -9,6 +9,7 @@ import {OwnedAgentOrchestrator} from '@personal-agent/agentarts';
 import {FakeModelProvider} from '@personal-agent/models';
 import {createDesktopGoalCognitionHost} from '../../apps/desktop/electron/goal-cognition-host.js';
 import {createGoalHostCore} from '../../apps/desktop/electron/goal-host-core.js';
+import {syntheticAgentArtsOptions} from '../helpers/synthetic-agentarts.mjs';
 
 const namespace='synthetic-owned-analysis';
 const ref=(id,revision=1)=>({id,revision});
@@ -78,7 +79,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepPro
     return p;
   }}):agentWith(),sent=[],rejections=[],announced=[];
   let host,goalWrites=0;
-  const app=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+  const app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
     ...(controlledRepair?{localRepair:{graphNamespace:namespace,bindingVersion:'desktop-reviewed-execution-v1',
       withSourceLock:async work=>work(),reviewedSource:{resolve:input=>{const prepared=host.readPreparedRepair(input.sourceTaskId);
         return prepared?.kind==='prepared'&&prepared.binding.reviewTaskId===input.reviewTaskId?prepared:undefined;}}}}:{}),
@@ -94,7 +95,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,repair=false,keepPro
       catch(error){rejections.push(error.code);throw error;}
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(output)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   const store=app.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],'PRIVATE_SOURCE_SENTINEL','private'));
   store.append(1,node('goal','goal',[ref('private-source')],'原目标','private'));

@@ -2,7 +2,7 @@ import {supportsPanelAcrylic} from './panel-material.js';
 
 // The maximizable workspace uses DWM material; the small shaped panel owns a separate clipped backdrop.
 export function workspaceWindowAppearance(theme, host) {
-  const acrylic=supportsPanelAcrylic(host)&&!theme.prefersReducedTransparency&&!theme.shouldUseHighContrastColors;
+  const acrylic=process.env.PA_ENABLE_WORKSPACE_ACRYLIC==='1'&&supportsPanelAcrylic(host)&&!theme.prefersReducedTransparency&&!theme.shouldUseHighContrastColors;
   return {transparent:false,thickFrame:true,backgroundMaterial:acrylic?'acrylic':'none',
     backgroundColor:acrylic?'#00000000':theme.shouldUseDarkColors?'#191919':'#f4f4f4'};
 }

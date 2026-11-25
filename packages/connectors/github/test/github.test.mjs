@@ -282,7 +282,11 @@ test('register has read/write descriptors, strict scopes and idempotent disposal
   const tools = new Map(); let removed = 0;
   const fake = new FakeGitHubProvider({'issue.label': {state: 'unknown', evidenceRefs: []}});
   const dispose = register({register(tool) {tools.set(tool.descriptor.name, tool); return () => {tools.delete(tool.descriptor.name); removed++;};}}, {provider: fake});
-  assert.equal(tools.size, 13);
+  assert.equal(tools.size, 14);
+  const close = tools.get('github.issue.close');
+  assert.equal(close.descriptor.sideEffect, 'external_write');
+  assert.deepEqual(close.descriptor.requiredScopes, ['github:write']);
+  assert.equal(close.descriptor.requiresPresence, true);
   const write = tools.get('github.issue.label');
   assert.equal(write.descriptor.sideEffect, 'external_write'); assert.equal(write.descriptor.idempotencySupport, false);
   assert.equal(tools.get('github.pr.get').descriptor.sideEffect, 'read');
@@ -290,5 +294,5 @@ test('register has read/write descriptors, strict scopes and idempotent disposal
   assert.equal(fake.calls.length, 0);
   await assert.rejects(write.execute({repo, number: 8, labels: ['bug'], expectedUpdatedAt: fixtures.issue.updated_at}, {...context(), taskId: 't', runId: 'r', authorizationRef: 'host-grant', scopes: ['github:write']}), error => error.code === 'RESULT_UNKNOWN');
   assert.equal(fake.calls.length, 1);
-  dispose(); dispose(); assert.equal(removed, 13); assert.equal(tools.size, 0);
+  dispose(); dispose(); assert.equal(removed, 14); assert.equal(tools.size, 0);
 });

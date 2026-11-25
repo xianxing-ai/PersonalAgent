@@ -1,4 +1,4 @@
-const TOPICS = new Set(['tasks','approvals','notifications','resources','all']);
+const TOPICS = new Set(['tasks','approvals','notifications','resources','window','all']);
 const visible = win => !win.isDestroyed() && win.isVisible() && !win.isMinimized();
 
 /** Display projections only. Runtime events and side effects never enter this queue. Each
@@ -21,18 +21,22 @@ export function createSnapshotPublisher({project, interval = () => 16, schedule 
     const contents = win.webContents;
     const record = {win, surface, dirty: new Set(['all']), full: true, revision: 0, generation: ++generation};
     records.set(win, record);
-    const resume = () => reset(record), remove = () => detach(win);
-    const hidden = () => {record.full=true; record.dirty.add('all');};
-    win.on('show', resume); win.on('restore', resume); win.on('hide', hidden);
-    contents.on('did-finish-load', resume); win.on('closed', remove);
+    const reload = () => reset(record), remove = () => detach(win);
+    const resume = () => {if(record.inFlight)reset(record);else if(record.dirty.size)wake();};
+    win.on('show', resume); win.on('restore', resume);
+    contents.on('did-finish-load', reload); win.on('closed', remove);
     record.release = () => {win.removeListener('show', resume); win.removeListener('restore', resume);
-      win.removeListener('hide', hidden); win.removeListener('closed', remove);
-      contents.removeListener('did-finish-load', resume);};
+      win.removeListener('closed', remove);
+      contents.removeListener('did-finish-load', reload);};
     wake();
   }
   function detach(win) {const record=records.get(win); records.delete(win); record?.release();}
   function mark(topics=['all']) {
     if(closed)return;
+    if(topics?.[0]==='recovery'){
+      if([...records.values()].some(record=>record.full&&record.dirty.size&&!record.inFlight&&visible(record.win)))wake();
+      return;
+    }
     revision++;
     const selected = Array.isArray(topics) && topics.length && topics.every(topic=>TOPICS.has(topic)) ? topics : ['all'];
     for(const record of records.values()) for(const topic of selected) record.dirty.add(topic);

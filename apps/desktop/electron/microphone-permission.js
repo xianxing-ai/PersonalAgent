@@ -4,12 +4,13 @@ export function createMicrophonePermissionGate({expectedPageUrl, isTrustedWindow
   if (page.protocol !== 'file:' || typeof isTrustedWindow !== 'function') throw Error('Invalid microphone permission gate');
   let lease;
 
-  function isPanelPage(url) {
+  function isCapturePage(url, contents) {
     try {
       const candidate = new URL(url);
       const params = [...candidate.searchParams];
       return candidate.protocol === 'file:' && candidate.host === page.host && candidate.pathname === page.pathname &&
-        !candidate.hash && params.length === 1 && params[0][0] === 'mode' && params[0][1] === 'panel';
+        !candidate.hash && params.length === 1 && params[0][0] === 'mode'
+        && ['panel','workspace'].includes(params[0][1]) && isTrustedWindow(contents,params[0][1]);
     } catch { return false; }
   }
 
@@ -30,7 +31,7 @@ export function createMicrophonePermissionGate({expectedPageUrl, isTrustedWindow
     if (lease) throw Error('Microphone permission is already leased');
     if (!Number.isFinite(deadlineAtMs) || deadlineAtMs <= now() || signal?.aborted ||
         !webContents || typeof webContents.on !== 'function' || typeof webContents.removeListener !== 'function' ||
-        webContents.isDestroyed() || !isTrustedWindow(webContents) || !isPanelPage(webContents.getURL())) {
+        webContents.isDestroyed() || !isCapturePage(webContents.getURL(),webContents)) {
       throw Error('Invalid microphone permission lease');
     }
     if (signal && (typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function')) {
@@ -63,7 +64,7 @@ export function createMicrophonePermissionGate({expectedPageUrl, isTrustedWindow
     if (!lease || permission !== 'media') return false;
     if (now() >= lease.deadlineAtMs || lease.signal?.aborted) { revoke(); return false; }
     try {
-      return webContents === lease.webContents && !webContents.isDestroyed() && isTrustedWindow(webContents) &&
+      return webContents === lease.webContents && !webContents.isDestroyed() && isCapturePage(lease.url,webContents) &&
         webContents.getURL() === lease.url && details?.isMainFrame === true && details.requestingUrl === lease.url;
     } catch { return false; }
   }

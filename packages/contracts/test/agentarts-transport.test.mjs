@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {parseAgentArtsTransportFrame,encodeAgentArtsTransportFrame,digestAgentArtsPayload} from '../dist/agentarts-transport.js';
+import {MAX_AGENTARTS_TRANSPORT_BYTES,parseAgentArtsTransportFrame,encodeAgentArtsTransportFrame,digestAgentArtsPayload} from '../dist/agentarts-transport.js';
 
 const payload={query:'Read the public project status'};
 const identity={protocolVersion:'0.1.0',sessionId:'test-session',requestId:'test-request',
@@ -49,7 +49,7 @@ test('status and cancellation references cannot smuggle a new invocation',()=>{
   rejected({...identity,type:'error',serverInstanceId:'instance-one',code:'EXTERNAL_FAILURE',accepted:false,message:'private failure'});
 });
 test('wire and result limits measure UTF-8 bytes rather than character counts',()=>{
-  const large={query:'界'.repeat(410000)};
+  const large={query:'界'.repeat(Math.floor(MAX_AGENTARTS_TRANSPORT_BYTES / 3) + 1)};
   rejected({...identity,type:'invoke',deadline:'2026-10-09T15:00:00Z',payload:large,payloadDigest:digestAgentArtsPayload(large)});
   rejected({...identity,type:'result',serverInstanceId:'instance-one',events:[
     {event:'message',data:{text:'界'.repeat(22000)}},events[1],events[2]]});

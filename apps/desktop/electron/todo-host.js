@@ -1,11 +1,13 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import * as productivity from '@personal-agent/productivity';
 import * as notifications from '@personal-agent/notifications';
+import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import {createEncryptedModuleStorage} from './encrypted-module-storage.js';
 
 /** Compose existing MOD-20/23 implementations. No business rules or task loop here. */
 export function createDesktopTodoHost({userData,safeStorage,namespace,createDeliveryHost,notificationHost,question,
-  now=Date.now,onUpdate=()=>{},onNotification=()=>{}}) {
+  verifyWorkflowReminderBinding,now=Date.now,onUpdate=()=>{},onNotification=()=>{}}) {
   const storage=createEncryptedModuleStorage({userData,safeStorage,filename:'productivity-state.json'});
   const conversationId=`desktop-todo-reminders:${namespace}`;
   const service=new productivity.TodoService(storage,{now,idFactory:randomUUID});
@@ -56,6 +58,37 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       const checked=original({...entry.scope,signal:context.signal});
       question.currentRequirement({...checked.scope,...context},'todo-session');
     }else if(!current())throw Error('待办会话许可已失效');
+  }
+  // The graph host must prove this id/revision came from the same graph's
+  // confirmed N03 receipt. Without that trusted binding there is no adapter.
+  if(typeof verifyWorkflowReminderBinding==='function') {
+    let adapter;
+    adapter=createOwnedWorkflowAdapter({nodeId:'F06_N04',kind:'host',sideEffect:'read',requiredScopes:['todo:read'],
+      inputSchema:{type:'object',additionalProperties:false,required:['todoId','revision'],properties:{
+        todoId:{type:'string',minLength:1},revision:{type:'integer',minimum:1}}},
+      outputSchema:{type:'object',additionalProperties:false,required:['isTaskAlreadyFinished','shouldFireAlarm'],properties:{
+        isTaskAlreadyFinished:{type:'boolean'},shouldFireAlarm:{type:'boolean'}}},
+      async execute(input,context) {
+        const item=service.get(input.todoId),scheduleId=item.reminder&&productivity.reminderScheduleId(item.id,item.reminder.remindAt.utc);
+        const reminderRecord=scheduleId&&records()[scheduleId];
+        const verification=await verifyWorkflowReminderBinding({todoId:input.todoId,revision:input.revision,context,
+          currentItem:item,reminderRecord,schedule:application.runtime.listSchedules(conversationId).find(value=>value.scheduleId===scheduleId),
+          deliveryRound:reminderRecord?.batchId&&notificationHost?.runtimeHost?.getInterruptionRound(
+            'desktop-batch-'+notifications.notificationDigest(reminderRecord.batchId))});
+        const delivered=verification?.delivered===true&&verification.revision===item.revision&&item.revision===input.revision+1;
+        if(verification!==true&&!delivered)
+          throw Error('待办提醒缺少同一图的原确认回执绑定');
+        // The binding check can be asynchronous; revalidate consent after it.
+        assertAccess(context,input,adapter);
+        if(!isDeepStrictEqual(item,service.get(input.todoId))||item.revision!==input.revision&&!delivered)
+          throw Error('待办提醒版本已变化，请重新读取原操作');
+        if(!item.reminder)throw Error('当前待办没有可核验的提醒');
+        const when=Date.parse(item.reminder.remindAt.utc),currentTime=now();
+        if(!Number.isFinite(when)||!Number.isFinite(currentTime))throw Error('提醒时钟不可用');
+        return {isTaskAlreadyFinished:item.status!=='open',shouldFireAlarm:item.status==='open'
+          && (item.reminder.state==='scheduled'||delivered) && currentTime>=when};
+      }});
+    implementations.push(adapter);
   }
   function bound(taskId,claim=false) {
     if (!application || !taskId) return false;
@@ -137,7 +170,8 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
     const result=await executing.execute(input,context);
     // The module mutation is the authoritative receipt; schedule sync failure
     // must not turn a persisted todo.create into a retryable creation.
-    await tick(true);return result;
+    if(tool.descriptor.name!=='workflow.host.f06_n04')await tick(true);
+    return result;
   }}));
   const revoke=()=>{allowed=false;generation=randomUUID();prepared.clear();
     if(question){const previous=question.readResourceGeneration(resource);question.rotateResourceGeneration(resource,previous);}
@@ -222,12 +256,94 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       await tick(true);
       return snapshot();
     },
+    readReminderState(reminderId) {
+      if (!active || typeof reminderId !== 'string' || !reminderId.trim()) return undefined;
+      const items = service.list();
+      const item = items.find(entry => entry.id === reminderId || `todo-reminder:${entry.id}` === reminderId);
+      const known = records();
+      const rec = known[reminderId];
+      if (item) {
+        const dueUtc = item.reminder?.remindAt?.utc ?? item.due?.utc ?? rec?.dueUtc;
+        if (typeof dueUtc !== 'string') return undefined;
+        const cancelled = item.status === 'cancelled' || !item.reminder || rec?.state === 'cancelled';
+        return {
+          reminderId,
+          revision: Number.isSafeInteger(rec?.revision) ? Math.max(item.revision, rec.revision) : item.revision,
+          dueUtc,
+          state: cancelled ? 'cancelled' : item.reminder?.state === 'delivered' ? 'triggered' : 'active',
+        };
+      }
+      if (rec && typeof rec.dueUtc === 'string') {
+        return {
+          reminderId,
+          revision: Number.isSafeInteger(rec.revision) ? rec.revision : 1,
+          dueUtc: rec.dueUtc,
+          state: rec.state === 'cancelled' ? 'cancelled' : rec.state === 'visible' ? 'triggered' : 'active',
+        };
+      }
+      return undefined;
+    },
+    registerReminderRecord({reminderId, dueUtc, taskId, summary}) {
+      if (!active || typeof reminderId !== 'string' || !reminderId.trim() || !Number.isFinite(Date.parse(dueUtc))) {
+        throw Error('提醒记录参数无效');
+      }
+      const known = records();
+      const prevRev = Number.isSafeInteger(known[reminderId]?.revision) ? known[reminderId].revision : 0;
+      known[reminderId] = {
+        notificationId: reminderId,
+        taskId: taskId ?? `desktop-reminder:${reminderId}`,
+        summary: summary ?? '日历关联提醒',
+        occurredAt: new Date(now()).toISOString(),
+        dueUtc,
+        revision: prevRev + 1,
+        state: 'queued',
+      };
+      storage.set('desktop-reminder-records', known);
+      return known[reminderId];
+    },
+    async invalidateReminder(reminderId, reason = 'rescheduled') {
+      if (!active || typeof reminderId !== 'string' || !reminderId.trim()) {
+        return {reminderId: String(reminderId ?? ''), invalidated: false, state: 'absent'};
+      }
+      const known = records();
+      const items = service.list();
+      const item = items.find(entry => entry.id === reminderId || `todo-reminder:${entry.id}` === reminderId);
+      if (item && item.reminder) {
+        service.update(item.id, {clearReminder: true});
+      }
+      const existing = known[reminderId];
+      if (!item && !existing) {
+        return {reminderId, invalidated: false, state: 'absent'};
+      }
+      const nextRevision = Math.max(
+        Number.isSafeInteger(item?.revision) ? item.revision + 1 : 1,
+        Number.isSafeInteger(existing?.revision) ? existing.revision + 1 : 1,
+      );
+      known[reminderId] = {
+        ...(existing ?? {
+          notificationId: reminderId,
+          taskId: item ? `todo-reminder:${item.id}` : `desktop-reminder:${reminderId}`,
+          summary: item?.title ?? '已作废提醒',
+          occurredAt: new Date(now()).toISOString(),
+          dueUtc: item?.reminder?.remindAt?.utc ?? item?.due?.utc ?? new Date(now()).toISOString(),
+        }),
+        state: 'cancelled',
+        revision: nextRevision,
+        invalidatedReason: reason,
+        invalidatedAt: new Date(now()).toISOString(),
+      };
+      storage.set('desktop-reminder-records', known);
+      if (typeof application?.runtime?.cancelSchedule === 'function' && existing?.taskId) {
+        try { application.runtime.cancelSchedule(reminderId); } catch { /* noop */ }
+      }
+      return {reminderId, invalidated: true, state: 'cancelled'};
+    },
     get competitionToolAvailability(){return tools.map(tool=>({toolName:tool.descriptor.name,
       toolVersion:tool.descriptor.version,
       publicEnumPaths:tool.descriptor.name==='todo.list'?['/status']:tool.descriptor.name==='todo.update'?['/status','/missedPolicy']:tool.descriptor.name==='todo.create'?['/missedPolicy']:[],
       available:({taskId,signal})=>!signal.aborted && (question?questionReady():current()) && bound(taskId,true)}));},
     get competitionToolExports(){return tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
-      exportPolicyVersion:question?'question-todo-bounded-v2':'authorized-todo-session-v1',accepts:scope=>{
+      exportPolicyVersion:question?'question-todo-bounded-v3':'authorized-todo-session-v1',accepts:scope=>{
         if(!question)return current()&&bound(scope.taskId);
         try{const entry=original(scope);if(entry.argumentsDigest!==hash(scope.arguments))return false;
           if(scope.phase==='final'){
@@ -238,8 +354,20 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       },
       project:scope=>{
         const {taskId,result,signal}=scope;
-        if(question){const entry=original(scope);question.currentRequirement({...entry.scope,signal},'todo-session');
-          question.authorizeExport({...entry.scope,signal},result,'todo-export');entry.projectionDigest=hash(result);}
+        if(question){const entry=original(scope),exact={...entry.scope,signal};
+          if(application.runtime.getTask(taskId).state==='succeeded'){
+            const readback=application.readHostToolTask(taskId),intent=application.runtime.loadCheckpoint(taskId,'host-tool-intent');
+            if(readback.task.state!=='succeeded'||readback.commandId!==entry.scope.proposalId
+              ||readback.toolName!==entry.scope.toolName||readback.toolVersion!==entry.scope.toolVersion
+              ||readback.confirmed?.runId!==entry.scope.runId||!readback.confirmed.evidenceRefs.includes(entry.scope.runId)
+              ||!isDeepStrictEqual(readback.confirmed.result,result)||intent?.commandId!==entry.scope.proposalId
+              ||intent.toolName!==entry.scope.toolName||intent.toolVersion!==entry.scope.toolVersion
+              ||intent.deadline!==entry.scope.deadline||hash(intent.arguments)!==entry.argumentsDigest
+              ||typeof question.assertConsumedResult!=='function'||typeof question.authorizeConsumedExport!=='function')
+              throw Error('待办原已确认结果的出机许可不可用');
+            question.assertConsumedResult(exact,'todo-session');question.authorizeConsumedExport(exact,result,'todo-export');
+          }else {question.currentRequirement(exact,'todo-session');question.authorizeExport(exact,result,'todo-export');}
+          entry.projectionDigest=hash(result);}
         else if(signal.aborted || !current() || !bound(taskId)) throw Error('待办云端许可已撤销');
         if(Buffer.byteLength(JSON.stringify(result),'utf8')>960*1024) throw Error('待办结果过大，请按状态缩小查询范围');
         return structuredClone(result);
