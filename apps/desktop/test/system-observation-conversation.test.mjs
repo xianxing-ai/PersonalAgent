@@ -1,4 +1,4 @@
-import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+import {syntheticAgentArtsOptions,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -48,7 +48,7 @@ async function scenario({realLocal=false,delegated=false,decision=true,configure
         if(frame.type!=='invoke')return;
         const intent=app.runtime.loadCheckpoint(confirmationTask??app.runtime.listTasks({}).items[0].taskId,'competition-cloud-inflight');
         assert.equal(frame.requestId,intent.requestId);
-        socket.accepted(frame);socket.result(frame,JSON.stringify(respond(JSON.parse(frame.payload.query))));
+        socket.accepted(frame);socket.result(frame,syntheticAgentArtsResult(frame.payload,respond(JSON.parse(frame.payload.query))));
       })}:{}),
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',competitionMaxSteps:4,
     ...(delegated?{delegateUserTasks:true}:{}),tools:[tool,...(delegated?[dispatch]:[])],
