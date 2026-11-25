@@ -90,6 +90,9 @@ export function isLowRiskAuthorizationRequest(request: Omit<AuthorizationQuestio
     && requirement.scopes.every(scope => READ_SCOPE.test(scope) && !ELEVATED_SCOPE.test(scope)));
 }
 
+const MAX_STORED_QUESTIONS=256;
+const MAX_EXPIRED_SETTLED_QUESTIONS=32;
+
 /** Durable user decisions only. Policy grants and exact export leases remain separate consumers. */
 export class AuthorizationQuestions {
   private readonly now:()=>number;
@@ -122,13 +125,55 @@ export class AuthorizationQuestions {
     if(state.version!==1||!Array.isArray(state.questions)||!Array.isArray(state.rules))fail('Authorization state is unavailable');
     return structuredClone(state);
   }
+  private readView():State {
+    const saved=this.options.store.get('state');
+    if(saved===undefined)return {version:1,selectedRef:this.options.defaultProfileRef,revision:1,questions:[],rules:[]};
+    const state=saved as State;
+    if(state.version!==1||!Array.isArray(state.questions)||!Array.isArray(state.rules))fail('Authorization state is unavailable');
+    return state;
+  }
+  private pruneQuestions(questions:Question[]):Question[] {
+    const now=this.now();
+    const referenced=new Set<string>();
+    const activeSet=new Set<Question>();
+    for(const item of questions){
+      const deadlineMs=Date.parse(item.deadline),expiresMs=Date.parse(item.expiresAt);
+      const unexpired=(Number.isFinite(deadlineMs)&&deadlineMs>now)||(Number.isFinite(expiresMs)&&expiresMs>now);
+      if(item.state==='pending'||this.liveBindings.has(item.questionId)||this.taskConsents.has(item.questionId)||unexpired){
+        activeSet.add(item);
+        if(item.derivedFrom)referenced.add(item.derivedFrom);
+        if(item.taskConsentFrom)referenced.add(item.taskConsentFrom);
+      }
+    }
+    const expiredSettled:{index:number;ts:number;item:Question}[]=[];
+    for(let index=0;index<questions.length;index++){
+      const item=questions[index]!;
+      if(activeSet.has(item))continue;
+      const expiresMs=Date.parse(item.expiresAt);
+      const within24h=Number.isFinite(expiresMs)&&now<expiresMs+86400000;
+      if(referenced.has(item.questionId)){
+        activeSet.add(item);
+      }else if(within24h){
+        const deadlineMs=Date.parse(item.deadline);
+        const ts=Math.max(Number.isFinite(expiresMs)?expiresMs:0,Number.isFinite(deadlineMs)?deadlineMs:0);
+        expiredSettled.push({index,ts,item});
+      }
+    }
+    if(expiredSettled.length>MAX_EXPIRED_SETTLED_QUESTIONS){
+      expiredSettled.sort((a,b)=>(b.ts-a.ts)||(b.index-a.index));
+      for(let i=0;i<MAX_EXPIRED_SETTLED_QUESTIONS;i++)activeSet.add(expiredSettled[i]!.item);
+    }else{
+      for(const entry of expiredSettled)activeSet.add(entry.item);
+    }
+    return questions.filter(item=>activeSet.has(item));
+  }
   private mutate<T>(update:(state:State)=>T):T {
     const previous=this.options.store.get('state'),state=this.read();
     const result=update(state);
     if(!this.options.store.compareAndSet!('state',previous,state))throw new ProtocolError('REVISION_CONFLICT','Authorization state changed');
     return result;
   }
-  private profile(state=this.read()):AuthorizationSandbox {
+  private profile(state=this.readView()):AuthorizationSandbox {
     const profile=this.options.profiles.find(item=>item.ref===state.selectedRef);
     if(!profile)fail('Selected sandbox is unavailable');
     return {...profile!,revision:state.revision};
@@ -214,8 +259,8 @@ export class AuthorizationQuestions {
       }
       this.liveBindings.set(question.questionId,()=>!signal.aborted&&assertCurrent());
       this.mutate(state=>{
-        state.questions=state.questions.filter(item=>item.state==='pending'||this.now()<Date.parse(item.expiresAt)+86400000);
-        if(state.questions.length>=256)fail('授权记录已满，请先处理当前请求');
+        state.questions=this.pruneQuestions(state.questions);
+        if(state.questions.length>=MAX_STORED_QUESTIONS)fail('授权记录已满，请先处理当前请求');
         const rule=state.rules.find(item=>item.active&&item.toolName===question.toolName&&item.toolVersion===question.toolVersion
           &&item.sandboxRef===profile.ref&&item.sandboxRevision===profile.revision
           &&question.requirements.every(requirement=>hash(requirement.ruleBindingDigest))
@@ -302,7 +347,7 @@ export class AuthorizationQuestions {
   }
   assertRequirement(receipt:AuthorizationQuestionReceipt,request:AuthorizationQuestionRequest,requirementId:string,consumerId:string):void {
     this.validate(request);
-    const question=this.read().questions.find(item=>item.questionId===receipt.questionId);
+    const question=this.readView().questions.find(item=>item.questionId===receipt.questionId);
     const input=this.normalize(request);
     if(!question||question.state!=='allowed'||question.receiptRef!==receipt.receiptRef||question.revision!==receipt.revision
       ||question.consumed[requirementId]!==consumerId||digest(this.input(question))!==digest(input)||!this.current(question)
@@ -310,13 +355,13 @@ export class AuthorizationQuestions {
   }
   executionProfile(receipt:AuthorizationQuestionReceipt,request:AuthorizationQuestionRequest):AuthorizationSandbox {
     this.assertRequirement(receipt,request,'tool',request.runId+':tool');
-    const question=this.read().questions.find(item=>item.questionId===receipt.questionId)!;
+    const question=this.readView().questions.find(item=>item.questionId===receipt.questionId)!;
     return structuredClone(question.sandbox);
   }
   /** For bounded local processing of the original confirmed read, never a new execution grant. */
   assertConsumedResult(receipt:AuthorizationQuestionReceipt,request:AuthorizationQuestionRequest,requirementId:string,consumerId:string):void {
     this.validate(request);
-    const question=this.read().questions.find(item=>item.questionId===receipt.questionId),profile=this.profile();
+    const question=this.readView().questions.find(item=>item.questionId===receipt.questionId),profile=this.profile();
     const input=this.normalize(request),binding=this.options.readReceiptBinding?.(input);
     if(!question||question.state!=='allowed'||question.receiptRef!==receipt.receiptRef||question.revision!==receipt.revision
       ||question.consumed[requirementId]!==consumerId||digest(this.input(question))!==digest(input)
@@ -355,13 +400,13 @@ export class AuthorizationQuestions {
     this.mutate(state=>{
       // Completed derived pages already retain their exact approval/anchor in TaskRuntime.
       // Retain live pages here without imposing a new total page budget on a mailbox batch.
-      state.questions=state.questions.filter(item=>!item.derivedFrom||!this.options.readReceiptBinding?.(this.input(item)));
-      if(state.questions.length>=256)fail('同时活动的授权记录已满');state.questions.push(question);
+      state.questions=this.pruneQuestions(state.questions.filter(item=>!item.derivedFrom||!this.options.readReceiptBinding?.(this.input(item))));
+      if(state.questions.length>=MAX_STORED_QUESTIONS)fail('同时活动的授权记录已满');state.questions.push(question);
     });
     return this.receipt(question);
   }
   snapshot(conversationId?:string) {
-    return this.read().questions.filter(question=>!question.automatic&&!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
+    return this.readView().questions.filter(question=>!question.automatic&&!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
       questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,sourceApprovalId:question.runId,
       revision:question.revision,state:question.state,
       title:question.contentConfirmation?'确认本次操作的目标与完整内容':'同意这项操作？',description:(question.contentConfirmation?.text??question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='intent')?.summary
@@ -376,13 +421,13 @@ export class AuthorizationQuestions {
           ...(question.sandbox.native.reason?{reason:question.sandbox.native.reason}:{})}}:{})},
     }));
   }
-  hasPending(runId:string):boolean {return this.read().questions.some(question=>question.runId===runId&&question.state==='pending');}
+  hasPending(runId:string):boolean {return this.readView().questions.some(question=>question.runId===runId&&question.state==='pending');}
   refresh():void {
-    for(const question of this.read().questions)if(question.state==='pending'&&!this.current(question))
+    for(const question of this.readView().questions)if(question.state==='pending'&&!this.current(question))
       this.end(question.questionId,this.now()>=Date.parse(question.expiresAt)?'expired':'stale','original_binding_changed');
   }
   sandboxSnapshot() {
-    const state=this.read(),selected=this.profile(state);
+    const state=this.readView(),selected=this.profile(state);
     const execution=this.options.describeExecution?.(undefined,selected);
     return {selected:{label:selected.label,mode:selected.mode,revision:selected.revision},
       nativeExecution:execution?{available:execution.available,backend:execution.backend,enforced:execution.enforced,

@@ -1,4 +1,4 @@
-/** Panel-only capture. The main process initiates and owns every session. */
+/** The main process grants capture to the originating conversation window. */
 export function mountMicrophoneCapture(bridge) {
   let current, disposed = false;
 

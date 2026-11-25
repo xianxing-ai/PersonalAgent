@@ -35,5 +35,6 @@ export function createUsageBudgetHost({userData, safeStorage, now, timeZone, onN
     },
     saveNotices(notices) { storage.set(NOTICES, notices); },
   };
-  return createUsageBudget({store, now, timeZone, onNotice});
+  const budget = createUsageBudget({store, now, timeZone, onNotice});
+  return {...budget, readLedger: () => store.loadLedger()};
 }

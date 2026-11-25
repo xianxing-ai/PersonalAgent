@@ -1,7 +1,8 @@
 import {randomBytes, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
+import {existsSync, readFileSync} from 'node:fs';
 import type {ChildProcessWithoutNullStreams} from 'node:child_process';
-import {basename, isAbsolute, win32} from 'node:path';
+import {basename, dirname, isAbsolute, join, win32} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -36,6 +37,8 @@ export function createWindowsHostBridgeTransport(options: {
   timeoutMs?: number;
   /** Trusted host-only local state directory, never taken from a tool argument. */
   journalDirectory?: string;
+  /** Synchronous trusted package integrity check, bound to these exact executable paths. Never tool authorization. */
+  assertCurrentBundle?(identity: {hostPath: string; bridgePath: string}): boolean;
 }): WindowsHostTransport & {close(): Promise<void>} {
   if (process.platform !== 'win32' || !isAbsolute(options.bridgePath)
     || !isAbsolute(options.hostPath)
@@ -50,6 +53,19 @@ export function createWindowsHostBridgeTransport(options: {
   const bridgePath = options.bridgePath;
   const hostPath = options.hostPath;
   const journalDirectory = options.journalDirectory;
+  const assertBundle = (): void => {
+    if (options.assertCurrentBundle) {
+      if (options.assertCurrentBundle({hostPath, bridgePath}) !== true)
+        throw new ProtocolError('UNAUTHORIZED', 'Windows Host component integrity is unavailable');
+    } else {
+      // Existing FDD entry points retain their global-runtime requirement; bundled runtimes require complete pins.
+      for (const executable of [hostPath, bridgePath]) {
+        const runtime = JSON.parse(readFileSync(executable.replace(/\.exe$/iu, '.runtimeconfig.json'), 'utf8').replace(/^\uFEFF/u, '')) as {runtimeOptions?: {includedFrameworks?: unknown}};
+        if (runtime.runtimeOptions?.includedFrameworks || ['coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll'].some(name => existsSync(join(dirname(executable), name))))
+          throw new ProtocolError('UNAUTHORIZED', 'Self-contained Windows Host requires trusted component attestation');
+      }
+    }
+  };
   if (journalDirectory !== undefined && (typeof journalDirectory !== 'string'
     || !/^[A-Za-z]:[\\/]/u.test(journalDirectory) || /[\x00-\x1f"|<>*?]/u.test(journalDirectory)
     || journalDirectory.slice(2).includes(':') || !win32.isAbsolute(journalDirectory))) {
@@ -85,9 +101,15 @@ export function createWindowsHostBridgeTransport(options: {
     async openVerifiedConnection() {
       if (closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Windows Host transport is closed');
       if (releaseFailed) throw new ProtocolError('EXTERNAL_FAILURE', 'Windows Host bridge release is unconfirmed');
+      assertBundle();
+      const windows = process.env.SystemRoot ?? 'C:\\Windows';
       const child = spawn(bridgePath, ['--host', hostPath,
         ...(journalDirectory === undefined ? [] : ['--journal-directory', win32.normalize(journalDirectory)])],
-        {windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']});
+        {windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: {
+          SystemRoot: windows, WINDIR: windows, PATH: join(windows, 'System32'),
+          ...(process.env.TEMP ? {TEMP: process.env.TEMP} : {}), ...(process.env.TMP ? {TMP: process.env.TMP} : {}),
+          DOTNET_MULTILEVEL_LOOKUP: '0', DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1',
+        }});
       children.add(child);
       child.on('error', () => undefined);
       child.once('close', () => children.delete(child));
@@ -151,6 +173,7 @@ export function createWindowsHostBridgeTransport(options: {
         } catch { child.kill(); fail(new Error('Invalid Windows Host UTF-8 or JSON')); }
       });
       const send = async (frame: WindowsHostFrame): Promise<void> => {
+        assertBundle();
         const bytes = encodeWindowsHostFrame(frame);
         if (child.stdin.destroyed || child.exitCode !== null) throw new Error('Windows Host bridge is closed');
         await new Promise<void>((resolve, reject) => child.stdin.write(bytes, error => error ? reject(error) : resolve()));

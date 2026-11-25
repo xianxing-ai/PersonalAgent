@@ -25,7 +25,7 @@ function fixture(){
     target.removeEventListener=event=>events.delete(`${name}:${event}`);
     if(name==='window')document.window=target;
   }
-  const context=vm.createContext({orb,document,window:document.window,visualOrbState,orbStatusLabel,orbVariantPreference:()=>document.documentElement.dataset.orbVariant||'matrix',orbStateOverride:()=>(document.documentElement.dataset.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null,lastOrbData:{},button:{setAttribute:(key,value)=>attributes[key]=value,removeAttribute:key=>delete attributes[key],set title(value){attributes.title=value;}}});
+  const context=vm.createContext({orb,docked:false,document,window:document.window,visualOrbState,orbStatusLabel,orbVariantPreference:()=>document.documentElement.dataset.orbVariant||'matrix',orbStateOverride:()=>(document.documentElement.dataset.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null,lastOrbData:{},button:{dataset:{},setAttribute:(key,value)=>attributes[key]=value,removeAttribute:key=>delete attributes[key],set title(value){attributes.title=value;}}});
   vm.runInContext(`const ${motion};${feedbackDeclarations}const ${feedbackSync};`,context);for(const statement of registrations)vm.runInContext(statement,context);
   return {orb,document,attributes,events,render:vm.runInContext(`(${render})`,context),sync:()=>vm.runInContext('syncMotion()',context)};
 }
