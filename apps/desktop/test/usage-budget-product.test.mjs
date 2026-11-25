@@ -5,7 +5,7 @@ import path from 'node:path';
 import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication, createConfiguredSubagentModelGateway} from '@personal-agent/runtime/application';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
-import {syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
+import {syntheticAgentArtsResult, syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createModelApiConfig} from '../electron/model-api-config.js';
 import {createAgentArtsTransportConfig} from '../electron/agentarts-transport-config.js';
 import {createProactiveSourceHost} from '../electron/proactive-source-host.js';
@@ -178,9 +178,10 @@ test('WSS cloud runs record duration to usage-budget.json across restart without
     binding,
     environment: {PA_AGENTARTS_TRANSPORT: 'wss', PA_AGENTARTS_WSS_URL: wssUrl, PA_AGENTARTS_HTTPS_FALLBACK: '1'},
     configurationProvider: {read: () => ({appToken})},
-    fetchImpl: async () => {
+    fetchImpl: async (_url, init) => {
       await new Promise(resolve => setTimeout(resolve, 15));
-      return new Response(JSON.stringify([{event: 'message', data: {text: 'HTTPS fallback ok'}}, {event: 'task_end'}, {event: 'end'}]),
+      const text = syntheticAgentArtsResult(JSON.parse(init.body), 'HTTPS fallback ok');
+      return new Response(JSON.stringify([{event: 'message', data: {text}}, {event: 'task_end'}, {event: 'end'}]),
         {status: 200, headers: {'content-type': 'application/json'}});
     },
     onCloudRun: info => current.recordCloud(info),
@@ -206,7 +207,7 @@ test('WSS cloud runs record duration to usage-budget.json across restart without
         socket.accepted(frame);
         setTimeout(() => {
           if (mode === 'wss_disconnect') socket.disconnect();
-          else socket.result(frame, 'Synthetic WSS usage ok');
+          else socket.result(frame, syntheticAgentArtsResult(frame.payload, 'Synthetic WSS usage ok'));
         }, 15);
       });
     },
@@ -276,7 +277,7 @@ test('proactive directory schedule keeps autonomous origin and is blocked before
       if (frame.type === 'invoke') {
         sentGoals.push(frame.payload?.query ?? '');
         socket.accepted(frame);
-        socket.result(frame, 'Allowed manual task');
+        socket.result(frame, syntheticAgentArtsResult(frame.payload, 'Allowed manual task'));
       }
     }),
   });
