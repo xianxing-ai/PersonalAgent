@@ -165,12 +165,12 @@ test('local read-only tools do not taint the task, terminal clears taint, and Ru
       {toolName: 'notepad.save_note', toolVersion: '1.0.0', exportPolicyVersion: 'public-v1', accepts: () => true, project: ({result}) => result},
     ],
     coordination: {
-      execute: async ({toolContinuation}) => {
+      execute: async ({toolContinuation,executionEpoch}) => {
         if (toolContinuation?.kind === 'tool_error') return {kind: 'text', text: toolContinuation.error.message, verification: 'mock'};
         if (!mailRead) {
-          return {kind: 'tool_proposal', proposalId: 'p-1', toolName: 'mail.inbox', toolVersion: '1.0.0', arguments: {}, verification: 'unverified'};
+          return {kind: 'tool_proposal', proposalId: 'p-1', toolName: 'mail.inbox', toolVersion: '1.0.0', arguments: {}, verification: 'unverified', executionEpoch};
         }
-        return {kind: 'tool_proposal', proposalId: 'p-2', toolName: 'notepad.save_note', toolVersion: '1.0.0', arguments: {text: 'bad'}, verification: 'unverified'};
+        return {kind: 'tool_proposal', proposalId: 'p-2', toolName: 'notepad.save_note', toolVersion: '1.0.0', arguments: {text: 'bad'}, verification: 'unverified', executionEpoch};
       },
     },
   });

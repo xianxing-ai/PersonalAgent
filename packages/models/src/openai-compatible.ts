@@ -19,6 +19,10 @@ export interface OpenAICompatibleModelProviderOptions {
   apiKey: () => string | Promise<string>;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
+  /** Trusted compatibility override for routes that only accept non-streaming requests. */
+  streaming?: boolean;
+  /** Trusted host telemetry after parsing a valid JSON completion. */
+  onResponseModel?: (response: Response, model: string) => void;
   /** 端点上下文窗口（进 capabilities.contextLimit）；缺省 32k 保守值，按端点如实配置。 */
   contextLimitTokens?: number;
   /** Explicit Competition auxiliary-model configuration, supplied by the trusted host. */
@@ -48,8 +52,8 @@ function nativeReasoningConfiguration(value: NativeReasoningConfiguration): Nati
   return structuredClone(value);
 }
 
-function openAiCompatibleCapabilities(contextLimitTokens: number, vision: boolean): ModelCapabilities {
-  return {text: true, streaming: true, toolCalling: false, structuredOutput: false, vision, contextLimit: contextLimitTokens};
+function openAiCompatibleCapabilities(contextLimitTokens: number, vision: boolean, streaming: boolean): ModelCapabilities {
+  return {text: true, streaming, toolCalling: false, structuredOutput: false, vision, contextLimit: contextLimitTokens};
 }
 
 export class OpenAICompatibleModelProvider implements ModelProvider {
@@ -63,6 +67,8 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly requestFormat: OpenAICompatibleRequestFormat | undefined;
   private readonly responseFormat: 'json_object' | undefined;
   private readonly vision: boolean;
+  private readonly streaming: boolean;
+  private readonly onResponseModel: OpenAICompatibleModelProviderOptions['onResponseModel'];
   private readonly tokenBudget: (RequestTokenBudgetBinding & {countInputTokens: VisibleRequestTokenBudget['countInputTokens']}) | undefined;
 
   constructor(options: OpenAICompatibleModelProviderOptions) {
@@ -70,6 +76,11 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       throw new ProtocolError('INVALID_ARGUMENT', 'Model vision declaration must be boolean');
     }
     this.vision = options.vision ?? false;
+    if (options.streaming !== undefined && typeof options.streaming !== 'boolean') {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Model streaming declaration must be boolean');
+    }
+    this.streaming = options.streaming ?? true;
+    this.onResponseModel = options.onResponseModel;
     if (options.responseFormat !== undefined && options.responseFormat !== 'json_object') {
       throw new ProtocolError('INVALID_ARGUMENT', 'Model response format is unsupported');
     }
@@ -118,7 +129,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       deployment: typeof options.deployment === 'string' && options.deployment.trim() ? options.deployment.trim() : this.model,
       model: this.model,
       verification: 'conditional',
-      capabilities: {...openAiCompatibleCapabilities(contextLimitTokens, this.vision),
+      capabilities: {...openAiCompatibleCapabilities(contextLimitTokens, this.vision, this.streaming),
         ...(this.requestFormat === undefined ? {} : {requestFormat: this.requestFormat}),
         ...(this.tokenBudget === undefined ? {} : {requestTokenBudget: this.budgetBinding()}),
         ...(this.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(this.nativeReasoning)})},
@@ -199,7 +210,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       ...(outputTokens === undefined ? {} : {[native?.outputTokenParameter ?? 'max_tokens']: outputTokens}),
       ...(this.requestFormat === 'huawei-maas-deepseek-thinking-v1' && effort === 'none'
         ? {chat_template_kwargs: {thinking: false}}
-        : effort === undefined ? {} : {reasoning_effort: effort}), stream: true,
+        : effort === undefined ? {} : {reasoning_effort: effort}), stream: this.streaming,
     });
     const requestBudget = this.measureBudget(serializedBody, outputTokens);
     const deadlineMs = Date.parse(request.deadline) - Date.now();
@@ -239,6 +250,8 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
         headers: {'content-type': 'application/json', authorization: `Bearer ${key}`},
         payload,
         streamBody: serializedBody,
+        streaming: this.streaming,
+        ...(this.onResponseModel ? {onResponseModel: this.onResponseModel} : {}),
         signal: controller.signal,
         ...(request.onDelta ? {onDelta: request.onDelta} : {}),
         race: operation => Promise.race([operation, interrupted]),

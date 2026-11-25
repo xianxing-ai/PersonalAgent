@@ -61,12 +61,15 @@ export function createAgentArtsWikiModel(options:RuntimeOwnedWorkflowImageOption
           'X-PA-Deadline':deadline,'X-Invoke-Mode':options.invokeMode??'published'};
         const init={method:'POST' as const,body,signal,redirect:'error' as const,
           headers:{...headers,...(hostAuthorization?{'X-PA-Agent-Token':hostAuthorization}:{})}};
+        const destination=options.transport==='wss'?options.websocketUrl!:endpoint;
+        const lease=await options.preparePayload?.({requestId:request.requestId,destination,payload:body,deadline,signal,
+          isCurrent:()=>{active();return true;}});active();
         let response;
         if(options.transport==='wss'){
           if(!socket)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Wiki WSS transport unavailable');
-          response=await socket.invoke(init,{beforeSend:active,afterAccepted:()=>{},afterTerminal:()=>{}});
+          response=await socket.invoke(init,{beforeSend:()=>{active();lease?.assertBeforeSend({destination,payload:body});},afterAccepted:()=>{},afterTerminal:()=>{}});
         }else{
-          active();response=await (options.fetchImpl??fetch)(endpoint,
+          active();lease?.assertBeforeSend({destination,payload:body});response=await (options.fetchImpl??fetch)(endpoint,
             options.fetchHandlesHostAuthorization?{...init,headers}:init);
         }
         active();

@@ -1,6 +1,6 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 
 /**
  * 桌面系统通知端口（P2 专属组件，MOD-23 消费面）：把「排队 → 落盘 → 系统投递 → 用户已读」
@@ -11,6 +11,8 @@ import {randomUUID} from 'node:crypto';
  *   只能由受信宿主经 `reconcile(id, delivered)` 核实后收敛；
  * - 同 id 重试幂等：返回既有状态，不重复弹系统通知；
  * - 系统通知不可用（非 Electron 环境 / isSupported()=false）→ `delivered:false` + 原因，不假成功。
+ * - Windows 冷激活：逻辑 id 映射为纯字母数字 Tag，写入 toast launch；`activateByNativeTag`
+ *   在无内存 Notification 对象时复现点击（配合 `Notification.handleActivation`）。
  *
  * 系统通知器接缝（notifier）可注入：生产实现懒加载 Electron（动态 import，纯 Node 单测下
  * 不可用并如实返回 false），测试注入 Fake。
@@ -18,8 +20,43 @@ import {randomUUID} from 'node:crypto';
 
 const RECORDS_FILE = 'desktop-notifications.json';
 const MAX_RECORDS = 200;
+const NATIVE_TAG_LENGTH = 32;
 
 const text = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+
+/** Windows toast Tag 仅允许字母数字；逻辑 id 可能含冒号，落盘侧另存 nativeTag。 */
+export function nativeNotificationTag(id) {
+  if (!text(id, 256)) throw Error('notification id is invalid');
+  return createHash('sha256').update(id).digest('hex').slice(0, NATIVE_TAG_LENGTH);
+}
+
+/** 解析 Electron `handleActivation` 的 arguments（`type=click&tag=…`）。 */
+export function parseNotificationActivationTag(argumentsString) {
+  if (typeof argumentsString !== 'string' || argumentsString.length === 0) return undefined;
+  for (const token of argumentsString.split('&')) {
+    const separator = token.indexOf('=');
+    if (separator <= 0) continue;
+    const key = token.slice(0, separator);
+    if (key !== 'tag') continue;
+    const value = token.slice(separator + 1);
+    if (/^[A-Za-z0-9]+$/u.test(value)) return value;
+  }
+  if (/^[A-Za-z0-9]+$/u.test(argumentsString)) return argumentsString;
+  return undefined;
+}
+
+function escapeXml(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
+  }[character]));
+}
+
+function buildWindowsToastXml({nativeTag, title, body}) {
+  return `<toast launch="type=click&amp;tag=${escapeXml(nativeTag)}" activationType="foreground">`
+    + `<visual><binding template="ToastGeneric">`
+    + `<text>${escapeXml(title)}</text><text>${escapeXml(body)}</text>`
+    + `</binding></visual></toast>`;
+}
 
 function validNavigation(value) {
   if (value === undefined) return true;
@@ -51,7 +88,12 @@ function defaultNotifier() {
     async show(input, callbacks) {
       const electron = await load();
       if (!electron?.Notification) throw Error('electron Notification unavailable');
-      const notification = new electron.Notification({title: input.title, body: input.body});
+      const nativeTag = text(input.nativeTag, 64) ? input.nativeTag : undefined;
+      const options = {title: input.title, body: input.body, ...(nativeTag ? {id: nativeTag} : {})};
+      if (process.platform === 'win32' && nativeTag) {
+        options.toastXml = buildWindowsToastXml({nativeTag, title: input.title, body: input.body});
+      }
+      const notification = new electron.Notification(options);
       notification.on('show', callbacks.onShow);
       notification.on('click', callbacks.onClick);
       notification.on('failed', callbacks.onFailed);
@@ -84,7 +126,7 @@ export function createDesktopNotificationPort(options = {}) {
     const bounded = [...next];
     while (bounded.length > maxRecords) {
       const oldestTerminal = bounded.findIndex(record =>
-        ['delivered', 'acknowledged', 'failed'].includes(record.state));
+        ['delivered', 'acknowledged', 'failed', 'withdrawn'].includes(record.state));
       if (oldestTerminal < 0) throw Error('unresolved notifications fill the store');
       bounded.splice(oldestTerminal, 1);
     }
@@ -111,6 +153,12 @@ export function createDesktopNotificationPort(options = {}) {
   function readDeliveryOutcome(id) {
     const record = records.find(item => item.id === id);
     if (!record) return undefined;
+    if (record.state === 'withdrawn') {
+      return {id, deliveryState: 'withdrawn', withdrawnAt: record.withdrawnAt,
+        ...(record.withdrawReason ? {withdrawReason: record.withdrawReason} : {}),
+        userRead: false, evidenceRefs: [`desktop-notification:${id}:withdrawn`],
+        ...(record.roundId ? {roundId: record.roundId} : {})};
+    }
     const delivered = ['delivered', 'acknowledged'].includes(record.state);
     return {id, deliveryState: delivered ? 'delivered' : record.state === 'failed' ? 'failed' : 'unknown',
       deliveredAt: record.deliveredAt, userRead: record.state === 'acknowledged',
@@ -119,6 +167,42 @@ export function createDesktopNotificationPort(options = {}) {
       ...(record.clickedAt ? {clickedAt: record.clickedAt} : {})};
   }
   const publishOutcome = id => {try {options.onOutcome?.(readDeliveryOutcome(id));} catch {}};
+
+  /** 热路径 click 与冷激活共用：无内存 Notification 时仍可按落盘记录复现。 */
+  function applyClick(id, {allowWhileDisposed = false} = {}) {
+    if (disposed && !allowWhileDisposed) return {activated: false, reason: 'disposed'};
+    const current = records.find(item => item.id === id);
+    if (!current) return {activated: false, reason: 'unknown'};
+    if (current.state === 'failed' || current.state === 'withdrawn') return {activated: false, reason: current.state};
+    if (current.state === 'acknowledged') return {activated: true, reason: 'already', record: {...current}};
+    if (current.state === 'persisted') {
+      try {
+        persistState(id, {clickedAt: current.clickedAt ?? new Date(now()).toISOString()});
+        publishOutcome(id);
+        const next = records.find(item => item.id === id) ?? current;
+        try { options.onClick?.(next); } catch {}
+        return {activated: true, record: {...next}};
+      } catch {
+        return {activated: false, reason: 'persist'};
+      }
+    }
+    const clickedAt = current.clickedAt ?? new Date(now()).toISOString();
+    try {
+      persistState(id, {
+        state: 'acknowledged', clickedAt, acknowledgedAt: clickedAt,
+        ...(current.deliveredAt === undefined ? {deliveredAt: clickedAt} : {}),
+      });
+      publishOutcome(id);
+      const next = records.find(item => item.id === id) ?? current;
+      try { options.onClick?.(next); } catch {}
+      try { options.onNavigate?.(next); } catch { /* 跳转失败不改变已读回执 */ }
+      openHandles.get(id)?.close();
+      openHandles.delete(id);
+      return {activated: true, record: {...next}};
+    } catch {
+      return {activated: false, reason: 'persist'};
+    }
+  }
 
   return Object.freeze({
     /** P5 设备通知端口兼容入口：落盘意图 → 系统投递，delivered 只认系统回执。 */
@@ -138,8 +222,9 @@ export function createDesktopNotificationPort(options = {}) {
           : {delivered: false, error: `通知已处于 ${existing.state} 状态，等待受信宿主核实`};
       }
       const queuedAt = new Date(now()).toISOString();
+      const nativeTag = nativeNotificationTag(input.id);
       const record = {
-        id: input.id, title: input.title, body: input.body,
+        id: input.id, nativeTag, title: input.title, body: input.body,
         source: input.source ?? 'desktop', state: 'persisted', queuedAt,
         ...(input.roundId ? {roundId: input.roundId} : {}),
         ...(input.navigation ? {navigation: input.navigation} : {}),
@@ -168,7 +253,7 @@ export function createDesktopNotificationPort(options = {}) {
       let settled = false;
       try {
         const handle = await notifier.show(
-          {id: record.id, title: record.title, body: record.body},
+          {id: record.id, nativeTag: record.nativeTag, title: record.title, body: record.body},
           {
             onShow: () => {
               if (disposed || settled) return;
@@ -184,27 +269,10 @@ export function createDesktopNotificationPort(options = {}) {
             },
             onClick: () => {
               if (disposed) return;
-              const current = records.find(item => item.id === record.id);
-              if (!current || current.state === 'failed' || current.state === 'acknowledged') return;
-              if (current.state === 'persisted') {
-                // A click is a separate user action. Keep delivery unknown until
-                // an actual show receipt confirms the channel send.
-                try {
-                  persistState(record.id, {clickedAt: current.clickedAt ?? new Date(now()).toISOString()});
-                  publishOutcome(record.id);
-                  options.onClick?.(records.find(item => item.id === record.id) ?? current);
-                } catch {}
-                return;
+              const result = applyClick(record.id);
+              if (result.activated && records.find(item => item.id === record.id)?.state === 'acknowledged') {
+                settled = true;
               }
-              settled = true;
-              const clickedAt = current.clickedAt ?? new Date(now()).toISOString();
-              persistState(record.id, {
-                state: 'acknowledged', clickedAt, acknowledgedAt: clickedAt,
-                ...(current?.deliveredAt === undefined ? {deliveredAt: clickedAt} : {}),
-              });
-              publishOutcome(record.id);
-              try { options.onClick?.(records.find(item => item.id === record.id) ?? current); } catch {}
-              try { options.onNavigate?.(records.find(item => item.id === record.id) ?? current); } catch { /* 跳转失败不改变已读回执 */ }
             },
             onFailed: () => {
               if (disposed || settled) return;
@@ -226,11 +294,34 @@ export function createDesktopNotificationPort(options = {}) {
       return after?.state === 'delivered' ? {delivered: true} : {delivered: false, error: '系统回执未确认（pending）'};
     },
 
+    /**
+     * 冷激活 / 无内存 Notification：按逻辑 id 复现点击（补偿、导航、已读）。
+     * 重启后只要落盘记录在，即可由 handleActivation 调用。
+     */
+    activateById(id) {
+      return applyClick(id);
+    },
+
+    /** Windows toast Tag → 逻辑 id，再走 activateById。 */
+    activateByNativeTag(nativeTag) {
+      if (!text(nativeTag, 64) || !/^[A-Za-z0-9]+$/u.test(nativeTag)) {
+        return {activated: false, reason: 'invalid-tag'};
+      }
+      let record = records.find(item => item.nativeTag === nativeTag);
+      if (!record) {
+        record = records.find(item => {
+          try { return nativeNotificationTag(item.id) === nativeTag; } catch { return false; }
+        });
+      }
+      if (!record) return {activated: false, reason: 'unknown'};
+      return applyClick(record.id);
+    },
+
     /** 用户已读（面板点击等）；未投递/未确认的通知不标记已读。 */
     acknowledge(id) {
       if (disposed) return {acknowledged: false};
       const record = records.find(item => item.id === id);
-      if (record === undefined || record.state === 'failed' || record.state === 'persisted') {
+      if (record === undefined || record.state === 'failed' || record.state === 'persisted' || record.state === 'withdrawn') {
         return {acknowledged: false};
       }
       persistState(id, {state: 'acknowledged', acknowledgedAt: new Date(now()).toISOString()});
@@ -238,6 +329,31 @@ export function createDesktopNotificationPort(options = {}) {
       openHandles.get(id)?.close();
       openHandles.delete(id);
       return {acknowledged: true};
+    },
+
+    /** 撤回待决/已展示且未确认已读的通知，关闭本地窗口并记录审计时间。 */
+    withdraw(id, reason = 'withdrawn') {
+      if (disposed) return {withdrawn: false, reason: 'disposed'};
+      const record = records.find(item => item.id === id);
+      if (record === undefined) return {withdrawn: false, reason: 'not_found'};
+      if (record.state === 'acknowledged') {
+        return {withdrawn: false, state: 'acknowledged', reason: 'already_acknowledged'};
+      }
+      if (record.state === 'withdrawn') {
+        return {withdrawn: true, state: 'withdrawn', withdrawnAt: record.withdrawnAt};
+      }
+      const withdrawnAt = new Date(now()).toISOString();
+      persistState(id, {state: 'withdrawn', withdrawnAt, withdrawReason: String(reason || 'withdrawn').slice(0, 200)});
+      publishOutcome(id);
+      openHandles.get(id)?.close();
+      openHandles.delete(id);
+      return {withdrawn: true, state: 'withdrawn', withdrawnAt};
+    },
+
+    listWithdrawReceipts() {
+      return records.flatMap(record => record.state === 'withdrawn'
+        ? [{id: record.id, ...(record.roundId ? {roundId: record.roundId} : {}), withdrawnAt: record.withdrawnAt, withdrawReason: record.withdrawReason}]
+        : []);
     },
 
     /** 只有受信宿主可核实中断投递的真实结果；unknown 不重发，核实后才收敛。 */

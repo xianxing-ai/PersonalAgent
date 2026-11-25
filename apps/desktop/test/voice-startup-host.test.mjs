@@ -123,7 +123,7 @@ test('main production lifecycle hooks call the actual startup host; hidden-panel
   assert.equal(f.calls.filter(x=>x==='live-start').length,2);
   assert.equal(f.calls.filter(x=>x==='greet').length,1);
   const stop=ast.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='stopPanelVoice');
-  Object.assign(context,{stopWakeVoice:async()=>{},voiceInput:undefined,liveVoice:undefined,sisPlaybackHost:undefined,
+  Object.assign(context,{stopWakeVoice:async()=>{},wakeQuitUnknown:()=>false,voiceInput:undefined,liveVoice:undefined,sisPlaybackHost:undefined,
     microphoneCaptureHost:undefined,Promise,Error,publish(){}});
   vm.runInContext(stop.getText(ast),context);await context.stopPanelVoice();
   handlers.get('resume')();await new Promise(setImmediate);

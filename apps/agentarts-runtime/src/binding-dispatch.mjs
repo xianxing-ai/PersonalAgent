@@ -1,4 +1,4 @@
-import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_COORDINATION_INITIAL_QUERY_BYTES, ProtocolError} from '@personal-agent/contracts';
 
 const VERSION = '1.0.0';
 const WORKFLOW_VERSION = '1.0.0';
@@ -48,7 +48,7 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
       return undefined;
     }
     if (record(value) && Object.hasOwn(value,'workflowVersion')) {
-      if (Buffer.byteLength(query,'utf8')>1_100_000 || value.workflowVersion!==WORKFLOW_VERSION
+      if (Buffer.byteLength(query,'utf8')>MAX_COORDINATION_INITIAL_QUERY_BYTES || value.workflowVersion!==WORKFLOW_VERSION
         || !['catalog','advance'].includes(value.operation)) invalid();
       if (!graphAvailable) unsupported();
       const allowed=value.operation==='catalog' ? ['workflowVersion','operation','workflowId']
@@ -64,9 +64,9 @@ export function createBindingDispatcher({orchestrator,getBindings,defaultControl
     }
     if (!record(value) || (!Object.hasOwn(value,'bindingVersion')
       && !['workflow','controller'].includes(value.type))) return undefined;
-    if (Buffer.byteLength(query,'utf8') > 1_100_000 || value.bindingVersion !== VERSION
+    if (Buffer.byteLength(query,'utf8') > MAX_COORDINATION_INITIAL_QUERY_BYTES || value.bindingVersion !== VERSION
       || !['workflow','controller'].includes(value.type) || !text(value.id,128)
-      || !text(value.query,1_100_000)) invalid();
+      || !text(value.query,MAX_COORDINATION_INITIAL_QUERY_BYTES)) invalid();
     const allowed = ['bindingVersion','type','id','query','world','plan'];
     if (Object.keys(value).some(key=>!allowed.includes(key))) invalid();
     if (!available) unsupported();
