@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -13,7 +15,7 @@ async function settle(app,id) {
 }
 
 test('Synthetic request context is transient, bounded and rejects asynchronous or oversized host data before send',async t=>{
-  for(const [name,read] of [['async',async()=> 'Synthetic'],['overflow',()=> 'x'.repeat(128000)]]) await t.test(name,async t=>{
+  for(const [name,read] of [['async',async()=> 'Synthetic'],['overflow',()=> 'x'.repeat(1_000_000)]]) await t.test(name,async t=>{
     let sends=0;
     const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
       coordinationInput:{beforeCoordinationSend(){},readRequestContext:read},
@@ -29,7 +31,7 @@ test('Synthetic credential await cannot replace the trusted context reader or it
     let sends=0,count=10;
     const hooks={beforeCoordinationSend(){},readRequestContext:()=>'{"sampledAtUtc":"Synthetic-clock"}',
       goalTokenBudget:{tokenizerRef:'synthetic-meter',contextTokens:100,reservedOutputTokens:10,countTokens:()=>count}};
-    const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.invalid',runtimeName:'synthetic',
+    const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.invalid',runtimeName:'synthetic',
       coordinationInput:hooks,authorizationProvider:{read:async()=>{
         await Promise.resolve();if(mutation==='reader')hooks.readRequestContext=()=> 'Changed';else count=11;
         return 'Bearer Synthetic-only';}},fetchImpl:async()=>{sends++;throw Error('Must be rejected before HTTP');}});

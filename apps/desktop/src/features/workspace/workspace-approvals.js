@@ -15,7 +15,8 @@ export function mountWorkspaceApprovals(conversation,invoke,report,readRevision)
       for(const button of slot.querySelectorAll('[data-approval-decision]'))button.disabled=pending.has(button.dataset.approvalId);
     }
     const focus=snapshot.approvalFocus;
-    if(focus?.taskId&&focus.taskId!==focusedApproval&&focusApprovalCard(conversation,focus.taskId))focusedApproval=focus.taskId;
+    const focusKey=focus?.focusId??(focus?.taskId?`${focus.taskId}:${focus.approvalId??''}`:undefined);
+    if(focus?.taskId&&focusKey!==focusedApproval&&focusApprovalCard(conversation,focus.taskId,focus.approvalId))focusedApproval=focusKey;
     const next=nextApprovalExpiry(snapshot.tasks,visible);
     if(next!==undefined)timer=setTimeout(project,Math.max(1,next-Date.now()+1));
   }

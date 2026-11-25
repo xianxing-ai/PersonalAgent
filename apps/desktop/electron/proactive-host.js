@@ -5,7 +5,7 @@ import {createDesktopGoalCognitionHost} from './goal-cognition-host.js';
 
 // Desktop preferences and notification metadata only. Runtime owns every sample/task/approval.
 export function createDesktopProactiveHost({application, client, userData, namespace,
-  goalHost, chooser, cognitionReady, createCognitionHost, initialRequestMode,
+  goalHost, chooser, cognitionReady, createCognitionHost, initialRequestMode, readTeacherExecutionModel,
   onUpdate = () => {}, onAnalysisTask = () => {}, now = Date.now}) {
   const file = path.join(userData, 'proactive-state.json');
   let stored = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {version: 1, cloudAnalysis: false, values: {}};
@@ -29,7 +29,7 @@ export function createDesktopProactiveHost({application, client, userData, names
   const publish = () => {try {onUpdate();} catch {}};
   const cognition = createCognitionHost && createDesktopGoalCognitionHost({application,client,
     facts:factHost,namespace,goalHost,chooser,ready:cognitionReady,createHost:createCognitionHost,initialRequestMode,
-    onTask:onAnalysisTask,onUpdate:publish,now});
+    readTeacherExecutionModel,onTask:onAnalysisTask,onUpdate:publish,now});
   function observeAnalysis(item) {
     if (item.analysisTaskId) onAnalysisTask({taskId: item.analysisTaskId, goal: item.summary});
     publish();
@@ -111,9 +111,17 @@ export function createDesktopProactiveHost({application, client, userData, names
   return {snapshot, configure, analyze, tick, stop,
     /** Host-only fixed public namespace; never exported through Renderer snapshots. */
     get publicMemory() {return factHost.publicMemory;},
+    readCurrentPublicFact:ref=>factHost.readCurrentPublicFact(ref),
+    readPublicSourceHead:ref=>factHost.readPublicSourceHead(ref),
+    recordPublicSource:(source,context)=>factHost.recordPublicSource(source,context),
+    drain:request=>factHost.drain(request),
+    processImpacts:request=>factHost.processImpacts(request),
+    listImpactReceipts:request=>factHost.listImpactReceipts(request),
+    readCompletedImpact:request=>factHost.readCompletedImpact(request),
     createPublicFactErasureApplication: options=>factHost.createPublicFactErasureApplication(options),
     readRepairBinding: taskId=>cognition?.readRepairBinding(taskId),
     readPreparedRepair: taskId=>cognition?.readPreparedRepair(taskId),
+    readCognitionExecutionModel: taskId=>cognition?.readCognitionExecutionModel(taskId),
     applyCognitionDecision: id => {
       if (!cognition) throw Error('目标分析尚未装配');
       return cognition.applyDecision(id);

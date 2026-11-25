@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {MAX_COORDINATION_INITIAL_QUERY_BYTES} from '@personal-agent/contracts';
 import {createRuntimeStartupRecovery} from '../dist/application/startup-recovery.js';
 import {advanceExecutionCapacity,createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,
   selectContinuationContext} from '../dist/application/execution-capacity.js';
@@ -254,7 +255,7 @@ test('only bounded progress metadata attached to original receipts is recognized
     f=>{f.values.get('competition-continuation-window:v1').priorCount=33;},
     f=>{f.values.get('competition-continuation-window:v1').omitted.text='PRIVATE_BODY';},
     f=>{f.values.get('competition-continuation-window:v1').omitted.count=1;},
-    f=>{f.values.get('competition-sent-continuation-window:v1').queryBytes=1_100_001;},
+    f=>{f.values.get('competition-sent-continuation-window:v1').queryBytes=MAX_COORDINATION_INITIAL_QUERY_BYTES+1;},
     f=>{f.values.get('competition-sent-continuation-window:v1').version='future';},
     f=>{f.values.delete(EXECUTION_CAPACITY_CHECKPOINT);},
   ]){

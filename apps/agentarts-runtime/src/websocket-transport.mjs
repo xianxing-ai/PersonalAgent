@@ -9,10 +9,11 @@ import {
   parseAgentArtsTransportFrame,
   encodeAgentArtsTransportFrame,
   digestAgentArtsPayload,
+  MAX_AGENTARTS_TRANSPORT_BYTES,
 } from '@personal-agent/contracts/agentarts-transport';
 
-const MAX_FRAME_BYTES = 1_200_000;
-const MAX_BUFFERED_BYTES = 1_200_000;
+const MAX_FRAME_BYTES = MAX_AGENTARTS_TRANSPORT_BYTES;
+const MAX_BUFFERED_BYTES = MAX_AGENTARTS_TRANSPORT_BYTES;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const common = frame => ({protocolVersion:AGENTARTS_TRANSPORT_VERSION, sessionId:frame.sessionId,
   requestId:frame.requestId, idempotencyKey:frame.idempotencyKey, payloadDigest:frame.payloadDigest});

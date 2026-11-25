@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
@@ -23,7 +25,7 @@ test('opted-in ordinary user tasks retain their original directory both within a
   for(const optIn of [false,true])for(const needsApproval of [false,true])await t.test(`goal=${optIn}; approval=${needsApproval}`,async()=>{
     const requests=[],executions=[];
     const tools=[first,second].map(tool=>({descriptor:tool,execute:async args=>{executions.push(tool.name);return {value:args.value};}}));
-    const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'ordinary-continuation',
+    const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'ordinary-continuation',
       responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',...(optIn?{continuationContext:'goal'}:{}),
       tools,competitionMaxSteps:4,authorizationProvider:{read:async()=> 'Bearer synthetic'},
       automaticTools:(needsApproval?[second]:[first,second]).map(tool=>({toolName:tool.name,toolVersion:tool.version})),
@@ -56,8 +58,8 @@ test('opted-in ordinary user tasks retain their original directory both within a
   });
 });
 
-async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBeforeEnable=false,rootTool=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2},environment=false}={}) {
-  let app,client,rootId,dispatchingTaskId;
+async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBeforeEnable=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2},environment=false}={}) {
+  let app,client,rootId,dispatchingTaskId,pendingRequest;
   const requests=[],sends=[],executions=[],sockets=[],state={firstAllowed:true,extraReady:false,blockAvailability:false};
   let enteredAvailability;
   const availabilityEntered=new Promise(resolve=>{enteredAvailability=resolve;});
@@ -70,14 +72,15 @@ async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBefo
     return {value:args.value};
   }}))];
   function answer(query){
+    requests.push(pendingRequest);
     sends.push({taskId:dispatchingTaskId,query:structuredClone(query)});
+    assert.notEqual(dispatchingTaskId,rootId,'The required parent delivers the confirmed child result locally');
     if(!query.continuation)return proposal('child-first',first);
     if(query.continuation.proposalId==='child-first')return proposal('child-second',proposeExtra?extra:second,secondArguments);
     if(query.continuation.proposalId==='child-second')return text('Synthetic child completed both original operations');
-    assert.match(query.continuation.proposalId,/^required-delegation-/u);
-    return rootTool?proposal('forbidden-root-tool',second):text('Synthetic main conversation summarized the original child');
+    assert.fail('Unexpected continuation');
   }
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-child',
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-child',
     ...(environment?{coordinationInput:{beforeCoordinationSend(){},readRequestContext:()=>'{"environment":true}'}}:{}),
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',...(optIn?{continuationContext:'goal'}:{}),
     ...(newTasks?{enableNewTaskToolContinuations:true}:{}),
@@ -92,14 +95,14 @@ async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBefo
       exportPolicyVersion:'synthetic-original-v1',accepts:()=>tool.descriptor.name!==first.name||state.firstAllowed,
       project:({result})=>result})),
     authorizationProvider:{read:async()=>{if(state.revokeOnCredential)state.firstAllowed=false;return 'Bearer synthetic-outer';}},
-    beforeCompetitionSend:request=>{dispatchingTaskId=request.taskId;requests.push({taskId:request.taskId,revision:request.revision,
+    beforeCompetitionSend:request=>{dispatchingTaskId=request.taskId;pendingRequest={taskId:request.taskId,revision:request.revision,
       ...(request.availableTools?{availableTools:structuredClone(request.availableTools)}:{}),
-      ...(request.continuation?{continuation:structuredClone(request.continuation)}:{})});},
+      ...(request.continuation?{continuation:structuredClone(request.continuation)}:{})};},
     ...(transport==='wss'?{transport:'wss',websocketUrl:'wss://agentarts.example.test/runtimes/synthetic-child/ws',
       websocketAuthorizationProvider:{read:async()=> 'Bearer synthetic-inner'},websocketFactory:()=>{
         const socket=new SyntheticWebSocket((frame,connection)=>{
           if(frame.type==='cancel')return;
-          assert.equal(frame.type,'invoke');connection.accepted(frame);connection.result(frame,JSON.stringify(answer(JSON.parse(frame.payload.query))));
+          assert.equal(frame.type,'invoke');connection.accepted(frame);connection.result(frame,syntheticAgentArtsResult(frame.payload,answer(JSON.parse(syntheticAgentArtsQuery(frame.payload)))));
         });sockets.push(socket);return socket;
       }}:{}),
     fetchImpl:async(_url,init)=>{assert.equal(transport,'https','WSS does not silently fall back');
@@ -136,7 +139,7 @@ for(const transport of ['https','wss'])test(`new delegated task pins its goal an
     assert.equal(item.query.goal,sent[0].query.goal);
     assert.deepEqual(item.query.availableTools,sent[0].query.availableTools);
   }
-  assert.equal(f.requests.filter(item=>item.taskId===f.rootId)[0].availableTools,undefined);
+  assert.equal(f.requests.filter(item=>item.taskId===f.rootId).length,0);
 });
 
 test('an existing approval-waiting task keeps its legacy continuation when new-task mode is enabled',async t=>{
@@ -165,7 +168,7 @@ for(const transport of ['https','wss'])for(const environment of [false,true])tes
   assert.deepEqual(f.executions.map(item=>item.toolName),[first.name,second.name]);
   assert.ok(f.executions.every(item=>item.taskId===f.childId));assert.equal(f.app.readSubagentTasks(f.rootId).length,1);
   const childRequests=f.requests.filter(request=>request.taskId===f.childId),rootRequests=f.requests.filter(request=>request.taskId===f.rootId);
-  assert.equal(childRequests.length,3);assert.equal(rootRequests.length,1);assert.equal(rootRequests[0].availableTools,undefined);
+  assert.equal(childRequests.length,3);assert.equal(rootRequests.length,0);
   assert.ok(childRequests[1].revision>f.originalCatalog.revision,'approval changes current task revision');
   for(const request of childRequests)assert.deepEqual(request.availableTools,f.originalCatalog.entries);
   assert.deepEqual(f.app.runtime.loadCheckpoint(f.childId,'competition-tool-catalog'),f.originalCatalog,'no revision or directory rewrite');
@@ -174,15 +177,18 @@ for(const transport of ['https','wss'])for(const environment of [false,true])tes
   if(transport==='wss'){
     const context=f.app.runtime.loadCheckpoint(f.childId,'competition-cloud-dispatch-context');
     assert.equal(context.request.phase,'continuation');assert.equal(context.catalog.revision,f.originalCatalog.revision);
-    assert.equal(context.continuation.proposalId,'child-second');assert.equal(f.sockets.length,2);
+    assert.equal(context.continuation.proposalId,'child-second');assert.equal(f.sockets.length,1);
   }
 });
 
-test('root remains a single required dispatch and refuses another tool even after the real child finishes',async t=>{
-  const f=await fixture(t,{rootTool:true});await f.approve();await f.settle();
-  assert.equal(f.app.runtime.getTask(f.childId).state,'succeeded');assert.notEqual(f.app.runtime.getTask(f.rootId).state,'succeeded');
+test('the required dispatch delivers the confirmed child answer without a parent cloud request',async t=>{
+  const f=await fixture(t);await f.approve();await f.settle();
+  const child=f.app.runtime.getTask(f.childId),root=f.app.runtime.getTask(f.rootId);
+  assert.equal(child.state,'succeeded');assert.equal(root.state,'succeeded');
+  assert.match(child.resultSummary,/^Synthetic child completed both original operations/u);
+  assert.match(root.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
   assert.equal(f.app.readSubagentTasks(f.rootId).length,1);assert.equal(f.executions.length,2);
-  assert.equal(f.requests.filter(item=>item.taskId===f.rootId)[0].availableTools,undefined);
+  assert.equal(f.requests.filter(item=>item.taskId===f.rootId).length,0);
   assert.deepEqual(f.app.runtime.readToolExecutions(f.rootId).map(record=>record.toolName),['subagent.dispatch']);
 });
 

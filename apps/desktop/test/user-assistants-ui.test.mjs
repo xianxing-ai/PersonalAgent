@@ -104,7 +104,7 @@ test('create, rename and delete stay on the existing desktop action channel', ()
   assert.match(main, /name === 'assistant.delete'/);
   assert.match(main, /runtimeApplication\.createAssistant/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action'/);
-  assert.match(renderer, /mountAssistantRoster/);
+  assert.match(workspace, /mountAssistantRoster/);
   assert.match(workspace, /bindAssistantThreadActions/);
   assert.match(workspace, /assistant\.submit/);
 });
