@@ -251,3 +251,17 @@ test('mail UI keeps stop and revoke available during preparation and discards st
   assert.match(field('status').textContent,/配置正在更新/);
   assert.equal(field('disable').disabled,false,'Configuration preparation cannot disable revocation');
 });
+
+test('mail.monitor.start initializes global notification policy first when unconfigured so connector:mail does not fail with INVALID_ARGUMENT',async t=>{
+  const f=fixture(t,{ready:true,effective:false});
+  const scopes=[];
+  f.context.notificationApplicationHost={
+    getInterruptionPolicy:scope=>scope.kind==='global'?{effective:null,revision:0}:{effective:null,revision:0},
+    configureSettings(input){scopes.push(input);return Promise.resolve({state:'confirmed'});},
+  };
+  await f.invoke('mail.monitor.start');
+  assert.equal(scopes.length,1);
+  assert.deepEqual(scopes[0].scope,{kind:'global'});
+  assert.equal(scopes[0].expectedRevision,0);
+  assert.equal(f.operations[0]?.operation,'start');
+});

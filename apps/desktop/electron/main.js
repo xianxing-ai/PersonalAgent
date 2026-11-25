@@ -3916,6 +3916,7 @@ async function initializeRuntime() {
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||scope.toolName==='mail.reconcile_send'||scope.toolName==='mail.reconcile_archive'
+          ||(scope.runId===`host-tool-${scope.taskId}`&&['mail.inbox','calendar.events','knowledge.search','connector.watch.start','connector.watch.stop'].includes(scope.toolName))
           ||scope.toolName==='decision.choose_candidate'
           ||scope.toolName==='workflow.host.f01_n09'
           ||scope.toolName===F23_INITIALIZE_TOOL
@@ -5575,8 +5576,11 @@ async function action(event, name, payload) {
           const notificationScope={kind:'connector',connectorId:'mail'},policy=notificationApplicationHost?.getInterruptionPolicy(notificationScope);
           if(!policy)throw Error('通知服务尚未就绪，邮件监测尚未开始');
           if(!policy.effective){
-            const configured=await notificationApplicationHost.configureSettings({operationId:randomUUID(),scope:notificationScope,
-              expectedRevision:policy.revision,patch:{...defaultNotificationSettings}},{isCurrent});
+            const globalPolicy=notificationApplicationHost?.getInterruptionPolicy({kind:'global'});
+            const targetScope=!globalPolicy?.effective?{kind:'global'}:notificationScope;
+            const targetRevision=!globalPolicy?.effective?(globalPolicy?.revision??0):policy.revision;
+            const configured=await notificationApplicationHost.configureSettings({operationId:randomUUID(),scope:targetScope,
+              expectedRevision:targetRevision,patch:{...defaultNotificationSettings}},{isCurrent});
             if(!isCurrent())return;
             if(configured.state!=='confirmed')throw Error('提醒设置尚未确认，请查看主对话授权卡后再启动监测');
           }
