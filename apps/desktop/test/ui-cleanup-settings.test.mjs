@@ -33,13 +33,16 @@ test('以后都允许 appears only when the question can be saved', () => {
   assert.doesNotMatch(authorizationQuestionMarkup(question({canAlways:false}), {now}), /以后都允许|mail:read/);
 });
 
-test('wake duration is configurable and the tray icon is a PNG', async t => {
+test('wake duration is configurable and stays within the 120-minute microphone lease ceiling (L-07)', async t => {
   const dir = await mkdtemp(path.join(tmpdir(), 'pa-wake-'));
   t.after(() => rm(dir, {recursive: true, force: true}));
   const file = path.join(dir, 'wake-preference.json');
-  assert.equal(readWakePreference(file).enabled, false);
+  const initial = readWakePreference(file);
+  assert.equal(initial.enabled, false);
+  assert.equal(initial.duration, 'hours2');
   assert.equal(wakeLeaseMs(writeWakePreference(file, {enabled:true, duration:'minutes30'})), 30 * 60_000);
-  assert.equal(wakeLeaseMs({enabled:true, duration:'untilQuit'}), 8 * 60 * 60_000);
+  assert.equal(wakeLeaseMs({enabled:true, duration:'hours2'}), 120 * 60_000);
+  assert.equal(wakeLeaseMs({enabled:true, duration:'untilQuit'}), 120 * 60_000);
   assert.equal(readWakePreference(file).enabled, true);
   const png = trayIconBuffer();
   assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');

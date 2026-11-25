@@ -477,7 +477,7 @@ const codingSettingsSnapshot=()=>({...(codingWorkspace?.snapshot()??defaultWorks
   f16f17:f16F17Snapshot(),f18:f18Snapshot(),f19:f19Snapshot()});
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
-let wakePreference = {enabled: false, duration: 'untilQuit'};
+let wakePreference = {enabled: false, duration: 'hours2'};
 let wakePreferenceLoaded = false;
 let panelBriefingRequested = false;
 let wakeQuitHandled = false;
@@ -1543,7 +1543,10 @@ function reportQuitFailure(message) {
   publish();
 }
 
-async function stopPanelVoice() {
+async function stopPanelVoice({preserveWake = false} = {}) {
+  const keepWake = preserveWake === true
+    && wakeVoice?.snapshot()?.phase === 'listening'
+    && (typeof currentWakePreference !== 'function' || currentWakePreference().enabled === true);
   const hadActiveVoice = Boolean(
     wakeQuitUnknown
     || wakeVoice?.hasActive?.()
@@ -1554,12 +1557,13 @@ async function stopPanelVoice() {
     || microphoneCaptureHost?.snapshot?.().busy
     || microphoneCaptureHost?.snapshot?.().active
   );
-  const results = await Promise.allSettled([stopWakeVoice()]);
-  if (voiceInput?.hasActive(panel?.webContents.id)) {
+  const results = keepWake ? [] : await Promise.allSettled([stopWakeVoice()]);
+  if (voiceInput?.hasActive?.(panel?.webContents.id)) {
     results.push(...await Promise.allSettled([voiceInput.cancelCapture(panel?.webContents.id)]));
   }
   results.push(...await Promise.allSettled([
-    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(), microphoneCaptureHost?.revoke(panel?.webContents.id),
+    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(),
+    ...(keepWake ? [] : [microphoneCaptureHost?.revoke(panel?.webContents.id)]),
   ]));
   if (results.some(result => result.status === 'rejected') || liveVoice?.hasActive()) throw Error('语音资源释放未确认');
   if (hadActiveVoice) publish();
@@ -5995,7 +5999,26 @@ async function action(event, name, payload) {
     if (name === 'voice.play') {
       await stopWakeVoice();
       if (wakeVoice?.hasActive()) throw Error('请先关闭唤醒');
-      return voiceInput.playReply(senderId);
+      if (payload === undefined) return voiceInput.playReply(senderId);
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw Error('语音播报参数无效');
+      const keys = Object.keys(payload);
+      if (keys.length !== 1 || !['taskId', 'messageId'].includes(keys[0])) throw Error('语音播报参数无效');
+      let speechText = '';
+      if (typeof payload.taskId === 'string' && payload.taskId.trim()) {
+        const task = tasks.get(payload.taskId);
+        if (!task || taskSurface(task) !== 'panel' || task.bodyWithheld || task.outputTruncated) {
+          throw Error('该任务当前没有可播报的回答');
+        }
+        speechText = resultText(task.resultSummary, taskResultMetadata(task)) ?? '';
+      } else if (typeof payload.messageId === 'string' && payload.messageId.trim()) {
+        const message = conversations?.messages?.get(payload.messageId);
+        if (!message || message.role !== 'assistant' || typeof message.text !== 'string') {
+          throw Error('该消息没有可播报的回答');
+        }
+        speechText = message.text;
+      }
+      if (!speechText.trim()) throw Error('没有可播报的回答正文');
+      return voiceInput.speakText(senderId, speechText);
     }
     throw Error('Unsupported voice action');
   }
@@ -6876,7 +6899,7 @@ app.whenReady().then(async () => {
   panel.once('closed', () => { panelPageLoaded = false; nativeTheme.removeListener('updated', onPanelThemeUpdated); });
   panel.webContents.on('did-finish-load', () => { panelPageLoaded = true; clearPanelBackingFlash(); });
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
-  panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
+  panel.on('hide', () => {void stopPanelVoice({preserveWake: true}).catch(reportPanelVoiceFailure);});
   panel.webContents.once('did-finish-load', () => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
   powerMonitor.on('suspend', () => {void voiceStartupHost?.suspend().catch(reportPanelVoiceFailure);});
   powerMonitor.on('resume', () => {void voiceStartupHost?.resume().catch(reportPanelVoiceFailure);});
