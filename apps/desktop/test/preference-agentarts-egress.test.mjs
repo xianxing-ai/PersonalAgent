@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createMemoryLearningHost, filePreferenceStore} from '../electron/memory-learning-host.js';
 
 test('a withdrawn preference stays absent from the serialized AgentArts request after reopening the store', async () => {
@@ -15,7 +16,7 @@ test('a withdrawn preference stays absent from the serialized AgentArts request 
   const marker = 'SYNTHETIC_PREFERENCE_EGRESS';
   const goal = '公开合成验收。只回答一加一等于几。';
   const requests = [];
-  const app = createAgentArtsRuntimeApplication({
+  const app = createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({
     path: ':memory:', gatewayUrl: 'https://preference.invalid', runtimeName: 'synthetic-preference',
     authorizationProvider: {read: async () => 'Bearer synthetic'},
     readPromptPreferences: ({goal}) => learning.preferencePrompt(goal),
@@ -27,7 +28,7 @@ test('a withdrawn preference stays absent from the serialized AgentArts request 
         {event: 'task_end'}, {event: 'end'},
       ]), {headers: {'content-type': 'application/json'}});
     },
-  });
+  }));
   try {
     const client = new Client(app);
     await client.connect();
