@@ -97,7 +97,7 @@ const coldRevision='b'.repeat(64);
 const coldCatalog={version:'1.0',revision:coldRevision,defaultModelId:'text',models:[{id:'text',displayName:'Text',type:'text',availability:'unverified',reasoningEfforts:['high'],requestProfile:'standard'}]};
 test('absent catalog and absent saved preferences degrade instead of dereferencing null',()=>{
   assert.deepEqual(nativeReasoningState({agentArtsModels:{catalog:null,preferences:null},conversationPreference:null}),{
-    catalogRevision:undefined,modelId:undefined,efforts:[],reasoningEffort:undefined,available:false,reason:'当前目录尚无此模型的文本能力'
+    catalogRevision:undefined,modelId:undefined,efforts:[],reasoningEffort:undefined,available:false,reason:'所选模型不可用，请重新选择当前部署已发布的模型'
   });
 });
 test('matching saved defaults apply; stale revision falls back to the catalog default',()=>{

@@ -1,10 +1,10 @@
 import {historicalMailCard} from './mail-history-card.js';
 
 const previews = {
-  weather: '<p class="connector-empty">暂无天气数据，点击后在主对话填写要查询的城市。</p>',
+  weather: '<p class="connector-empty">暂无天气数据。可以直接对主对话说「查天气」，或点这里设置城市。</p>',
   calendar: '<p class="connector-empty">暂无待办记录，可在主对话创建或查询。</p>',
-  mail: '<p class="connector-empty">连接邮箱后显示邮件状态与未读数量。</p>',
-  knowledge: '<p class="connector-empty">连接知识库后显示已挂载的笔记来源。</p>',
+  mail: '<p class="connector-empty">邮件交给助手的工人处理，不在主对话里直接查。</p>',
+  knowledge: '<p class="connector-empty">知识库和笔记交给助手的工人处理，不在主对话里直接查。</p>',
   feeds: '<p class="connector-empty">添加订阅后显示已配置的来源。</p>',
   notifications: '<p class="connector-empty">暂无通知。</p>',
 };

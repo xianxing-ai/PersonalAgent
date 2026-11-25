@@ -120,7 +120,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
       || sharedDeadline > now() + SESSION_MS || !lease.signal || lease.signal.aborted
       || typeof lease.signal.addEventListener !== 'function' || typeof lease.signal.removeEventListener !== 'function'
       || !microphoneHost.snapshot().authorized)) throw Error('共享麦克风租约无效');
-    const conversationId=readConversationId?.();
+    const conversationId=readConversationId?.(senderId);
     const controller = new AbortController();
     let captureDeadline = new Date(Math.min(now() + CAPTURE_MS, sharedDeadline)).toISOString();
     const sessionDeadline = new Date(sharedDeadline).toISOString();
@@ -143,7 +143,7 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
     let stage = 'pcm_acquire';
     try {
       if (record.controller.signal.aborted) throw Error('语音采集已取消');
-      if(!lease)await microphoneHost.authorize({deadline:sessionDeadline,purpose:'dictation',signal:controller.signal});
+      if(!lease)await microphoneHost.authorize({deadline:sessionDeadline,purpose:'dictation',senderId,signal:controller.signal});
       if(active!==record||controller.signal.aborted)throw Error('语音采集已取消');
       captureDeadline = new Date(Math.min(now() + CAPTURE_MS, sharedDeadline)).toISOString();
       record.captureDeadline = captureDeadline;
@@ -336,5 +336,6 @@ export function createDesktopVoiceInputCore({source, microphoneHost, client, cre
 
   return {snapshot, beginCapture, finishCapture, playReply, stopSpeaking, cancelCapture, dispose,
     beginSharedCapture, cancelSharedCapture, subscribePlayback: listener => manager.subscribe(listener),
-    hasActive: () => Boolean(active || releaseUnknown)};
+    hasActive: senderId => Boolean(releaseUnknown || active && (senderId===undefined || active.senderId===senderId)),
+    ownsCapture:senderId => Boolean(active && active.senderId===senderId)};
 }

@@ -1,0 +1,19 @@
+{
+  "package": "P-06",
+  "workflows": [
+    "F16",
+    "F19"
+  ],
+  "verifiedAt": "2026-11-20T06:09:44.560Z",
+  "checks": {
+    "f16CiFailureTaskId": "1ce2f9fa-fc95-4fd8-91cf-b2f87b2300f1",
+    "f16RunId": 501,
+    "f16TestIntentTaskId": "e31ca676-9105-4786-a604-156b0db408dd",
+    "f19IssueSnapshotTaskId": "8d1d0556-c5a4-4cf9-a227-890f6b8121cc",
+    "f19EnqueueRepairTaskId": "d56b04f3-d751-484e-9fed-be48f3b1d4f0",
+    "f19SpawnedChildTaskId": "2f119981-ac48-4f7a-9918-f5f4b3d13dc3",
+    "f19MergedReadbackTaskId": "6bf2a0b3-5788-4099-b440-ec0dc8e75b25",
+    "f19CloseIssueTaskId": "447b3b91-821e-4cb6-9b42-b626e88cc705",
+    "issueClosedState": "closed"
+  }
+}

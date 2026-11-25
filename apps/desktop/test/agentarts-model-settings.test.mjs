@@ -21,9 +21,38 @@ test('an invalid configured default is not silently replaced even when a catalog
   const models={snapshot:()=>({catalog:{revision}}),readExecutionModel(){throw failure;}};
   assert.throws(()=>readDesktopExecutionModel(models),error=>error===failure);
 });
-function fixture(){let prefs;let dest={gatewayUrl:'https://one',runtimeName:'one',deploymentVersion:'1'};const catalog={version:'1.0',revision,defaultModelId:'text',models:[{id:'text',displayName:'Text',type:'text',availability:'unverified',reasoningEfforts:['high'],requestProfile:'standard'},{id:'audio',displayName:'Audio',type:'audio',availability:'unverified',reasoningEfforts:[],requestProfile:'standard'}]};const host=createAgentArtsModelSettings({configuration:{snapshot:()=>dest,readModelPreferences:()=>prefs,saveModelPreferences:p=>prefs=p},readCatalog:async()=>catalog});return {host,change:()=>dest={...dest,deploymentVersion:'2'}};}
+function fixture({allowUnverified=false}={}){
+  let prefs;
+  let dest={gatewayUrl:'https://one',runtimeName:'one',deploymentVersion:'1'};
+  const catalog={version:'1.0',revision,defaultModelId:'text',models:[
+    {id:'text',displayName:'Text',type:'text',availability:'available',reasoningEfforts:['high'],requestProfile:'standard'},
+    {id:'candidate',displayName:'Candidate',type:'text',availability:'unverified',reasoningEfforts:[],requestProfile:'standard',route:'runtime-huawei-maas',providerModelId:'candidate-v2'},
+    {id:'audio',displayName:'Audio',type:'audio',availability:'available',reasoningEfforts:[],requestProfile:'standard'},
+  ]};
+  const host=createAgentArtsModelSettings({configuration:{snapshot:()=>dest,readModelPreferences:()=>prefs,saveModelPreferences:p=>prefs=p},readCatalog:async()=>catalog,allowUnverified});
+  return {host,catalog,change:(version='2')=>dest={...dest,deploymentVersion:version}};
+}
 test('catalog binds native effort and rejects nontext/stale revisions',async()=>{const {host}=fixture();await host.refresh();assert.equal(host.readExecutionModel().modelId,'text');assert.throws(()=>host.resolveExecutionModel({modelId:'audio'}));assert.throws(()=>host.resolveExecutionModel({modelId:'text',reasoningEffort:'low'}));assert.throws(()=>host.configure({catalogRevision:'b'.repeat(64),defaultModelId:'text',defaultSubmodelId:'text'}));host.configure({catalogRevision:revision,defaultModelId:'text',defaultSubmodelId:'text',reasoningEffort:'high'});assert.equal(host.readExecutionModel().reasoningEffort,'high');assert.equal(host.readExecutionModel('subagent').reasoningEffort,undefined);});
 test('deployment change invalidates in-memory directory',async()=>{const {host,change}=fixture();await host.refresh();change();assert.equal(host.snapshot().available,false);assert.throws(()=>host.readExecutionModel());});
+
+test('fixed acceptance can select a candidate and rebind it upon promotion',async()=>{
+  const ordinary=fixture();
+  await ordinary.host.refresh();
+  assert.deepEqual(ordinary.host.snapshot().catalog.models.map(model=>model.id),['text']);
+  assert.throws(()=>ordinary.host.resolveExecutionModel({modelId:'candidate'}),/不可用/);
+
+  const {host,catalog,change}=fixture({allowUnverified:true});
+  await host.refresh();
+  const selected=host.resolveExecutionModel({modelId:'candidate'});
+  catalog.models[1].availability='available';catalog.revision='b'.repeat(64);
+  await host.refresh();
+  assert.throws(()=>host.resolveExecutionModel(selected),/模型目录已改变/);
+  assert.deepEqual(readDesktopExecutionModel(host,{executionModel:selected}),{modelId:'candidate',catalogRevision:catalog.revision});
+  change('Latest');catalog.models[1].availability='unverified';
+  await host.refresh();
+  assert.throws(()=>readDesktopExecutionModel(host,{executionModel:selected}),/模型目录已改变/);
+  assert.throws(()=>host.resolveExecutionModel({modelId:'candidate'}),/不可用/);
+});
 
 import {mkdtempSync,mkdirSync} from 'node:fs';import path from 'node:path';import {Conversations} from '../electron/conversations.js';import {createAgentArtsConfig} from '../electron/agentarts-config.js';
 test('model preferences survive credential refresh and invalidate on deployment change',()=>{const cache=new URL('../../../.cache/model-preferences/',import.meta.url);mkdirSync(cache,{recursive:true});const userData=mkdtempSync(new URL('run-',cache));const safeStorage={isEncryptionAvailable:()=>true,encryptString:s=>Buffer.from(s),decryptString:b=>b.toString()};const config=createAgentArtsConfig({userData,safeStorage,environment:{}});const input={gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'test',authorization:'Bearer fixture',deploymentVersion:'v1'};config.configure(input);config.saveModelPreferences({catalogRevision:revision,defaultModelId:'text',defaultSubmodelId:'text'});config.configure({...input,authorization:''});assert.equal(config.readModelPreferences().defaultModelId,'text');assert.equal(createAgentArtsConfig({userData,safeStorage,environment:{}}).readModelPreferences().catalogRevision,revision);config.configure({...input,authorization:'',deploymentVersion:'v2'});assert.equal(config.readModelPreferences(),undefined);});

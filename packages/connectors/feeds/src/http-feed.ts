@@ -166,7 +166,7 @@ export class HttpFeedProvider implements FeedProvider {
     if (signal.aborted) return new ProtocolError('CANCELLED', 'Feed fetch cancelled', false);
     const detail = describeError(error, redact);
     const code = errorCode(error);
-    if (code !== null && TIMEOUT_CODES.has(code)) {
+    if ((code !== null && TIMEOUT_CODES.has(code)) || (error instanceof Error && error.name === 'TimeoutError')) {
       return new ProtocolError('TIMEOUT', `Feed request timed out (${detail})`, true);
     }
     if (code !== null && CERTIFICATE_CODES.has(code)) {
@@ -200,6 +200,9 @@ export class HttpFeedProvider implements FeedProvider {
     }
     if (status === 404 || status === 410) {
       throw new ProtocolError('NOT_FOUND', `Feed is gone (status ${status})`, false);
+    }
+    if (status === 408) {
+      throw new ProtocolError('TIMEOUT', 'Feed source request timed out (status 408)', true);
     }
     if (status === 429) {
       const retryAfterMs = retryAfterOf(response.headers.get('retry-after'));
