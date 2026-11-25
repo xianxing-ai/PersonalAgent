@@ -13,6 +13,7 @@ import {createRemoteMcpCompetition,createRemoteMcpCompetitionComposition} from '
 import {createRemoteMcpRegistry} from '../../apps/desktop/electron/remote-mcp-registry.js';
 import {createDesktopRemoteMcpServices} from '../../apps/desktop/electron/remote-mcp-services.js';
 import {createDesktopAuthorizationQuestionHost} from '../../apps/desktop/electron/authorization-question-host.js';
+import {syntheticCoordinationExecution} from '../helpers/synthetic-agentarts.mjs';
 
 async function until(app,id,states){
   for(let i=0;i<1000;i++){const task=app.runtime.getTask(id);if(states.includes(task.state))return task;await new Promise(r=>setTimeout(r,10));}
@@ -44,8 +45,8 @@ for(const scenario of ['approved','denied','cancelled','directory-changed','expo
     app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:host.tools,
       competitionToolExports:[exportPolicy],competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,
         publicEnumPaths:['/bindingRef'],available:()=>host.currentConfigurationRef()===args.bindingRef}],
-      coordination:{execute:async request=>{calls.push(structuredClone(request.continuation));return request.continuation
-        ?{kind:'text',text:'Synthetic reference returned',verification:'unverified'}:proposal;}}});
+      coordination:{execute:syntheticCoordinationExecution(async request=>{calls.push(structuredClone(request.continuation));return request.continuation
+        ?{kind:'text',text:'Synthetic reference returned',verification:'unverified'}:proposal;})}});
     const client=new Client(app,Date.now);await client.connect();
     const {taskId}=await client.call('task.submit',{goal:'Read synthetic public reference',conversationId:'synthetic-mcp-cloud'},
       {idempotencyKey:'synthetic-mcp-cloud'});
@@ -91,14 +92,14 @@ for(const decision of ['allow_once','deny'])test(`production Competition export 
     app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:services.tools,competitionToolDiscovery:true,
       competitionToolExports:competition.competitionToolExports,competitionToolAvailability:competition.competitionToolAvailability,
       prepareCompetitionToolExport:competition.prepare,requiresToolAuthorization:scope=>competition.ownsTool(scope.toolName),requestToolAuthorization:scope=>question.requestToolAuthorization(scope),
-      coordination:{execute:async request=>{
+      coordination:{execute:syntheticCoordinationExecution(async request=>{
         if(!request.continuation)return {kind:'tool_proposal',proposalId:'discovery',toolName:'capability.search',toolVersion:'1.0.0',arguments:{query:'mcp.remote'},verification:'unverified'};
         if(request.continuation.proposalId==='discovery'){
           assert.ok(request.continuation.result.selectedTools.some(item=>item.name===descriptor.name));
           return {kind:'tool_proposal',proposalId:'card-proposal',toolName:descriptor.name,toolVersion:descriptor.version,arguments:args,verification:'unverified'};
         }
         continuations.push(request.continuation);return {kind:'text',text:'Synthetic completion',verification:'unverified'};
-      }}});
+      })}});
     const client=new Client(app,Date.now);await client.connect();
     const {taskId}=await client.call('task.submit',{goal:'Public reference',conversationId:'Synthetic conversation'},{idempotencyKey:'original-card'});
     let card;for(let i=0;i<400&&!card;i++){card=question.snapshot().find(item=>item.state==='pending');if(!card)await new Promise(r=>setTimeout(r,10));}
@@ -134,8 +135,8 @@ for(const scenario of ['approved','no-export','export-revoked','final-revoked','
     const competition=createRemoteMcpCompetition({host,config,readApplication:()=>app,question});
     app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:host.tools,competitionToolExports:competition.competitionToolExports,
       competitionToolAvailability:competition.competitionToolAvailability,prepareCompetitionToolExport:competition.prepare,
-      coordination:{execute:async request=>{calls.push(request.continuation);return request.continuation
-        ?{kind:'text',text:'Synthetic reference returned',verification:'unverified'}:proposal;}}});
+      coordination:{execute:syntheticCoordinationExecution(async request=>{calls.push(request.continuation);return request.continuation
+        ?{kind:'text',text:'Synthetic reference returned',verification:'unverified'}:proposal;})}});
     const client=new Client(app,Date.now);await client.connect();
     const {taskId}=await client.call('task.submit',{goal:'Read synthetic public reference',conversationId:'production-host-test'},{idempotencyKey:'production-host-test'});
     const waiting=await until(app,taskId,['waiting_approval','failed']);

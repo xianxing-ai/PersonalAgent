@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_COORDINATION_GOAL_CHARACTERS, MAX_COORDINATION_INITIAL_QUERY_BYTES, ProtocolError} from '@personal-agent/contracts';
+import {MAX_AGENTARTS_TRANSPORT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {AgentArtsCloudAgentPort} from '../dist/index.js';
 
 const GATEWAY = 'https://agentarts.example.test';
@@ -57,6 +58,34 @@ function port(fetchImpl, authorizationProvider = provider(), config = {}) {
     ...config,
   }, authorizationProvider, fetchImpl);
 }
+
+test('a million ASCII and UTF-8 characters fit; one extra character or an over-byte query is rejected before fetch', async () => {
+  assert.ok(MAX_AGENTARTS_TRANSPORT_BYTES > MAX_COORDINATION_INITIAL_QUERY_BYTES);
+  let sends = 0;
+  let credentials = 0;
+  const seen = [];
+  const cloud = new AgentArtsCloudAgentPort({gatewayUrl: GATEWAY, runtimeName: RUNTIME}, {
+    read: async () => { credentials++; return 'Bearer synthetic-context-only'; },
+  }, async (_url, init) => {
+    sends++;
+    seen.push(JSON.parse(init.body).query);
+    return jsonResponse(message('ok'));
+  });
+  const ascii = 'a'.repeat(MAX_COORDINATION_GOAL_CHARACTERS);
+  const chinese = '中'.repeat(MAX_COORDINATION_GOAL_CHARACTERS);
+  assert.equal(Buffer.byteLength(chinese), 3_000_000);
+  assert.ok(Buffer.byteLength(chinese) <= MAX_COORDINATION_INITIAL_QUERY_BYTES);
+  await cloud.invoke(request({goal: ascii}));
+  await cloud.invoke(request({goal: chinese}));
+  assert.deepEqual(seen, [ascii, chinese]);
+  const accepted = credentials;
+  await assert.rejects(cloud.invoke(request({goal: ascii + 'a'})), {code: 'INVALID_ARGUMENT'});
+  const overBytes = '中'.repeat(Math.floor(MAX_COORDINATION_INITIAL_QUERY_BYTES / 3) + 1);
+  assert.ok(Buffer.byteLength(overBytes) > MAX_COORDINATION_INITIAL_QUERY_BYTES);
+  await assert.rejects(cloud.invoke(request({goal: overBytes})), {code: 'INVALID_ARGUMENT'});
+  assert.equal(credentials, accepted);
+  assert.equal(sends, 2);
+});
 
 for (const transport of ['iterator', 'reader']) {
   test(`${transport} response preserves chunks when transport reuses its byte buffer`, async () => {

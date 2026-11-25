@@ -1,0 +1,44 @@
+{
+  "package": "P-03",
+  "verifiedAt": "2026-11-20T06:11:05.022Z",
+  "cw05WorkflowSnapshot": {
+    "state": "configured_not_verified",
+    "sessions": [],
+    "missing": []
+  },
+  "adapterCatalog": [
+    {
+      "kind": "calendar",
+      "toolName": "calendar.events",
+      "configured": true,
+      "sessionAllowed": true,
+      "available": true
+    },
+    {
+      "kind": "mail",
+      "toolName": "mail.inbox",
+      "configured": true,
+      "sessionAllowed": false,
+      "available": false
+    },
+    {
+      "kind": "feeds",
+      "toolName": "feeds.collect",
+      "configured": false,
+      "sessionAllowed": false,
+      "available": false
+    }
+  ],
+  "loopbackCaldavTrigger": {
+    "caldavHttpRequests": 8,
+    "formalReadTasksCount": 4,
+    "submittedRootTasks": [
+      "登记新会议并列出准备事项。只读，不发送、不修改日历。会议引用 evt-p03-live-2。",
+      "会议时间已变化。先询问用户是否调整已有安排。不自动改日历、不自动通知他人。会议引用 evt-p03-live-1。"
+    ],
+    "rescheduleApprovalTaskId": "386184b8-cba2-49d7-96fe-139aaeb0c4e5",
+    "rescheduleCarrierStateAfterApproval": "cancelled",
+    "zeroRequestsAfterDisable": true,
+    "zeroSecretLeak": true
+  }
+}

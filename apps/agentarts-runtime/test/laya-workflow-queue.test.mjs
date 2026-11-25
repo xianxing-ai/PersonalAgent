@@ -15,7 +15,7 @@ function choiceResult(payload,index=0,scope='sdk_predict_batch') {
 const contextOf=payload=>JSON.parse(payload.state.split('\n')[1]);
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 
-test('F28 serial frontier preserves separate candidate identities and does not pack independent branches',async()=>{
+test('F28 serial host frontier preserves separate candidate identities and does not pack independent branches',async()=>{
   const template=getOwnedWorkflowTemplate('F28');let inFlight=0,peak=0,arrivals=0,fakeForwardCalls=0;
   const posted=[],decisions=[];
   const selector=createOwnedLayaSelector({cpuExecutionPolicy:'packed',port:8123,getApiKey:()=> 'synthetic-loopback-key',
@@ -33,11 +33,7 @@ test('F28 serial frontier preserves separate candidate identities and does not p
       // Transport order is not node identity. Reverse rows to verify itemId binding.
       return Response.json({batching:'independent_items',batchId:payload.batchId,items:items.reverse()});
     }});
-  const runtime=new OwnedWorkflowEngine({checkpointSecret:'synthetic-fixed-checkpoint-secret-32-chars',selector,
-    host:{capabilities:template.nodes.flatMap(node=>node.capabilities.map(cap=>cap.name)),
-      read:async()=>({state:'completed',value:{fixture:'synthetic native model configuration'}}),
-      condition:async context=>['F28_N02','F28_N03'].includes(context.node.id)?'selected':'skipped'},
-    prepareCandidates:async context=>{
+  const prepareCandidates=async context=>{
       if(['F28_N06','F28_N07'].includes(context.node.id)) arrivals++;
       if(context.node.id==='F28_N06')return [
         {id:'research-first',description:'Synthetic first research candidate',value:{branch:'research',selection:'first'}},
@@ -48,7 +44,18 @@ test('F28 serial frontier preserves separate candidate identities and does not p
         {id:'analysis-review',description:'Analysis needs more evidence',value:null,abstain:true}];
       return [{id:'proposal',description:'Synthetic evidence-supported candidate',value:{nodeId:context.node.id}},
         {id:'review',description:'Need more evidence',value:null,abstain:true}];
-    }});
+    };
+  const runtime=new OwnedWorkflowEngine({checkpointSecret:'synthetic-fixed-checkpoint-secret-32-chars',selector,
+    host:{capabilities:template.nodes.flatMap(node=>node.capabilities.map(cap=>cap.name)),
+      // Explicit Fixture behind the actual host frontier. Production model calls
+      // are separately covered by the Desktop F28 ModelGateway regression.
+      read:async context=>{
+        if(!['F28_N06','F28_N07'].includes(context.node.id))return {state:'completed',value:{fixture:'synthetic native model configuration'}};
+        const candidates=await prepareCandidates(context),selected=await selector.select({
+          context:JSON.stringify({workflowId:'F28',nodeId:context.node.id}),candidates,
+          deadline:context.deadline,signal:context.signal,requestId:'synthetic-host-'+context.node.id});
+        return {state:'completed',value:candidates.find(item=>item.id===selected).value};
+      },condition:async context=>['F28_N02','F28_N03'].includes(context.node.id)?'selected':'skipped'},prepareCandidates});
   const request={workflowId:'F28',taskId:'synthetic-task',controlRevision:1,sessionId:'synthetic-session',requestId:'synthetic-request',
     input:{goal:'synthetic parallel research'},deadline:new Date(Date.now()+5000).toISOString(),signal:new AbortController().signal,availableTools:[]};
   let last=await runtime.advance(request);

@@ -3,6 +3,8 @@ const text = {
   en: {title:'Desktop settings',intro:'Windows, appearance and local diagnostics',language:'Language',theme:'Theme',system:'System',light:'Light',dark:'Dark',font:'Settings text size',calm:'Reduce settings motion',top:'Keep floating windows on top',snap:'Snap near screen edges after dragging',hover:'Expand panel when approaching orb',save:'Save',saved:'Saved',windows:'Windows and recovery',reloadWarning:'Reloading discards unsent input in that window. Save your input first.',diagnostics:'Local diagnostics',refresh:'Refresh',logs:'Open logs folder',show:'Show',reload:'Reload',minimize:'Minimize',maximize:'Maximize / Restore',confirm:'Reload this window? Unsent input will be lost.'},
 };
 const form = document.querySelector('form');
+Object.assign(text['zh-CN'], {orbPlacement:'悬浮球位置',orbTop:'置顶',orbBottom:'置底',orbRight:'右侧收起'});
+Object.assign(text.en, {orbPlacement:'Orb placement',orbTop:'Keep on top',orbBottom:'Keep at bottom',orbRight:'Dock on the right'});
 text['zh-CN'].shortcut = 'Ctrl+Shift+Space 显示悬浮球';
 text.en.shortcut = 'Ctrl+Shift+Space shows the orb';
 text['zh-CN'].theme = '设置页主题';

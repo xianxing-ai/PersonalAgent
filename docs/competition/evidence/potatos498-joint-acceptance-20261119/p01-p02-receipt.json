@@ -1,0 +1,166 @@
+{
+  "verifiedAt": "2026-11-19T12:02:28.661Z",
+  "baseline": "origin/main@f33ef383",
+  "p01_caldav_update_regression": {
+    "restricted": {
+      "taskId": "fcb09590-297c-4897-aca3-35c1eca2abde",
+      "taskState": "succeeded",
+      "toolRecord": {
+        "protocolVersion": "1.0.0",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "inputDigest": "ba416046d72ca42be2a8d1507bdfa8812256b76bbb5ec658a515e90e7c2b566c",
+        "evidenceId": "competition-tool-fcb09590-297c-4897-aca3-35c1eca2abde-1",
+        "requestId": "agent-tool-request-1",
+        "taskId": "fcb09590-297c-4897-aca3-35c1eca2abde",
+        "toolName": "calendar.update",
+        "toolVersion": "0.1.0-alpha.1",
+        "startedAt": "2026-11-19T12:02:28.281Z",
+        "state": "confirmed",
+        "finishedAt": "2026-11-19T12:02:28.329Z"
+      },
+      "dryRunVerification": {
+        "id": "7a14bb30-5af6-422d-bec6-9d191d833f60",
+        "toolName": "calendar.update",
+        "label": "日历写入操作",
+        "targetSummary": "事件标识：p01-restricted-uid-01",
+        "ok": true,
+        "verified": true,
+        "targetMatched": true,
+        "identityMatched": false,
+        "scope": "tool_result_matched",
+        "reason": "已按工具返回字段核对目标与试运行预览一致；未做外部系统读回",
+        "at": "2026-11-19T12:02:28.327Z"
+      },
+      "independentGet": {
+        "status": 200,
+        "etagBefore": "\"etag-live-v0\"",
+        "etagAfter": "\"etag-live-v1\"",
+        "sequenceTransition": "0 -> 1",
+        "summaryMatched": true
+      }
+    },
+    "full-access": {
+      "taskId": "37efab52-9fd7-44f3-8a98-12285d863751",
+      "taskState": "succeeded",
+      "toolRecord": {
+        "protocolVersion": "1.0.0",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "inputDigest": "01d8f2005a9cf74a7e47aa30377483c226daf9acc92319b0c6547a0eaa3be722",
+        "evidenceId": "competition-tool-37efab52-9fd7-44f3-8a98-12285d863751-1",
+        "requestId": "agent-tool-request-2",
+        "taskId": "37efab52-9fd7-44f3-8a98-12285d863751",
+        "toolName": "calendar.update",
+        "toolVersion": "0.1.0-alpha.1",
+        "startedAt": "2026-11-19T12:02:28.470Z",
+        "state": "confirmed",
+        "finishedAt": "2026-11-19T12:02:28.486Z"
+      },
+      "dryRunVerification": {
+        "id": "b79893b7-a665-4f5c-bcea-3b866a494091",
+        "toolName": "calendar.update",
+        "label": "日历写入操作",
+        "targetSummary": "事件标识：p01-full-access-uid-01",
+        "ok": true,
+        "verified": true,
+        "targetMatched": true,
+        "identityMatched": false,
+        "scope": "tool_result_matched",
+        "reason": "已按工具返回字段核对目标与试运行预览一致；未做外部系统读回",
+        "at": "2026-11-19T12:02:28.485Z"
+      },
+      "independentGet": {
+        "status": 200,
+        "etagBefore": "\"etag-live-v0\"",
+        "etagAfter": "\"etag-live-v1\"",
+        "sequenceTransition": "0 -> 1",
+        "summaryMatched": true
+      }
+    }
+  },
+  "p02_personal_dashboard_auth": {
+    "beforeAuth": {
+      "calendarSessionAllowed": false,
+      "meetingHostSessionAllowed": false,
+      "mailSessionAllowed": false
+    },
+    "authorizedSnapshot": {
+      "period": "weekly",
+      "cards": [
+        {
+          "id": "time",
+          "title": "时间",
+          "value": "2.5",
+          "unit": "小时",
+          "delta": "+2.5",
+          "series": [
+            0,
+            0,
+            0,
+            2.5
+          ]
+        },
+        {
+          "id": "mail",
+          "title": "邮件",
+          "value": "3",
+          "unit": "封",
+          "delta": "+3",
+          "series": [
+            0,
+            0,
+            0,
+            3
+          ]
+        }
+      ],
+      "caldavHttpRequests": 2,
+      "mailFetchRequests": 2
+    },
+    "privacyCheck": {
+      "encryptedOnDisk": true,
+      "leakedTitlesOrSubjectsOrSecrets": false
+    },
+    "afterRevokeNextPeriod": {
+      "calendarSessionAllowed": false,
+      "meetingHostSessionAllowed": false,
+      "caldavHttpRequests": 0,
+      "mailFetchRequests": 0
+    },
+    "independentSqliteReadback": {
+      "schedules": [
+        {
+          "schedule_id": "personal-dashboard:desk-user:weekly:2026-11-16T00:00:00.000Z",
+          "status": "fired",
+          "run_at": "2026-11-16T00:00:00.000Z",
+          "task_id": "8684f1d9-8ca4-4290-92db-9f75441984ae"
+        },
+        {
+          "schedule_id": "personal-dashboard:desk-user:weekly:2026-11-23T00:00:00.000Z",
+          "status": "fired",
+          "run_at": "2026-11-23T00:00:00.000Z",
+          "task_id": "da2c6043-db15-4c48-9d15-036c26e0e927"
+        },
+        {
+          "schedule_id": "personal-dashboard:desk-user:weekly:2026-11-30T00:00:00.000Z",
+          "status": "pending",
+          "run_at": "2026-11-30T00:00:00.000Z",
+          "task_id": null
+        }
+      ],
+      "tasks": [
+        {
+          "task_id": "8684f1d9-8ca4-4290-92db-9f75441984ae",
+          "state": "succeeded",
+          "result_summary": "个人数据已汇总：时间 2.5小时，邮件 3封"
+        },
+        {
+          "task_id": "da2c6043-db15-4c48-9d15-036c26e0e927",
+          "state": "succeeded",
+          "result_summary": "个人数据已汇总：没有已授权的数据源"
+        }
+      ]
+    }
+  }
+}

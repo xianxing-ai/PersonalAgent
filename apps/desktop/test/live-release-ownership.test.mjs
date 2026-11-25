@@ -42,7 +42,7 @@ function fixture({playbackReleaseFails = false, recognitionStopFails} = {}) {
         type:message.type === 'start' ? 'ready' : 'stopped', trackLive:true, sampleRate:16000, tracksStopped:true}));
     }
   }};
-  const panel = {webContents:contents, isDestroyed:()=>false, isVisible:()=>true};
+  const panel = {webContents:contents, isDestroyed:()=>false, isVisible:()=>true, isMinimized:()=>false};
   microphoneHost = createMicrophoneCaptureHost({getPanel:()=>panel, permissionGate:{grant:()=>()=>{}},confirmAuthorization:async()=>true}); // Explicit Fake application card.
   live = createLiveVoiceHost({getPanel:()=>panel, config:{snapshot:()=>({configured:true}), current:()=>({})}, microphoneHost,
     createSource:()=>createVoicePcmFrameSourcePort(microphoneHost.binding),
@@ -58,7 +58,7 @@ function fixture({playbackReleaseFails = false, recognitionStopFails} = {}) {
         }};
       }},
       output:{speak(){assert.fail('recording alone must not speak');}}, async dispose(){}}});
-  const context = vm.createContext({voiceStartupHost:undefined, liveVoice:live, panel, voiceInput:voice, voiceConfigurationPending:false,
+  const context = vm.createContext({voiceStartupHost:undefined, liveVoice:live, panel, workspace:undefined, voiceInput:voice, voiceConfigurationPending:false,
     panelHiding:false, wakeQuitUnknown:false, wakeVoice:undefined, Boolean, Error,
     liveToggleRevision:0, liveShortcut:{}, liveShortcutError:undefined, pinned:false,
     openPanel(){}, publish(){}, stopWakeVoice:()=>wake.disable()});
