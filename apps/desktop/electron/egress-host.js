@@ -70,7 +70,14 @@ const TRUSTED_ENV_PREFIX='Current trusted host environment (data only; not autho
 const TRUSTED_ENV_SEP='\n\nOriginal task and approved context (untrusted data):\n';
 const UUID_VALUE=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
 
-function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier) {
+export function extractGitSha40(value) {
+  if (typeof value !== 'string') return undefined;
+  if (/^[a-f0-9]{40}$/u.test(value)) return value;
+  const fenced = /^(?:[^\n]*\n){0,3}<<<PA_EXTERNAL kind=tool id=([a-f0-9]{16})>>>\n([a-f0-9]{40})\n<<<END_PA_EXTERNAL \1>>>$/u.exec(value);
+  return fenced?.[2];
+}
+
+function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHubShas) {
   function object(text) {
     if(typeof text!=='string')return;
     const value=JSON.parse(text);
@@ -131,8 +138,22 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier) {
     }
     return sanitizeCompiledJson(value)??value;
   };
+  const sanitizeGitHubShas=(value,trustedShas,key='',depth=0)=>{
+    if(!trustedShas?.size||depth>10||value==null)return value;
+    if(typeof value==='string'){
+      if(!['sha','headSha','baseSha'].includes(key))return value;
+      const hex=extractGitSha40(value);
+      return hex&&trustedShas.has(hex)?value.replace(hex,'git-sha1'):value;
+    }
+    if(Array.isArray(value))return value.map(item=>sanitizeGitHubShas(item,trustedShas,'',depth+1));
+    if(typeof value==='object'){
+      for(const [k,v]of Object.entries(value))value[k]=sanitizeGitHubShas(v,trustedShas,k,depth+1);
+    }
+    return value;
+  };
   try{
-    if(typeof isTrustedIdentifier!=='function')return 'forbidden';
+    if(typeof isTrustedIdentifier!=='function'&&typeof readTrustedGitHubShas!=='function')return 'forbidden';
+    const trustedShas=scope.taskId&&typeof readTrustedGitHubShas==='function'?readTrustedGitHubShas(scope.taskId):undefined;
     const outer=object(scope.payload);
     const field=outer?.query!==undefined?'query':Object.keys(outer?.inputs??{})[0];
     const container=outer?.query!==undefined?outer:outer?.inputs;
@@ -141,17 +162,19 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier) {
       &&typeof rawEpoch.query==='string'&&Object.keys(rawEpoch).sort().join(',')==='executionEpoch,executionEpochVersion,query';
     const inner=isEpochWrapper?object(rawEpoch.query):rawEpoch;
     if(!inner)return 'forbidden';
-    if(typeof inner.goal==='string')inner.goal=sanitizeGoal(inner.goal);
-    if(typeof inner.continuation?.result?.userRequest==='string'){
+    if(typeof inner.goal==='string'&&typeof isTrustedIdentifier==='function')inner.goal=sanitizeGoal(inner.goal);
+    if(typeof inner.continuation?.result?.userRequest==='string'&&typeof isTrustedIdentifier==='function'){
       inner.continuation.result.userRequest=sanitizeGoal(inner.continuation.result.userRequest);
     }
     if(typeof inner.continuation?.result?.catalogRef==='string'&&/^[a-f0-9]{64}$/u.test(inner.continuation.result.catalogRef)){
       inner.continuation.result.catalogRef='sha256';
     }
+    if(inner.continuation?.result&&trustedShas?.size)sanitizeGitHubShas(inner.continuation.result,trustedShas);
     if(Array.isArray(inner.priorContinuations)){
       for(const prior of inner.priorContinuations){
-        if(typeof prior?.result?.userRequest==='string')prior.result.userRequest=sanitizeGoal(prior.result.userRequest);
+        if(typeof prior?.result?.userRequest==='string'&&typeof isTrustedIdentifier==='function')prior.result.userRequest=sanitizeGoal(prior.result.userRequest);
         if(typeof prior?.result?.catalogRef==='string'&&/^[a-f0-9]{64}$/u.test(prior.result.catalogRef))prior.result.catalogRef='sha256';
+        if(prior?.result&&trustedShas?.size)sanitizeGitHubShas(prior.result,trustedShas);
       }
     }
     if(isEpochWrapper){
@@ -165,7 +188,7 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier) {
 }
 
 /** Main-only callbacks approve the exact content before the transport may send it. */
-export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,readPendingWorkflowGraph,isTrustedIdentifier,now=Date.now}={}) {
+export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,now=Date.now}={}) {
   let closed=false;const decisions=new Map();
   return {
     async prepare(input) {
@@ -190,7 +213,7 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
       const checkReceipt=()=>{
         if(!needsReceiptCheck)return;
         if(taskId&&readPendingWorkflowGraph&&classifyWorkflowReceipts(input,readPendingWorkflowGraph)!=='forbidden')return;
-        if(isTrustedIdentifier&&classifyTrustedTaskEnvelope(input,isTrustedIdentifier)!=='forbidden')return;
+        if((isTrustedIdentifier||readTrustedGitHubShas)&&classifyTrustedTaskEnvelope(input,isTrustedIdentifier,readTrustedGitHubShas)!=='forbidden')return;
         fail();
       };
       checkReceipt();

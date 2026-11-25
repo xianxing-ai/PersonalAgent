@@ -1,7 +1,7 @@
 import { ProtocolError, validateToolValue } from '@personal-agent/contracts';
 import type { ToolHost } from '@personal-agent/contracts';
-import { githubOperations, isGitHubWrite } from './provider.js';
-import type { GitHubInputs, GitHubProvider } from './provider.js';
+import { githubAllOperations, githubOperations, isGitHubWrite } from './provider.js';
+import type { GitHubInputs, GitHubOperation, GitHubProvider } from './provider.js';
 import { GitHubService } from './service.js';
 import { inputSchema } from './schemas.js';
 import { outputSchema } from './output-schemas.js';
@@ -11,6 +11,8 @@ export { GitHubService } from './service.js';
 export { GitHubConnector, GITHUB_CONNECTOR_VERSION } from './connector.js';
 export { GhCliProvider } from './gh.js';
 export type { GhProviderOptions } from './gh.js';
+export { GitHubRestProvider } from './rest.js';
+export type { GitHubRestOptions } from './rest.js';
 export {createGitHubF18F19Tools} from './f18-f19.js';
 export type {GitHubF18F19Options} from './f18-f19.js';
 export { SpawnGhCommandRunner } from './runner.js';
@@ -42,13 +44,18 @@ export type {
   CiLoopPhase, CiLoopState, CiLoopSignal, StableCiClass, WebhookListener, EvalOutcome,
 } from './developer-direction.js';
 export type {GitHubRepairModuleOptions} from './repair-link.js';
-export interface GitHubModuleOptions { provider: GitHubProvider }
+export interface GitHubModuleOptions {
+  provider: GitHubProvider;
+  includeExtended?: boolean;
+  operations?: readonly GitHubOperation[];
+}
 export function register(host: ToolHost, options: GitHubModuleOptions): () => void {
   if (!options?.provider) throw new ProtocolError('INVALID_ARGUMENT', 'Explicit GitHub provider required');
+  const ops = options.operations ?? (options.includeExtended ? githubAllOperations : githubOperations);
   const service = new GitHubService(options.provider);
   const dispose: (() => void)[] = [];
   try {
-    for (const op of githubOperations) {
+    for (const op of ops) {
       const write = isGitHubWrite(op);
       dispose.push(host.register({descriptor: {
         name: `github.${op}`, version: GITHUB_CONNECTOR_VERSION,
@@ -72,4 +79,7 @@ export function register(host: ToolHost, options: GitHubModuleOptions): () => vo
   } catch (error) { for (const unregister of dispose.reverse()) unregister(); service.dispose(); throw error; }
   let disposed = false;
   return () => { if (disposed) return; disposed = true; for (const unregister of dispose.reverse()) unregister(); service.dispose(); };
+}
+export function registerExtended(host: ToolHost, options: Omit<GitHubModuleOptions, 'includeExtended'>): () => void {
+  return register(host, { ...options, includeExtended: true });
 }
