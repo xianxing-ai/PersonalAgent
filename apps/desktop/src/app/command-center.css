@@ -333,6 +333,11 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-agent-group .cc-child {padding:10px 7px;align-items:center}
 .cc-agent-group .cc-child strong {font-size:13px;font-weight:550}
 .cc-agent-group .cc-child small {font-size:12px;color:var(--cc-muted)}
+.cc-agent-ended-summary {display:flex;align-items:center;gap:5px;cursor:pointer;list-style:none;padding:2px 0}
+.cc-agent-ended-summary::-webkit-details-marker {display:none}
+.cc-agent-ended-summary::before {content:'▸';font-size:10px;line-height:1;color:var(--cc-muted);transition:transform .15s ease}
+.cc-agent-ended[open] .cc-agent-ended-summary::before {transform:rotate(90deg)}
+.cc-agent-ended-summary h3 {margin:0}
 .cc-child-row {max-width:100%;overflow:hidden}
 .cc-child-row .cc-child-stop {opacity:0}
 .cc-child-row:is(:hover,:focus-within) .cc-child-stop {opacity:1}
@@ -362,7 +367,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-thread-scroll .assistant-cards {display:flex;flex-direction:column;gap:4px}
 .command-center .cc-thread-scroll .assistant-card {
   position:relative;display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:10px;row-gap:2px;
-  align-content:center;min-height:50px;border:1px solid transparent;border-radius:10px;
+  flex:0 0 auto;width:100%;align-content:center;min-height:50px;border:1px solid transparent;border-radius:10px;
   background:transparent;padding:7px 8px;color:var(--cc-text);text-align:left;cursor:pointer;
   transition:background .15s ease,border-color .15s ease
 }

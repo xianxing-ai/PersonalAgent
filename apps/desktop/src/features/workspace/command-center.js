@@ -6,9 +6,11 @@ import {mountContextSidebar} from './context-sidebar.js';
 const paths={home:'m3 10 9-7 9 7v11h-7v-7h-4v7H3z',team:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m8-7a4 4 0 0 1 0 8',tasks:'M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01',memory:'M12 3c5 0 8 2 8 4s-3 4-8 4-8-2-8-4 3-4 8-4m-8 4v10c0 2 3 4 8 4s8-2 8-4V7M4 12c0 2 3 4 8 4s8-2 8-4',link:'m10 13 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',arrow:'m9 5 7 7-7 7',plus:'M12 5v14M5 12h14',search:'M21 21l-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',history:'M3 12a9 9 0 1 0 2-6M3 3v5h5m4-1v5l3 2',close:'m6 6 12 12M6 18 18 6',send:'m4 4 17 8-17 8 4-8-4-8m4 8h13',voice:'M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 6a7 7 0 0 0 14 0m-7 7v4'};
 export const centerIcon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]??paths.team}"/></svg>`;
 
+const isActiveChild=child=>!isTerminal(child)&&child?.state!=='waiting_reconciliation';
+
 // Keep source ordering inside each real state group; never manufacture workers.
 export function childThreadGroups(children=[]){
-  return [{label:'进行中',children:children.filter(child=>!isTerminal(child))},{label:'已结束',children:children.filter(isTerminal)}];
+  return [{label:'进行中',children:children.filter(isActiveChild)},{label:'已结束',children:children.filter(child=>!isActiveChild(child))}];
 }
 export function childThreadTitle(child){
   const goal=typeof child.goal==='string'?child.goal.replace(/^\[任务执行\]\s*/,'').trim():'';
@@ -158,77 +160,50 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   };
   const showLocal=key=>{localView=key;hero.hidden=true;layout.hidden=true;local.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav===key?'page':'false');paintLocal(lastData);closeSidebar();};
   local.querySelector('[data-cc-local-back]').onclick=()=>{showHome();input.focus();};
-  let catalogReq=0,watchReq=0,cognitionReq=0;
-  const loadCognition=async(button,feedback='')=>{
-    const out=local.querySelector('[data-cc-cognition-result]');if(!out)return;
-    const req=++cognitionReq;
-    if(button)button.disabled=true;
-    out.textContent='正在读取认知提议与回执…';
-    try{
-      const status=await invoke('cognition.status');
-      const proposals=await invoke('cognition.proposals.list').catch(()=>[]);
-      const receipts=await invoke('cognition.receipts.list').catch(()=>[]);
-      if(req!==cognitionReq)return;
-      const proposalRows=(Array.isArray(proposals)?proposals:[]).map(p=>`<div class="notice"><span>${escape(p.summary||p.eventId||'待处理提议')}</span> <button type="button" data-cc-cognition-apply="${escape(p.eventId||'')}" data-cc-cognition-source="${escape(p.source||'')}">应用提议</button></div>`).join('');
-      const prefix=feedback?`<p class="notice" role="status">${escape(feedback)}</p>`:'';
-      out.innerHTML=`${prefix}<p>${escape(status?.reason??'认知状态已读取')} · 待处理提议 ${Array.isArray(proposals)?proposals.length:0} 项 · 会议回执 ${Array.isArray(receipts)?receipts.length:0} 条</p>${proposalRows}`;
-    }catch(error){if(req===cognitionReq)out.textContent=error?.message??'认知组合尚未就绪';}
-    finally{if(button&&button.isConnected)button.disabled=false;}
-  };
   local.addEventListener('click',async event=>{
     const adminBtn=event.target.closest('[data-cc-admin-page]');
     if(adminBtn){openAdmin(adminBtn.dataset.ccAdminPage);return;}
     if(event.target.closest('[data-cc-open-goals]')){root.querySelector('.cc-goals')?.click();return;}
-    const catalogBtn=event.target.closest('[data-cc-workflow-catalog]');
-    if(catalogBtn){
-      if(catalogBtn.disabled)return;
+    if(event.target.closest('[data-cc-workflow-catalog]')){
       const out=local.querySelector('[data-cc-catalog-result]');if(!out)return;
-      const req=++catalogReq;
-      catalogBtn.disabled=true;
       out.textContent='正在读取 28 图工作流目录…';
       try{
         const catalog=await invoke('workflow.image.catalog');
-        if(req!==catalogReq)return;
         const workflows=Array.isArray(catalog?.workflows)?catalog.workflows:[];
         out.innerHTML=`<p class="notice">设计工作流 ${escape(catalog?.designWorkflowCount??28)} 项 · 节点 ${escape(catalog?.designNodeCount??185)} 个 · 适配器要求 ${escape(catalog?.adapterRequirementCount??152)} 项</p>`+
           (workflows.length?`<ul class="cc-local-list">${workflows.map(w=>`<li><div><strong>${escape(w.workflowId)} · ${escape(w.name)}</strong><br><small>${escape(w.nodeCount)} 节点 · 状态：${escape(w.state)} · 不可用原因：${escape((w.unavailableReasons??[]).join('、')||'无')}</small></div></li>`).join('')}</ul>`:`<p class="notice">${escape(catalog?.unavailableReason||'当前模式未返回工作流列表')}</p>`);
-      }catch(error){if(req===catalogReq)out.textContent=error?.message??'工作流目录读取失败';}
-      finally{if(catalogBtn.isConnected)catalogBtn.disabled=false;}
+      }catch(error){out.textContent=error?.message??'工作流目录读取失败';}
       return;
     }
-    const watchBtn=event.target.closest('[data-cc-watch-check]');
-    if(watchBtn){
-      if(watchBtn.disabled)return;
+    if(event.target.closest('[data-cc-watch-check]')){
       const out=local.querySelector('[data-cc-watch-result]');if(!out)return;
-      const req=++watchReq;
-      watchBtn.disabled=true;
       out.textContent='正在读取知识关注状态…';
       try{
         const status=await invoke('knowledge.watch.status');
         const watches=status?.state!=='unavailable'?await invoke('knowledge.watch.list').catch(()=>[]):[];
         const pending=status?.state!=='unavailable'?await invoke('knowledge.watch.pending').catch(()=>[]):[];
-        if(req!==watchReq)return;
         out.textContent=`关注状态：${status?.health?.reason??status?.reason??(status?.running?'运行中':'未运行')} · 关注项 ${Array.isArray(watches)?watches.length:0} 个 · 待确认 ${Array.isArray(pending)?pending.length:0} 条`;
-      }catch(error){if(req===watchReq)out.textContent=error?.message??'知识关注尚未就绪';}
-      finally{if(watchBtn.isConnected)watchBtn.disabled=false;}
+      }catch(error){out.textContent=error?.message??'知识关注尚未就绪';}
       return;
     }
-    const cognitionBtn=event.target.closest('[data-cc-cognition-check]');
-    if(cognitionBtn){
-      if(cognitionBtn.disabled)return;
-      await loadCognition(cognitionBtn);
+    if(event.target.closest('[data-cc-cognition-check]')){
+      const out=local.querySelector('[data-cc-cognition-result]');if(!out)return;
+      out.textContent='正在读取认知提议与回执…';
+      try{
+        const status=await invoke('cognition.status');
+        const proposals=await invoke('cognition.proposals.list').catch(()=>[]);
+        const receipts=await invoke('cognition.receipts.list').catch(()=>[]);
+        const proposalRows=(Array.isArray(proposals)?proposals:[]).map(p=>`<div class="notice"><span>${escape(p.summary||p.eventId||'待处理提议')}</span> <button type="button" data-cc-cognition-apply="${escape(p.eventId||'')}" data-cc-cognition-source="${escape(p.source||'')}">应用提议</button></div>`).join('');
+        out.innerHTML=`<p>${escape(status?.reason??'认知状态已读取')} · 待处理提议 ${Array.isArray(proposals)?proposals.length:0} 项 · 会议回执 ${Array.isArray(receipts)?receipts.length:0} 条</p>${proposalRows}`;
+      }catch(error){out.textContent=error?.message??'认知组合尚未就绪';}
       return;
     }
     const applyBtn=event.target.closest('[data-cc-cognition-apply]');
     if(applyBtn){
-      if(applyBtn.disabled)return;
       applyBtn.disabled=true;
-      try{
-        await invoke('cognition.proposals.apply',{eventId:applyBtn.dataset.ccCognitionApply,source:applyBtn.dataset.ccCognitionSource});
-        await loadCognition(local.querySelector('[data-cc-cognition-check]'),'已提交该认知提议并刷新当前状态。');
-      }
+      try{await invoke('cognition.proposals.apply',{eventId:applyBtn.dataset.ccCognitionApply,source:applyBtn.dataset.ccCognitionSource});}
       catch(error){report(error);}
-      finally{if(applyBtn.isConnected)applyBtn.disabled=false;}
+      finally{applyBtn.disabled=false;}
       return;
     }
     const button=event.target.closest('[data-local-task]');if(!button)return;showHome();const turn=[...root.querySelectorAll('[data-turn]')].find(item=>item.dataset.turn===button.dataset.localTask);turn?.scrollIntoView({block:'center'});
@@ -294,13 +269,19 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     if(nextTeam!==teamSignature){
       teamSignature=nextTeam;team.querySelector('.cc-team-hint').hidden=Boolean(rows.length);
       const list=team.querySelector('.cc-children'),focused=list.contains(document.activeElement)?document.activeElement:null;
-      list.innerHTML=childThreadGroups(rows).filter(group=>group.children.length).map(group=>
-        `<section class="cc-agent-group" aria-label="${group.label}"><h3>${group.label}<span> · ${group.children.length}</span></h3>${group.children.map(child=>{
+      list.innerHTML=childThreadGroups(rows).filter(group=>group.children.length).map(group=>{
+        const itemsHtml=group.children.map(child=>{
           const id=escape(child.taskId),parent=escape(child.parentTaskId),title=escape(child.title);
           const selected=inline.selected?.taskId===child.taskId&&inline.selected?.parentTaskId===child.parentTaskId;
           const pending=pendingStops.has(JSON.stringify({taskId:child.taskId,parentTaskId:child.parentTaskId}));
-          return `<div class="cc-child-row"><button type="button" class="cc-child" data-child-task="${id}" data-parent-task="${parent}" title="${title}" aria-pressed="${selected}"><span class="cc-agent-symbol cc-avatar" data-color="${avatarColor(child.taskId)}" data-shape="${avatarShape(child.taskId)}" aria-hidden="true">${agentGlyphSvg(child.taskId)}</span><span><strong>${title}</strong><small>${escape(child.preview)}</small></span></button>${!isTerminal(child)?`<button type="button" class="cc-child-stop" data-stop-child="${id}" data-parent-task="${parent}" aria-label="停止工人：${title}" title="停止这个工人的当前执行" ${pending?'disabled':''}>■</button>`:''}</div>`;
-        }).join('')}</section>`).join('');
+          return `<div class="cc-child-row"><button type="button" class="cc-child" data-child-task="${id}" data-parent-task="${parent}" title="${title}" aria-pressed="${selected}"><span class="cc-agent-symbol cc-avatar" data-color="${avatarColor(child.taskId)}" data-shape="${avatarShape(child.taskId)}" aria-hidden="true">${agentGlyphSvg(child.taskId)}</span><span><strong>${title}</strong><small>${escape(child.preview)}</small></span></button>${isActiveChild(child)?`<button type="button" class="cc-child-stop" data-stop-child="${id}" data-parent-task="${parent}" aria-label="停止工人：${title}" title="停止这个工人的当前执行" ${pending?'disabled':''}>■</button>`:''}</div>`;
+        }).join('');
+        if(group.label==='已结束'){
+          const endedOpen=group.children.some(child=>inline.selected?.taskId===child.taskId&&inline.selected?.parentTaskId===child.parentTaskId)?' open':'';
+          return `<details class="cc-agent-group cc-agent-ended" aria-label="${group.label}"${endedOpen}><summary class="cc-agent-ended-summary"><h3>${group.label}<span> · ${group.children.length}</span></h3></summary>${itemsHtml}</details>`;
+        }
+        return `<section class="cc-agent-group" aria-label="${group.label}"><h3>${group.label}<span> · ${group.children.length}</span></h3>${itemsHtml}</section>`;
+      }).join('');
       if(focused&&!focused.isConnected){
         const field=focused.dataset.stopChild?'stopChild':'childTask';
         [...list.querySelectorAll('button')].find(button=>button.dataset[field]===focused.dataset[field])?.focus({preventScroll:true});
