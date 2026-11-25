@@ -9,14 +9,14 @@ import {createMessageQueue} from '../src/features/conversation/message-queue.js'
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
 for(const [surface,path,assignment] of [
-  ['panel','../src/app/renderer.js',"root.querySelector('#tasks').onclick"],
+  ['panel','../src/app/renderer.js','tasksNode.onclick'],
   ['workspace','../src/features/workspace/view.js','conversation.onclick'],
 ]){
   const source=await readFile(new URL(path,import.meta.url),'utf8');
   const ast=ts.createSourceFile(path,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
   const declarations=new Map();let handler,projection,renderSendMode;
   const dependencies=surface==='panel'
-    ?['pendingCancelIds','taskStopRequests','syncCancelButtons','restoreTaskActionFocus','truncatedTaskIds','truncatedOutput','activeTasks','setSendMode','stopTask']
+    ?['pendingCancelIds','taskStopRequests','syncCancelButtons','restoreTaskActionFocus','truncatedTaskIds','truncatedOutput','activeTasks','stoppableTasks','setSendMode','stopTask']
     :['pendingCancelIds','syncCancelButtons','restoreTaskActionFocus'];
   function visit(node){
     if(ts.isBinaryExpression(node)&&node.left.getText(ast)===assignment)handler=node.right.getText(ast);
@@ -108,7 +108,7 @@ for(const [surface,path,assignment] of [
       assert.deepEqual(structuredClone(f.context.current.tasks[1]),running);
       assert.equal(f.context.current.tasks[0].state,'waiting_reconciliation');
       assert.equal(f.context.current.tasks[0].resultSummary,'historical cutoff');
-      assert.equal(vm.runInContext('activeTasks().map(task=>task.taskId)',f.context).join(','),'task-B');
+      assert.equal(vm.runInContext('stoppableTasks().map(task=>task.taskId)',f.context).join(','),'task-B');
       assert.equal(f.context.messageQueue.paused,false);assert.equal(f.playbackStops.length,0);
       assert.equal(f.context.sendBtn.disabled,false);assert.equal(f.buttons[0].disabled,true);assert.equal(f.buttons[1].disabled,false);
     });
@@ -167,7 +167,7 @@ for(const [surface,path,assignment] of [
       let buttons=[old];
       const context=vm.createContext({document,root:{querySelector:selector=>nodes[selector]},
         conversation:{querySelectorAll:()=>buttons},current:{conversationState:{activeId:'old-session'}},
-        inspected:'old-task',connectorsRequested,updateRevision:0,preferenceEditing:null,
+        inspected:'old-task',connectorsRequested,updateRevision:0,preferenceEditing:null,returnToMain(){},
         preferenceRequests:{model:0,thinking:0},preferencePending:{model:null,thinking:null},preferenceErrors:{model:null,thinking:null}});
       vm.runInContext(panels,context);
       const update=vm.runInContext('data=>{'+prefix+'}',context);

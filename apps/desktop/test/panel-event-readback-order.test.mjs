@@ -45,13 +45,13 @@ async function fixture(t) {
   const context = vm.createContext({runtimeClosed:false,eventSubscriptionConnection:undefined,eventThroughSequence:undefined,eventContinuation:undefined,setImmediate,fakeMode:false,
     conversationDelivery:createConversationDelivery(new Set()),tasks, approvals, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
     // This cancellation/readback fixture has no Harness event consumer installed.
-    harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,
-    conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
+    harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,competitionMode:false,
+    conversations: {activeConversationId: surface => surface === 'panel' ? 'desktop-panel' : undefined, canAccessSurface: (surface, owner) => surface === owner, turns: new Map(), sessions: new Map()}, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
     notifications: new Map(), structuredClone, eventBusy: false, eventCursor, taskReadbackAt:0,
     runtimeConnection: {readEvents: after => app.readEvents(after),readEventBatch: input=>app.readEventBatch(input)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
-    publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
-  for (const name of ['taskSurface', 'clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
+    publish: () => published.push([...tasks.values()].map(task => ({...task}))), publishChildUpdates: () => {}, Error});
+  for (const name of ['taskSurface', 'visibleConversationTask', 'clearInactiveTaskExitWarning', 'observeTaskConflict', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
     vm.runInContext(declaration(name), context);
   }
   const cancel = vm.runInContext(`(async function(sender,name,payload){${cancelRoute}})`, context);

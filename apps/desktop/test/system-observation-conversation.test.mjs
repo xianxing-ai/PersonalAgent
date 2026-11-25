@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -39,7 +40,7 @@ async function scenario({realLocal=false,delegated=false,decision=true,configure
     return query.continuation?{kind:'text',text:'Synthetic observation received; unavailable metrics remain unavailable'}
       :{kind:'tool_proposal',proposalId:'synthetic-system-observe',toolName:'computer.system.observe',toolVersion:'1.0.0',arguments:{}};
   };
-  app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'synthetic-system-observation',
+  app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',hostUserNamespace:'synthetic-system-observation',
     gatewayUrl:'https://synthetic-observation.invalid',runtimeName:'synthetic-no-cloud',
     ...(wss?{transport:'wss',websocketUrl:'wss://synthetic-observation.invalid/runtimes/synthetic-no-cloud/ws',
       websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-wss'},
@@ -74,7 +75,7 @@ async function scenario({realLocal=false,delegated=false,decision=true,configure
       const value=respond(query);
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(value)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   try {
     assert.equal(fixture.reads(),realLocal?undefined:0,'Construction does not sample');
     const client=new Client(app);await client.connect();

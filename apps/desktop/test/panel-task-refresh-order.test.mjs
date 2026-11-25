@@ -40,11 +40,11 @@ async function fixture(t) {
   const tasks = new Map(), published = [], panel = {};
   const context = vm.createContext({tasks, panel, workspace: {}, admin: {}, client, requestTaskCancellation,conversationDelivery:createConversationDelivery(new Set()),
     // This cancellation/readback fixture has no Harness event consumer installed.
-    harnessEventsHost: undefined, liveVoice: undefined,
-    conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
+    harnessEventsHost: undefined, liveVoice: undefined,competitionMode:false,
+    conversations: {turns: new Map(), sessions: new Map(), activeConversationId: () => 'desktop-panel', conversationIdForTask: () => 'desktop-panel', canAccessSurface: () => true, surface: () => 'panel'}, connectorChangeHost: undefined, runtimeApplication: app, taskGoals: new Map(), runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
     approvals: new Map(), notifications: new Map(), structuredClone,
-    publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
-  for (const name of ['taskSurface', 'clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent']) vm.runInContext(declaration(name), context);
+    publish: () => published.push([...tasks.values()].map(task => ({...task}))), publishChildUpdates() {}, Error});
+  for (const name of ['taskSurface', 'visibleConversationTask', 'clearInactiveTaskExitWarning', 'observeTaskConflict', 'observeTextTaskOutput', 'refresh', 'applyEvent']) vm.runInContext(declaration(name), context);
   const cancel = vm.runInContext(`(async function(sender,name,payload){${cancelRoute}})`, context);
   return {app, client, task, tasks, published, context, jobs, refresh: context.refresh, cancel: taskId => cancel(panel, 'task.cancel', taskId)};
 }

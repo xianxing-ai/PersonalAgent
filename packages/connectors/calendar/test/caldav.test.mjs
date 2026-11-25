@@ -152,6 +152,7 @@ test('respond：只读首片显式 UNSUPPORTED_CAPABILITY', () => {
 
 test('错误映射：429/5xx/网络失败可重试，401 拒绝认证，400 不可重试', async () => {
   const cases = [
+    {status: 408, expected: {code: 'TIMEOUT', retryable: true}},
     {status: 429, expected: {code: 'RATE_LIMITED', retryable: true}},
     {status: 503, expected: {code: 'EXTERNAL_FAILURE', retryable: true}},
     {status: 401, expected: {code: 'UNAUTHORIZED', retryable: false}},
@@ -165,6 +166,10 @@ test('错误映射：429/5xx/网络失败可重试，401 拒绝认证，400 不�
   }
   const network = new CalDavProvider({calendarUrl: CALENDAR_URL, fetchImpl: async () => { throw Error('reset'); }});
   await assert.rejects(network.pollChanges(), {code: 'EXTERNAL_FAILURE', retryable: true});
+  const badCert = new CalDavProvider({calendarUrl: CALENDAR_URL, fetchImpl: async () => {
+    throw Object.assign(new Error('cert expired'), {code: 'CERT_HAS_EXPIRED'});
+  }});
+  await assert.rejects(badCert.pollChanges(), {code: 'EXTERNAL_FAILURE', retryable: false});
   const malformed = new CalDavProvider({calendarUrl: CALENDAR_URL, fetchImpl: async () => xmlResponse('<html>not caldav</html>')});
   await assert.rejects(malformed.pollChanges(), {code: 'EXTERNAL_FAILURE', retryable: false});
   const empty = new CalDavProvider({calendarUrl: CALENDAR_URL, fetchImpl: async () => xmlResponse('   ')});

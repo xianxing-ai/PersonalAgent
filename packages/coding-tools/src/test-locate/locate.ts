@@ -206,9 +206,16 @@ function parseNodeCheck(output:string,root:string):RawFailure[] {
     ||!/^Node\.js v\d+\.\d+\.\d+\s*$/mu.test(output))return [];
   const lines=output.split(/\r?\n/u),index=lines.findIndex(line=>/^SyntaxError: \S/u.test(line));
   if(index<0)return [];
-  const location=lines.slice(Math.max(0,index-5),index).find(line=>STACK_LOCATION.test(line)&&extractFrames([line],root).length===1);
-  if(!location)return [];
-  const frames=extractFrames([location],root);
+  const start=Math.max(0,index-5);
+  const locationOffset=lines.slice(start,index).findIndex(line=>STACK_LOCATION.test(line)&&extractFrames([line],root).length===1);
+  if(locationOffset<0)return [];
+  const locationIndex=start+locationOffset;
+  const frames=extractFrames([lines[locationIndex]!],root);
+  const caret=lines.slice(locationIndex+2,index).find(line=>/^[ \t]*\^+\s*$/u.test(line));
+  if(caret!==undefined&&frames[0]&&frames[0].column===undefined) {
+    const column=caret.indexOf('^')+1;
+    if(Number.isSafeInteger(column)&&column>=1)frames[0].column=column;
+  }
   return [{name:'Node syntax check: '+frames[0]!.file,errorLines:[lines[index]!],frames,timedOut:false}];
 }
 

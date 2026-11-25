@@ -10,6 +10,7 @@ export interface NativeDesktopTransport {
   start(context:DesktopCallContext):Promise<void>;
   request(method:string,params:Record<string,unknown>,context:DesktopCallContext):Promise<unknown>;
   stop():Promise<void>;close():Promise<void>;isReady():boolean;
+  supports?(capability:string):boolean;
 }
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 type PublicErrorCode=NonNullable<TaskSnapshot['error']>['code'];
@@ -41,6 +42,7 @@ export function nativeDesktopResponseError(value:unknown):ProtocolError {
 /** Main owns this executable and private stdio. Never pass a renderer command/env or shell. */
 export function createNativeDesktopTransport({executable}:{executable:string}):NativeDesktopTransport {
   let child:ChildProcessWithoutNullStreams|undefined,buffer='',closed=false,ready=false;
+  let capabilities=new Set<unknown>();
   const pending=new Map<string,{resolve:(value:unknown)=>void;reject:(error:Error)=>void;cleanup:()=>void}>();
   const active=(context:DesktopCallContext)=>{
     if(context.signal.aborted)throw new ProtocolError('CANCELLED','电脑请求已取消');
@@ -56,6 +58,7 @@ export function createNativeDesktopTransport({executable}:{executable:string}):N
   }
   const host:NativeDesktopTransport={
     isReady:()=>ready&&!!child&&!closed,
+    supports:capability=>host.isReady()&&capabilities.has(capability),
     async start(context){
       active(context);if(closed)throw new ProtocolError('CANCELLED','电脑组件已释放');if(host.isReady())return;
       if(process.platform!=='win32'||!isAbsolute(executable))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Windows原生电脑组件不可用');
@@ -81,6 +84,7 @@ export function createNativeDesktopTransport({executable}:{executable:string}):N
       });
       try{const info=await host.request('initialize',{},context);
         if(!object(info)||info.protocol!=='personal-agent-desktop/1'||info.version!=='1.0.0')throw new ProtocolError('PROTOCOL_MISMATCH','电脑组件版本不兼容');
+        capabilities=new Set(Array.isArray(info.capabilities)?info.capabilities:[]);
         ready=true;
       }catch(error){await release().catch(()=>{});throw error;}
     },

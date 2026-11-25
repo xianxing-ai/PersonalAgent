@@ -50,6 +50,62 @@ function spokenArguments(value) {
   return `参数摘要：${text.slice(0,2400)}${omitted||text.length>2400?'；部分内容未逐项播报':''}`;
 }
 
+function isAssistantOwnedTaskConversation(taskConversationId, toolConversation) {
+  return typeof taskConversationId === 'string'
+    && (taskConversationId === toolConversation || taskConversationId.startsWith('desktop-subtask:'));
+}
+
+/**
+ * Peer assistants use Runtime-owned `desktop-assistant:*` threads that are not Desktop
+ * Conversations sessions. Workers dispatched by a peer assistant run in `desktop-subtask:*`
+ * while their trusted `readToolConversation` still resolves to the owning `desktop-assistant:*`.
+ * Cloud egress review cards bind to the active panel session.
+ * Returns undefined when the task is not owned by a session or a live assistant thread.
+ */
+export function resolveEgressReviewConversation({
+  taskId,resolveConversation,readTask,readToolConversation,activePanelConversationId,
+}) {
+  const resolved=typeof resolveConversation==='function'?resolveConversation(taskId):undefined;
+  if(typeof resolved==='string'&&resolved)return {conversationId:resolved,assistantOwned:false};
+  try {
+    const task=readTask?.(taskId);
+    const toolConversation=readToolConversation?.(taskId);
+    if(!task||typeof toolConversation!=='string'||!toolConversation.startsWith('desktop-assistant:')
+      ||!isAssistantOwnedTaskConversation(task.conversationId,toolConversation))return undefined;
+    const conversationId=typeof activePanelConversationId==='function'?activePanelConversationId():undefined;
+    if(typeof conversationId!=='string'||!conversationId)return undefined;
+    return {
+      conversationId,
+      assistantOwned:true,
+      assistantConversationId:toolConversation,
+      ...(task.conversationId!==toolConversation?{taskConversationId:task.conversationId}:{}),
+    };
+  } catch {return undefined;}
+}
+
+/** Keep assistant egress current only while the same assistant thread and panel session remain. */
+export function isEgressReviewConversationCurrent(binding,{
+  resolveConversation,readTask,readToolConversation,activePanelConversationId,
+}) {
+  if(!binding?.conversationId||typeof binding.taskId!=='string')return false;
+  if(binding.assistantOwned!==true) {
+    return typeof resolveConversation==='function'
+      &&resolveConversation(binding.taskId)===binding.conversationId;
+  }
+  try {
+    const task=readTask?.(binding.taskId);
+    const toolConversation=readToolConversation?.(binding.taskId);
+    const expectedTaskConversation=binding.taskConversationId??binding.assistantConversationId;
+    return typeof toolConversation==='string'
+      &&toolConversation===binding.assistantConversationId
+      &&toolConversation.startsWith('desktop-assistant:')
+      &&task?.conversationId===expectedTaskConversation
+      &&isAssistantOwnedTaskConversation(task?.conversationId,toolConversation)
+      &&typeof activePanelConversationId==='function'
+      &&activePanelConversationId()===binding.conversationId;
+  } catch {return false;}
+}
+
 /** Trusted reads only. Conversation ownership does not grant tool or cloud access. */
 export function createConversationToolAccess({getApplication,getConversations,now=Date.now}) {
   const resolveConversation=taskId=>{

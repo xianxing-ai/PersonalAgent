@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions,syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -32,6 +33,7 @@ function fixture(t,patch={}) {
   const modelApi=createModelApiConfig({userData:path.join(root,'profile'),safeStorage,
     createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:patch.createGuardedGateway??createConfiguredSubagentModelGateway,
     fetchImpl:async(_url,init)=>{requests.push(JSON.parse(init.body));return response();}});
+  modelApi.setEgressHost({prepare:syntheticPublicPayloadGate});
   const configured=modelApi.configure({id:'chosen-summary',provider:'openai-compatible',baseUrl:'https://summary.example.test/v1',
     model:'synthetic-selected-model',displayName:'Chosen summary model',apiKey:'synthetic-test-key',enabled:true,makeDefault:false});
   const configurationRef=configured.models[0].configurationRef;
@@ -134,14 +136,15 @@ test('Synthetic revoked model/config, denied consent and private bindings never 
 
 test('Synthetic disabled configuration preserves old preflight; enabled preflight retains the current goal and exact tail',t=>{
   const f=fixture(t),goal='Exact current goal';
-  assert.throws(()=>compileCoordinationGoal(goal,goal,f.messages),{code:'INVALID_ARGUMENT'});
-  const admitted=JSON.parse(f.host.preflight(goal,goal,f.messages,compileCoordinationGoal));
+  const oversized=f.messages.map((message,index)=>index<f.messages.length-2?{...message,content:message.content+'x'.repeat(40_000)}:message);
+  assert.throws(()=>compileCoordinationGoal(goal,goal,oversized),{code:'INVALID_ARGUMENT'});
+  const admitted=JSON.parse(f.host.preflight(goal,goal,oversized,compileCoordinationGoal));
   assert.equal(admitted.publicGoal,goal);assert.deepEqual(admitted.conversationContext.messages,f.messages.slice(-2));
   assert.equal(f.requests.length,0,'Preflight never runs a model');
-  assert.throws(()=>f.host.preflight('x'.repeat(128001),'x'.repeat(128001),f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>f.host.preflight('x'.repeat(1_000_001),'x'.repeat(1_000_001),f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
   const off=createDesktopHarnessContextHost({readConfiguration:()=>({enabled:false})});t.after(()=>off.dispose());
   assert.equal(off.runtimeHooks,undefined);assert.equal(off.snapshot().state,'disabled');
-  assert.throws(()=>off.preflight(goal,goal,f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>off.preflight(goal,goal,oversized,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
 });
 
 test('Synthetic explicit context config rejects missing budgets, unselected versions and an unguarded model factory',t=>{
@@ -152,7 +155,7 @@ test('Synthetic explicit context config rejects missing budgets, unselected vers
   const boundary='x'.repeat(128000);
   assert.equal(expandedHost.preflight(boundary,boundary,[],compileCoordinationGoal),boundary);
   for(const change of [{maxOutputTokens:undefined},{policy:{...f.configuration.policy,retainMessages:undefined}},
-    {configurationRef:'different-version'},{modelId:''},{policy:{...f.configuration.policy,maxCharacters:128001}}]){
+    {configurationRef:'different-version'},{modelId:''},{policy:{...f.configuration.policy,maxCharacters:1_000_001}}]){
     assert.throws(()=>createDesktopHarnessContextHost({...f.options,readConfiguration:()=>({...f.configuration,...change})}));
   }
   const noGuard=createModelApiConfig({userData:path.join(f.root,'profile'),safeStorage,createGateway:createConfiguredSubagentModelGateway});
@@ -163,13 +166,13 @@ test('Synthetic explicit context config rejects missing budgets, unselected vers
 
 test('Synthetic full Desktop host to Runtime caller summarizes a long overlay and emits only bounded goal data to cloud',async t=>{
   const f=fixture(t);let cloud=0;
-  const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+  const app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
     authorizationProvider:{read:async()=> 'Bearer synthetic'},fetchImpl:async(_url,init)=>{
       cloud++;const query=JSON.parse(JSON.parse(init.body).query);assert.equal(query.publicGoal,'Current developer request');
       assert.deepEqual(query.conversationContext.messages.slice(-2),f.messages.slice(-2));
       assert.ok(init.body.length<16000);
       return new Response(JSON.stringify({event:'message',data:{text:'Synthetic cloud answer',index:0}}),{headers:{'content-type':'application/json'}});},
-    coordinationInput:{beforeCoordinationSend(){},contextCompaction:f.host.runtimeHooks}});
+    coordinationInput:{beforeCoordinationSend(){},contextCompaction:f.host.runtimeHooks}}));
   f.setApplication(app);t.after(()=>app.close());
   const client=new Client(app);await client.connect();const task=await client.call('task.submit',
     {goal:'Current developer request',conversationId:'owned-conversation'},{idempotencyKey:'full-host',timeoutMs:60000});
