@@ -43,7 +43,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {freemem,totalmem,availableParallelism} from 'node:os';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
 import {openDesktopActivity} from './activity-host.js';
@@ -2844,7 +2844,7 @@ async function initializeRuntime() {
           getBinding: () => {
             const binding = calendarConfig.binding();
             return binding ? {configurationId: calendarConfigurationId(binding), accountRef: binding.accountRef,
-              calendarUrl: binding.calendarUrl, calendarName: binding.calendarName} : undefined;
+              providerKind: binding.providerKind, calendarUrl: binding.calendarUrl, calendarName: binding.calendarName} : undefined;
           },
           readAuthorization: request => {
             const binding = calendarConfig.binding();
@@ -5557,8 +5557,17 @@ async function action(event, name, payload) {
     if (sender !== admin || !competitionMode || syntheticMvp || !calendarConfig) throw Error('请从正式应用日历设置操作');
     if (name === 'calendar.configure' && (runtimeApplication?.activeTaskCount || runtimeStartup.snapshot().state === 'starting')) throw Error('请等待当前任务及启动结束后修改日历配置');
     await connectorConversationTools?.invalidate('calendar');
+    const revokeFlagPath = path.join(app.getPath('userData'), '.calendar-revoked');
     if (name === 'calendar.revoke') calendarMeetingHost?.invalidate();
     const result = name === 'calendar.configure' ? calendarConfig.configure(payload) : calendarConfig.revoke();
+    try {
+      if (name === 'calendar.revoke') {
+        mkdirSync(app.getPath('userData'), {recursive: true});
+        writeFileSync(revokeFlagPath, 'revoked', 'utf8');
+      } else if (existsSync(revokeFlagPath)) {
+        unlinkSync(revokeFlagPath);
+      }
+    } catch { /* ignore marker write failure */ }
     if (name === 'calendar.configure') calendarMeetingHost?.invalidate();
     publish(); return result;
   }
@@ -6879,7 +6888,20 @@ app.whenReady().then(async () => {
       createGateway:createConfiguredSubagentModelGateway,onUpdate:publish,...usageHooks});
     computerVisionConfig.setEgressHost(egressHost);
   }
-  if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
+  if (competitionMode && !syntheticMvp) {
+    calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
+    if (process.platform === 'win32') {
+      const calendarSnap = calendarConfig.snapshot();
+      const revokeFlagPath = path.join(app.getPath('userData'), '.calendar-revoked');
+      if (!calendarSnap.configured && calendarSnap.status !== 'unavailable' && !existsSync(revokeFlagPath)) {
+        try {
+          calendarConfig.configure({providerKind: 'windows-system', calendarName: 'Windows 系统日历'});
+        } catch {
+          // Leave explicit unconfigured state if safeStorage or userData cannot persist yet.
+        }
+      }
+    }
+  }
   if (competitionMode && !syntheticMvp) githubConfig = createGitHubConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   ipcMain.on('desktop:live-event', (event, message) => {liveVoice?.receive(event, message);});
