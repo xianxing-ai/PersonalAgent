@@ -8,7 +8,8 @@ export type {AgentArtsTransportFrame} from './agentarts-transport.generated.js';
 export type AgentArtsTransportInvoke = Extract<AgentArtsTransportFrame, {type:'invoke'}>;
 export type AgentArtsTransportPayload = AgentArtsTransportInvoke['payload'];
 export const AGENTARTS_TRANSPORT_VERSION = '0.1.0';
-export const MAX_AGENTARTS_TRANSPORT_BYTES = 1_200_000;
+/** HTTP body and WSS frame. Strictly above the 3_500_000-byte query budget so JSON wrapping still fits. */
+export const MAX_AGENTARTS_TRANSPORT_BYTES = 4 * 1024 * 1024;
 export const MAX_AGENTARTS_RESULT_BYTES = 64_000;
 const validate = new Ajv2020({strict:false,allErrors:true}).compile(schema);
 function invalid(): never { throw new ProtocolError('INVALID_ARGUMENT','Invalid AgentArts transport frame'); }
