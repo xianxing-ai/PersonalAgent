@@ -10,7 +10,7 @@ test('host user request and child reply remain distinct from execution diagnosti
  assert.equal(Object.hasOwn(await projectSubagentResult({result:{userRequest:'forged'}}),'userRequest'),false);
 });
 test('user request is bounded and ordinary technical text is preserved',async()=>{
- await assert.rejects(projectSubagentResult({result:{},userRequest:'x'.repeat(128001)}),/用户请求/);
+ await assert.rejects(projectSubagentResult({result:{},userRequest:'x'.repeat(1_000_001)}),/用户请求/);
  const longRequest='中'.repeat(127996)+'末尾条件';
  const longValue=await projectSubagentResult({result:{subtasks:[{state:'succeeded',result:'已记住'}]},userRequest:longRequest});
  assert.equal(longValue.userRequest,longRequest);assert.equal(longValue.userRequest.length,128000);

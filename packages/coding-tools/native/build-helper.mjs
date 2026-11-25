@@ -18,12 +18,13 @@ import {createHash} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {nativePublishArguments,probeNativeToolchain,requirePeArchitecture} from './host-architecture.mjs';
+import {jobBundleIdentity,writeSelfContainedHelperBundle} from './helper-bundle.mjs';
 
 export function resolveRepoRoot() {
   return realpathSync.native(path.resolve(import.meta.dirname, '..', '..', '..'));
 }
 
-export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
+export function buildNativeHelper({targetDir, configuration = 'Release', selfContained = false} = {}) {
   if (process.platform !== 'win32') {
     throw Error('WindowsJobProcessHost is only supported on Windows');
   }
@@ -53,6 +54,8 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
   if (!statSync(canonicalTarget).isDirectory()) {
     throw Error('Target directory must be a directory');
   }
+  if(typeof selfContained!=='boolean')throw Error('Self-contained publishing requires an explicit boolean');
+  if(selfContained&&readdirSync(canonicalTarget).length)throw Error('Self-contained helper requires a fresh empty external target directory');
 
   // Native Node, OS and dotnet host must agree. Preinstalled .NET 8 only; no emulation/download fallback.
   const toolchain=probeNativeToolchain();
@@ -64,6 +67,23 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
 
   // 2. Publish project to target directory
   const publishArgs = nativePublishArguments(csprojPath,canonicalTarget,configuration,toolchain.architecture);
+  if(selfContained){
+    publishArgs[publishArgs.indexOf('--self-contained')+1]='true';
+    publishArgs.push(`-p:RuntimeFrameworkVersion=${jobBundleIdentity.runtimeVersion}`,'-p:TargetLatestRuntimePatch=false',
+      '-p:PublishSingleFile=false','-p:PublishTrimmed=false','-p:DebugType=None','-p:DebugSymbols=false','-m:1',
+      '--disable-build-servers','-p:UseSharedCompilation=false','-nodeReuse:false');
+  }
+  const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+  function sources(directory, prefix='', result={}) {
+    for(const entry of readdirSync(directory,{withFileTypes:true})) {
+      if(entry.name==='obj'||entry.name==='bin')continue;
+      const relative=prefix+entry.name, full=path.join(directory,entry.name);
+      if(entry.isDirectory())sources(full,relative+'/',result);
+      else if(entry.isFile()&&/\.(cs|csproj)$/u.test(entry.name))result[relative]=hash(full);
+    }
+    return result;
+  }
+  const before=selfContained?sources(import.meta.dirname):undefined;
 
   const publishResult = spawnSync('dotnet', publishArgs, {
     encoding: 'utf8',
@@ -83,23 +103,16 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
 
   const canonicalExe = realpathSync.native(expectedExe);
   requirePeArchitecture(canonicalExe,toolchain.architecture);
-  const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
   const helperFilesSha256 = Object.fromEntries(['WindowsJobProcessHost.dll','WindowsJobProcessHost.deps.json','WindowsJobProcessHost.runtimeconfig.json']
     .map(name => [name,hash(path.join(canonicalTarget,name))]));
   // No source cache: every publish compiles the project, including all current C# inputs.
-  const sourceSha256 = {};
-  function sources(directory, prefix='') {
-    for(const entry of readdirSync(directory,{withFileTypes:true})) {
-      if(entry.name==='obj'||entry.name==='bin')continue;
-      const relative=prefix+entry.name, full=path.join(directory,entry.name);
-      if(entry.isDirectory())sources(full,relative+'/');
-      else if(entry.isFile()&&/\.(cs|csproj)$/u.test(entry.name))sourceSha256[relative]=hash(full);
-    }
-  }
-  sources(import.meta.dirname);
+  const sourceSha256 = sources(import.meta.dirname);
+  if(selfContained&&JSON.stringify(before)!==JSON.stringify(sourceSha256))throw Error('Native helper source changed during self-contained publish');
+  const bundle=selfContained?writeSelfContainedHelperBundle({targetDir:canonicalTarget,repoRoot,toolchain,sourceSha256}):undefined;
   return {
     helperPath: canonicalExe,
     helperSha256: hash(canonicalExe), helperFilesSha256, sourceSha256,
+    ...(bundle?{...bundle,selfContained:true}:{}),
     targetDir: canonicalTarget,
     configuration,
     toolchain,
@@ -117,12 +130,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.met
   }
 
   if (!targetDir) {
-    console.error('Usage: node build-helper.mjs --target-dir <external-directory>');
+    console.error('Usage: node build-helper.mjs --target-dir <external-directory> [--self-contained]');
     process.exit(1);
   }
 
   try {
-    const result = buildNativeHelper({targetDir});
+    const result = buildNativeHelper({targetDir,selfContained:args.includes('--self-contained')});
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     console.error(`build-helper error: ${err.message}`);

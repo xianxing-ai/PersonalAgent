@@ -50,3 +50,32 @@
 .subagent-conversations button:focus-visible,.subagent-conversation-page button:focus-visible{outline:2px solid var(--accent,var(--fg-2));outline-offset:2px}
 .subagent-conversations button:disabled,.subagent-conversation-page button:disabled{opacity:.48;cursor:default}
 @media(max-width:480px){.subagent-conversation-page{padding:12px;gap:10px}.subagent-conversation-page h1{font-size:15px}.subagent-conversations-entry{gap:3px;padding:5px}}
+.subagent-conversation-page[data-presentation="window"] {
+  gap: 10px; padding: 0 clamp(12px, 4vw, 30px) 16px;
+  background: light-dark(#f8f8f7, #131313);
+  font-family: var(--font-ui);
+}
+.subagent-conversation-page[data-presentation="window"] > * { width: 100%; max-width: 820px; margin-inline: auto; box-sizing: border-box; }
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-page-header { min-height: 56px; padding: 8px 0; }
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-page-header h1 { flex: 1; font-size: 15px; }
+.subagent-window-id { font-size: 11px; font-weight: 400; color: var(--muted); }
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-page-header button { border-radius: 999px; }
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-origin-turn,
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-turn { display: grid; gap: 6px; padding: 10px 2px 14px; border: 0; }
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-user {
+  justify-self: end; max-width: 84%; padding: 8px 13px; margin: 0;
+  border-radius: 15px 15px 5px 15px; background: light-dark(#e8e8e6, #353535);
+}
+.subagent-conversation-page[data-presentation="window"] .assistant-message {
+  width: fit-content; max-width: 92%; padding: 9px 13px; border-radius: 5px 15px 15px;
+  background: light-dark(#eee, #202020); overflow-wrap: anywhere;
+}
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-composer {
+  padding: 10px 12px; border-radius: 20px; background: light-dark(#f1f1ef, #232323);
+}
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-composer:focus-within { border-color: var(--fg-2); }
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-model {
+  align-self: center; min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 11px; color: var(--fg-2);
+}
+.subagent-conversation-page[data-presentation="window"] .subagent-conversation-compose-actions button { border-radius: 999px; }

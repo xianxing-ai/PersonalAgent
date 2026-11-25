@@ -16,7 +16,19 @@ for(const name of ['broken.mjs','broken.cjs'])test(`actual fixed Node syntax che
     const report=locateTestFailures(execution.stderr,{root,maxSnippetReads:0});
     assert.equal(report.totalFailures,1);assert.equal(report.failures[0].reporter,'node-check');
     assert.equal(report.failures[0].frames[0].file,name);assert.ok(report.failures[0].frames[0].line>0);
+    assert.equal(report.failures[0].frames[0].column,undefined);
     assert.equal(report.failures[0].frames[0].snippet,undefined);
+
+    await writeFile(path.join(root,'token.mjs'),'const ok = 1;\n\n  const bad = ;;\n');
+    const caretCheck=spawnSync(process.execPath,['--check','token.mjs'],{cwd:root,encoding:'utf8'});
+    assert.equal(caretCheck.status,1);
+    const caretReport=locateTestFailures(caretCheck.stderr,{root,maxSnippetReads:0});
+    assert.equal(caretReport.totalFailures,1);
+    assert.equal(caretReport.failures[0].frames[0].file,'token.mjs');
+    assert.equal(caretReport.failures[0].frames[0].line,3);
+    assert.equal(caretReport.failures[0].frames[0].column,15);
+    assert.equal(caretReport.failures[0].frames[0].snippet,undefined);
+
     for(const incomplete of ['SyntaxError: invented',execution.stderr.replace(/SyntaxError:/u,'Error:'),
       execution.stderr.replace(/node:internal\/main\/check_syntax/gu,'untrusted:check')])
       assert.equal(locateTestFailures(incomplete,{root}).totalFailures,0);

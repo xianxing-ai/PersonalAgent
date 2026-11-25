@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,readFile,rename,rm,writeFile} from 'node:fs/promises';
@@ -9,7 +10,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {PROTOCOL_VERSION,ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
-import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
+import {captureCodingRepairSnapshot,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
 import {AuthorizationQuestions,createRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
 import {LayaActionChoiceService} from '@personal-agent/cognition';
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
@@ -208,8 +209,8 @@ async function defaultCodingStartQuestionFixture(t,invalidatePreparation=false) 
   const proposal={kind:'tool_proposal',proposalId:'Synthetic-original-f15',toolName:'coding.repair.workflow',toolVersion:'1.0.0',
     arguments:{subtasks:[{subtaskId:'repair',role:'coder',goal:'Synthetic bounded repair'}],codingRepair:{mode:'main',allowedPaths:['fixture.js']}},verification:'unverified'};
   application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'Synthetic-default-coding-start',
-    tools:[dispatch,...host.tools],coordinationBinding:'Synthetic-fixed-deployment',coordination:{execute:async request=>request.continuation
-      ?{kind:'text',text:'Synthetic parent summary of the original child outcome',verification:'unverified'}:structuredClone(proposal)},
+    tools:[dispatch,...host.tools],coordinationBinding:'Synthetic-fixed-deployment',coordination:{execute:syntheticCoordinationExecution(async request=>request.continuation
+      ?{kind:'text',text:'Synthetic parent summary of the original child outcome',verification:'unverified'}:structuredClone(proposal))},
     automaticTools:[{toolName:'subagent.dispatch',toolVersion:'1.0.0'}],
     readConversationPreference:()=>({depth:1,fast:false}),
     codingRepair:{image:{bindingId:'Synthetic-image',receiptSecret:async()=> 'Synthetic-only-private-receipt-secret-32-chars',advance:async()=>assert.fail('No image advance before approval')}},
@@ -453,8 +454,8 @@ test('original Runtime decision, unified question and consumed selectedId lease 
   assert.equal(application.runtime.readToolExecutions(prepared.taskId).length,1,'export never executes the decision again');
 });
 
-async function workspaceBindingFixture(t) {
-  const cache=path.resolve(fileURLToPath(new URL('../../../.cache/',import.meta.url)));
+async function workspaceBindingFixture(t,{external=false}={}) {
+  const cache=external?os.tmpdir():path.resolve(fileURLToPath(new URL('../../../.cache/',import.meta.url)));
   await mkdir(cache,{recursive:true});
   const base=await mkdtemp(path.join(cache,'p6-workspace-binding-'));
   const root=path.join(base,'workspace'),otherRoot=path.join(base,'other-workspace');
@@ -483,6 +484,122 @@ async function workspaceBindingFixture(t) {
   return {root,node,configuration,open};
 }
 const allowWorkspaceRead=host=>host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
+
+test('F20 workspace provider runs the exact isolated TypeScript sample and never publishes it',async t=>{
+  const {root,node,configuration,open}=await workspaceBindingFixture(t,{external:true});
+  const sources={'contract.ts':'export interface Request {name:string;}','api.ts':'export const version=1;','fixture.js':'export const marker=1;','api.md':'# API\n'};
+  for(const [file,content] of Object.entries(sources))await writeFile(path.join(root,file),content);
+  const record=JSON.parse(await readFile(configuration,'utf8'));record.encryptedCheckFile=Buffer.from('fixture.js').toString('base64');
+  record.encryptedNode=Buffer.from(process.execPath).toString('base64');
+  record.encryptedNpmCli=Buffer.from('unavailable-for-this-compiler-only-fixture').toString('base64');
+  await writeFile(configuration,JSON.stringify(record));
+  // Explicit Runtime/consent/version metadata fixture; the isolated host, files, Node and TS compiler are real.
+  let executions=0,stopState='unknown',origin;
+  const question=workspaceQuestions();
+  const options={question,findExecutable:name=>name==='pwsh.exe'?node:undefined,createCommandRecipeTool:createWorkspaceCommandRecipeTool,
+    createWorkspaceCommandTool:options=>{const tool=createWorkspaceCommandTool(options);return {...tool,execute:(...args)=>{executions++;return tool.execute(...args);}};},
+    readOriginalCommandStopState:async()=>stopState,
+    readHarnessVersions:()=>({workflowVersion:'synthetic-image-v1',runtimeVersion:'fixture-runtime',executionKind:'real_host'})};
+  let host=open(options);
+  const checkpoints=new Map();let f20,trialInvocation;
+  const application={readToolConversation:()=> 'fixture-conversation',readF20TrialBinding:()=>f20,readF20RecoveryBinding:()=>origin,
+    readF20WorkflowBinding:()=>f20,readAuthorizationQuestionInvocation:()=>trialInvocation,
+    runtime:{loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}};
+  host.bindApplication(application);
+  host.setF20CaseFromNativeSelection({inputRef:'typescript-case',schemaFile:'contract.ts',codeFile:'api.ts',recipeId:'f20-typescript-sample',
+    docTemplate:'Document only supported fields',targetDoc:'api.md'});
+  const context={taskId:'actual-f20-child',runId:'host-tool-actual-f20-child',authorizationRef:'host-tool-actual-f20-child',
+    toolName:'coding.repair.trial',toolVersion:'1.0.0',argumentsDigest:createHash('sha256').update(JSON.stringify({})).digest('hex'),
+    scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],deadline:new Date(Date.now()+120000).toISOString(),signal:new AbortController().signal};
+  checkpoints.set(context.taskId+'coding-repair:parent',{taskId:'f20-owner',operationId:'f20-trial'});
+  const input=host.resolveF20Case('typescript-case',{...context,taskId:'f20-owner'});
+  const sha=value=>createHash('sha256').update(value).digest('hex');
+  const sourceDigest=sha(JSON.stringify({sourceVersion:input.sourceVersion,schemaFile:input.schemaFile,codeFile:input.codeFile,
+    schemaSha256:sha(sources['contract.ts']),codeSha256:sha(sources['api.ts'])}));
+  f20={ownerTaskId:'f20-owner',input,inputRef:'typescript-case',sourceDigest,samplePath:'api.ts.f20-sample.ts',sourceReads:['contract.ts','api.ts'].map(file=>({confirmed:{result:{path:file,content:sources[file]}}}))};
+  trialInvocation={taskId:context.taskId,runId:context.runId,toolName:'coding.repair.trial',toolVersion:'1.0.0',arguments:{},argumentsDigest:context.argumentsDigest,deadline:context.deadline};
+  checkpoints.set('f20-owner'+'coding-repair:host:f20-trial',{localTaskId:context.taskId,request:{toolName:'workspace.run_allowed_command'},mappedRequest:{commandId:'f20-trial',toolName:'coding.repair.trial',toolVersion:'1.0.0',arguments:{},deadline:context.deadline}});
+  host.prepareAuthorization(context);question.allow(context);
+  const scope={ownerTaskId:'f20-owner',actualTaskId:context.taskId,parentTaskId:'f20-owner',scopeRef:context.runId,
+    configurationRef:sourceDigest,inputDigest:sourceDigest,deadline:context.deadline,workspaceRef:host.readDeveloperConfiguration().bindingId};
+  const bound=await host.readHarnessCandidateContext(context,scope);assert.ok(bound);
+  assert.deepEqual(bound.recipes.map(recipe=>recipe.recipeId),['f20-typescript-sample']);
+  const started=await host.harnessRepairHost.start({mode:'isolated',allowedPaths:[f20.samplePath]},context);
+  const snippet="import type {Request} from './contract.js'; const sample:Request={name:'checked'};";
+  f20.candidate={version:1,docMarkdown:'Fixture documentation',sampleSnippet:snippet};
+  const checked=await host.harnessRepairHost.check(started.session.sessionId,[{path:f20.samplePath,expectedSha256:null,edits:[],createText:snippet}],['f20-typescript-sample'],context);
+  assert.equal(checked.verification[0].status,'VALID');assert.equal(checked.verification[0].exitCode,0);
+  assert.equal(checked.snapshot.files.find(file=>file.path===f20.samplePath).sha256,sha(snippet));
+  await assert.rejects(readFile(path.join(root,f20.samplePath)),{code:'ENOENT'});
+  await assert.rejects(host.harnessRepairHost.publish({},context),{code:'UNAUTHORIZED'});
+  origin={f20,session:started,request:{trialRunId:context.runId}};
+  const recovery={session:started,trialRunId:context.runId,expectedRevision:1,deadline:context.deadline,signal:context.signal,assertCurrent(){}};
+  assert.equal((await host.reconcileHarnessOriginalSession(recovery)).state,'unknown','journal VALID does not prove native termination');
+  host.close();host=open(options);host.bindApplication(application);
+  stopState='stopped';
+  assert.equal((await host.reconcileHarnessOriginalSession(recovery)).state,'clear');
+  assert.equal((await host.reconcileHarnessOriginalSession(recovery)).state,'clear');
+  assert.equal(executions,1,'fresh host recovery never re-compiles or executes the sample');
+  await assert.rejects(host.reconcileHarnessOriginalSession({...recovery,session:{...started,session:{...started.session,sessionId:randomUUID()}}}),{code:'REVISION_CONFLICT'});
+  await writeFile(path.join(root,'contract.ts'),'export interface Request {changed:boolean;}');
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined,'a changed original contract invalidates the trial context');
+});
+
+test('F20 source export consumes the original explicit question and rejects substitution, drift and revocation',async t=>{
+  const {root,node,open}=await workspaceBindingFixture(t);
+  await writeFile(path.join(root,'contract.ts'),'export interface Request {name:string;}');await writeFile(path.join(root,'api.ts'),'export const value=1;');await writeFile(path.join(root,'api.md'),'# API\n');
+  const question=workspaceQuestions(),app=workspaceRuntime();let binding;const readbacks=new Map();const invocations=new Map();
+  app.readF20WorkflowBinding=()=>binding;app.readHostToolTask=id=>readbacks.get(id);
+  app.readAuthorizationQuestionInvocation=(taskId,runId)=>invocations.get(taskId+':'+runId);
+  const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined,createWorkspaceCommandTool});host.bindApplication(app);
+  host.setF20CaseFromNativeSelection({inputRef:'f20-case',schemaFile:'contract.ts',codeFile:'api.ts',recipeId:'f20-typescript-sample',docTemplate:'fixed template',targetDoc:'api.md'});
+  const tool=host.tools.find(item=>item.descriptor.name==='workspace.read_text');
+  const scope=workspaceOperation(tool,{path:'contract.ts'},'f20-source-child');
+  scope.runId='host-tool-'+scope.taskId;
+  const apiScope=workspaceOperation(tool,{path:'api.ts'},'f20-api-child');
+  apiScope.runId='host-tool-'+apiScope.taskId;apiScope.deadline=scope.deadline;
+  const preflightScope=workspaceOperation(tool,{path:'contract.ts'},'f20-preflight-child');
+  preflightScope.runId='host-tool-'+preflightScope.taskId;preflightScope.deadline=scope.deadline;
+  const parent={taskId:'f20-owner',deadline:scope.deadline,signal:scope.signal};
+  binding={input:host.resolveF20Case('f20-case',parent),inputRef:'f20-case',sourceReads:[],sourceDigest:'a'.repeat(64)};
+  app.runtime.saveCheckpoint(scope.taskId,'coding-repair:parent',{taskId:parent.taskId,operationId:'original-source'});
+  app.runtime.saveCheckpoint(parent.taskId,'coding-repair:host:original-source',{localTaskId:scope.taskId,request:{...scope.proposal,commandId:'original-source',deadline:scope.deadline}});
+  invocations.set(scope.taskId+':'+scope.runId,scope.proposal);
+  app.runtime.saveCheckpoint(apiScope.taskId,'coding-repair:parent',{taskId:parent.taskId,operationId:'original-api'});
+  app.runtime.saveCheckpoint(parent.taskId,'coding-repair:host:original-api',{localTaskId:apiScope.taskId,request:{...apiScope.proposal,commandId:'original-api',deadline:apiScope.deadline}});
+  invocations.set(apiScope.taskId+':'+apiScope.runId,apiScope.proposal);
+  app.runtime.saveCheckpoint(preflightScope.taskId,'coding-repair:parent',{taskId:parent.taskId,operationId:'f20-source-initial'});
+  app.runtime.saveCheckpoint(parent.taskId,'coding-repair:host:f20-source-initial',{localTaskId:preflightScope.taskId,request:{...preflightScope.proposal,commandId:'f20-source-initial',deadline:preflightScope.deadline}});
+  invocations.set(preflightScope.taskId+':'+preflightScope.runId,preflightScope.proposal);
+  host.prepareAuthorization(scope);
+  await assert.rejects(tool.execute(scope.proposal.arguments,scope));question.allow(scope);
+  const result=await tool.execute(scope.proposal.arguments,scope);
+  host.prepareAuthorization(apiScope);question.allow(apiScope);
+  const apiResult=await tool.execute(apiScope.proposal.arguments,apiScope);
+  host.prepareAuthorization(preflightScope);question.allow(preflightScope);
+  await tool.execute(preflightScope.proposal.arguments,preflightScope);
+  const contractReadback={task:{taskId:scope.taskId,state:'succeeded'},toolName:'workspace.read_text',commandId:'original-source',confirmed:{result,evidenceRefs:[scope.runId]}};
+  const apiReadback={task:{taskId:apiScope.taskId,state:'succeeded'},toolName:'workspace.read_text',commandId:'original-api',confirmed:{result:apiResult,evidenceRefs:[apiScope.runId]}};
+  const preflightReadback={task:{taskId:preflightScope.taskId,state:'succeeded'},toolName:'workspace.read_text',commandId:'f20-source-initial',confirmed:{result,evidenceRefs:[preflightScope.runId]}};
+  readbacks.set(scope.taskId,contractReadback);readbacks.set(apiScope.taskId,apiReadback);readbacks.set(preflightScope.taskId,preflightReadback);
+  binding.sourceReads=[contractReadback,apiReadback];
+  const expectedExport={...result,originalSources:[result,apiResult]};
+  const request={...parent,inputRef:'f20-case',stage:'receipt',localTaskId:scope.taskId,operationId:'original-source',value:expectedExport};
+  assert.equal(await host.authorizeF20Export(request),true);
+  assert.equal(await host.authorizeF20Export({...request,value:{...expectedExport,content:'substituted'}}),false);
+  assert.equal(await host.authorizeF20Export({...parent,inputRef:'f20-case',stage:'initial',localTaskId:preflightScope.taskId,operationId:'f20-source-initial',value:binding.input}),true);
+  const baseline=(await captureCodingRepairSnapshot(root)).snapshot;
+  const checkTaskId='f20-check-task',checkRunId='f20-check-run';
+  const intent={sourceDigest:binding.sourceDigest,candidateId:'cand-1'};
+  const intentHash=createHash('sha256').update(JSON.stringify(intent)).digest('hex');
+  app.runtime.saveCheckpoint(checkTaskId,'f20-native-command:v1:'+checkRunId,intent);
+  app.runtime.saveCheckpoint(checkTaskId,'native-sandbox-execution:'+checkRunId,[{originalBindingDigest:intentHash,runId:checkRunId,backend:'windows-psec',enforced:true,executionStarted:true,stopped:true,exitCode:0}]);
+  const completionRequest={...parent,input:binding.input,sourceReads:binding.sourceReads,candidateId:'cand-1',check:{task:{taskId:checkTaskId},confirmed:{runId:checkRunId}}};
+  assert.equal(await host.assertF20CompletionSources(completionRequest,baseline),true);
+  await writeFile(path.join(root,'contract.ts'),'changed');await assert.rejects(host.assertF20CompletionSources(completionRequest,baseline),{code:'REVISION_CONFLICT'});
+  await assert.rejects(host.authorizeF20Export(request),{code:'REVISION_CONFLICT'});
+  await writeFile(path.join(root,'contract.ts'),result.content);host.revoke();await assert.rejects(host.authorizeF20Export(request));
+});
 
 test('developer configuration is Main-only, preserves the original task lease and never grants metadata export',async t=>{
   const {root,open}=await workspaceBindingFixture(t),host=open(),checkpoints=new Map();

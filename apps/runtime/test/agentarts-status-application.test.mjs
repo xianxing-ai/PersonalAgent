@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {syntheticPublicPayloadGate,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {test} from 'node:test';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
@@ -20,7 +21,7 @@ function fixture(database,{respond=(frame,socket)=>socket.receive(status(frame))
   invokeRespond=(frame,socket)=>{socket.accepted(frame);socket.disconnect();},overrides={}}={}) {
   let invokes=0,statuses=0,fetches=0,executions=0;
   const sockets=[];
-  const app=createAgentArtsRuntimeApplication({...target,path:database,
+  const app=createAgentArtsRuntimeApplication({...target,path:database,preparePayload:syntheticPublicPayloadGate,
     authorizationProvider:{read:async()=>'Bearer synthetic-outer'},
     websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'},
     websocketFactory:()=>{
@@ -85,10 +86,10 @@ function progressiveFixture(database, {actions=7,maxSteps,unknownFinal=false}={}
       const ordinal=snapshots.length;
       snapshots.push(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'));
       socket.accepted(frame);
-      if(ordinal<actions)socket.result(frame,JSON.stringify({kind:'tool_proposal',proposalId:`progressive-read-${ordinal}`,
+      if(ordinal<actions)socket.result(frame,syntheticAgentArtsResult(frame.payload,{kind:'tool_proposal',proposalId:`progressive-read-${ordinal}`,
         toolName:name,toolVersion:'1.0.0',arguments:{sequence:ordinal}}));
       else if(unknownFinal)socket.disconnect();
-      else socket.result(frame,JSON.stringify({kind:'text',text:'Synthetic progressive WSS read sequence complete'}));
+      else socket.result(frame,syntheticAgentArtsResult(frame.payload,{kind:'text',text:'Synthetic progressive WSS read sequence complete'}));
     }});
   return {...h,get app(){return h.app;},get invokes(){return h.invokes;},get fetches(){return h.fetches;},snapshots,effects,overrides};
 }
@@ -278,7 +279,7 @@ test('initial catalog and confirmed continuation snapshots survive reopen withou
     const taskId=h.app.runtime.listTasks({}).items[0].taskId;
     snapshots.push(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'));
     socket.accepted(frame);
-    if(snapshots.length===1)socket.result(frame,JSON.stringify(proposal));else socket.disconnect();
+      if(snapshots.length===1)socket.result(frame,syntheticAgentArtsResult(frame.payload,proposal));else socket.disconnect();
   }});
   let taskId;
   try {
@@ -351,12 +352,13 @@ test('unknown status and cancelled/expired lookups retain the original hold with
 test('an original accepted status result completes the same Runtime handoff with one tool run and no invoke replay',async t=>{
   t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
   let invokes=0,statuses=0,executions=0,egressChecks=0,outerReads=0,innerReads=0;
+  let originalPayload;
   const queries=[],received=[];
   const descriptor={name:'fixture.recovered-read',version:'1.0.0',sideEffect:'read',requiredScopes:['fixture:read'],
     idempotencySupport:true,recoverySupport:true,requiresPresence:false,
     inputSchema:{type:'object',properties:{},additionalProperties:false},
     outputSchema:{type:'object',properties:{value:{type:'integer'},localOnly:{type:'string'}},required:['value','localOnly'],additionalProperties:false}};
-  const app=createAgentArtsRuntimeApplication({...target,path:':memory:',recoverAcceptedStatus:true,
+  const app=createAgentArtsRuntimeApplication({...target,path:':memory:',recoverAcceptedStatus:true,preparePayload:syntheticPublicPayloadGate,
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',continuationContext:'goal',retainPriorToolResults:true,
     beforeCompetitionSend:()=>{egressChecks++;},
     authorizationProvider:{read:async()=>{outerReads++;return 'Bearer synthetic-outer';}},
@@ -364,12 +366,13 @@ test('an original accepted status result completes the same Runtime handoff with
     websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
       if(frame.type==='status') {
         statuses++;
-        socket.receive({...identity(frame),type:'status',state:'completed',events:events(JSON.stringify({kind:'tool_proposal',
+        socket.receive({...identity(frame),type:'status',state:'completed',events:events(syntheticAgentArtsResult(originalPayload,{kind:'tool_proposal',
           proposalId:'original-recovered-proposal',toolName:descriptor.name,toolVersion:descriptor.version,arguments:{}}))});
       }else if(frame.type==='invoke') {
-        invokes++;queries.push(frame.payload.query);socket.accepted(frame);
+      invokes++;queries.push(syntheticAgentArtsQuery(frame.payload));socket.accepted(frame);
+        if(invokes===1)originalPayload=frame.payload;
         // Only the first terminal frame is omitted; the status read recovers it.
-        if(invokes===2)socket.result(frame,JSON.stringify({kind:'text',text:'Synthetic original task completed'}));
+      if(invokes===2)socket.result(frame,syntheticAgentArtsResult(frame.payload,{kind:'text',text:'Synthetic original task completed'}));
       }else assert.fail('No other invocation, cancellation or write is expected');
     }),fetchImpl:async()=>assert.fail('No HTTPS fallback or model retry'),
     tools:[{descriptor,execute:async()=>{executions++;return {value:7,localOnly:'PRIVATE_ORIGINAL_RECOVERY_RESULT'};}}],
@@ -393,7 +396,7 @@ test('an original accepted status result completes the same Runtime handoff with
     for(let count=0;count<200&&app.activeTaskCount;count++)await new Promise(resolve=>setImmediate(resolve));
     const task=app.runtime.getTask(taskId);assert.equal(task.state,'succeeded',JSON.stringify(task.error));
     assert.equal(invokes,2,'Each original exchange is sent once; status is never a third invoke');
-    assert.equal(statuses,1);assert.equal(executions,1);assert.equal(egressChecks,2);
+    assert.equal(statuses,1);assert.equal(executions,1);assert.equal(egressChecks,4,'Payload currency and final send are checked for both original exchanges');
     assert.equal(outerReads,3);assert.equal(innerReads,3,'The status read obtains current host credentials');
     assert.equal(received.length,2);assert.equal(new Set(received.map(value=>value.requestId)).size,2);
     const [record]=app.runtime.readToolExecutions(taskId);assert.equal(record.state,'confirmed');
