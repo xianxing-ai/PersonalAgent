@@ -1,7 +1,8 @@
 import {ProtocolError} from '@personal-agent/contracts';
-import {CalDavProvider, CalendarService} from '@personal-agent/calendar';
+import {CalendarService} from '@personal-agent/calendar';
 import {MailService, QQMailProvider, decodeMailCursor} from '@personal-agent/mail';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
+import {isSupportedCalendarBinding, resolveCalendarProvider} from './calendar-provider-factory.js';
 
 const DEFAULT_CALENDAR_DAYS = 7;
 const DEFAULT_MAIL_LIMIT = 20;
@@ -66,7 +67,8 @@ export function createDesktopBusinessSourceAdapters({
   getCalendarConfig = () => undefined,
   getMailConfig = () => undefined,
   getFeedsHost = () => undefined,
-  createCalendarProvider = options => new CalDavProvider(options),
+  createCalendarProvider,
+  createWindowsCalendarProvider,
   createMailProvider = options => new QQMailProvider(options),
   now = Date.now,
 } = {}) {
@@ -97,7 +99,7 @@ export function createDesktopBusinessSourceAdapters({
     assertPolicyGranted(getApplication, 'calendar.events', ['calendar:read'], input, context, now);
     const calendarConfig = getCalendarConfig?.();
     const binding = calendarConfig?.binding?.();
-    if (!binding || binding.providerKind !== 'caldav') {
+    if (!isSupportedCalendarBinding(binding)) {
       fail('UNSUPPORTED_CAPABILITY', '日历配置未绑定或已撤销');
     }
     const calendarScope = {...context, kind: 'calendar', toolName: 'calendar.events', requirementId: 'calendar-local-read'};
@@ -105,11 +107,11 @@ export function createDesktopBusinessSourceAdapters({
       fail('UNAUTHORIZED', '日历本会话读取许可未授予或已撤销');
     }
     const authorization = await calendarConfig.readAuthorization(binding);
-    const provider = createCalendarProvider({
-      calendarUrl: binding.calendarUrl,
-      calendarName: binding.calendarName,
+    const provider = resolveCalendarProvider({
+      binding,
       authorization,
-      allowLoopbackHttp: true,
+      createCalendarProvider,
+      createWindowsCalendarProvider,
       now,
     });
     const service = new CalendarService(provider, {now});

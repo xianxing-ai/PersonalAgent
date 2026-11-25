@@ -20,9 +20,13 @@ function collectionUrl(value) {
   return url.href;
 }
 function validSaved(value) {
-  if (!value || value.providerKind !== 'caldav' || !uuid(value.accountRef) || !uuid(value.secretRef)
+  if (!value || !uuid(value.accountRef) || !uuid(value.secretRef)
     || !Number.isSafeInteger(value.revision) || value.revision < 1
-    || !text(value.calendarName, 120) || !text(value.username, 256) || value.username.includes(':')
+    || !text(value.calendarName, 120)) return false;
+  if (value.providerKind === 'windows-system') {
+    return value.calendarUrl === undefined && value.username === undefined && value.password === undefined;
+  }
+  if (value.providerKind !== 'caldav' || !text(value.username, 256) || value.username.includes(':')
     || !text(value.password, 4096) || !value.username || !value.password) return false;
   try { return collectionUrl(value.calendarUrl) === value.calendarUrl; } catch { return false; }
 }
@@ -46,13 +50,13 @@ export function createCalendarConfig({userData, safeStorage, question}) {
   }
   const activeSession = () => Boolean(saved && sessionAllowed && boundRevision === saved.revision);
   const snapshot = () => ({configured: Boolean(saved), providerKind: saved?.providerKind ?? 'caldav',
-    calendarName: saved?.calendarName ?? '', hasCredentials: Boolean(saved?.password),
+    calendarName: saved?.calendarName ?? '', hasCredentials: saved?.providerKind === 'windows-system' ? true : Boolean(saved?.password),
     readAvailable: false, sessionAllowed: activeSession(), calendarWriteVerified: false,
     status: failure ? 'unavailable' : saved ? 'read_unavailable' : 'unconfigured',
     reason: failure || (activeSession()
       ? '已允许本会话只读汇总日历时段；不会修改日历或跨重启保留读取许可'
       : saved ? '配置已加密保存；日历读取能力尚未接入，本次未读取日历'
-      : '请配置一个 CalDAV 日历；保存配置不会读取日历或授予读取权限')});
+      : '请启用本机系统日历或配置一个 CalDAV 日历；保存配置不会读取日历或授予读取权限')});
   const requireBinding = binding => {
     if (!saved || !binding || binding.accountRef !== saved.accountRef
       || binding.secretRef !== saved.secretRef || binding.revision !== saved.revision
@@ -73,25 +77,47 @@ export function createCalendarConfig({userData, safeStorage, question}) {
       calendarName: saved.calendarName} : undefined,
     readAuthorization(binding) {
       requireBinding(binding);
+      if (saved.providerKind === 'windows-system') return 'windows-system:local';
       return `Basic ${Buffer.from(`${saved.username}:${saved.password}`, 'utf8').toString('base64')}`;
     },
     configure(input) {
       if (!input || typeof input !== 'object' || Array.isArray(input)
         || Object.keys(input).some(key => !['providerKind', 'calendarUrl', 'calendarName', 'username', 'password'].includes(key))
-        || input.providerKind !== 'caldav') throw Error('当前只支持配置 CalDAV 日历');
-      const calendarUrl = collectionUrl(input.calendarUrl);
-      const calendarName = input.calendarName ?? '';
-      const username = typeof input.username === 'string' ? input.username.trim() : '';
-      if (!text(calendarName, 120) || !text(username, 256) || username.includes(':')
-        || (input.username !== undefined && typeof input.username !== 'string')
-        || (input.password !== undefined && typeof input.password !== 'string')) throw Error('日历名称或账号格式无效');
-      const sameAccount = saved?.calendarUrl === calendarUrl && saved?.username === username;
-      const password = input.password || (sameAccount ? saved.password : '');
-      if (!text(password, 4096) || !username || !password) throw Error('请填写日历账号及应用密码');
+        || !['caldav', 'windows-system'].includes(input.providerKind)) {
+        throw Error('当前只支持配置系统本地日历或 CalDAV 日历');
+      }
       if (saved?.revision === Number.MAX_SAFE_INTEGER) throw Error('日历配置版本不可继续，请撤销后重新保存');
-      const value = {providerKind: 'caldav', calendarUrl, calendarName, username, password,
-        accountRef: sameAccount ? saved.accountRef : randomUUID(), secretRef: randomUUID(),
-        revision: (saved?.revision ?? 0) + 1};
+      let value;
+      if (input.providerKind === 'windows-system') {
+        const calendarName = typeof input.calendarName === 'string' && input.calendarName.trim()
+          ? input.calendarName.trim()
+          : 'Windows 系统日历';
+        if (input.calendarName !== undefined && typeof input.calendarName !== 'string') {
+          throw Error('日历名称格式无效');
+        }
+        if (!text(calendarName, 120)) throw Error('日历名称格式无效');
+        const sameSystemAccount = saved?.providerKind === 'windows-system';
+        value = {
+          providerKind: 'windows-system',
+          calendarName,
+          accountRef: sameSystemAccount ? saved.accountRef : randomUUID(),
+          secretRef: randomUUID(),
+          revision: (saved?.revision ?? 0) + 1,
+        };
+      } else {
+        const calendarUrl = collectionUrl(input.calendarUrl);
+        const calendarName = input.calendarName ?? '';
+        const username = typeof input.username === 'string' ? input.username.trim() : '';
+        if (!text(calendarName, 120) || !text(username, 256) || username.includes(':')
+          || (input.username !== undefined && typeof input.username !== 'string')
+          || (input.password !== undefined && typeof input.password !== 'string')) throw Error('日历名称或账号格式无效');
+        const sameAccount = saved?.providerKind === 'caldav' && saved?.calendarUrl === calendarUrl && saved?.username === username;
+        const password = input.password || (sameAccount ? saved.password : '');
+        if (!text(password, 4096) || !username || !password) throw Error('请填写日历账号及应用密码');
+        value = {providerKind: 'caldav', calendarUrl, calendarName, username, password,
+          accountRef: sameAccount ? saved.accountRef : randomUUID(), secretRef: randomUUID(),
+          revision: (saved?.revision ?? 0) + 1};
+      }
       rotateAuthorization();
       let temporary;
       try {

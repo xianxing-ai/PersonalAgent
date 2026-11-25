@@ -27,6 +27,39 @@ const {_electron}=require('playwright');
     console.log('picker: panel opened');
     const panel=app.windows().find(p=>p.url().includes('mode=panel'));await panel.locator('.model-thinking-trigger').waitFor();
     await panel.waitForFunction(async()=>Boolean((await window.desktop.invoke('snapshot')).value?.agentArtsModels?.catalog));
+    if(process.env.PA_CONTEXT_WINDOW_SMOKE==='1'){
+      await panel.waitForFunction(async()=> (await window.desktop.invoke('snapshot')).value?.agentArtsModels?.catalog?.revision==='a'.repeat(64));
+      const selected=await invoke(panel,'conversation.model',{modelId:'deepseek-v4.1-flash'});
+      assert.equal(selected.executionModel?.modelId,'deepseek-v4.1-flash');
+      const openingAdmin=app.waitForEvent('window');
+      await invoke(panel,'admin.open',{page:'models'});
+      const contextAdmin=await openingAdmin;
+      await contextAdmin.waitForLoadState();
+      for(let index=0;index<6;index++){
+        const text='context-window-fixture-'+index+' '+('public '.repeat(3300));
+        const count=(await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries.length));
+        await invoke(panel,'task.submit',{text});
+        const deadline=Date.now()+15_000;
+        while((await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries.length))===count&&Date.now()<deadline){
+          const pending=(await read(contextAdmin)).authorizationQuestions.find(item=>item.state==='pending'
+            &&item.toolName==='desktop.authorization.intent');
+          if(pending)await invoke(contextAdmin,'authorization.question.respond',
+            {questionId:pending.questionId,expectedRevision:pending.revision,decision:'allow_once'});
+          await new Promise(resolve=>setTimeout(resolve,50));
+        }
+        await panel.waitForFunction(async goal=>(await window.desktop.invoke('snapshot')).value
+          .tasks.some(task=>task.userMessage===goal&&task.state==='succeeded'),text);
+        await panel.waitForFunction(()=>document.querySelector('#send')?.disabled===false);
+        assert.ok((await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries.length))>count);
+      }
+    const observed=await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries
+      .map(query=>({keys:Object.keys(query),goal:typeof query.goal==='string'?query.goal:undefined})));
+    const lastGoal=observed.findLast(query=>query.goal?.includes('context-window-fixture-5'))?.goal;
+    assert.ok(lastGoal,JSON.stringify(observed.map(({keys})=>keys)));
+      assert.ok(lastGoal.length>128000&&lastGoal.length<=1000000);
+      console.log(JSON.stringify({assembledCharacters:lastGoal.length,utf8Bytes:Buffer.byteLength(lastGoal),tokens:'unmeasured'}));
+      return;
+    }
     assert.match(panel.url(),/mode=panel/);assert.match(await panel.title(),/PersonalAgent/);
     assert.equal((await read(panel)).connectionError,undefined,'Root Main has no connection error');
     assert.equal(await panel.locator('input[type=range]').count(),1);

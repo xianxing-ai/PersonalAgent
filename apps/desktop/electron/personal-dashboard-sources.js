@@ -1,5 +1,6 @@
-import {CalendarService, CalDavProvider} from '@personal-agent/calendar';
+import {CalendarService} from '@personal-agent/calendar';
 import {MailService, QQMailProvider, decodeMailCursor} from '@personal-agent/mail';
+import {resolveCalendarProvider} from './calendar-provider-factory.js';
 
 const disconnected = async () => ({connected: false});
 
@@ -10,7 +11,8 @@ export function createDesktopDashboardSources({
   calendarConfig,
   meetingSnapshot = () => undefined,
   mailConfig,
-  createCalendarProvider = options => new CalDavProvider(options),
+  createCalendarProvider,
+  createWindowsCalendarProvider,
   createMailProvider = options => new QQMailProvider(options),
   spendLedger = {isAuthorized: () => false, async list() { return []; }},
   budgetCap = {read: disconnected},
@@ -21,7 +23,7 @@ export function createDesktopDashboardSources({
   return {
     readTime: (window, signal) => readTime({
       isAuthorized: () => calendarAuthorized(calendarConfig, meetingSnapshot),
-      createService: () => createCalendarService(calendarConfig, createCalendarProvider, now),
+      createService: () => createCalendarService(calendarConfig, createCalendarProvider, createWindowsCalendarProvider, now),
       activity,
       now,
     }, window, signal),
@@ -139,15 +141,15 @@ function calendarAuthorized(config, meetingSnapshot) {
   return Boolean(meeting?.sessionAllowed === true);
 }
 
-function createCalendarService(config, createProvider, now) {
+function createCalendarService(config, createProvider, createWindowsProvider, now) {
   const binding = config.binding();
   const authorization = config.readAuthorization(binding);
-  const provider = createProvider({
-    calendarUrl: binding.calendarUrl,
+  const provider = resolveCalendarProvider({
+    binding,
     authorization,
-    allowLoopbackHttp: true,
+    createCalendarProvider: createProvider,
+    createWindowsCalendarProvider: createWindowsProvider,
     now,
-    ...(binding.calendarName ? {calendarName: binding.calendarName} : {}),
   });
   return {service: new CalendarService(provider, {now}), accountRef: binding.accountRef};
 }

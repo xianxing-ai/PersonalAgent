@@ -24,7 +24,7 @@
 
 新增 `readLocalSkillDirectory`、`openLocalSkillStore`、`localSkillInstructions` 受信宿主入口：标准 SKILL.md YAML 元数据校验、本机普通文件快照、内容 digest 和安装身份、默认停用、启停 generation、卸载及原子目录册持久化。YAML 复用 js-yaml 4.3.2（根锁文件既有版本，新增直接依赖）；固定参考摘要 worker 不变。
 
-安装范围是本机目录，不下载 GitHub/网络资源；拒绝符号链接、隐藏/敏感文件、逃逸、重名大小写冲突和超限资源。每包最多 1 MiB/128 文件/8 层，SKILL.md 最多 16384 字符，最多 16 个安装项。name 遵循标准并匹配父目录；description 必填，metadata.version 可选且须为字符串，否则使用内容 digest 前缀。同名同内容重复安装幂等；不同内容先卸载，不能静默覆盖。源修改不会改变已安装快照。
+安装范围是本机目录，不下载 GitHub/网络资源；拒绝符号链接、隐藏/敏感文件、逃逸、重名大小写冲突和超限资源。每包最多 128 个文件、8 层目录，单文件最多 256 KiB；安装存储总共最多 24 MiB，SKILL.md 最多 16384 字符，最多 16 个安装项。name 遵循标准并匹配父目录；description 必填，metadata.version 可选且须为字符串，否则使用内容 digest 前缀。同名同内容重复安装幂等；不同内容先卸载，不能静默覆盖。源修改不会改变已安装快照。
 
 Desktop “插件 → 本机 Skills”提供安装、查看、启停、使用、卸载。通用 Skill 使用完整 SKILL.md 作为不可信任务参考，接入既有 Competition 任务；不是将 Markdown 转为任意可执行脚本。用户每次原生确认发送完整说明与本次任务后才可出机，工具仍受已有注册、Policy 和 ToolGateway 限制。allowed-tools 不授权；scripts/references/assets 保存为安装快照，但本轮只发送 SKILL.md，不自动加载资源或执行脚本。依赖这些资源/脚本的 Skill 不能据此宣称完整可执行。
 

@@ -7,7 +7,7 @@ import path from 'node:path';
 import {Client} from '@personal-agent/client';
 import {openLocalSkillStore,readLocalSkillDirectory} from '@personal-agent/skills';
 import {createAgentArtsRuntimeApplication,compileCoordinationGoal} from '../../runtime/dist/application.js';
-import {createInstalledSkillsHost} from '../electron/installed-skills-host.js';
+import {checkInstalledSkillInput,createInstalledSkillsHost} from '../electron/installed-skills-host.js';
 import {submitConversationTask} from '../electron/runtime.js';
 import {installedSkillRowsHtml} from '../src/app/installed-skills-controls.js';
 
@@ -26,14 +26,14 @@ function fixture(instructions='Use three bullet points.',hooks={}) {
     coordinationInput:{prepareCoordinationGoal:async scope=>{host.prepareTask(scope);return hooks.prepare?.(scope)??scope.publicGoal;},
       readConversationContext:async scope=>host.filterContext(app.readConversationContext({...scope,historyMessages})),
       releaseTask:taskId=>hooks.release?.(taskId),
-      beforeCoordinationSend:request=>host.assertTask(request.taskId)},
+      beforeCoordinationSend:request=>host.assertTask(request.taskId,request.goal)},
     fetchImpl:async(_url,init)=>{requests.push(JSON.parse(init.body));
       if(fetchReply)return fetchReply(init);
       return new Response(JSON.stringify({event:'message',data:{text:'Synthetic outline reply',index:0}}),{headers:{'content-type':'application/json'}});
     }}));
   const make=()=>createInstalledSkillsHost({store,runtime:app.runtime,selectDirectory:async()=>source,
-    validateRunInput:async publicGoal=>compileCoordinationGoal(publicGoal,publicGoal,host.filterContext(app.readConversationContext({
-      conversationId:'desktop-workspace',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,historyMessages}))),
+    validateRunInput:async publicGoal=>checkInstalledSkillInput(compileCoordinationGoal(publicGoal,publicGoal,host.filterContext(app.readConversationContext({
+      conversationId:'desktop-workspace',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,historyMessages})))),
     readParentTaskId:taskId=>app.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
     confirm:async input=>{confirmations.push(input);await confirmHook(input);return confirmAllowed;}});
   host=make();

@@ -9,6 +9,7 @@ import * as mailModule from '@personal-agent/mail';
 import * as calendarModule from '@personal-agent/calendar';
 import {attachExactExports} from './developer-deployment-config.js';
 import {connectorResultProjectionSchema} from './connector-result-projection.js';
+import {resolveCalendarProvider} from './calendar-provider-factory.js';
 
 const MAIL_ACCOUNT='desktop-qq-inbox';
 const MAIL_TOOLS=new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send','mail.send','mail.archive','mail.reconcile_archive']);
@@ -19,7 +20,7 @@ const denied=()=>{throw new ProtocolError('UNAUTHORIZED','连接器配置或本�
 /** Main-only adapters. Local inbox consent is not reused for writes or cloud export. */
 export function createConnectorConversationTools({mail,calendar,localInbox,getApplication,resolveConversation,confirmExport,question,onReadTask,
   createMailProvider=options=>new mailModule.QQMailProvider(options),
-  createCalendarProvider=options=>new calendarModule.CalDavProvider(options),now=Date.now}={}) {
+  createCalendarProvider,createWindowsCalendarProvider,now=Date.now}={}) {
   const execution=new AsyncLocalStorage(),bindings=new Map(),prepared=new Map(),providers=new Map(),controllers=new Map(),secrets=new Set(),tools=[],disposers=[];
   let closed=false;
   const family=name=>name.startsWith('mail.')?'mail':'calendar';
@@ -85,7 +86,8 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       &&pending?.toolName===proposal.toolName&&pending.toolVersion===proposal.toolVersion
       &&pending.deadline===scope.deadline&&isDeepStrictEqual(pending.arguments,proposal.arguments);
   };
-  const proxy=kind=>new Proxy({providerKind:kind==='mail'?'qq':'caldav',verification:'conditional'}, {get(target,key){
+  const proxy=kind=>new Proxy({verification:'conditional'}, {get(target,key){
+    if(key==='providerKind')return kind==='mail'?'qq':(configuration('calendar')?.providerKind??(process.platform==='win32'?'windows-system':'caldav'));
     if(key in target)return target[key];
     if(kind==='calendar'&&key==='writes')return Object.freeze(Object.fromEntries(
       ['createEvent','updateEvent','cancelEvent'].map(method=>[method,(...args)=>{
@@ -148,11 +150,19 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
             secrets.add(binding.authCode);provider=createMailProvider({user:binding.user,authCode:binding.authCode});
           }else{
             const authorization=await calendar.readAuthorization(binding);assertCurrent(activeContext);
-            secrets.add(authorization);
-            if(authorization.startsWith('Basic '))secrets.add(Buffer.from(authorization.slice(6),'base64').toString('utf8').split(':').slice(1).join(':'));
-            provider=createCalendarProvider({calendarUrl:binding.calendarUrl,calendarName:binding.calendarName,authorization,allowLoopbackHttp:true,
+            if(binding.providerKind!=='windows-system'){
+              secrets.add(authorization);
+              if(authorization.startsWith('Basic '))secrets.add(Buffer.from(authorization.slice(6),'base64').toString('utf8').split(':').slice(1).join(':'));
+            }
+            provider=resolveCalendarProvider({
+              binding,
+              authorization,
+              createCalendarProvider,
+              createWindowsCalendarProvider,
               fetchImpl:(url,init)=>{const active=execution.getStore();if(!active)denied();assertCurrent(active);
-                return fetch(url,{...init,signal:AbortSignal.any([init.signal,active.signal].filter(Boolean))});}});
+                return fetch(url,{...init,signal:AbortSignal.any([init.signal,active.signal].filter(Boolean))});},
+              now,
+            });
           }
           providers.set(controller,{kind,provider,dispose});assertCurrent(activeContext);
         }
