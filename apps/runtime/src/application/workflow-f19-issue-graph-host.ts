@@ -1,0 +1,221 @@
+import {isDeepStrictEqual} from 'node:util';
+import {createHash} from 'node:crypto';
+import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
+import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
+import type {RuntimeApplication} from './runtime-application.js';
+import {readWorkflowBusinessToolSource} from './workflow-business-tool-bridge.js';
+import {readRuntimeCodingRepairDispatchChild} from './coding-repair-dispatch-source.js';
+import {assertOwnedWorkflowHostScope,failOwnedHost,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
+
+type Scope=OwnedWorkflowHostScope;
+type OriginalRead={taskId:string;runId:string;toolVersion:string;scopeRef:string;arguments:Record<string,unknown>};
+const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
+const text=(v:unknown,max=512):v is string=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
+const repo=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(v);
+
+type HostBundle={tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null};
+
+function basePorts(options?:{application?:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;requiredScopes?:readonly string[];
+  assertCurrent?:(scope:Scope,context:ToolContext)=>void;authorizeExport?:(scope:Scope,result:unknown)=>Promise<boolean>;now?:()=>Date}) {
+  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'||!Array.isArray(options.requiredScopes)
+    ||!options.requiredScopes.length||!options.requiredScopes.every(v=>text(v,256))||typeof options.assertCurrent!=='function'
+    ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')return undefined;
+  return {runtime:options.application.runtime,readHostToolTask:options.application.readHostToolTask.bind(options.application),
+    requiredScopes:[...options.requiredScopes],assertCurrent:options.assertCurrent,authorizeExport:options.authorizeExport,now:options.now};
+}
+
+function cacheOriginal(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>,scope:Scope,binding:OriginalRead,toolName:string):unknown {
+  const {runtime}=application;
+  const proof=readWorkflowBusinessToolSource(application,scope,binding,toolName);
+  if(proof.graph.workflowId!=='F19'||proof.sourceHost.taskId!==scope.localTaskId||proof.graph.operationId!==scope.operationId)
+    failOwnedHost('UNAUTHORIZED','F19 original business source belongs to another host');
+  if(!object(binding)||!text(binding.taskId)||!text(binding.runId)||!text(binding.toolVersion)||!text(binding.scopeRef)||!object(binding.arguments))
+    failOwnedHost('UNSUPPORTED_CAPABILITY','F19 original read binding unavailable');
+  let record:ReturnType<typeof runtime.readToolExecutions>[number]|undefined,saved:unknown;
+  try {
+    const task=runtime.getTask(binding.taskId);
+    if(!task.evidenceRefs.includes(binding.runId))failOwnedHost('UNAUTHORIZED','F19 original evidence unavailable');
+    record=runtime.readToolExecutions(binding.taskId).find(item=>item.evidenceId===binding.runId);
+    saved=runtime.loadCheckpoint(binding.taskId,'tool-result-'+binding.runId);
+  }catch{return failOwnedHost('UNAUTHORIZED','F19 original evidence unavailable');}
+  if(!record||record.taskId!==binding.taskId||record.toolName!==toolName||record.toolVersion!==binding.toolVersion
+    ||record.policyDecision!=='allow'||!record.executionStarted||record.state!=='confirmed'
+    ||!runtime.matchesToolExecutionInput(record,{arguments:binding.arguments,scopeRef:binding.scopeRef})
+    ||!object(saved)||!Object.hasOwn(saved,'result'))failOwnedHost('UNAUTHORIZED','F19 original issue read unavailable');
+  return saved.result;
+}
+
+export function createRuntimeF19IssueSnapshotHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
+  requiredScopes:readonly string[];
+  now:()=>Date;
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  resolveIssueSnapshot:(scope:Scope,context:ToolContext)=>Promise<{repo:string;snapshotRead:OriginalRead}|undefined>;
+  authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;
+}):HostBundle {
+  const ports=basePorts(options as Parameters<typeof basePorts>[0]);
+  if(!ports||typeof options?.resolveIssueSnapshot!=='function')return {tools:[],unavailable:'f19_issue_snapshot_trusted_ports_unavailable'};
+  const {runtime,requiredScopes}=ports;
+  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F19',nodeId:'F19_N01',
+    hostToolName:'workflow.host.f19_n01',assertCurrent:ports.assertCurrent,now:ports.now});
+  const read=async(context:ToolContext)=>{
+    const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveIssueSnapshot']>>;
+    binding=await options.resolveIssueSnapshot(scope,context);
+    active(context);
+    if(!binding||!repo(binding.repo))failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue snapshot unavailable');
+    const args=binding.snapshotRead?.arguments;
+    if(!object(args)||args.repo!==binding.repo)failOwnedHost('UNAUTHORIZED','F19 issue snapshot identity changed');
+    const snapshot=cacheOriginal(options.application,scope,binding.snapshotRead,'github.issue_snapshot');
+    if(!object(snapshot)||snapshot.count!==1||snapshot.issueId!==args.issueId||snapshot.updatedAt!==args.expectedUpdatedAt
+      ||!text(snapshot.title,1024)||typeof snapshot.body!=='string'||snapshot.body.length>32768)
+      failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue snapshot evidence unavailable');
+    const issue={repo:binding.repo,issueId:snapshot.issueId,updatedAt:snapshot.updatedAt,title:snapshot.title,body:snapshot.body};
+    return {count:1,...issue,snapshotDigest:createHash('sha256').update(JSON.stringify(issue)).digest('hex')};
+  };
+  const tool=createOwnedWorkflowAdapter({nodeId:'F19_N01',kind:'host',sideEffect:'read',requiredScopes,
+    inputSchema:{type:'object',additionalProperties:false,properties:{}},
+    outputSchema:{type:'object',additionalProperties:false,required:['count','repo','issueId','updatedAt','title','body','snapshotDigest'],properties:{
+      count:{const:1},repo:{type:'string'},issueId:{type:'integer',minimum:1},updatedAt:{type:'string'},title:{type:'string'},body:{type:'string'},
+      snapshotDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}}},
+    async execute(_input,context){const result=await read(context);active(context);
+      if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F19 issue snapshot export denied');
+      return result;}});
+  return {tools:[tool],unavailable:null};
+}
+
+export function createRuntimeF19EnqueueRepairHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
+  requiredScopes:readonly string[];
+  now:()=>Date;
+  publishesPullRequest?:true;
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  resolveEnqueue:(scope:Scope,context:ToolContext)=>Promise<{issueId:number;dispatchRead:OriginalRead}>;
+  authorizeExport:(scope:Scope,result:{repairTaskId:string;issueId:number})=>Promise<boolean>;
+}):HostBundle {
+  const ports=basePorts(options as Parameters<typeof basePorts>[0]);
+  if(!ports||typeof options?.resolveEnqueue!=='function')
+    return {tools:[],unavailable:'f19_enqueue_repair_trusted_ports_unavailable'};
+  const {runtime,requiredScopes}=ports;
+  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F19',nodeId:'F19_N03',
+    hostToolName:'workflow.host.f19_n03',assertCurrent:ports.assertCurrent,now:ports.now});
+  const read=async(context:ToolContext)=>{
+    const scope=active(context),binding=await options.resolveEnqueue(scope,context);active(context);
+    if(!binding||!Number.isSafeInteger(binding.issueId)||binding.issueId<=0)
+      failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue repair enqueue unavailable');
+    cacheOriginal(options.application,scope,binding.dispatchRead,'coding.repair.workflow');
+    const child=readRuntimeCodingRepairDispatchChild(options.application,binding.dispatchRead);
+    return {repairTaskId:child.taskId,issueId:binding.issueId};
+  };
+  const tool=createOwnedWorkflowAdapter({nodeId:'F19_N03',kind:'host',sideEffect:options.publishesPullRequest?'external_write':'local_write',requiredScopes,
+    inputSchema:{type:'object',additionalProperties:false,properties:{}},
+    outputSchema:{type:'object',additionalProperties:false,required:['repairTaskId','issueId'],
+      properties:{repairTaskId:{type:'string'},issueId:{type:'integer',minimum:1}}},
+    async execute(_input,context){const result=await read(context);active(context);
+      if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F19 enqueue export denied');
+      active(context);if(!isDeepStrictEqual(result,await read(context)))failOwnedHost('REVISION_CONFLICT','F19 enqueue changed during export');
+      return result;}});
+  return {tools:[tool],unavailable:null};
+}
+
+export type F19NativeRegressionBinding={repo:string;issueId:number;mergeRead:OriginalRead;
+  regressionRead:OriginalRead;source:Record<string,unknown>};
+/** Read-only original evidence proof, also consumed before the independently approved Issue close. */
+export function readRuntimeF19NativeRegression(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>,
+  scope:Scope,binding:F19NativeRegressionBinding|undefined):{verified:true;issueId:number} {
+    const {runtime}=application;
+    if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.issueId)||binding.issueId<=0)
+      failOwnedHost('UNSUPPORTED_CAPABILITY','F19 merged repair readback unavailable');
+    const args=binding.mergeRead?.arguments,source=binding.source;
+    if(!object(args)||args.repo!==binding.repo||!object(source)||source.repo!==binding.repo||source.issueId!==binding.issueId
+      ||source.parentTaskId!==scope.parentTaskId||source.sessionId!==scope.sessionId||source.hostTaskId!==scope.localTaskId
+      ||source.prNumber!==args.prNumber||source.headSha!==args.headSha)
+      failOwnedHost('UNAUTHORIZED','F19 merged readback identity changed');
+    const merge=cacheOriginal(application,scope,binding.mergeRead,'github.merged_pr_readback');
+    if(!object(merge)||merge.merged!==true||merge.headSha!==args.headSha||merge.mergedSha!==source.mergedSha)
+      failOwnedHost('UNSUPPORTED_CAPABILITY','Original F19 PR is not confirmed merged');
+    const result=cacheOriginal(application,scope,binding.regressionRead,'workspace.f19_regression_command');
+    const original=runtime.loadCheckpoint(binding.regressionRead.taskId,'f19-native-command:v1:'+binding.regressionRead.runId);
+    const results=runtime.loadCheckpoint(binding.regressionRead.taskId,'native-sandbox-execution:'+binding.regressionRead.runId);
+    const invocation=runtime.loadCheckpoint(binding.regressionRead.taskId,'application-tool-invocation:'+binding.regressionRead.runId);
+    if(!object(result)||result.exitCode!==0||result.recipeId!==source.recipeId||!object(original)||original.version!==1
+      ||original.taskId!==binding.regressionRead.taskId||original.runId!==binding.regressionRead.runId
+      ||!object(invocation)||original.argumentsDigest!==invocation.argumentsDigest||!isDeepStrictEqual(original.source,source)
+      ||source.taskId!==original.taskId||source.runId!==original.runId||source.argumentsDigest!==original.argumentsDigest
+      ||original.root!==source.root||!object(original.profile)||original.profile.mode!=='read-only'
+      ||original.profile.backend!=='windows-psec'||!object(original.profile.network)||original.profile.network.mode!=='deny'
+      ||!Array.isArray(original.profile.writeRoots)||original.profile.writeRoots.length!==0
+      ||!Array.isArray(original.recipes)||original.recipes.length!==1||!Array.isArray(results)||results.length!==1)
+      failOwnedHost('UNAUTHORIZED','Original F19 native regression binding unavailable');
+    const receipt=results[0];
+    if(!object(receipt)||receipt.runId!==original.runId||receipt.argumentsDigest!==original.argumentsDigest
+      ||receipt.originalBindingDigest!==createHash('sha256').update(JSON.stringify(original)).digest('hex')
+      ||receipt.backend!=='windows-psec'||receipt.enforced!==true||receipt.outcome!=='exited'||receipt.exitCode!==0
+      ||receipt.executionStarted!==true||receipt.stopped!==true)
+      failOwnedHost('UNAUTHORIZED','Original F19 native regression did not finish successfully');
+    return {verified:true,issueId:binding.issueId};
+}
+
+export function createRuntimeF19MergedRepairReadbackHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
+  requiredScopes:readonly string[];
+  now:()=>Date;
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  resolveMergedReadback:(scope:Scope,context:ToolContext)=>Promise<F19NativeRegressionBinding|undefined>;
+  authorizeExport:(scope:Scope,result:{verified:boolean;issueId:number})=>Promise<boolean>;
+}):HostBundle {
+  const ports=basePorts(options as Parameters<typeof basePorts>[0]);
+  if(!ports||typeof options?.resolveMergedReadback!=='function')return {tools:[],unavailable:'f19_merged_repair_readback_trusted_ports_unavailable'};
+  const {runtime,requiredScopes}=ports;
+  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F19',nodeId:'F19_N04',
+    hostToolName:'workflow.host.f19_n04',assertCurrent:ports.assertCurrent,now:ports.now});
+  const read=async(context:ToolContext)=>{
+    const scope=active(context),binding=await options.resolveMergedReadback(scope,context);active(context);
+    return readRuntimeF19NativeRegression(options.application,scope,binding);
+  };
+  const tool=createOwnedWorkflowAdapter({nodeId:'F19_N04',kind:'host',sideEffect:'read',requiredScopes,
+    inputSchema:{type:'object',additionalProperties:false,properties:{}},
+    outputSchema:{type:'object',additionalProperties:false,required:['verified','issueId'],
+      properties:{verified:{type:'boolean'},issueId:{type:'integer',minimum:1}}},
+    async execute(_input,context){const result=await read(context);active(context);
+      if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F19 merged readback export denied');
+      active(context);if(!isDeepStrictEqual(result,await read(context)))failOwnedHost('REVISION_CONFLICT','F19 regression changed during export');
+      return result;}});
+  return {tools:[{...tool,descriptor:{...tool.descriptor,requiresPresence:true}}],unavailable:null};
+}
+
+export function createRuntimeF19CloseIssueHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
+  requiredScopes:readonly string[];
+  now:()=>Date;
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  resolveCloseIssue:(scope:Scope,context:ToolContext)=>Promise<{repo:string;issueId:number;closeRead:OriginalRead}|undefined>;
+  authorizeExport:(scope:Scope,result:{issueId:number;closed:boolean})=>Promise<boolean>;
+}):HostBundle {
+  const ports=basePorts(options as Parameters<typeof basePorts>[0]);
+  if(!ports||typeof options?.resolveCloseIssue!=='function')return {tools:[],unavailable:'f19_close_issue_trusted_ports_unavailable'};
+  const {runtime,requiredScopes}=ports;
+  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F19',nodeId:'F19_N05',
+    hostToolName:'workflow.host.f19_n05',assertCurrent:ports.assertCurrent,now:ports.now});
+  const read=async(context:ToolContext)=>{
+    const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveCloseIssue']>>;
+    binding=await options.resolveCloseIssue(scope,context);
+    active(context);
+    if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.issueId)||binding.issueId<=0)
+      failOwnedHost('UNSUPPORTED_CAPABILITY','F19 close issue unavailable');
+    const args=binding.closeRead?.arguments;
+    if(!object(args)||args.repo!==binding.repo||args.issueId!==binding.issueId)failOwnedHost('UNAUTHORIZED','F19 close issue identity changed');
+    const closed=cacheOriginal(options.application,scope,binding.closeRead,'github.registered_close_issue');
+    if(!object(closed)||closed.issueId!==binding.issueId||typeof closed.closed!=='boolean'||closed.closed!==true)
+      failOwnedHost('UNSUPPORTED_CAPABILITY','F19 close issue evidence unavailable');
+    return {issueId:binding.issueId,closed:true};
+  };
+  const tool=createOwnedWorkflowAdapter({nodeId:'F19_N05',kind:'host',sideEffect:'external_write',requiredScopes,
+    inputSchema:{type:'object',additionalProperties:false,properties:{}},
+    outputSchema:{type:'object',additionalProperties:false,required:['issueId','closed'],
+      properties:{issueId:{type:'integer',minimum:1},closed:{const:true}}},
+    async execute(_input,context){const result=await read(context);active(context);
+      if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F19 close issue export denied');
+      active(context);if(!isDeepStrictEqual(result,await read(context)))failOwnedHost('REVISION_CONFLICT','F19 close evidence changed during export');
+      return result;}});
+  return {tools:[tool],unavailable:null};
+}

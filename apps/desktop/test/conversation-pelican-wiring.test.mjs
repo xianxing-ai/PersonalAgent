@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {Client} from '@personal-agent/client';
 import {validateToolValue,ProtocolError} from '@personal-agent/contracts';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createWorkspaceReadTool,createWorkspacePatchPreviewTool,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
 import {createRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -73,17 +74,11 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
   };
   // An explicit script, not a real model. Unverified proposals exercise the real
   // directory/export/Policy path; the script cannot produce approval responses.
-  const coordination=new FakeCoordinationPort(async request=>{
+  const coordination=new FakeCoordinationPort(syntheticCoordinationExecution(async request=>{
     try{
     const child=app.runtime.loadCheckpoint(request.taskId,'subtask-parent');
     modelRequests.push({taskId:request.taskId,tools:structuredClone(request.availableTools),continuation:request.continuation});
-    if(!child){
-      assert.ok(request.continuation,'mandatory user-work must finish before the parent script is called');
-      assert.equal(request.continuation.result.succeeded,1);assert.equal(request.continuation.result.failed,0);
-      assert.equal(app.runtime.getTask(childId).state,'succeeded');
-      assert.deepEqual(executions.map(item=>item.toolName),[read.descriptor.name,preview.descriptor.name,syntheticCas.descriptor.name,command.descriptor.name]);
-      return {kind:'text',text:'Local/Synthetic Pelican repair: 3 begin=0s; geometry preserved; original child Evidence confirmed.',verification:'mock'};
-    }
+    assert.ok(child,'only the child calls the model');
     childId=request.taskId;assert.equal(child.subtaskId,'user-work');
     if(request.availableTools)currentAvailable=request.availableTools;
     else {assert.ok(request.continuation);assert.deepEqual(app.runtime.loadCheckpoint(childId,'competition-tool-catalog').entries,currentAvailable);}
@@ -117,7 +112,7 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
     assert.deepEqual(continuation.result.proof,{verification:'real-local-node',animationCount:3,begins:['0s','0s','0s'],geometryPreserved:true});
     return {kind:'text',text:'Local/Synthetic child confirmed public fixture CAS and real local Node verification.',verification:'mock'};
     }catch(error){modelErrors.push(error.message);throw error;}
-  });
+  }));
   app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
     coordination,coordinationBinding:'explicit-local-synthetic-pelican-script-v1',competitionMaxSteps:8,tools,
     automaticTools:[{toolName:dispatch.descriptor.name,toolVersion:dispatch.descriptor.version}],
@@ -159,8 +154,8 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
   const parent=app.runtime.getTask(accepted.taskId),children=app.readSubagentTasks(parent.taskId);
   assert.equal(parent.state,'succeeded');assert.equal(children.length,1);assert.equal(children[0].taskId,childId);assert.equal(children[0].state,'succeeded');
   assert.equal(approvals.length,4);assert.equal(new Set(approvals.map(item=>item.approvalId)).size,4);
-  assert.equal(modelRequests.filter(item=>item.taskId===parent.taskId).length,1,'parent never directly reads/writes the workspace');
-  assert.equal(modelRequests.length,6);assert.deepEqual(modelErrors,[]);
+  assert.equal(modelRequests.filter(item=>item.taskId===parent.taskId).length,0);
+  assert.equal(modelRequests.length,5);assert.deepEqual(modelErrors,[]);
   assert.deepEqual(proposals.map(item=>item.toolName),[read,preview,syntheticCas,command].map(tool=>tool.descriptor.name));
   const records=app.runtime.readToolExecutions(childId);assert.equal(records.length,4);
   for(const record of records){assert.equal(record.state,'confirmed');assert.equal(record.policyDecision,'allow');assert.equal(record.executionStarted,true);assert.ok(approvals.some(item=>item.approvalId===record.evidenceId));}
@@ -172,5 +167,6 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
   assert.equal(sha(geometry(repaired)),geometrySha256);assert.equal([...repaired.matchAll(/\bbegin="0s"/g)].length,3);
   const actualCommand=executions.find(item=>item.toolName===command.descriptor.name).result;
   assert.equal(actualCommand.exitCode,0);assert.equal(JSON.parse(actualCommand.stdout).geometryPreserved,true);
-  assert.match(parent.resultSummary,/Local\/Synthetic Pelican repair/);
+  assert.match(parent.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
+  assert.match(app.runtime.getTask(childId).resultSummary,/Local\/Synthetic child confirmed public fixture CAS and real local Node verification/);
 });

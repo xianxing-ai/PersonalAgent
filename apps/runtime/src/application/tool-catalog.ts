@@ -141,13 +141,22 @@ function withoutParameterDescriptions(schema:Record<string,unknown>):Record<stri
 }
 const fitsCatalog=(entries:readonly CompetitionAvailableTool[]):boolean => entries.length<=MAX_AVAILABLE_TOOLS
   &&Buffer.byteLength(JSON.stringify(entries),'utf8')<=MAX_AVAILABLE_TOOLS_JSON_BYTES;
+const toolKey=(name:string,version:string):string => `${name}\0${version}`;
+function indexDescriptors(descriptors:readonly ToolDescriptor[]):Map<string,ToolDescriptor> {
+  const map=new Map<string,ToolDescriptor>();
+  for(const descriptor of descriptors) {
+    const key=toolKey(descriptor.name,descriptor.version);
+    if(!map.has(key))map.set(key,descriptor);
+  }
+  return map;
+}
 
 export class RuntimeCompetitionToolCatalog {
   readonly sideEffect: ToolDescriptor['sideEffect'];
   /** Child worker sees only the same bounded ToolPort used for execution. */
   restrict(tools:AgentToolPort):RuntimeCompetitionToolCatalog {
-    const descriptors=tools.list();
-    const allowed=(name:string,version:string)=>descriptors.some(tool=>tool.name===name&&tool.version===version);
+    const allowedKeys=new Set(tools.list().map(tool=>toolKey(tool.name,tool.version)));
+    const allowed=(name:string,version:string)=>allowedKeys.has(toolKey(name,version));
     return new RuntimeCompetitionToolCatalog(this.runtime,tools,
       this.exports.filter(item=>allowed(item.toolName,item.toolVersion)),
       this.availability.filter(item=>allowed(item.toolName,item.toolVersion)),
@@ -183,8 +192,12 @@ export class RuntimeCompetitionToolCatalog {
       if(names.has(key) || !NAME.test(worker.toolName) || !VERSION.test(worker.toolVersion))throw new ProtocolError('INVALID_ARGUMENT','Duplicate worker capability');
       names.add(key);
     }
-    const selectable = this.tools.list().filter(descriptor => availability.some(entry => entry.toolName === descriptor.name && entry.toolVersion === descriptor.version)
-      && exports.some(entry => entry.toolName === descriptor.name && entry.toolVersion === descriptor.version));
+    const availableKeys=new Set(availability.map(entry=>toolKey(entry.toolName,entry.toolVersion)));
+    const exportKeys=new Set(exports.map(entry=>toolKey(entry.toolName,entry.toolVersion)));
+    const selectable = this.tools.list().filter(descriptor => {
+      const key=toolKey(descriptor.name,descriptor.version);
+      return availableKeys.has(key)&&exportKeys.has(key);
+    });
     this.sideEffect = selectable.some(descriptor => descriptor.sideEffect === 'external_write') ? 'external_write'
       : selectable.some(descriptor => descriptor.sideEffect === 'local_write') ? 'local_write' : 'read';
   }
@@ -194,15 +207,18 @@ export class RuntimeCompetitionToolCatalog {
   /** Registration/shape metadata only. This cannot authorize or execute a tool. */
   describe():ConversationToolCapability[] {
     const result:ConversationToolCapability[]=[];
+    const descriptorMap=indexDescriptors(this.tools.list());
+    const exportKeys=new Set(this.exports.map(item=>toolKey(item.toolName,item.toolVersion)));
     for(const binding of this.availability) {
       if(binding.modelExposure==='internal')continue;
-      const descriptor=this.tools.list().find(tool=>tool.name===binding.toolName&&tool.version===binding.toolVersion);
-      if(!descriptor||!this.exports.some(item=>item.toolName===descriptor.name&&item.toolVersion===descriptor.version))continue;
+      const key=toolKey(binding.toolName,binding.toolVersion);
+      const descriptor=descriptorMap.get(key);
+      if(!descriptor||!exportKeys.has(key))continue;
       result.push({name:descriptor.name,version:descriptor.version,inputSchema:projectedSchema(descriptor,binding),
         requiresPresence:descriptor.requiresPresence,sideEffect:descriptor.sideEffect,state:'registered_requires_task_authorization'});
     }
     for(const worker of this.workers) {
-      if(!this.tools.list().some(tool=>tool.name===worker.requiredTool.name&&tool.version===worker.requiredTool.version))continue;
+      if(!descriptorMap.has(toolKey(worker.requiredTool.name,worker.requiredTool.version)))continue;
       const descriptor=worker.describeRegistered?.();if(!descriptor)continue;
       result.push({...descriptor,inputSchema:safeSchema(descriptor.inputSchema,0,new Set(worker.publicEnumPaths)),
         requiresPresence:false,sideEffect:worker.sideEffect??'read',state:'registered_requires_task_authorization'});
@@ -277,13 +293,15 @@ export class RuntimeCompetitionToolCatalog {
       }
       return structuredClone(saved.entries);
     }
-    const descriptors = this.tools.list();
+    const descriptorMap = indexDescriptors(this.tools.list());
+    const exportKeys = new Set(this.exports.map(item => toolKey(item.toolName, item.toolVersion)));
     const selected: CompetitionAvailableTool[] = [];
     for (const binding of this.availability) {
       if(binding.modelExposure==='internal')continue;
-      const descriptor = descriptors.find(item => item.name === binding.toolName && item.version === binding.toolVersion);
+      const key = toolKey(binding.toolName, binding.toolVersion);
+      const descriptor = descriptorMap.get(key);
       if (!descriptor || (descriptor.requiresPresence&&this.isUserPresent===undefined)
-        || !this.exports.some(item => item.toolName === binding.toolName && item.toolVersion === binding.toolVersion)) continue;
+        || !exportKeys.has(key)) continue;
       if (!await this.ready(binding, {...input, revision})) continue;
       selected.push({name: descriptor.name, version: descriptor.version, inputSchema: projectedSchema(descriptor, binding)});
       if (selected.length > MAX_AVAILABLE_TOOLS && !this.discoveryEnabled) {
@@ -291,7 +309,7 @@ export class RuntimeCompetitionToolCatalog {
       }
     }
     for(const worker of this.workers) {
-      if(!descriptors.some(tool=>tool.name===worker.requiredTool.name&&tool.version===worker.requiredTool.version))continue;
+      if(!descriptorMap.has(toolKey(worker.requiredTool.name,worker.requiredTool.version)))continue;
       const descriptor=await this.readProvider({...input,revision},view=>worker.describe(view));
       if(!descriptor)continue;
       if(descriptor.name!==worker.toolName || descriptor.version!==worker.toolVersion)throw new ProtocolError('UNAUTHORIZED','Worker descriptor identity changed');
@@ -328,18 +346,29 @@ export class RuntimeCompetitionToolCatalog {
     return pool;
   }
 
-  private async entryCurrent(entry:CompetitionAvailableTool,input:{taskId:string;revision:number;deadline:string;signal:AbortSignal}):Promise<boolean> {
-    const worker=this.workers.find(value=>value.toolName===entry.name&&value.toolVersion===entry.version);
+  private currentLookup() {
+    const workerMap=new Map<string,CompetitionWorkerCapability>();
+    for(const value of this.workers)workerMap.set(toolKey(value.toolName,value.toolVersion),value);
+    const availabilityMap=new Map<string,CompetitionToolAvailability>();
+    for(const value of this.availability)availabilityMap.set(toolKey(value.toolName,value.toolVersion),value);
+    const exportKeys=new Set(this.exports.map(value=>toolKey(value.toolName,value.toolVersion)));
+    const descriptorMap=indexDescriptors(this.tools.list());
+    return {workerMap,availabilityMap,exportKeys,descriptorMap};
+  }
+
+  private async entryCurrent(entry:CompetitionAvailableTool,input:{taskId:string;revision:number;deadline:string;signal:AbortSignal},lookup=this.currentLookup()):Promise<boolean> {
+    const key=toolKey(entry.name,entry.version);
+    const worker=lookup.workerMap.get(key);
     if(worker) {
       const current=await this.readProvider(input,view=>worker.describe(view));
       return current!==undefined&&current.name===entry.name&&current.version===entry.version
         &&sameSchema(safeSchema(current.inputSchema,0,new Set(worker.publicEnumPaths)),entry.inputSchema);
     }
-    const binding=this.availability.find(value=>value.toolName===entry.name&&value.toolVersion===entry.version);
-    const descriptor=this.tools.list().find(value=>value.name===entry.name&&value.version===entry.version);
+    const binding=lookup.availabilityMap.get(key);
+    const descriptor=lookup.descriptorMap.get(key);
     return !!binding&&binding.modelExposure!=='internal'&&!!descriptor
       &&(!descriptor.requiresPresence||this.isUserPresent!==undefined)
-      &&this.exports.some(value=>value.toolName===entry.name&&value.toolVersion===entry.version)
+      &&lookup.exportKeys.has(key)
       &&sameSchema(projectedSchema(descriptor,binding),entry.inputSchema)&&await this.ready(binding,input);
   }
 
@@ -364,14 +393,15 @@ export class RuntimeCompetitionToolCatalog {
         offset=cursor.offset as number;
       }catch{throw new ProtocolError('INVALID_ARGUMENT','Discovery cursor does not match the original task and query');}
     }
+    const lookup=this.currentLookup();
     const discovery=pool.entries.find(entry=>entry.name===TOOL_DISCOVERY_NAME&&entry.version===TOOL_DISCOVERY_VERSION)!;
-    if(!await this.entryCurrent(discovery,view))throw new ProtocolError('UNAUTHORIZED','Original discovery tool became unavailable');
+    if(!await this.entryCurrent(discovery,view,lookup))throw new ProtocolError('UNAUTHORIZED','Original discovery tool became unavailable');
     let entries:CompetitionAvailableTool[]=[discovery];
     const matches:{name:string;version:string;state:'selected'|'unavailable'|'schema_too_large'}[]=[];
     let next=offset;
     for(;next<candidates.length&&matches.length<MAX_AVAILABLE_TOOLS-1;next++) {
       const entry=candidates[next]!;
-      if(!await this.entryCurrent(entry,view)){matches.push({name:entry.name,version:entry.version,state:'unavailable'});continue;}
+      if(!await this.entryCurrent(entry,view,lookup)){matches.push({name:entry.name,version:entry.version,state:'unavailable'});continue;}
       const proposed=[...entries,entry];
       const compact=proposed.map(item=>({...item,inputSchema:withoutParameterDescriptions(item.inputSchema)}));
       if(fitsCatalog(proposed))entries=proposed;
@@ -408,9 +438,11 @@ export class RuntimeCompetitionToolCatalog {
       ||record.toolName!==TOOL_DISCOVERY_NAME||record.toolVersion!==TOOL_DISCOVERY_VERSION
       ||!this.runtime.matchesToolExecutionInput(record,{arguments:input.arguments,scopeRef:input.runId})
       ||!fitsCatalog(selection.entries))throw new ProtocolError('UNAUTHORIZED','Discovery selection has no matching confirmed Runtime receipt');
+    const lookup=this.currentLookup();
+    const originalMap=new Map(pool.entries.map(value=>[toolKey(value.name,value.version),value]));
     for(const entry of selection.entries) {
-      const original=pool.entries.find(value=>value.name===entry.name&&value.version===entry.version);
-      if(!original||!sameSchema(original.inputSchema,entry.inputSchema)||!await this.entryCurrent(entry,view))
+      const original=originalMap.get(toolKey(entry.name,entry.version));
+      if(!original||!sameSchema(original.inputSchema,entry.inputSchema)||!await this.entryCurrent(entry,view,lookup))
         throw new ProtocolError('UNAUTHORIZED','Discovered capability changed before selection');
     }
     this.assertCurrent(view);
@@ -469,16 +501,18 @@ export class RuntimeCompetitionToolCatalog {
       || !isDeepStrictEqual(saved.entries, input.availableTools)) {
       throw new ProtocolError('UNAUTHORIZED', 'Competition tool catalog changed before export');
     }
+    const lookup=this.currentLookup();
     for (const item of saved.entries) {
-      const worker=this.workers.find(worker=>worker.toolName===item.name && worker.toolVersion===item.version);
+      const key=toolKey(item.name,item.version);
+      const worker=lookup.workerMap.get(key);
       if(worker) {
         const fresh=await this.readProvider(input,view=>worker.describe(view));
         if(!fresh || fresh.name!==worker.toolName || fresh.version!==worker.toolVersion
           || !sameSchema(safeSchema(fresh.inputSchema,0,new Set(worker.publicEnumPaths)),item.inputSchema))throw new ProtocolError('UNAUTHORIZED','Worker became unavailable before send');
         continue;
       }
-      const binding = this.availability.find(entry => entry.toolName === item.name && entry.toolVersion === item.version);
-      const descriptor = this.tools.list().find(entry => entry.name === item.name && entry.version === item.version);
+      const binding = lookup.availabilityMap.get(key);
+      const descriptor = lookup.descriptorMap.get(key);
       if (!binding || binding.modelExposure==='internal' || !descriptor || (descriptor.requiresPresence&&this.isUserPresent===undefined)
         || !sameSchema(projectedSchema(descriptor, binding), item.inputSchema)
         || !await this.ready(binding, input)) {

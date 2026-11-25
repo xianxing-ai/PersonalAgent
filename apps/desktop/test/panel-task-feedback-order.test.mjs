@@ -71,7 +71,7 @@ test('a changed draft remains intact and busy until the receipt settles',async()
 
 // Exercise production stop handlers with deliberately stalled cleanup channels.
 function stopFixture({tasks=[{taskId:'task-1',state:'running'}],failures={},stall=false}={}){
-  const names=['pendingCancelIds','truncatedTaskIds','activeTasks','setSendMode','syncCancelButtons','stopActiveTasks'];
+  const names=['pendingCancelIds','truncatedTaskIds','activeTasks','stoppableTasks','setSendMode','syncCancelButtons','stopActiveTasks'];
   const declarations=new Map();let stopHandler;
   function capture(node){
     if(ts.isVariableDeclaration(node)&&names.includes(node.name.getText(ast)))declarations.set(node.name.getText(ast),node.getText(ast));
@@ -124,10 +124,9 @@ test('stop with no task or pending acceptance only interrupts playback',async()=
   const f=stopFixture({tasks:[]});await f.stop();assert.deepEqual(f.calls,['browser-playback-stop',['voice.stop',undefined]]);
 });
 test('task-row cancellation targets only its task',async()=>{
-  let rowHandler,capDeclaration;
+  let rowHandler;
   function capture(node){
-    if(ts.isBinaryExpression(node)&&node.left.getText(ast)==="root.querySelector('#tasks').onclick")rowHandler=node.right.getText(ast);
-    if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='capCollection')capDeclaration=node.getText(ast);
+    if(ts.isBinaryExpression(node)&&node.left.getText(ast)==='tasksNode.onclick')rowHandler=node.right.getText(ast);
     ts.forEachChild(node,capture);
   }
   capture(ast);
@@ -135,37 +134,39 @@ test('task-row cancellation targets only its task',async()=>{
   const context=vm.createContext({input:{value:'unsent draft'},tasksNode:{querySelectorAll:()=>[]},
     current:{tasks:[{taskId:'running-task',state:'running'}]},window:{speechSynthesis:{cancel(){}}},
     stopTask:task=>calls.push(task)});
-  vm.runInContext('const '+capDeclaration+';',context);const click=vm.runInContext('('+rowHandler+')',context);
+  const click=vm.runInContext('('+rowHandler+')',context);
   const button=dataset=>({dataset,disabled:false,classList:{toggle(name,value){this[name]=value;}},setAttribute(name,value){this[name]=value;}});
   await click({target:{closest:()=>button({action:'task.cancel',id:'running-task'})}});
   assert.equal(calls.length,1);assert.equal(calls[0].taskId,'running-task');assert.equal(context.input.value,'unsent draft');
 });
 
 test('21 locate requests clear evicted progress and stale replies cannot overwrite a retry',async()=>{
-  const declarations=new Map(),names=['capCollection','currentLocateFailure','projectLocateFeedback','locateFailure'];
+  const wsSource=await readFile(new URL('../src/features/workspace/view.js',import.meta.url),'utf8');
+  const wsAst=ts.createSourceFile('view.js',wsSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
+  const declarations=new Map(),names=['pruneMap','projectLocateFeedback','locateFailure'];
   function capture(node){
-    if(ts.isVariableDeclaration(node)&&names.includes(node.name.getText(ast)))declarations.set(node.name.getText(ast),node.getText(ast));
+    if(ts.isVariableDeclaration(node)&&names.includes(node.name.getText(wsAst)))declarations.set(node.name.getText(wsAst),node.getText(wsAst));
     ts.forEachChild(node,capture);
   }
-  capture(ast);assert.equal(declarations.size,names.length);
-  const tasks=Array.from({length:21},(_,i)=>({taskId:`failed-${i}`,state:'failed',error:{message:`error-${i}`}}));
+  capture(wsAst);assert.equal(declarations.size,names.length);
+  const tasks=Array.from({length:41},(_,i)=>({taskId:`failed-${i}`,state:'failed',error:{message:`error-${i}`}}));
   const nodes=tasks.map(task=>{
     const result={hidden:true,textContent:''};
     return {dataset:{locateId:task.taskId,locateText:task.error.message},result,
       closest:()=>({querySelector:()=>result})};
   });
   const replies=[],locateFeedback=new Map();
-  const context=vm.createContext({current:{tasks},locateFeedback,locateClosed:false,isTerminal,
-    resultText:()=>'',tasksNode:{querySelectorAll:()=>nodes},escape:value=>value,
+  const context=vm.createContext({current:{tasks},locateFeedback,locateClosed:false,inspected:null,isTerminal,
+    resultText:()=>'',conversation:{querySelectorAll:()=>nodes},tasksNode:{querySelectorAll:()=>nodes},escape:value=>value,
     invoke:()=>new Promise(resolve=>replies.push(resolve))});
   for(const name of names)vm.runInContext(`const ${declarations.get(name)};`,context);
   const locate=vm.runInContext('locateFailure',context),pending=nodes.map(node=>locate(node));
-  assert.equal(locateFeedback.size,20);assert.equal(nodes[0].result.hidden,true);assert.equal(nodes[0].result.textContent,'');
+  assert.equal(locateFeedback.size,40);assert.equal(nodes[0].result.hidden,true);assert.equal(nodes[0].result.textContent,'');
   const retry=locate(nodes[0]);assert.equal(nodes[0].result.textContent,'定位中…');
   replies[0]({failures:[]});await pending[0];
   assert.equal(nodes[0].result.textContent,'定位中…','evicted reply cannot replace the newer pending request');
-  replies[21]({failures:[]});await retry;
+  replies[41]({failures:[]});await retry;
   assert.equal(nodes[0].result.textContent,'未能从错误输出定位到源码位置');
-  for(let i=1;i<21;i++)replies[i]({failures:[]});await Promise.all(pending);
+  for(let i=1;i<41;i++)replies[i]({failures:[]});await Promise.all(pending);
   assert.equal(nodes[0].result.textContent,'未能从错误输出定位到源码位置');
 });
