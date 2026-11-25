@@ -19,7 +19,7 @@ export interface SubagentConversationSnapshot extends SubagentConversationScope 
   activeTaskId?:string;canSubmit:boolean;submitUnavailableReason?:string;updatedAt:string;
 }
 export interface SubagentConversationList {
-  items:{parentTaskId:string;taskId:string;role:string;modelId:string;state:TaskSnapshot['state'];updatedAt:string;goal?:string}[];
+  items:{parentTaskId:string;taskId:string;role:string;modelId:string;state:TaskSnapshot['state'];updatedAt:string;goal?:string;latestMessageTaskId?:string}[];
   nextCursor?:string;
 }
 export function decodeSubagentConversationCursor(cursor?:string):{beforeSequence?:number;snapshotSequence?:number;seenTaskIds:string[]} {
@@ -119,5 +119,16 @@ export function listSubagentConversationMessages(runtime:TaskRuntime,origin:Suba
   }
 }
 export function sameConversationTools(expected:readonly ToolDescriptor[],current:readonly ToolDescriptor[]):boolean {
-  return expected.every(tool=>!isRuntimeDispatchTool(tool.name)&&current.some(candidate=>isDeepStrictEqual(candidate,tool)));
+  const byKey=new Map<string,ToolDescriptor[]>();
+  for(const candidate of current) {
+    const key=`${candidate.name}\0${candidate.version}`;
+    let group=byKey.get(key);
+    if(!group){group=[];byKey.set(key,group);}
+    group.push(candidate);
+  }
+  return expected.every(tool=>{
+    if(isRuntimeDispatchTool(tool.name))return false;
+    const group=byKey.get(`${tool.name}\0${tool.version}`);
+    return group ? group.some(candidate=>isDeepStrictEqual(candidate,tool)) : false;
+  });
 }

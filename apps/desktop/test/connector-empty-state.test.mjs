@@ -41,6 +41,12 @@ test('weather failure text is displayed as text when no forecast is available',(
  const card=connectorCards({weather:{reason}},escape).split('</article>')[0];
  assert.match(card,/查询失败/);assert.match(card,/&lt;img src=x onerror=alert\(1\)&gt;/);
  assert.doesNotMatch(card,/<img src=x/);
+ const staleFailure='<script>alert("x&y\'s")</script><img src=x onerror=alert(2)>';
+ const refreshCard=connectorCards({weather:{temp:18,city:'青岛<test>',condition:'晴 & "微风"',reason:staleFailure}},escape).split('</article>')[0];
+ assert.match(refreshCard,/刷新失败/);
+ assert.match(refreshCard,/&lt;script&gt;alert\(&quot;x&amp;y&#39;s&quot;\)&lt;\/script&gt;/);
+ assert.match(refreshCard,/青岛&lt;test&gt;/);
+ assert.doesNotMatch(refreshCard,/<script>|<img src=x/);
 });
 test('ready empty todo and unconfigured subscriptions explain the missing data without inventing an outage',()=>{
  const html=connectorCards({todo:{available:true,items:[]},feeds:{configured:false,available:false,subscriptions:[]}},escape);

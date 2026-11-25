@@ -9,6 +9,7 @@ import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {openReadOnlyVault} from '@personal-agent/knowledge/filesystem';
 import {createKnowledgeSearchTool, KNOWLEDGE_SEARCH_TOOL_NAME, KNOWLEDGE_SEARCH_TOOL_VERSION} from '@personal-agent/knowledge/tool';
 import {createAgentArtsRuntimeApplication, createRuntimeApplication} from '@personal-agent/runtime/application';
+import {syntheticAgentArtsOptions} from '../helpers/synthetic-agentarts.mjs';
 
 async function fixture() {
   const base = await mkdtemp(join(tmpdir(), 'personal-agent-knowledge-competition-'));
@@ -148,10 +149,10 @@ test('unverified proposal cannot read or export synthetic knowledge', async t =>
     reads++;
     return vault.search(request);
   }});
-  const port = new FakeCoordinationPort(() => ({
+  const port = new FakeCoordinationPort(request => ({
     kind: 'tool_proposal', proposalId: 'unverified-knowledge-proposal',
     toolName: KNOWLEDGE_SEARCH_TOOL_NAME, toolVersion: KNOWLEDGE_SEARCH_TOOL_VERSION,
-    arguments: {query: 'knowledge', limit: 1}, verification: 'unverified',
+    arguments: {query: 'knowledge', limit: 1}, verification: 'unverified', executionEpoch: request.executionEpoch,
   }));
   const app = createRuntimeApplication({
     path: database, profile: 'huawei_ict_agentarts', coordination: port, tools: [knowledge],
@@ -182,10 +183,10 @@ test('explicit public-demo export lets an unverified proposal read only after ap
     return vault.search(request);
   }});
   const port = new FakeCoordinationPort(request => request.continuation
-    ? {kind: 'text', text: 'Public demo source found', verification: 'unverified'}
+    ? {kind: 'text', text: 'Public demo source found', verification: 'unverified', executionEpoch: request.executionEpoch}
     : {kind: 'tool_proposal', proposalId: publicProposalId,
       toolName: KNOWLEDGE_SEARCH_TOOL_NAME, toolVersion: KNOWLEDGE_SEARCH_TOOL_VERSION,
-      arguments: {query: publicQuery, limit: 1}, verification: 'unverified'});
+      arguments: {query: publicQuery, limit: 1}, verification: 'unverified', executionEpoch: request.executionEpoch});
   const app = createRuntimeApplication({path: join(base, 'runtime.sqlite'),
     profile: 'huawei_ict_agentarts', coordination: port, tools: [knowledge],
     competitionToolExports: [publicDemoExport()]});
@@ -224,9 +225,9 @@ test('public-demo export rejects a different query before approval or Vault read
     reads++;
     return vault.search(request);
   }});
-  const port = new FakeCoordinationPort(() => ({kind: 'tool_proposal', proposalId: publicProposalId,
+  const port = new FakeCoordinationPort(request => ({kind: 'tool_proposal', proposalId: publicProposalId,
     toolName: KNOWLEDGE_SEARCH_TOOL_NAME, toolVersion: KNOWLEDGE_SEARCH_TOOL_VERSION,
-    arguments: {query: '私人笔记', limit: 1}, verification: 'unverified'}));
+    arguments: {query: '私人笔记', limit: 1}, verification: 'unverified', executionEpoch: request.executionEpoch}));
   const app = createRuntimeApplication({path: join(base, 'runtime.sqlite'),
     profile: 'huawei_ict_agentarts', coordination: port, tools: [knowledge],
     competitionToolExports: [publicDemoExport()]});
@@ -257,7 +258,7 @@ test('offline AgentArts HTTP adapter sends only the approved public knowledge pr
   const proposal = {kind: 'tool_proposal', proposalId: publicProposalId,
     toolName: KNOWLEDGE_SEARCH_TOOL_NAME, toolVersion: KNOWLEDGE_SEARCH_TOOL_VERSION,
     arguments: {query: publicQuery, limit: 1}};
-  const app = createAgentArtsRuntimeApplication({
+  const app = createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({
     path: join(base, 'runtime.sqlite'), gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'public-demo', responseMode: 'tool-proposal-json',
     authorizationProvider: {read: async () => 'Bearer synthetic-token'},
@@ -270,7 +271,7 @@ test('offline AgentArts HTTP adapter sends only the approved public knowledge pr
         status: 200, headers: {'content-type': 'application/json'},
       });
     },
-  });
+  }));
   t.after(async () => { app.close(); await rm(base, {recursive: true, force: true}); });
   const client = new Client(app, Date.now);
   await client.connect();

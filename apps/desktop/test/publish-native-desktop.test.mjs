@@ -20,6 +20,8 @@ async function fixture(t){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'native-publish-test-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
   await fs.mkdir(path.join(root,'apps/windows-host/desktop'),{recursive:true});await fs.writeFile(path.join(root,'apps/windows-host/desktop/Program.cs'),'fixture source');
   await fs.writeFile(path.join(root,'apps/windows-host/desktop/WindowsHost.Desktop.csproj'),'fixture project');
+  await fs.writeFile(path.join(root,'apps/windows-host/WindowsHost.csproj'),'fixture host project');
+  await fs.writeFile(path.join(root,'apps/windows-host/NotepadAction.cs'),'fixture notepad action');
   await fs.mkdir(path.join(root,'apps/desktop/scripts'),{recursive:true});await fs.writeFile(path.join(root,'apps/desktop/scripts/publish-native-desktop.mjs'),'fixture publisher');
   await fs.cp(realUpstream,path.join(root,'apps/desktop/native-component/upstream'),{recursive:true});
   const calls=[],run=async(command,args,options)=>{calls.push({command,args,options});if(args[0]==='--version')return {output:'8.0.424',exitCode:0};await runtimeFiles(args.at(-1));return {output:'published',exitCode:0};};
@@ -32,7 +34,7 @@ test('fixed self-contained publish preserves notices, source identity and comple
   assert.equal(call.args[call.args.indexOf('--runtime')+1],'win-x64');assert.ok(call.args.includes('-p:RuntimeFrameworkVersion=8.0.30'));
   assert.ok(call.args.includes('--disable-build-servers'));assert.ok(call.args.includes('-p:UseSharedCompilation=false'));assert.ok(call.args.includes('-nodeReuse:false'));
   assert.ok(result.bundle.endsWith(path.join('resources','native-tools','desktop')));assert.equal(result.manifest.source.workingTreeModified,true);
-  assert.equal(result.manifest.selfContained,true);assert.equal(result.manifest.source.sourceFiles.length,3);
+  assert.equal(result.manifest.selfContained,true);assert.equal(result.manifest.source.sourceFiles.length,5);
   for(const file of result.manifest.files){const bytes=await fs.readFile(path.join(result.bundle,file.path));assert.equal(file.sha256,hash(bytes));assert.equal(file.byteLength,bytes.length);}
   assert.equal(result.manifestSha256,hash(await fs.readFile(path.join(result.bundle,'component-manifest.json'))));
   assert.match(await fs.readFile(path.join(result.bundle,'licenses/dotnet-runtime/THIRD-PARTY-NOTICES.TXT'),'utf8'),/third.party/i);

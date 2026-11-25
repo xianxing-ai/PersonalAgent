@@ -9,6 +9,7 @@ import {OwnedWorkflowEngine} from '../dist/owned-workflows.js';
 import {OwnedWorkflowHostBridge,createOwnedWorkflowReceiptVerifier} from '../dist/owned-workflow-host-bridge.js';
 import {createWorkflowDecisionTool} from '../dist/workflow-decision-tool.js';
 import {parseWorkflowSelectionResult,workflowShadowSelectionDigest as digest,createWorkflowShadowCheckpointPort,createWorkflowShadowHistory} from '../dist/workflow-shadow-policy.js';
+import {admitOrdinaryCompetitionSampling,ordinaryCompetitionSamplingKey} from '../dist/ordinary-competition-sampling.js';
 
 // Real Engine, signed HostBridge and SQLite checkpoints. Tool/model/resource outputs are explicit fixtures.
 const secret='public-fixture-workflow-shadow-existing-key-123456';
@@ -142,6 +143,14 @@ test('signed branch claims for another selected candidate cannot pollute existin
   const history=createWorkflowShadowHistory({checkpoints:createWorkflowShadowCheckpointPort({loadCheckpoint:key=>f.checkpoints.read(f.original.taskId,key),
     saveCheckpointOnce:(key,value)=>f.checkpoints.writeOnce(f.original.taskId,key,value)}),verifyReceipt:verifyBranch});
   assert.equal((await history.read('fixture-coding')).pairs.length,0);
+});
+test('ordinary competition sampling is checkpointed as admission and not as execution',async t=>{
+  const f=await fixture(t),bridge=f.bridge(),first=await firstDecision(f,f.engine(),bridge);
+  assert.equal(first.receipt.shadowEvaluation.policy.action,'run');
+  const record=admitOrdinaryCompetitionSampling({plan:first.receipt.shadowEvaluation.plan,policy:first.receipt.shadowEvaluation.policy,
+    resources:{mainPriorityAvailable:true,shadowAllowed:true,taskValueEligible:true},isolation:first.receipt.shadowEvaluation.isolation});
+  assert.equal(record.executed,false);assert.equal(record.comparison.status,'unknown');assert.equal(record.benefit,null);
+  assert.deepEqual(f.checkpoints.read(f.original.taskId,ordinaryCompetitionSamplingKey(first.proposal.operationId,record)),record);
 });
 test('model compare intent cannot make ordinary delivery wait without trusted explicit user comparison',async t=>{
   const f=await fixture(t,{plan:metadata({mode:'compare'})}),runtime=f.engine(),bridge=f.bridge(),first=await firstDecision(f,runtime,bridge);

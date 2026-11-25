@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {constants, lstatSync, realpathSync} from 'node:fs';
+import {constants, lstatSync, realpathSync,openSync,closeSync,fstatSync,readSync} from 'node:fs';
 import type {Stats} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import {lstat, open, readdir, realpath} from 'node:fs/promises';
@@ -27,6 +27,8 @@ export interface ReadOnlyVaultPort extends KnowledgePort {
 }
 
 export interface ReadOnlyPageVaultPort extends ReadOnlyVaultPort {
+  /** Trusted final send guard. Same root/source checks as readCitation, without returning source text. */
+  assertCitationCurrent(request:{readonly source:KnowledgeSource;readonly deadline:string;readonly signal:AbortSignal}):void;
   /** Host-only inventory. A missing entry is not proof of deletion. */
   scanPages(request: {readonly deadline: string; readonly signal: AbortSignal}): Promise<readonly VaultPage[]>;
   readPage(request: {readonly path: string; readonly deadline: string; readonly signal: AbortSignal}):
@@ -130,6 +132,45 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
       fail('SCOPE_DENIED');
     }
     if (fileKey(await lstat(root, {bigint: true})) !== rootKey) fail('SCOPE_DENIED');
+  }
+
+  function assertCitationCurrent(request:{source:KnowledgeSource;deadline:string;signal:AbortSignal}):void {
+    const deadline=checkContext(request),source=request.source;
+    if(!source||source.vaultId!==vaultId||!Number.isSafeInteger(source.line)||source.line<1
+      ||typeof source.revision!=='string'||!/^[0-9a-f]{64}$/.test(source.revision))fail('INVALID_ARGUMENT');
+    const parts=checkRelativePath(source.path),candidate=join(root,...parts);
+    let handle:number|undefined;
+    const checkRootNow=()=>{
+      const info=lstatSync(root);
+      if(info.isSymbolicLink()||!info.isDirectory()||!sameIdentity(rootIdentity,info)||info.birthtimeMs!==rootIdentity.birthtimeMs
+        ||fileKey(lstatSync(root,{bigint:true}))!==rootKey)fail('SCOPE_DENIED');
+    };
+    try{
+      checkRootNow();let expected:Stats|undefined;
+      for(let count=1;count<=parts.length;count++){
+        checkActive(request.signal,deadline);const info=lstatSync(join(root,...parts.slice(0,count)));
+        if(info.isSymbolicLink())fail('SCOPE_DENIED');
+        if(count<parts.length&&!info.isDirectory()||count===parts.length&&!info.isFile())fail('SOURCE_UNAVAILABLE');
+        if(count===parts.length)expected=info;
+      }
+      const resolved=realpathSync.native(candidate);
+      if(!within(root,resolved)||!samePath(candidate,resolved))fail('SCOPE_DENIED');
+      handle=openSync(resolved,process.platform==='win32'?constants.O_RDONLY:constants.O_RDONLY|constants.O_NOFOLLOW);
+      const before=fstatSync(handle),identity=fileKey(fstatSync(handle,{bigint:true}));
+      if(!before.isFile()||before.nlink!==1||!unchanged(expected!,before))fail('SCOPE_DENIED');
+      if(before.size>MAX_FILE_BYTES)fail('LIMIT_EXCEEDED');
+      const bytes=Buffer.allocUnsafe(before.size);let offset=0;
+      while(offset<bytes.length){const read=readSync(handle,bytes,offset,bytes.length-offset,offset);if(!read)fail('SOURCE_CHANGED');offset+=read;}
+      const after=fstatSync(handle),pathAfter=lstatSync(candidate);
+      if(pathAfter.isSymbolicLink()||!samePath(resolved,realpathSync.native(candidate))||!sameIdentity(before,pathAfter)
+        ||after.nlink!==1||pathAfter.nlink!==1)fail('SCOPE_DENIED');
+      if(!unchanged(before,after)||fileKey(lstatSync(candidate,{bigint:true}))!==identity
+        ||createHash('sha256').update(bytes).digest('hex')!==source.revision)fail('SOURCE_CHANGED');
+      checkRootNow();checkActive(request.signal,deadline);
+      let content:string;try{content=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{return fail('SOURCE_UNAVAILABLE');}
+      if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(content))fail('SOURCE_UNAVAILABLE');
+      if(content.split(/\r?\n/)[source.line-1]===undefined)fail('SOURCE_CHANGED');
+    }catch(error){safeError(error);}finally{if(handle!==undefined)closeSync(handle);}
   }
 
   async function readNote(path: string, signal: AbortSignal, deadline: number): Promise<VaultPage & {content: string}> {
@@ -262,6 +303,7 @@ export async function openReadOnlyVault(options: {vaultId: string; rootPath: str
         return index.search(pages, query, request.limit, () => checkActive(request.signal, deadline));
       } catch (error) {index.clear(); throw error;}
     },
+    assertCitationCurrent,
     readCitation: async (request: {source: KnowledgeSource; deadline: string; signal: AbortSignal}) => {
       const deadline = checkContext(request);
       const source = request.source;

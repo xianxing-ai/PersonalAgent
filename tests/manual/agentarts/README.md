@@ -6,6 +6,7 @@
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../../../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../../../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
 本目录保存 `huawei_ict_agentarts` Competition Profile 需要真实账号或云端读回的验收记录。
+2026-11-03 的可注入闭环尚未做真机或真实云验收，照做步骤见 [PINNED-READONLY-ACCEPTANCE.md](PINNED-READONLY-ACCEPTANCE.md)。
 记录只描述实际观察到的表面；配置、版本提交、部署、API、trace、工具闭环和本地 Evidence
 必须分别证明，不能互相替代。
 

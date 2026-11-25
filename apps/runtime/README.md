@@ -1,5 +1,9 @@
 # Runtime task core
 
+Competition F20 接收受信 Desktop 宿主提供的 `f20WorkflowWorkerPorts` 与 `harnessCandidates.readF20WorkspaceRef`。Runtime 在原会话的子任务中校验两份本机读取和 Laya 选择。图里的 `workspace.run_allowed_command` 只接受预先配置的 recipe。宿主将它绑定到选中的候选，在隔离副本中执行原 `coding.repair.trial`。云端只接收签名的命令结果投影。最终结果还需核对原样例、源摘要、隔离产物及审查回执。此流程不发布文档。
+
+Desktop 消费端读取 `readF20WorkflowBinding`、`readF20TrialBinding` 和 `readF20HarnessContext`。原本机试验保存在 `confirmedOperations[].result`，已授权的图端投影保存在 `exportedResult`。Desktop 设置入口绑定原工作区、原生隔离 recipe 及出机许可。真实验收应在固定 AgentArts 版本上从普通对话执行同一案例。
+
 `coordinationInput.readRequestContext(scope)` 是可选 provisional host-only 同步环境文本端口：每次 Competition 实际交换临时采样，通过原 goal 出口发送；完整发送串继续受原最终 lease/预算和出机守卫约束，稳定历史 checkpoint 不保存该正文。无 frozen wire 或 Schema 变化，旧调用保持原行为。时间/安全能力引导、卡授权依赖及验证状态见 [#474 记录](../desktop/docs/issue-474-time-context-20261021.md)。
 
 2026-10-20 Competition 上下文增量：新增 host-only 事件截面读取，保留所有公开用户请求及其当时执行状态；共享编译器在普通对话中优先保留用户原文，Skill/私人预检维持严格预算；来源撤销贯穿旧助手与子任务。冻结 Core wire、原任务终态与旧迁移不变；可选续接历史默认关闭，新云端验收待完成。见 [实现与评估](../../docs/competition/CONTEXT_INTEGRITY_20261020.md)。

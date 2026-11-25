@@ -34,9 +34,9 @@ const owner=()=>Object.assign(new EventEmitter(),{destroyed:false,isDestroyed(){
 function fixture(t,{ready=false,effective=true}={}){
   const preparation=createMailMonitorPreparation(),operations=[],starts=[],notifications=[],ticks=[];
   const configuration={configured:true,requiresRestart:false};
-  const context={admin:owner(),competitionMode:true,runtimeClosed:false,runtimeApplication:{},mailMonitorPreparation:preparation,
+  const context={admin:owner(),nativeTheme:{on(){},off(){},removeListener(){}},competitionMode:true,runtimeClosed:false,runtimeApplication:{},mailMonitorPreparation:preparation,
     mailMonitorRequest:undefined,mailFailure:'',runtimeError:'',activeConnectorMailRead:undefined,manualMailReadConversationId:undefined,
-    localServicesStopped:true,randomUUID,defaultNotificationSettings:{enabled:true},publish(){},
+    localServicesStopped:true,randomUUID,defaultNotificationSettings:{enabled:true},publish(){},syncAdminMaterial(){},
     conversations:{activeConversationId:()=> 'desktop-panel'},
     mailConfig:{snapshot:()=>({...configuration}),async configure(){configuration.requiresRestart=true;},async revoke(){configuration.configured=false;}},
     localLaya:{snapshot:()=>({ready}),start(){const work=deferred();starts.push(work);return work.promise;},stop(){throw Error('Shared Laya must not be stopped');}},

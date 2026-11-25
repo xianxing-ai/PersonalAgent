@@ -192,11 +192,16 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool, q
     snapshot() {
       const saved = config.snapshot();
       const available = !closed && questionReady() && Boolean(application && readTool && saved.configured);
+      const currentBinding = config.binding?.();
+      const sessionAllowed = Boolean(available && (
+        saved.sessionAllowed === true
+        || (currentBinding && config.isSessionAllowed?.(currentBinding.revision) === true)
+      ));
       let readTask;
       if (available && lastTaskId) {
         try {readTask = host.readTask(lastTaskId);} catch {readTask = {state: 'unavailable', calendarWriteVerified: false};}
       }
-      return {...saved, readAvailable: available, sessionAllowed: false,
+      return {...saved, readAvailable: available, sessionAllowed,
         reason: available ? '单条读取逐次经过 Runtime 审批；会议变化还需匹配现有事实'
           : saved.reason, meetingBindingAvailable: available,
         ...(readTask ? {readTask} : {}),

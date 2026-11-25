@@ -1,0 +1,51 @@
+.command-center .cc-context {
+  gap: 15px;
+  padding-bottom: 12px;
+}
+.cc-context .cc-hero {
+  flex: 0 0 158px;
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 10px 6px;
+  border-radius: 16px;
+}
+.cc-context .cc-hero-visual {
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%) scale(.65);
+}
+.cc-context .cc-hero-copy { max-width: 100%; text-align: center; pointer-events: none; }
+.cc-context .cc-hero h1 { margin: 0; font-size: 15px; letter-spacing: 0; }
+.cc-context .cc-hero-copy p, .cc-context .cc-hero-copy small:empty { display: none; }
+.cc-context-switch { display: flex; justify-content: center; gap: 4px; }
+.cc-context .cc-context-switch button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cc-muted);
+  font: inherit;
+  font-size: 12px;
+}
+.cc-context .cc-context-switch button[aria-pressed="true"],
+.cc-context .cc-context-switch button:hover { background: var(--cc-soft); color: var(--cc-text); }
+.cc-context[data-context-view="activity"] :is([data-connector="obsidian"], [data-connector="feeds"], [data-connector="mail"]),
+.cc-context[data-context-view="library"] :is(.cc-computer, .cc-activity, .notification-card, [data-connector="weather"], [data-connector="calendar"]) { display: none; }
+.cc-computer details {
+  border: 1px solid var(--cc-line);
+  border-radius: 12px;
+  background: var(--cc-soft);
+  color: var(--cc-text);
+}
+.cc-computer summary { padding: 12px; cursor: pointer; font-size: 12px; }
+.cc-computer summary small { display: block; margin-top: 4px; color: var(--cc-muted); overflow-wrap: anywhere; }
+.cc-computer [data-runner-controls] { padding: 0 12px 12px; font-size: 12px; overflow-wrap: anywhere; }
+.cc-computer [data-runner-controls] > p:empty, .cc-computer .remote-runners > h2 { display: none; }
+.cc-computer .remote-runners ul { padding: 0; list-style: none; }
+.cc-computer .remote-runners li > span { display: block; margin-bottom: 6px; }
+.cc-computer .remote-runners li + li { margin-top: 10px; }
+.cc-computer button, .cc-computer input, .cc-computer select, .cc-computer pre { max-width: 100%; }
+.cc-computer pre { white-space: pre-wrap; }
+.cc-computer button { margin: 2px; }
