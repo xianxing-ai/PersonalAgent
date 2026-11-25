@@ -47,8 +47,8 @@ export function boundedText(value: unknown, max = 16_000): asserts value is stri
 
 /** Data protocol only. No evaluation of Studio DSL, Python, tools or input instructions. */
 export function parseAgentInput(query: unknown): AgentInput {
-  boundedText(query, 1_100_000);
-  if (Buffer.byteLength(query, 'utf8') > 1_100_000) invalid();
+  boundedText(query, MAX_COORDINATION_INITIAL_QUERY_BYTES);
+  if (Buffer.byteLength(query, 'utf8') > MAX_COORDINATION_INITIAL_QUERY_BYTES) invalid();
   if (query.startsWith(REPAIR_PREFIX)) {
     // The suffix is a legacy fixed host prompt, never authority for this service.
     const data = query.slice(REPAIR_PREFIX.length).split('\n', 1)[0];

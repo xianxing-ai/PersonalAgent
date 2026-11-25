@@ -49,8 +49,12 @@ function dense(value) {
 export function validateInvocationIdentity(value) {
   try {
     value = record(value);
-    if (Object.keys(value).length !== 3 || !['requestId','sessionId','resourceId'].every(key => id(value[key]))) fail();
-    return Object.freeze({requestId:value.requestId, sessionId:value.sessionId, resourceId:value.resourceId});
+    const keys = Object.keys(value);
+    if (keys.some(key => !['requestId','sessionId','resourceId','traceId'].includes(key))
+      || !['requestId','sessionId','resourceId'].every(key => id(value[key]))
+      || (Object.hasOwn(value,'traceId') && value.traceId !== undefined && !id(value.traceId))) fail();
+    return Object.freeze({requestId:value.requestId, sessionId:value.sessionId, resourceId:value.resourceId,
+      ...(value.traceId !== undefined ? {traceId:value.traceId} : {})});
   } catch { throw failure('INVALID_ARGUMENT'); }
 }
 
@@ -85,13 +89,16 @@ function traceObservation(body, traceId, invocation) {
       outputTokens:number(span.output_tokens), isError:span.is_error ?? null});
   });
   if (body.total < spans.length) fail();
-  const status = !expected ? 'not_checked' : expected.requestId !== traceId || conflict ? 'mismatch'
+  const expectedTraceId = expected?.traceId ?? expected?.requestId;
+  const status = !expected ? 'not_checked' : expectedTraceId !== traceId || conflict ? 'mismatch'
     : spans.length === 0 || missing ? 'unknown' : 'exact_id_match';
   return Object.freeze({formatVersion:'1.0.0', surface:'ShowOpsTrace', region:'cn-southwest-2',
     traceRef:ref(traceId), total:body.total, returnedSpanCount:spans.length,
     coverage:body.total === spans.length ? 'complete' : 'partial', spans:Object.freeze(spans),
-    requestCorrelation:Object.freeze({status, basis:'trace_id+session_id+resource_id',
-      scope:'returned_spans', snapshotTrust:'caller_supplied', requestRef:expected ? ref(expected.requestId) : null}),
+    requestCorrelation:Object.freeze({status,
+      basis:expected?.traceId ? 'request_id->trace_id+session_id+resource_id' : 'trace_id+session_id+resource_id',
+      scope:'returned_spans', snapshotTrust:'caller_supplied', requestRef:expected ? ref(expected.requestId) : null,
+      ...(expected?.traceId ? {expectedTraceRef:ref(expected.traceId)} : {})}),
     deploymentVersion:'unavailable', cost:'unavailable', usageAggregation:'not_performed'});
 }
 

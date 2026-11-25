@@ -2,7 +2,7 @@ import {Buffer} from 'node:buffer';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {MAX_COORDINATION_INITIAL_QUERY_BYTES, ProtocolError} from '@personal-agent/contracts';
-import {parseCoordinationContinuation, parseCoordinationToolProposal,
+import {parseCoordinationContinuation, parseCoordinationResult,
   type CoordinationAvailableTool, type CoordinationContinuation, type CoordinationToolProposalResult,
   type ExecutionModelSelection} from '@personal-agent/coordination';
 
@@ -86,7 +86,11 @@ function actionFor(receipt: ExecutionCapacityReceipt): {
   proposal: CoordinationToolProposalResult; actionDigest: string;
 } {
   let proposal: CoordinationToolProposalResult;
-  try { proposal = parseCoordinationToolProposal(receipt.proposal); }
+  try {
+    const result=parseCoordinationResult(receipt.proposal);
+    if(result.kind!=='tool_proposal')return invalid('Invalid original execution receipt');
+    proposal=result;
+  }
   catch { return invalid('Invalid original execution receipt'); }
   return {proposal, actionDigest: digest(canonicalJson({toolName: proposal.toolName,
     toolVersion: proposal.toolVersion, arguments: proposal.arguments}))};

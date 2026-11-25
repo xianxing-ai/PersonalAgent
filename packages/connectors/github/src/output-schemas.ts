@@ -15,14 +15,17 @@ const repairReceipt = {repo: {type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9_.
   runId: n, expectedRunAttempt: n, sourceSha: repairSha, repairPrNumber: n, repairHeadSha: repairSha,
   workflowExecutionId: {type: 'string', pattern: '^[a-f0-9]{64}$'}, checkRunId: n, externalId: s, url: s, name: s,
   detailsUrl: s, status: {const: 'completed'}, conclusion: {const: 'neutral'}, evidenceRefs: {type: 'array', items: s}};
+const boolOrNull = {type: ['boolean', 'null']};
+const strOrNull = {type: ['string', 'null'], maxLength: 65536};
+const prObj = {type: 'object', properties: {number: n, title: s, body: s, state: s, base: s, baseSha: s, head: s, headSha: s, url: s, draft: {type: 'boolean'}, merged: {type: 'boolean'}, mergedAt: strOrNull, mergeable: boolOrNull, mergeStateStatus: s}, required: ['number', 'title', 'body', 'state', 'base', 'baseSha', 'head', 'headSha', 'url', 'draft'], additionalProperties: false};
 const outputs: Record<GitHubOperation, Record<string, unknown>> = {
   'repo.get': obj({fullName: s, defaultBranch: s, private: {type: 'boolean'}, url: s}),
   'actions.run.list': page(run), 'actions.job.list': page(job), 'actions.log.read': text,
   'actions.repair.link': {oneOf: [obj({state: {const: 'confirmed'}, ...repairReceipt}),
     obj({state: {const: 'unknown'}, checkRunId: n, externalId: s, url: s, evidenceRefs: {type: 'array', items: s}}, ['state', 'evidenceRefs'])]},
   'actions.repair.get': obj(repairReceipt),
-  'issue.get': issue, 'issue.list': page(issue), 'issue.label': write, 'issue.comment': write,
-  'pr.get': obj({number: n, title: s, body: s, state: s, base: s, baseSha: s, head: s, headSha: s, url: s, draft: {type: 'boolean'}}),
+  'issue.get': issue, 'issue.list': page(issue), 'issue.label': write, 'issue.comment': write, 'issue.close': write,
+  'pr.get': prObj,
   'pr.diff': text, 'pr.create': write, 'pr.comment': write, 'pr.review.comment': write,
 };
 export const outputSchema = (op: GitHubOperation): ToolDescriptor['outputSchema'] => outputs[op];

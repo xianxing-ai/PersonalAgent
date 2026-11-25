@@ -203,10 +203,10 @@ test('repair read errors and untrusted response text never expose credentials', 
   assert.notEqual(githubRepairCheckName({...identity, workflowExecutionId: 'c'.repeat(64)}), githubRepairCheckName(identity));
 });
 
-test('default Fake registration remains thirteen tools and missing repair fixtures are unsupported', async () => {
+test('default Fake registration remains fourteen tools and missing repair fixtures are unsupported', async () => {
   const tools = new Map(), fake = new FakeGitHubProvider({});
   const dispose = register({register(tool) {tools.set(tool.descriptor.name, tool);return () => tools.delete(tool.descriptor.name);}}, {provider: fake});
-  assert.equal(tools.size, 13);assert.equal(tools.has('github.actions.repair.link'), false);
+  assert.equal(tools.size, 14);assert.equal(tools.has('github.actions.repair.link'), false);
   await assert.rejects(fake.execute('actions.repair.get', {...identity, checkRunId: 101}, context()), e => e.code === 'UNSUPPORTED_CAPABILITY');
   dispose();
 });
@@ -216,7 +216,7 @@ test('optional registration binds approval scope/presence, propagates unknown, a
   const fake = new FakeGitHubProvider({'actions.repair.link': unknown()});fake.dispose = () => {disposed++;};
   const host = {register(tool) {tools.set(tool.descriptor.name, tool);return () => tools.delete(tool.descriptor.name);}};
   const disposeDefault = register(host, {provider: fake}), disposeRepair = registerGitHubRepairLinks(host, {provider: fake});
-  assert.equal(tools.size, 15);assert.deepEqual(githubRepairOperations, ['actions.repair.link', 'actions.repair.get']);
+  assert.equal(tools.size, 16);assert.deepEqual(githubRepairOperations, ['actions.repair.link', 'actions.repair.get']);
   const write = tools.get('github.actions.repair.link'), read = tools.get('github.actions.repair.get');
   assert.equal(write.descriptor.sideEffect, 'external_write');assert.deepEqual(write.descriptor.requiredScopes, ['github:write']);
   assert.equal(write.descriptor.requiresPresence, true);assert.equal(write.descriptor.idempotencySupport, false);assert.equal(write.descriptor.recoverySupport, false);
@@ -225,7 +225,7 @@ test('optional registration binds approval scope/presence, propagates unknown, a
   await assert.rejects(write.execute(identity, {...toolContext(), authorizationRef: ''}), e => e.code === 'SCOPE_DENIED');
   await assert.rejects(write.execute(identity, toolContext(false)), e => e.code === 'SCOPE_DENIED');assert.equal(fake.calls.length, 0);
   await assert.rejects(write.execute(identity, toolContext()), e => e.code === 'RESULT_UNKNOWN');assert.equal(fake.calls.length, 1);
-  disposeRepair();disposeRepair();assert.equal(tools.size, 13);assert.equal(disposed, 0);
+  disposeRepair();disposeRepair();assert.equal(tools.size, 14);assert.equal(disposed, 0);
   await assert.rejects(fake.execute('repo.get', {repo}, context()), e => e.code === 'UNSUPPORTED_CAPABILITY');
   disposeDefault();assert.equal(disposed, 1);assert.equal(tools.size, 0);
 });

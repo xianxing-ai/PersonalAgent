@@ -29,7 +29,8 @@ async function fixture(options={}) {
     isClosed:()=>terminated,url:()=>url,mainFrame:()=>browserPage,on:(...args)=>pageEvents.on(...args),
     async goto(next){calls.push(['goto',next]);await request(next,true);url=next;if(afterGoto)await afterGoto();},
     async goBack(){calls.push(['back']);url='https://example.com/';},
-    async evaluate(_fn,args){if(args?.attribute)return {title:'Synthetic page',text:`Count ${count}`,controls:controls(),truncated:false};return protectedFocus;},
+    async evaluate(_fn,args){if(args?.fields)return args.fields.every(field=>controls().find(item=>item.ref===field.ref)?.value===field.value);
+      if(args?.attribute)return {title:'Synthetic page',text:`Count ${count}`,controls:controls(),truncated:false};return protectedFocus;},
     locator(selector){
       const id=/="(r\d+)"/.exec(selector)?.[1],entry=controls().find(c=>c.ref===id);
       return {count:async()=>entry?1:0,evaluate:async()=>({tag:entry.tag,type:entry.inputType,name:entry.name,editable:false,disabled:false,href:entry.downloadUrl}),
@@ -73,7 +74,7 @@ async function fixture(options={}) {
     return host.tools.find(t=>t.descriptor.name==='browser.'+name).execute(args,scope);
   }
   return {host,invoke,calls,checkpoints,runtime,records,request,deadline,directory,downloadEvents,pageEvents,
-    set afterGoto(fn){afterGoto=fn;},set clickOperation(fn){clickOperation=fn;},set protectedFocus(v){protectedFocus=v;},
+    set afterGoto(fn){afterGoto=fn;},set clickOperation(fn){clickOperation=fn;},set protectedFocus(v){protectedFocus=v;},set fieldValue(v){value=v;},
     async close(){await host.close();await rm(directory,{recursive:true,force:true});}};
 }
 
@@ -84,6 +85,57 @@ test('public address admission rejects special ranges, mapped IPv6, private DNS 
   for(const value of ['file:///C:/private','http://localhost/','https://metadata.google.internal','http://127.1/','https://u:p@example.com'])
     await assert.rejects(assertPublicBrowserUrl(value,{dnsLookup:publicDns}),{code:'UNAUTHORIZED'});
   await assert.rejects(assertPublicBrowserUrl('https://example.com',{dnsLookup:async()=>[{address:'8.8.8.8'},{address:'192.168.1.1'}]}),{code:'UNAUTHORIZED'});
+});
+
+test('a trusted workflow target handoff admits only the exact next child and retains current-page checks',async()=>{
+  let expected;
+  const f=await fixture({authorizeWorkflowTarget:input=>Boolean(expected&&input.sourceTaskId==='task-1'
+    &&input.scope.taskId==='next-child'&&input.toolName==='browser.type'&&input.targetRef===expected
+    &&input.args.ref==='r1'&&input.args.text==='bound value')});
+  try{
+    const observed=await f.invoke('open',{url:'https://example.com/'});expected=observed.targetRef;
+    await assert.rejects(f.invoke('type',{targetRef:expected,ref:'r1',text:'bound value'},{taskId:'sibling'}),notStarted('UNAUTHORIZED'));
+    await assert.rejects(f.invoke('type',{targetRef:expected,ref:'r1',text:'substituted'},{taskId:'next-child'}),notStarted('UNAUTHORIZED'));
+    const typed=await f.invoke('type',{targetRef:expected,ref:'r1',text:'bound value'},{taskId:'next-child'});
+    assert.equal(typed.controls[0].value,'bound value');
+    await assert.rejects(f.invoke('type',{targetRef:expected,ref:'r1',text:'bound value'},{taskId:'next-child'}),notStarted('UNAUTHORIZED'));
+    assert.equal(f.calls.filter(item=>item[0]==='fill').length,1);
+  }finally{await f.close();}
+});
+
+test('revoking a workflow target during the original attempt wait prevents the device dispatch',async()=>{
+  let allowed=true;
+  const f=await fixture({authorizeWorkflowTarget:()=>allowed,attempts:{record:async identity=>{
+    if(identity.toolName==='browser.type')allowed=false;
+  }}});
+  try{
+    const observed=await f.invoke('open',{url:'https://example.com/'});
+    await assert.rejects(f.invoke('type',{targetRef:observed.targetRef,ref:'r1',text:'bound value'},{taskId:'next-child'}),{code:'RESULT_UNKNOWN'});
+    assert.equal(f.calls.filter(item=>item[0]==='fill').length,0);
+    assert.equal(f.host.snapshot().state,'blocked','original recorded attempt is retained conservatively');
+  }finally{await f.close();}
+});
+
+test('workflow click checks current field values after approval waits even when its button is unchanged',async()=>{
+  let f;
+  f=await fixture({authorizeWorkflowTarget:()=>true,attempts:{record:async identity=>{
+    if(identity.toolName==='browser.click')f.fieldValue='changed after observation';
+  }}});
+  try{
+    const observed=await f.invoke('open',{url:'https://example.com/'});
+    await assert.rejects(f.invoke('click',{targetRef:observed.targetRef,ref:'r2'},{taskId:'next-child'}),{code:'RESULT_UNKNOWN'});
+    assert.equal(f.calls.filter(item=>item[0]==='click').length,0);
+    assert.equal(f.host.snapshot().state,'blocked');
+  }finally{await f.close();}
+});
+
+test('workflow click accepts unchanged original fields through its existing browser driver',async()=>{
+  const f=await fixture({authorizeWorkflowTarget:()=>true});
+  try{
+    const observed=await f.invoke('open',{url:'https://example.com/'});
+    const clicked=await f.invoke('click',{targetRef:observed.targetRef,ref:'r2'},{taskId:'next-child'});
+    assert.equal(clicked.state,'action_observed');assert.equal(f.calls.filter(item=>item[0]==='click').length,1);
+  }finally{await f.close();}
 });
 
 test('stable tools expose bounded public schemas, own visible profile and open/observe/type/click readback',async()=>{

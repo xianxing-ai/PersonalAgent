@@ -83,6 +83,21 @@ test('a lease cannot be created for another window, page, or expired authorizati
   assert.equal(requested(gate, panel, 'media', details), false);
 });
 
+test('workspace dictation grants audio only to the originating workspace main frame',()=>{
+  const panel=contents(),workspace=contents();
+  workspace.url=page.replace('mode=panel','mode=workspace');
+  const gate=createMicrophonePermissionGate({expectedPageUrl:page.split('?')[0],now:()=>100,
+    isTrustedWindow:(target,mode)=>target===(mode==='workspace'?workspace:panel)});
+  const details={isMainFrame:true,mediaTypes:['audio'],requestingUrl:workspace.url};
+  const release=gate.grant({webContents:workspace,deadlineAtMs:200});
+  assert.equal(requested(gate,workspace,'media',details),true);
+  assert.equal(requested(gate,panel,'media',details),false);
+  release();
+  assert.equal(requested(gate,workspace,'media',details),false);
+  panel.url=workspace.url;
+  assert.throws(()=>gate.grant({webContents:panel,deadlineAtMs:200}));
+});
+
 test('lease revoke callback fires once when navigation invalidates an active capture', () => {
   const panel = contents();
   const gate = createMicrophonePermissionGate({expectedPageUrl: 'file:///C:/PersonalAgent/index.html',

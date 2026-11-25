@@ -39,3 +39,25 @@
 - 本工作包代码、真实 Job 探针和定向测试已交付；整仓 `npm run check` 由集成分支统一执行，此处不声称全仓通过。
 - Desktop Main 既有开发调用默认仍是 FDD。根接线负责人将首次发布指向新的空外部 SC 目录，随后只复核不可变包；不得覆盖旧非空缓存或只传三个 pins。安装包的 Job 资源仍须独立登记，不复用 Desktop component 身份。
 - Windows Host / PipeBridge / Notepad 是独立 FDD 产物，尚未在本包证明自包含交付或真实 Notepad 写后读回；桌面 UI 由根串行验收。当前工作不等于 #531 全部设备链完成。
+
+## 根 Main 与原授权消费者（2026-11-01）
+
+Main packaged 路径现消费 `readPackagedNativeJobHelper(process.resourcesPath)`，只接受上述独立
+Job 自包含清单。开发入口首次在 userData/native-tools 下创建新的空外部目录、显式 SC 发布，
+同一应用实例复用并复核该 helper；保留旧 FDD 缓存，不覆盖或静默选择旧非空目录。
+
+集成树使用正式 resources 中 Job 组件运行原 `authorization-native-execution.integration`：
+普通用户 token、原 Runtime/SQLite/AuthorizationQuestions/Policy/ToolGateway/Desktop host/PSEC
+成功。任务 `08ffe6a7-182a-407f-bfff-b6dee4bbdd6c` 实际写后读回一次、exit 0、enforced/stopped true，
+审批前执行 0、重复执行 0、替换参数执行 0、不可用后普通进程回退 0、原许可剩余 0。
+内容和问题卡回应为明确合成夹具，模型/账号调用均 0；此证据超出独立 helper 探针，仍不等于
+真人审批或 AgentArts/F20 全图验收。回执 `.cache/authorization-native-integration/case-lyc5iZ/receipt.json`，
+日志 `.cache/integration-plan-native-caller.log`。Main 开发/正式路径绑定夹具和 Plan 回调 7/7 复验通过。
+
+## 后续正式 Job resources 发布接线
+
+已把 Job 包加入原 `node apps/desktop/scripts/build-windows-host.mjs --publish-native-desktop` 入口，保留 Desktop 原 `identity-receipt.json`；新增独立 `resources/native-tools/workspace-command` 和 `job-identity-receipt.json`。通过 public native-helper CLI 在新的外部目录构建，沿原有有界、可取消的发布进程执行，再完整复制并逐项核对全部 pins；未放宽原 buildNativeHelper 仓库外门禁。新 `readPackagedNativeJobHelper(resourcesPath)` 仅读取该正式位置和原完整 attestation，拒绝 FDD、缺失/变化文件；Main 消费由集成负责人接线。
+
+实际原发布命令 exit 0，正式 output root：本工作树 `.cache/native-desktop-publish/0a8c7a43-b3d8-46d8-9623-db2f1aca45b5`。设备包 initialize/EOF 仍在禁用外部 .NET 的环境通过；Job 包 manifest `5c893625153841a60671ba22caf5596aead81297e6284a765fd94451bd5aa804`，apphost `99683f88698a5ed03f17c0dcae7aaec9f12b1a15d4150329abbabe0b3e5cdad1`，191 companion files。此包源码摘要与此前 UTF-8 包一致，独立记录实际新产物身份，不能按 exe 名称推断同一个包。
+
+对这个正式 resources 内的 Job exe 重新运行原 PSEC 测试及发布负例：12 项，11 通过、1 平台跳过、0 失败。包括真实普通 token、Unicode 参数/路径/文件读回、原完整 PSEC 探针、取消/超时，以及 Synthetic 发布不覆盖旧组件、Desktop/Job 清单独立和包文件变化拒绝。日志 `.cache/publish-desktop-and-job.log`、`.cache/test-job-formal-package.log`；没有真实桌面输入或 Notepad 写操作。

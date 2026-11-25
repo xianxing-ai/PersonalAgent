@@ -58,12 +58,15 @@ export function mountSubagentConversationList(root, invoke) {
       const button = action('', () => open(key)); button.className = 'subagent-history-entry'; button.dataset.key = key;
       button.disabled = closing || closed || opening.has(key);
       button.setAttribute('aria-busy', String(opening.has(key)));
-      button.setAttribute('aria-label', `打开子对话：${text(item.role) || '子智能体'} · ${item.taskId}`);
+      const goal = text(item.goal).replace(/^\[任务执行\]\s*/, '').trim();
+      const role = text(item.role) || '子智能体';
+      button.setAttribute('aria-label', `打开子对话：${goal || role} · ${item.taskId}`);
       const heading = node('span', '', 'subagent-history-entry-heading');
-      heading.append(node('strong', text(item.role) || '子智能体'), node('span', Object.hasOwn(stateNames, item.state) ? stateNames[item.state] : '状态未记录'));
-      button.append(heading, node('span', text(item.goal) || '任务目标未记录', 'subagent-history-goal'),
-        node('span', `子任务 ${item.taskId} · 父任务 ${item.parentTaskId}`, 'subagent-history-metadata'),
-        node('span', [text(item.modelId) || '模型未记录', text(item.updatedAt) || '更新时间未记录'].join(' · '), 'subagent-history-metadata'));
+      heading.append(node('strong', goal || role), node('span', Object.hasOwn(stateNames, item.state) ? stateNames[item.state] : '状态未记录'));
+      const updated = Date.parse(item.updatedAt);
+      const timestamp = Number.isFinite(updated) ? new Date(updated).toLocaleString() : '';
+      button.append(heading, node('span', [role, text(item.modelId), timestamp].filter(Boolean).join(' · '), 'subagent-history-metadata'),
+        node('span', `子任务 ${item.taskId} · 父任务 ${item.parentTaskId}`, 'subagent-history-identity'));
       row.append(button); return row;
     }));
     empty.hidden = matches.length > 0;

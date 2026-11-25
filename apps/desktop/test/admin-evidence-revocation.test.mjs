@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {adminAuxiliaryDocument,recordFollowingNodes} from '../test-support/admin-history-dom.mjs';
+import {Orb} from '../src/features/orb/orb.js';
 
 const escape = value => String(value).replace(/[&<>"']/g,
   char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
@@ -25,9 +26,14 @@ async function harness(t, invoke) {
     }
   });
   const windowListeners = new Map();
-  globalThis.window = {addEventListener(name, listener) {
-    const listeners = windowListeners.get(name) ?? [];listeners.push(listener);windowListeners.set(name, listeners);
-  }};
+  globalThis.window = {
+    addEventListener(name, listener) {
+      const listeners = windowListeners.get(name) ?? [];listeners.push(listener);windowListeners.set(name, listeners);
+    },
+    removeEventListener(name, listener) {
+      windowListeners.set(name, (windowListeners.get(name) ?? []).filter(value => value !== listener));
+    },
+  };
   globalThis.document = adminAuxiliaryDocument();
   globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
   const {mountAdmin} = await import('../src/features/admin/view.js');
@@ -52,9 +58,44 @@ async function harness(t, invoke) {
     ?Promise.resolve({selected:{label:'Synthetic unavailable',mode:'unavailable',revision:0},profiles:[],rules:[]})
     :invoke(...args), escape);
   const base = {tasks: [], approvals: [], capabilities: [], health: [], connection: 'fixture'};
-  return {render, base, root, html: () => html, content: nodes.get('#content'), buttons: () => revokeButtons, quitButton:()=>nodes.get('#quit'),
+  return {render, base, root, nodes, windowListeners, html: () => html, content: nodes.get('#content'), buttons: () => revokeButtons, quitButton:()=>nodes.get('#quit'),
     unload: () => {for (const listener of windowListeners.get('unload') ?? []) listener();}};
 }
+
+test('desktop pet preview pauses on entry and follows reduced-motion changes', async t => {
+  const ui = await harness(t, async () => ({}));
+  document.documentElement = {dataset: {calm: 'true'}};
+  ui.nodes.set('#pets-preview-canvas', {getContext: () => ({})});
+  t.mock.method(Orb.prototype, '_resize', () => {});
+  t.mock.method(Orb.prototype, '_draw', () => {});
+  const frames = new Set();
+  let nextFrame = 0;
+  for (const [key, value] of Object.entries({
+    ResizeObserver: class { observe() {} disconnect() {} },
+    requestAnimationFrame: () => { frames.add(++nextFrame); return nextFrame; },
+    cancelAnimationFrame: frame => frames.delete(frame),
+  })) {
+    const original = Object.getOwnPropertyDescriptor(globalThis, key);
+    Object.defineProperty(globalThis, key, {value, configurable: true});
+    t.after(() => {
+      if (original) Object.defineProperty(globalThis, key, original);
+      else delete globalThis[key];
+    });
+  }
+  ui.render({...ui.base, adminNavigation: {page: 'pets', revision: 1}});
+  assert.match(ui.html(), /pets-preview-canvas/);
+  assert.equal(frames.size, 0);
+  const changeMotion = calm => {
+    document.documentElement.dataset.calm = String(calm);
+    for (const listener of ui.windowListeners.get('preferences-changed')) listener();
+  };
+  changeMotion(false);
+  assert.equal(frames.size, 1);
+  changeMotion(true);
+  assert.equal(frames.size, 0);
+  ui.render({...ui.base, adminNavigation: {page: 'settings', revision: 2}});
+  assert.equal(ui.windowListeners.get('preferences-changed').length, 0);
+});
 
 test('Evidence detail keeps the latest selection and its failure when older requests settle', async t => {
   const requests = [];

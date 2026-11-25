@@ -33,6 +33,13 @@ export function capabilityContext(input: {
       requestAgainOnlyAfter:'The access receipt expires, is revoked, or a later tool explicitly reports missing current access. Do not replay an unknown write.',
       grantsPermission:false,
     }:undefined;
+  const shadowPreview = input.profile==='huawei_ict_agentarts'
+    &&ready.has(JSON.stringify(['workflow.shadow_preview','1.0.0']))?{
+      toolName:'workflow.shadow_preview',toolVersion:'1.0.0',
+      whenToUse:'Decide whether preview will materially reduce uncertainty about an important action. Skip preview for routine work. Supply the intended tool name, version, and exact arguments.',
+      continueAfter:'A preview is advisory. Continue the original task when the preview finishes or is skipped.',
+      grantsPermission:false,
+    }:undefined;
   return JSON.stringify({capabilityStatus:{profile:input.profile,authorization:'checked_on_invocation',
     itemsRole:'bounded_diagnostics_sample',
     toolCatalogSource:input.available===undefined
@@ -48,7 +55,7 @@ export function capabilityContext(input: {
         ...(status==='unavailable'?{reasonCode:'READINESS_NOT_CONFIRMED',
           suggestion:'Check connector configuration, current availability and task scope; the exact reason is unknown.'}:{}),
         ...(status==='not_in_current_page'?{reasonCode:'USE_CAPABILITY_SEARCH',suggestion:'Search the original task directory to select this tool page; permission is checked on invocation.'}:{})};
-    }),truncated:input.registered.length>limit,...(computerAccess?{computerAccess}:{}),
+    }),truncated:input.registered.length>limit,...(computerAccess?{computerAccess}:{}),...(shadowPreview?{shadowPreview}:{}),
     ...(discoveryAvailable?{discovery:{toolName:'capability.search',toolVersion:'1.0.0',grantsPermission:false}}:{}),
     ...(input.executionProgress?{executionProgress:{...input.executionProgress,
       history:'Older tool results remain in the original Runtime. Re-read necessary files or state through the current tools; counts and summaries do not prove goal completion.',

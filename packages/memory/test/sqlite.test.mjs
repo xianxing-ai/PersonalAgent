@@ -35,6 +35,25 @@ function databasePath(t) {
   return join(directory, 'memory.sqlite');
 }
 
+test('synchronous public Fact head observes actual latest revision and erasure without historical fallback', t => {
+  const path=databasePath(t);let host=openSqliteMemoryHost(path);const other=openSqliteMemoryHost(path);
+  try {host.provision('plan-source');host.provision('other');
+  const first=version('original',1);host.append('plan-source',first);
+  const detached=host.readPublicFactHead('plan-source','original');assert.deepEqual(detached,first);
+  detached.summary='Changed caller copy';assert.deepEqual(host.readPublicFactHead('plan-source','original'),first);
+  other.append('plan-source',version('original',2,{state:'withdrawn'}));
+  assert.equal(host.readPublicFactHead('plan-source','original').state,'withdrawn');
+  assert.equal(host.readPublicFactHead('other','original'),undefined);
+  other.append('plan-source',version('original',3,{sensitivity:'private'}));
+  assert.throws(()=>host.readPublicFactHead('plan-source','original'),error=>error.code==='SCOPE_DENIED');
+  other.append('plan-source',version('original',4));
+  other.beginFactErasure('plan-source',{factId:'original',expectedRevision:4,operationId:'plan-erasure',...request()});
+  assert.equal(host.readPublicFactHead('plan-source','original'),undefined);
+  host.close();host=openSqliteMemoryHost(path);
+  assert.equal(host.readPublicFactHead('plan-source','original'),undefined);
+  } finally {host.close();other.close();}
+});
+
 test('private admin heads include withdrawn and expired records with isolated durable pagination', async t => {
   let host;
   t.after(() => host?.close());

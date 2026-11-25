@@ -10,10 +10,11 @@ function deferred() {
 }
 
 function fixture(options = {}) {
-  let host, request, token;
+  let host, request, token, drainId;
   const commands = [];
   const contents = {mainFrame: {}, isDestroyed: () => false, send(_channel, message) {
     token = message.token; commands.push(message.type);
+    if (message.type === 'drain') drainId = message.drainId;
     if (['start', 'stop'].includes(message.type)) queueMicrotask(() => host.receive(
       {sender: contents, senderFrame: contents.mainFrame},
       {token: message.token, type: message.type === 'start' ? 'ready' : 'stopped'}));
@@ -28,7 +29,7 @@ function fixture(options = {}) {
     ...options,
   });
   return {host, commands, get request() {return request;}, drain() {
-    host.receive({sender: contents, senderFrame: contents.mainFrame}, {token, type: 'drained'});
+    host.receive({sender: contents, senderFrame: contents.mainFrame}, {token, type: 'drained', drainId});
   }};
 }
 

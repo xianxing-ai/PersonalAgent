@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {syntheticPublicPayloadGate,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createServer} from 'node:http';
 import {mkdtemp,mkdir,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createDesktopProactiveWorkflowApplication} from '../electron/proactive-workflow-host.js';
+import {createDesktopBusinessSourceAdapters} from '../electron/business-source-adapters.js';
 import {createProactiveWorkflowController} from '@personal-agent/agentarts-runtime/proactive-controller';
 
 test('missing trusted proactive configuration remains unavailable without creating a task or network request',async()=>{
@@ -12,8 +14,22 @@ test('missing trusted proactive configuration remains unavailable without creati
   const host=createDesktopProactiveWorkflowApplication({application:{runtime:{getTask:()=>({goal:'public',conversationId:'fixture'}),loadCheckpoint:()=>undefined}},
     readConfiguration:()=>undefined,localDeviceAvailable:()=>true,createAdapter:()=>{calls++;assert.fail('no Fake adapter');}});
   assert.equal(host.snapshot().state,'unavailable');
+  assert.ok(host.snapshot().missing.includes('business_source_adapters'));
   await assert.rejects(host.start({sourceTaskId:'source',commandId:'start',taskDeadline:new Date(Date.now()+60000).toISOString()}),/签名配置/);
   assert.equal(calls,0);
+
+  const adapters=createDesktopBusinessSourceAdapters();
+  assert.deepEqual(adapters.list().map(item=>item.kind),['calendar','mail','feeds']);
+  const wired=createDesktopProactiveWorkflowApplication({
+    application:{runtime:{getTask:()=>({goal:'public',conversationId:'fixture'}),loadCheckpoint:()=>undefined}},
+    readConfiguration:()=>({contractRef:'c1',adapter:{endpoint:'http://127.0.0.1:9/invocations',receiptSecret:'x'.repeat(32)}}),
+    bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
+    sourceAdapters:adapters,
+    localDeviceAvailable:()=>true,
+    createAdapter:()=>{calls++;assert.fail('no Fake adapter');},
+  });
+  assert.equal(wired.snapshot().state,'configured_not_verified');
+  assert.deepEqual(wired.snapshot().missing,[]);
 });
 
 test('Desktop starts original Runtime worker through authenticated signed image HTTP; missing model/source ports stay explicit',async()=>{
@@ -25,16 +41,17 @@ test('Desktop starts original Runtime worker through authenticated signed image 
   const server=createServer(async(req,res)=>{try{
     assert.equal(req.headers.authorization,'Bearer public-outer');assert.equal(req.headers['x-pa-agent-token'],'Bearer public-inner');
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
-    const value=JSON.parse(JSON.parse(Buffer.concat(chunks).toString()).query);requests++;
+    const payload=JSON.parse(Buffer.concat(chunks).toString()),query=JSON.parse(payload.query),bound=query.executionEpochVersion===1;
+    const value=bound?JSON.parse(syntheticAgentArtsQuery(payload)):query;requests++;
     const result=await controller({value,sessionId:req.headers['x-hw-agentarts-session-id'],requestId:req.headers['x-request-id'],
       deadline:req.headers['x-pa-deadline'],signal:new AbortController().signal});
     res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify([
-      {event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]));
+      {event:'message',data:{text:bound?syntheticAgentArtsResult(payload,result):JSON.stringify(result)}},{event:'task_end'},{event:'end'}]));
   }catch{res.writeHead(400);res.end('fixture failed');}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const app=createRuntimeApplication({path:join(folder,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'public-test',proactiveWorkflows:true});
   const host=createDesktopProactiveWorkflowApplication({application:app,localDeviceAvailable:()=>true,readConfiguration:()=>({contractRef:contract.id,
-    adapter:{endpoint:'http://127.0.0.1:'+server.address().port+'/invocations',receiptSecret:secret,
+    adapter:{endpoint:'http://127.0.0.1:'+server.address().port+'/invocations',receiptSecret:secret,preparePayload:syntheticPublicPayloadGate,
       authorizationProvider:{read:async()=>'Bearer public-outer'},hostAuthorizationProvider:{read:async()=>'Bearer public-inner'}}})});
   let parent;
   try {
