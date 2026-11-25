@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -83,17 +84,17 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
         beforeSha256:sha('const value = 1;\n'),afterSha256:sha('const value = 2;\n'),currentSha256:sha(source),outcome:'applied'}
       :{path:input.relativePath,state:'clear'}},
     isUserPresent:()=>presence,readConversationPreference:()=>({depth:2,fast:false}),
-    coordination:{execute:async request=>{cloud.push(request);const task=app.runtime.getTask(request.taskId);
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);const task=app.runtime.getTask(request.taskId);
       if(task.conversationId==='user-chat')return {kind:'text',text:'Parent summary of verified workflow receipt',verification:'unverified'};
       if(request.continuation){assert.ok(request.continuation.result.state||request.continuation.result.status);return {kind:'text',text:'Child used confirmed workflow result',verification:'unverified'};}
       initialWorkerId??=request.taskId;
       const originRead=followupPatch&&request.taskId===initialWorkerId;
-      const proposal={kind:'tool_proposal',proposalId:'developer-request',toolName:'developer.'+(originRead?'ci_list':kind),toolVersion:'1.0.0',arguments:originRead?{repo}:args,verification:'unverified'};
+      const proposal={kind:'tool_proposal',proposalId:'developer-request',toolName:'developer.'+(originRead?'ci_list':kind),toolVersion:'1.0.0',arguments:originRead?{repo}:args,verification:'unverified',executionEpoch:request.executionEpoch};
       if(legacyBinding){const key='developer-workflow:'+sha(JSON.stringify(proposal.proposalId))+':binding';
         if(app.runtime.loadCheckpoint(request.taskId,key)===undefined)app.runtime.saveCheckpoint(request.taskId,key,
           {version:1,bindingId:'synthetic-dev-config',taskId:request.taskId,deadline:request.deadline,proposalRevision:request.revision,
             request:{...args,kind},proposalDigest:sha(JSON.stringify(proposal))});}
-      return proposal;}},
+      return proposal;})},
     developerWorkflows:{bindingId:'synthetic-dev-config',repositories:[repo],maxSteps:40,maxTokens:64000,
       ...(modelConfigured?{model}:{}),reviewRules:[{id:'correctness',text:'Review correctness of changed lines'}],
       available:()=>online,assertCurrent:()=>{assert.equal(online,true);},authorizeModelRequest:()=>{},projectResult:value=>value,

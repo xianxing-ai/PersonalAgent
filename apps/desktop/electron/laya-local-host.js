@@ -93,7 +93,11 @@ export function createLocalLayaHost({projectRoot, createService, createChooser, 
   let child, service, chooser, controller, starting, stopping, artifact;
   let admission=createInferenceAdmission({getLimit:getPendingLimit});
   async function infer(kind,input) {
-    if(!readClassifierIdentity()||!(kind==='classify'?service:chooser))throw Error(kind==='classify'?'本地 Laya 尚未就绪':'本地 Laya 决策尚未就绪');
+    if(!readClassifierIdentity()||!(kind==='classify'?service:chooser)) {
+      if(kind==='classify')throw Error('本地 Laya 尚未就绪');
+      if(state==='identity_changed')throw new ProtocolError('CANCELLED','Local Laya generation changed');
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','本地 Laya 决策尚未就绪');
+    }
     if(!(input?.signal instanceof AbortSignal))throw new ProtocolError('INVALID_ARGUMENT','Invalid local inference cancellation signal');
     const generation=controller,queue=admission,provider=kind==='classify'?service:chooser;
     const expires=input.deadline===undefined?undefined:typeof input.deadline==='string'?Date.parse(input.deadline):NaN;

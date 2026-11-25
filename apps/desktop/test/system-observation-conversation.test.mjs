@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -28,7 +29,7 @@ async function scenario({realLocal=false,delegated=false,decision=true,configure
   assert.equal(host.tools[0],tool,'Reuses the original RegisteredTool object');
   const dispatch=createRuntimeSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
-  app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'synthetic-system-observation',
+  app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',hostUserNamespace:'synthetic-system-observation',
     gatewayUrl:'https://synthetic-observation.invalid',runtimeName:'synthetic-no-cloud',
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',competitionMaxSteps:4,
     ...(delegated?{delegateUserTasks:true}:{}),tools:[tool,...(delegated?[dispatch]:[])],
@@ -50,7 +51,7 @@ async function scenario({realLocal=false,delegated=false,decision=true,configure
         :{kind:'tool_proposal',proposalId:'synthetic-system-observe',toolName:'computer.system.observe',toolVersion:'1.0.0',arguments:{}};
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(value)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   try {
     assert.equal(fixture.reads(),realLocal?undefined:0,'Construction does not sample');
     const client=new Client(app);await client.connect();

@@ -20,7 +20,7 @@ function fixture(overrides={}){
   const host=createDesktopWindowsControlHost({createControlHost:options=>{providerOptions=options;return provider;},allowObservationExport:true,now:()=>clock,
     registerConfirmation:callback=>{confirmation=callback;return()=>{releases++;};},...overrides});
   const application={runtime:{listTasks:()=>({items:[]}),readToolExecutions:()=>[],getTask:()=>({state:'running'}),
-    loadCheckpoint:()=>new Date(clock+60000).toISOString(),matchesToolExecutionInput:()=>true,
+    loadCheckpoint:(_taskId,key)=>key==='application-deadline'?new Date(clock+60000).toISOString():undefined,matchesToolExecutionInput:()=>true,
     saveCheckpointOnce(taskId,key,value){const id=taskId+key;if(checkpoints.has(id))return false;checkpoints.set(id,value);return true;}}};
   host.bind(application);
   return {host,provider,application,confirm:()=>confirmation(),get options(){return providerOptions;},get releases(){return releases;},checkpoints};
@@ -74,7 +74,7 @@ test('attempt store rejects missing/denied/mismatched original executions, cance
     runtime=>{runtime.readToolExecutions=()=>[{evidenceId:'run-1',taskId:'task-1',toolName:'computer.desktop.click',toolVersion:'1.0.0',policyDecision:'deny',executionStarted:false,state:'started'}];},
     runtime=>{runtime.matchesToolExecutionInput=()=>false;},
     runtime=>{runtime.getTask=()=>({state:'running',cancelRequested:true});},
-    runtime=>{runtime.loadCheckpoint=()=>new Date(clock+50000).toISOString();},
+    runtime=>{runtime.loadCheckpoint=(_taskId,key)=>key==='application-deadline'?new Date(clock+50000).toISOString():undefined;},
   ]){
     const f=fixture();await f.host.start(context());const waiting=f.host.preparePresence(context());f.confirm();await waiting;
     const args={targetRef:'f74ab5a9-51ee-4c14-b592-33b60fb443dd',loc:[10,20]};
@@ -220,7 +220,7 @@ test('public provider factory is consumed through request access, gesture, obser
   const host=createDesktopWindowsControlHost({createControlHost:createWindowsDesktopControlHost,presenceHost:broker,
     allowObservationExport:true,now:()=>clock,providerOptions:{backend,now:()=>clock}});
   host.bind({runtime:{listTasks:()=>({items:[]}),getTask:()=>({state:'running'}),
-    loadCheckpoint:()=>new Date(clock+60000).toISOString(),
+    loadCheckpoint:(_taskId,key)=>key==='application-deadline'?new Date(clock+60000).toISOString():undefined,
     readToolExecutions:()=>[{taskId:'task-1',evidenceId:'run-1',toolName:'computer.desktop.click',toolVersion:'1.0.0',policyDecision:'allow',executionStarted:true,state:'started'}],
     matchesToolExecutionInput:(_record,input)=>input.scopeRef==='grant-1'&&input.arguments.loc[0]===10,
     saveCheckpointOnce(taskId,key,value){
@@ -321,7 +321,7 @@ function renewablePresenceFixture({fullAccess=true}={}) {
   f.application.runtime.readToolExecutions=()=>[record];
   f.application.runtime.matchesToolExecutionInput=(_run,input)=>input.scopeRef==='grant-1'&&toolArgumentsDigest(input.arguments)===toolArgumentsDigest({});
   const scope=()=>context({deadline:new Date(clock+120000).toISOString()});
-  f.application.runtime.loadCheckpoint=()=>scope().deadline;
+  f.application.runtime.loadCheckpoint=(_taskId,key)=>key==='application-deadline'?scope().deadline:undefined;
   return {...f,broker,record,scope,get requests(){return requests;},
     advance(milliseconds){time+=milliseconds;for(const [id,timer]of [...timers])if(timer.at<=time){timers.delete(id);timer.callback();}},
     set full(value){fullAccess=value;},set binding(value){binding=value;},set conversation(value){conversation=value;},

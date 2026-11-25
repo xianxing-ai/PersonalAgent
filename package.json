@@ -19,6 +19,7 @@
     "typecheck": "npm run build && npm run typecheck --workspaces",
     "test": "npm run build && npm run test --workspaces",
     "check:architecture": "node --test tests/architecture/*.test.mjs",
+    "check:developer-real-env": "node scripts/developer-direction/check-real-env.mjs",
     "check:packaging-scaffold": "node scripts/release/packaging-scaffold.check.mjs .",
     "test:integration": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter=./apps/desktop/test-support/node-test-failure-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stderr tests/integration/*.test.mjs",
     "test:mcp-tls-smoke": "node tests/manual/mcp/remote-tls-smoke.mjs",

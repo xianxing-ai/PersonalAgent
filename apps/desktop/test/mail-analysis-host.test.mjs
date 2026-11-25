@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
@@ -39,7 +40,7 @@ test('mail handoff uses Runtime idempotency, checks current revision and retains
     readAnalysis:()=>structuredClone(item),confirmAnalysisAccepted(input){
       assert.equal(input.sourceRevision,item.sourceRevision);item={...item,state:'accepted',taskId:input.taskId};}};
   const app=createRuntimeApplication({path:path.join(root,'runtime.sqlite'),profile:'huawei_ict_agentarts',
-    coordination:{async execute(request){host.assertCloudSend(request);sends++;return{kind:'text',text:'建议已生成',verification:'unverified'};}}});
+    coordination:{execute:syntheticCoordinationExecution(async (request)=>{host.assertCloudSend(request);sends++;return{kind:'text',text:'建议已生成',verification:'unverified'};})}});
   const client=new Client(app);await client.connect();let displayed;
   host=createDesktopMailAnalysisHost({application:app,client,mail,config,namespace:'test',onTask:value=>{displayed=value;}});
   t.after(async()=>{host.close();await until(()=>app.activeTaskCount===0);app.close();});
