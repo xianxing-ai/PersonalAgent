@@ -77,18 +77,14 @@ if [ "$FORCE_CONFIG" -eq 1 ] || [ ! -f "$POLICY_FILE" ]; then
   cat > "$POLICY_FILE" <<'JSON'
 {
   "enabled": true,
-  "allowExec": true,
+  "allowExec": false,
   "allowDesktop": true,
   "desktopContainer": "personal-agent-webtop",
   "webtopHttpPort": 3000,
   "webtopHttpsPort": 3001,
   "maxTimeoutMs": 60000,
-  "allowedExecutables": [
-    "uname", "uptime", "df", "free", "ps", "ls", "cat", "head", "tail", "find",
-    "grep", "wc", "pwd", "id", "whoami", "which", "env", "printenv", "date",
-    "node", "npm", "python3", "git", "curl", "wget",
-    "xdg-open", "xdotool", "scrot", "chromium", "google-chrome", "playwright"
-  ]
+  "allowedExecutables": [],
+  "allowedCommands": []
 }
 JSON
   chmod 644 "$POLICY_FILE"

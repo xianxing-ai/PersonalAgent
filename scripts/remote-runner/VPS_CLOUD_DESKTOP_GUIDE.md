@@ -23,7 +23,7 @@ sudo sh install-cloud-desktop.sh
 安装脚本会自动完成：
 1. 安装 Node.js 并创建 `/usr/bin/node` 软链接，部署 `/opt/personal-agent-runner/remote-runner-service.mjs` 与 `personal-agent-runner` 服务。
 2. 安装并启动 Docker。
-3. 生成受控策略文件 `/etc/personal-agent-runner/vps-control.json`（只放行白名单可执行程序，禁止模型随意执行破坏性系统命令）。
+3. 生成策略文件 `/etc/personal-agent-runner/vps-control.json`。新安装只开启桌面管理。主机与容器内的命令执行共用 `allowExec`。如需开放某个命令，管理员须显式启用该项，并同时填写 `allowedExecutables` 和精确到参数的 `allowedCommands`。例如，查询磁盘剩余空间可分别填写 `["df"]` 和 `[["df","-h"]]`。升级已有策略时也须填写具体参数。
 4. 拉取并启动 `lscr.io/linuxserver/webtop:ubuntu-xfce`（容器名 `personal-agent-webtop`），桌面端口 **仅监听在 VPS 本机回环 `127.0.0.1:3000 / 3001`**，不直接裸露到公网。
 
 安装完成后，在 VPS 查看你的执行器令牌（不要把令牌贴到公开聊天中）：

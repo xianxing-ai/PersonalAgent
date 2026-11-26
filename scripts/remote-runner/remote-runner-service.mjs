@@ -209,6 +209,7 @@ export function readVpsControlPolicy(file = VPS_CONTROL_FILE) {
       allowExec: parsed.allowExec === true,
       allowDesktop: parsed.allowDesktop === true,
       allowedExecutables,
+      allowedCommands: Array.isArray(parsed.allowedCommands) ? parsed.allowedCommands : [],
       desktopContainer: container,
       webtopHttpPort,
       webtopHttpsPort,
@@ -230,6 +231,10 @@ function validateSafeArgv(command, policy) {
   }
   if (!policy.allowedExecutables.includes(executable)) {
     return {error: `executable "${executable}" is not in allowedExecutables`};
+  }
+  if (policy.allowedCommands !== undefined && !policy.allowedCommands.some(entry =>
+    Array.isArray(entry) && entry.length === command.length && entry.every((arg, index) => arg === command[index]))) {
+    return {error: 'command arguments are not in allowedCommands'};
   }
   return {command};
 }
@@ -304,11 +309,11 @@ async function runVpsOps(message, options) {
   const requestedTimeout = Number.isInteger(payload.timeoutMs) && payload.timeoutMs >= 1000 ? payload.timeoutMs : policy.maxTimeoutMs;
   const timeoutMs = Math.max(1000, Math.min(policy.maxTimeoutMs, requestedTimeout, remaining));
 
+  if ((action === 'exec' || (action === 'desktop' && payload.desktopAction === 'exec')) && policy.allowExec !== true) {
+    return receipt(message, {state: 'failed', needsConfig: true, verification: 'needs-config', redo: false,
+      error: 'vps control exec is disabled', summary: '该 VPS 主机的 vps-control.json 未开启 allowExec。'});
+  }
   if (action === 'exec') {
-    if (!policy.allowExec) {
-      return receipt(message, {state: 'failed', needsConfig: true, verification: 'needs-config', redo: false,
-        error: 'vps control exec is disabled', summary: '该 VPS 主机的 vps-control.json 未开启 allowExec。'});
-    }
     const target = payload.target === undefined ? 'host' : String(payload.target);
     if (target !== 'host' && target !== 'desktop') {
       return receipt(message, {state: 'failed', redo: false, error: 'target must be host or desktop'});
@@ -345,7 +350,7 @@ async function runVpsOps(message, options) {
       return receipt(message, {state: 'failed', needsConfig: true, verification: 'needs-config', redo: false,
         error: 'vps desktop control is disabled', summary: '该 VPS 主机的 vps-control.json 未开启 allowDesktop。'});
     }
-    const desktopAction = String(payload.desktopAction || '');
+    const desktopAction = payload.desktopAction;
     if (desktopAction === 'status') {
       const inspected = await inspectDesktopContainer(policy.desktopContainer, options.spawnImpl);
       return receipt(message, redact({
