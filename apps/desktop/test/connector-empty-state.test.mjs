@@ -33,8 +33,12 @@ test('actual connector items and notifications still render escaped snapshot dat
 });
 test('a ready weather tool without a result offers a query instead of claiming a disconnected or verified service',()=>{
  const card=connectorCards({health:[{id:'weather.forecast',state:'ready'}]},escape).split('</article>')[0];
- assert.match(card,/待查询/);assert.match(card,/尚未获取数据/);assert.doesNotMatch(card,/未连接|实时|已连接/);
+ assert.match(card,/待查询/);assert.match(card,/暂无天气数据/);assert.match(card,/点击设置城市/);assert.doesNotMatch(card,/未连接|实时|已连接/);
  const zero=connectorCards({weather:{temp:0,city:'<城市>'}},escape).split('</article>')[0];assert.match(zero,/0<span>/);assert.match(zero,/&lt;城市&gt;/);
+ const configured=connectorCards({weather:{configured:true}},escape).split('</article>')[0];
+ assert.match(configured,/点击刷新/);assert.match(configured,/data-weather-city/);assert.doesNotMatch(configured,/点击设置城市/);
+ const forecast=connectorCards({weather:{configured:true,city:'示例城市',temperatureMin:10,temperatureMax:18,range:'10–18°C'}},escape).split('</article>')[0];
+ assert.equal(forecast.split('10–18°C').length-1,1);
 });
 test('weather failure text is displayed as text when no forecast is available',()=>{
  const reason='<img src=x onerror=alert(1)>';
@@ -69,10 +73,13 @@ test('calendar and todo card surfaces saved CalDAV configuration honestly withou
  const configured=connectorCards({calendar:{configured:true,readAvailable:true,calendarName:'<工作日程>',reason:'配置已保存，读取需对话确认'}},escape).split('data-connector="calendar"')[1].split('</article>')[0];
  assert.match(configured,/&lt;工作日程&gt;/);
  assert.doesNotMatch(configured,/<工作日程>/);
- assert.match(configured,/已保存配置，读取需对话确认/);
+ assert.match(configured,/配置已保存，读取需对话确认/);
+ assert.equal(configured.split('&lt;工作日程&gt;').length-1,1);
+ assert.match(configured,/class="calendar-preview"/);assert.doesNotMatch(configured,/<time>|<footer><\/footer>/);
  assert.doesNotMatch(configured,/待办服务未连接|已实时同步/);
- const combined=connectorCards({todo:{available:true,items:[{title:'写周报',status:'open'}]},calendar:{configured:true,readAvailable:false,calendarName:'个人日历'}},escape).split('data-connector="calendar"')[1].split('</article>')[0];
+ const combined=connectorCards({todo:{available:true,items:[{title:'写周报',status:'open',due:{utc:'2026-10-18T08:00:00Z'}}]},calendar:{configured:true,readAvailable:false,calendarName:'个人日历'}},escape).split('data-connector="calendar"')[1].split('</article>')[0];
  assert.match(combined,/写周报/);
+ assert.match(combined,/<time>[^<]*\d{1,2}:\d{2}[^<]*<\/time>/);
  assert.match(combined,/个人日历 · 已保存配置，等待读取宿主/);
  const unavailable=connectorCards({calendar:{configured:false,status:'unavailable',calendarName:'CalDAV 日历',reason:'日历读取宿主未就绪'}},escape).split('data-connector="calendar"')[1].split('</article>')[0];
  assert.match(unavailable,/不可用/);
@@ -81,4 +88,9 @@ test('calendar and todo card surfaces saved CalDAV configuration honestly withou
 test('notification connector card exposes keyboard button semantics',()=>{
  const html=connectorCards({},escape);
  assert.match(html,/class="connector-card notification-card" role="button" tabindex="0" aria-label="打开通知设置"/);
+ const notification=html.split('class="connector-card notification-card"')[1];
+ assert.match(notification,/class="connector-icon"><svg[^>]*aria-hidden="true"/);
+ assert.equal(notification.split('暂无').length-1,1);assert.doesNotMatch(notification,/connector-status/);
+ const failure=connectorCards({todo:{failure:'<失败原因>'}},escape).split('class="connector-card notification-card"')[1];
+ assert.match(failure,/读取失败/);assert.match(failure,/&lt;失败原因&gt;/);assert.doesNotMatch(failure,/暂无通知/);
 });

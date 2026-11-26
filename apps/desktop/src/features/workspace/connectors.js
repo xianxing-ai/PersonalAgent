@@ -1,12 +1,12 @@
 import {historicalMailCard} from './mail-history-card.js';
 
 const previews = {
-  weather: '<p class="connector-empty">暂无天气数据。可以直接对主对话说「查天气」，或点这里设置城市。</p>',
+  weather: '<p class="connector-empty">暂无天气数据</p>',
   calendar: '<p class="connector-empty">暂无待办记录，可在主对话创建或查询。</p>',
   mail: '<p class="connector-empty">邮件交给助手的工人处理，不在主对话里直接查。</p>',
   knowledge: '<p class="connector-empty">知识库和笔记交给助手的工人处理，不在主对话里直接查。</p>',
   feeds: '<p class="connector-empty">添加订阅后显示已配置的来源。</p>',
-  notifications: '<p class="connector-empty">暂无通知。</p>',
+  notifications: '<p class="connector-empty">暂无通知</p>',
 };
 
 const definitions = [
@@ -17,17 +17,25 @@ const definitions = [
     defaultPreview: previews.weather,
     render(data, escape) {
       if (Number.isFinite(data.weather?.temp)||Number.isFinite(data.weather?.temperatureMin)&&Number.isFinite(data.weather?.temperatureMax)) {
+        const weather = data.weather;
+        const hasCurrent = Number.isFinite(weather.temp);
+        const range = weather.range || [weather.temperatureMin, weather.temperatureMax].join('–') + '°C';
+        const summary = hasCurrent ? escape(weather.temp) + '<span>°</span>' : escape(range);
+        const location = [weather.city, hasCurrent && weather.range].filter(Boolean).join(' · ');
+        const updated = weather.fetchedAt ? new Date(weather.fetchedAt).toLocaleString() : weather.date;
         return {
           status: data.weather.busy?'刷新中':data.weather.reason?'刷新失败':data.weather.stale||data.weather.ageMs>600000?'待刷新':'已更新',
-          preview: `<div class="weather-preview"><strong>${Number.isFinite(data.weather.temp)?`${escape(data.weather.temp)}<span>°</span>`:escape(data.weather.range)}</strong><div>${escape(data.weather.condition ?? '天气预报')}<small>${escape(data.weather.city ?? '查询城市')} · ${escape(data.weather.range ?? '')}</small></div></div>`,
-          footer: escape(data.weather.reason||`${data.weather.source??'天气来源'} · ${data.weather.fetchedAt?new Date(data.weather.fetchedAt).toLocaleString():data.weather.date??''} · 点击刷新`),
+          preview: `<div class="weather-preview"><strong>${summary}</strong><div>${escape(weather.condition || '天气预报')}${location ? `<small>${escape(location)}</small>` : ''}</div></div>`,
+          footer: escape(weather.reason || [weather.source, updated, '点击刷新'].filter(Boolean).join(' · ')),
         };
       }
       const ready=(data.health??[]).some(item=>item.id==='weather.forecast'&&item.state==='ready');
+      const actionHint = data.weather?.configured ? '点击刷新' : '点击设置城市';
       return {
         status: data.weather?.busy?'查询中':data.weather?.reason?'查询失败':ready?'待查询':'未就绪',
-        preview: previews.weather,
-        footer: escape(data.weather?.reason??(ready?'天气查询入口已接入；尚未获取数据':'天气查询能力尚未就绪')),
+        preview: data.weather?.reason ? previews.weather
+          : `<p class="connector-empty weather-empty">暂无天气数据<span>${actionHint}</span></p>`,
+        footer: escape(data.weather?.reason || ''),
       };
     },
   },
@@ -42,11 +50,8 @@ const definitions = [
       const calendarConfigured = calendar?.configured === true;
       const calendarUnavailable = calendar?.status === 'unavailable';
       const calendarName = calendar?.calendarName || 'CalDAV 日历';
-      const calendarTag = calendarConfigured
-        ? `${escape(calendarName)} · ${calendar.readAvailable ? '已保存配置，读取需对话确认' : '已保存配置，等待读取宿主'}`
-        : calendarUnavailable
-          ? `${escape(calendarName)} · ${escape(calendar.reason || '日历不可用')}`
-          : '';
+      const readState = calendar?.readAvailable ? '已保存配置，读取需对话确认' : '已保存配置，等待读取宿主';
+      const calendarNote = calendar?.reason || (calendarUnavailable ? '日历服务当前不可用' : readState);
       if (items.length > 0) {
         const rows = items.slice(0, 3).map(todo => {
           const time = todo.reminder?.remindAt?.utc
@@ -55,39 +60,35 @@ const definitions = [
           const statusText = {open: '待完成', done: '已完成', cancelled: '已取消'}[todo.status] ?? todo.status;
           return `<div class="agenda-row"><time>${escape(time)}</time><div>${escape(todo.title)}<small>${escape(statusText)}${todo.notes ? ' · ' + escape(todo.notes) : ''}</small></div></div>`;
         }).join('');
+        const calendarTag = calendarConfigured || calendarUnavailable
+          ? `${escape(calendarName)} · ${escape(calendarNote)}` : '';
         return {
           status: data.todo.sessionAllowed ? '已允许' : '已就绪',
           preview: rows,
           footer: `本地待办 · ${items.length} 项${calendarTag ? ` · ${calendarTag}` : ''}`,
         };
       }
-      if (data.todo?.available) {
-        return {
-          status: calendarConfigured ? '已配置' : '已就绪',
-          preview: calendarConfigured
-            ? `<div class="agenda-row"><time>日历</time><div>${escape(calendarName)}<small>${escape(calendar.reason || '配置已在本机加密保存；读取或修改在对话提问卡确认')}</small></div></div>`
-            : previews.calendar,
-          footer: `本地待办已就绪${calendarTag ? ` · ${calendarTag}` : ''}`,
-        };
-      }
       if (calendarConfigured) {
         return {
-          status: calendar.readAvailable ? '已配置' : '待接入',
-          preview: `<div class="agenda-row"><time>日历</time><div>${escape(calendarName)}<small>${escape(calendar.reason || '配置已在本机加密保存；读取或修改在对话提问卡确认')}</small></div></div>`,
-          footer: calendarTag,
+          status: calendarUnavailable ? '不可用' : calendar.readAvailable ? '已配置' : '待接入',
+          preview: `<div class="calendar-preview"><strong>${escape(calendarName)}</strong><small>${escape(calendarNote)}</small></div>`,
+          footer: data.todo?.available ? '本地待办已就绪' : '',
         };
       }
       if (calendarUnavailable) {
         return {
           status: '不可用',
           preview: `<p class="connector-empty">${escape(calendar.reason || '日历服务当前不可用。')}</p>`,
-          footer: calendarTag,
+          footer: data.todo?.available ? '本地待办已就绪' : '',
         };
+      }
+      if (data.todo?.available) {
+        return {status:'已就绪', preview:previews.calendar, footer:'本地待办已就绪'};
       }
       return {
         status: '未连接',
         preview: '<p class="connector-empty">待办服务尚未就绪，请检查 Runtime 状态。</p>',
-        footer: '待办服务未连接',
+        footer: '',
       };
     },
   },
@@ -171,6 +172,9 @@ const definitions = [
   },
 ];
 const labels = {ready: '已连接', connecting: '连接中', reauth_required: '需要授权', degraded: '连接异常', disconnected: '未连接', unavailable: '未接入'};
+function connectorIcon(path) {
+  return `<span class="connector-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg></span>`;
+}
 export function connectorDestination(id,data={}){
   return id==='weather'?(data.weather?.configured?{action:'weather.refresh'}:{configure:'weather'}):{page:id==='obsidian'?'memory':'connections'};
 }
@@ -184,18 +188,20 @@ export function connectorCards(data, escape) {
     // 已配置城市后卡片点击只会刷新，需要单独入口才能换城市。
     const cityAction = item.id === 'weather' && data.weather?.configured
       ? '<button type="button" class="connector-inline-action" data-weather-city aria-label="更换天气城市">换城市</button>' : '';
-    return `<article class="connector-card" data-connector="${item.id}" role="button" tabindex="0" aria-label="${item.id==='weather'?'查询天气':'配置'+item.name}"><header><span class="connector-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${item.path}"/></svg></span><h3>${item.name}</h3><span class="connector-status">${escape(status)}</span></header>${preview}<footer>${footer}${cityAction}</footer></article>`;
+    const footerHtml = footer || cityAction ? `<footer>${footer}${cityAction}</footer>` : '';
+    return `<article class="connector-card" data-connector="${item.id}" role="button" tabindex="0" aria-label="${item.id==='weather'?'查询天气':'配置'+item.name}"><header>${connectorIcon(item.path)}<h3>${item.name}</h3><span class="connector-status">${escape(status)}</span></header>${preview}${footerHtml}</article>`;
   }).join('');
 
   const notifList = Array.isArray(data.notifications) ? data.notifications : [];
   const notifError = data.todo?.failure || (data.health || []).find(h => h.id === 'notifications' && h.state === 'error')?.reason;
-  const notifStatus = notifError ? '读取失败' : notifList.length ? `${notifList.length} 条` : '暂无';
+  const notifStatus = notifError ? '读取失败' : notifList.length ? `${notifList.length} 条` : '';
   const notifContent = notifError
     ? `<p class="notif-error" style="color:var(--danger)">通知读取失败：${escape(notifError)}</p>`
     : notifList.length
       ? notifList.slice(0, 5).map(item => `<p>${escape(item.summary)}<small>${escape(new Date(item.occurredAt).toLocaleString())}</small></p>`).join('')
       : previews.notifications;
 
-  return cards + `<article class="connector-card notification-card" role="button" tabindex="0" aria-label="打开通知设置"><header><h3>通知</h3><span class="connector-status">${escape(notifStatus)}</span></header>${notifContent}</article>`;
+  const bell = connectorIcon('M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9m4.3 13a2 2 0 0 0 3.4 0');
+  return cards + `<article class="connector-card notification-card" role="button" tabindex="0" aria-label="打开通知设置"><header>${bell}<h3>通知</h3>${notifStatus ? `<span class="connector-status">${escape(notifStatus)}</span>` : ''}</header>${notifContent}</article>`;
 }
 
