@@ -4,6 +4,8 @@ let state,task,busy=false;
 const labels={unconfigured:'未配置',unavailable:'安全存储不可用',saved_disconnected:'已保存，默认断开',connected:'本次会话已连接',expired:'凭据已到期',reassembly_required:'配置已变化，请正常退出并重启',identity_conflict:'工具名冲突，请修改配置',revoke_pending:'配置文件清除失败，撤销未完成'};
 const stateLabels={unconfigured:'未配置',unavailable:'安全存储不可用',saved_disconnected:'已保存，默认断开',connected:'本次会话已连接',expired:'凭据已到期',reassembly_required:'请重新打开应用（重启）后使用',identity_conflict:'名称冲突，请换一个名称',revoke_pending:'删除未完成',created:'已创建',planning:'规划中',running:'运行中',waiting_approval:'待确认',waiting_reconciliation:'核对中',cancelling:'取消中',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
 function serviceLabel(id,index){
+  const preset=Array.from($('preset').options).find(option=>option.value===id);
+  if(preset)return preset.textContent;
   if(!id)return '未命名插件';
   if(id==='legacy')return '默认插件';
   if(/[^\u0000-\u007f]/.test(id))return id;
@@ -24,9 +26,10 @@ function paint(){
   const labelMap=new Map();
   if(state.services){const items=state.services.map((item,index)=>{const option=document.createElement('option');option.value=item.id;const name=serviceLabel(item.id,index);labelMap.set(item.id,name);
     option.textContent=`${name} · ${stateLabels[item.status]??labels[item.status]??'未连接'}`;return option;});
-    if(!state.services.some(item=>item.id===state.activeId)){const option=document.createElement('option');option.value=state.activeId;option.textContent='新插件';items.push(option);}
+    if(!state.services.some(item=>item.id===state.activeId)){const option=document.createElement('option');option.value=state.activeId;option.textContent=serviceLabel(state.activeId);items.push(option);}
     $('server').replaceChildren(...items);$('server').value=state.activeId;}
   $('server').disabled=busy;$('new-server').disabled=busy;$('migrate-server').disabled=busy;
+  $('choose-preset').disabled=busy||!state.services;
   $('status').textContent=(stateLabels[state.status]??labels[state.status]??'尚未连接')+(state.runtimeAvailable?'':'；Runtime 未初始化，暂不可调用');
   $('definition').textContent=describe(state.draft??state.definition);
   $('restart-note').textContent=state.requiresReassembly?'新添加的插件要重新打开应用后才能连接。已经在用的插件保存后可以直接连接。':'';
@@ -52,6 +55,12 @@ async function act(name,payload){
 }
 for(const name of ['import','connect','disconnect','revoke'])$(name).addEventListener('click',()=>void act(name));
 $('server').addEventListener('change',()=>void act('select',{id:$('server').value}));
+$('choose-preset').addEventListener('click',async()=>{
+  const option=$('preset').selectedOptions[0];
+  $('token').value='';$('expires-picker').value='';$('expires').value='';
+  await act('preset',{id:option.value});
+  if(state?.activeId===option.value)$('arguments').value=option.dataset.example;
+});
 $('new-server').addEventListener('click',()=>void act('new',{id:$('server-id').value.trim()}));
 $('migrate-server').addEventListener('click',()=>void act('migrate',{id:$('server-id').value.trim()}));
 $('save-form').addEventListener('submit',event=>{event.preventDefault();const payload={token:$('token').value,expiresAt:readExpiry()};$('token').value='';void act('save',payload);});

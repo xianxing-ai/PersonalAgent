@@ -111,6 +111,15 @@ async function newPending(page,previous){return waitFor(async()=>{const state=aw
     const general=await admin.evaluate(()=>window.desktop.invoke('snapshot'));assert.equal(JSON.stringify(general).includes(token),false);
     await close();instance=await open();({app,admin,page}=instance);
     const before=f.requests.length;await page.waitForFunction(()=>document.getElementById('status').textContent.includes('默认断开'));assert.equal(f.requests.length,before);
+    for(const [id,tool] of [['microsoft-learn','mcp.remote.microsoft_learn'],['microsoft-samples','mcp.remote.microsoft_samples'],['huggingface-hub','mcp.remote.huggingface_hub']]){
+      await page.locator('#preset').selectOption(id);
+      await page.locator('#choose-preset').click();
+      await page.waitForFunction(name=>document.getElementById('definition').textContent.includes(name),tool);
+      assert.equal(await page.locator('#connect').isDisabled(),true);
+    }
+    await page.locator('#server').selectOption('legacy');
+    await page.waitForFunction(()=>document.getElementById('status').textContent.includes('默认断开'));
+    await page.locator('#arguments').fill('');
     await connect('deny');await page.waitForFunction(()=>document.getElementById('error').textContent.length>0);assert.equal(f.requests.length,before);
     await connect();try{await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));}
     catch(error){const status=await page.evaluate(()=>window.remoteMcp.invoke('state'));
