@@ -6576,7 +6576,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const assistants=this.runtime.listAssistants();
     return assistants.map(assistant=>{
       const child=this.latestAssistantChild(assistant.role);
-      if(!child||['succeeded','failed','cancelled'].includes(child.state))return assistant;
+      if(child?.state==='waiting_reconciliation'&&assistant.activeTaskId===child.taskId) {
+        const {activeTaskId: _pausedTask, ...rest}=assistant;
+        return {...rest,status:'idle' as const};
+      }
+      if(!child||['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))return assistant;
       return {...assistant,status:child.state==='waiting_approval'?'waiting_approval' as const:'working' as const,activeTaskId:child.taskId};
     });
   }
@@ -7068,8 +7072,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!saved?.role)return;
     const assistant=this.runtime.ensureAssistants().find(item=>item.role===saved.role);
     const summary=(child.resultSummary??child.error?.message??child.state).slice(0,280);
-    if(assistant&&['succeeded','failed','cancelled'].includes(child.state)) {
-      this.runtime.updateAssistant(assistant.assistantId,{status:'idle',activeTaskId:null,unreadDelta:1,lastSummary:summary});
+    const terminal= ['succeeded','failed','cancelled'].includes(child.state);
+    if(assistant&&(terminal||child.state==='waiting_reconciliation')) {
+      this.runtime.updateAssistant(assistant.assistantId,{status:'idle',activeTaskId:null,unreadDelta:terminal?1:0,lastSummary:summary});
     } else if(assistant) {
       this.runtime.updateAssistant(assistant.assistantId,{status:child.state==='waiting_approval'?'waiting_approval':'working',activeTaskId:child.taskId});
     }

@@ -6,9 +6,13 @@ import {mountContextSidebar} from './context-sidebar.js';
 const paths={home:'m3 10 9-7 9 7v11h-7v-7h-4v7H3z',team:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m8-7a4 4 0 0 1 0 8',tasks:'M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01',memory:'M12 3c5 0 8 2 8 4s-3 4-8 4-8-2-8-4 3-4 8-4m-8 4v10c0 2 3 4 8 4s8-2 8-4V7M4 12c0 2 3 4 8 4s8-2 8-4',link:'m10 13 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',arrow:'m9 5 7 7-7 7',plus:'M12 5v14M5 12h14',search:'M21 21l-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',history:'M3 12a9 9 0 1 0 2-6M3 3v5h5m4-1v5l3 2',close:'m6 6 12 12M6 18 18 6',send:'m4 4 17 8-17 8 4-8-4-8m4 8h13',voice:'M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 6a7 7 0 0 0 14 0m-7 7v4'};
 export const centerIcon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]??paths.team}"/></svg>`;
 
+const isActiveChild=child=>!isTerminal(child)&&child?.state!=='waiting_reconciliation';
+
 // Keep source ordering inside each real state group; never manufacture workers.
 export function childThreadGroups(children=[]){
-  return [{label:'进行中',children:children.filter(child=>!isTerminal(child))},{label:'已结束',children:children.filter(isTerminal)}];
+  const inactive=children.filter(child=>!isActiveChild(child));
+  const label=inactive.some(child=>child.state==='waiting_reconciliation')?'待核实或已结束':'已结束';
+  return [{label:'进行中',children:children.filter(isActiveChild)},{label,collapsed:true,children:inactive}];
 }
 export function childThreadTitle(child){
   const goal=typeof child.goal==='string'?child.goal.replace(/^\[任务执行\]\s*/,'').trim():'';
@@ -45,7 +49,7 @@ function agentGlyphSvg(taskId){
 export function commandCenterState(data){
   const tasks=Array.isArray(data.tasks)?data.tasks:[],children=Array.isArray(data.subagentTasks)?data.subagentTasks:[];
   return {tasks,children,active:tasks.filter(t=>!isTerminal(t)&&!t.outputTruncated&&!t.cancelRequested).length,
-    working:children.filter(t=>!isTerminal(t)).length,latest:tasks.findLast(t=>!isTerminal(t)&&!t.outputTruncated&&!t.cancelRequested)??tasks.at(-1),
+    working:children.filter(isActiveChild).length,latest:tasks.findLast(t=>!isTerminal(t)&&!t.outputTruncated&&!t.cancelRequested)??tasks.at(-1),
     activity:tasks.slice(-5).reverse(),configured:(data.health??[]).filter(h=>h.state==='ready').length};
 }
 
@@ -299,13 +303,19 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     if(nextTeam!==teamSignature){
       teamSignature=nextTeam;team.querySelector('.cc-team-hint').hidden=Boolean(rows.length);
       const list=team.querySelector('.cc-children'),focused=list.contains(document.activeElement)?document.activeElement:null;
-      list.innerHTML=childThreadGroups(rows).filter(group=>group.children.length).map(group=>
-        `<section class="cc-agent-group" aria-label="${group.label}"><h3>${group.label}<span> · ${group.children.length}</span></h3>${group.children.map(child=>{
+      list.innerHTML=childThreadGroups(rows).filter(group=>group.children.length).map(group=>{
+        const itemsHtml=group.children.map(child=>{
           const id=escape(child.taskId),parent=escape(child.parentTaskId),title=escape(child.title);
           const selected=inline.selected?.taskId===child.taskId&&inline.selected?.parentTaskId===child.parentTaskId;
           const pending=pendingStops.has(JSON.stringify({taskId:child.taskId,parentTaskId:child.parentTaskId}));
-          return `<div class="cc-child-row"><button type="button" class="cc-child" data-child-task="${id}" data-parent-task="${parent}" title="${title}" aria-pressed="${selected}"><span class="cc-agent-symbol cc-avatar" data-color="${avatarColor(child.taskId)}" data-shape="${avatarShape(child.taskId)}" aria-hidden="true">${agentGlyphSvg(child.taskId)}</span><span><strong>${title}</strong><small>${escape(child.preview)}</small></span></button>${!isTerminal(child)?`<button type="button" class="cc-child-stop" data-stop-child="${id}" data-parent-task="${parent}" aria-label="停止工人：${title}" title="停止这个工人的当前执行" ${pending?'disabled':''}>■</button>`:''}</div>`;
-        }).join('')}</section>`).join('');
+          return `<div class="cc-child-row"><button type="button" class="cc-child" data-child-task="${id}" data-parent-task="${parent}" title="${title}" aria-pressed="${selected}"><span class="cc-agent-symbol cc-avatar" data-color="${avatarColor(child.taskId)}" data-shape="${avatarShape(child.taskId)}" aria-hidden="true">${agentGlyphSvg(child.taskId)}</span><span><strong>${title}</strong><small>${escape(child.preview)}</small></span></button>${isActiveChild(child)?`<button type="button" class="cc-child-stop" data-stop-child="${id}" data-parent-task="${parent}" aria-label="停止工人：${title}" title="停止这个工人的当前执行" ${pending?'disabled':''}>■</button>`:''}</div>`;
+        }).join('');
+        if(group.collapsed){
+          const endedOpen=group.children.some(child=>inline.selected?.taskId===child.taskId&&inline.selected?.parentTaskId===child.parentTaskId)?' open':'';
+          return `<details class="cc-agent-group cc-agent-ended" aria-label="${group.label}"${endedOpen}><summary class="cc-agent-ended-summary"><h3>${group.label}<span> · ${group.children.length}</span></h3></summary>${itemsHtml}</details>`;
+        }
+        return `<section class="cc-agent-group" aria-label="${group.label}"><h3>${group.label}<span> · ${group.children.length}</span></h3>${itemsHtml}</section>`;
+      }).join('');
       if(focused&&!focused.isConnected){
         const field=focused.dataset.stopChild?'stopChild':'childTask';
         [...list.querySelectorAll('button')].find(button=>button.dataset[field]===focused.dataset[field])?.focus({preventScroll:true});
