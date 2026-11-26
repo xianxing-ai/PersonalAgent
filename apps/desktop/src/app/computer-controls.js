@@ -219,7 +219,7 @@ export function mountComputerControls(root, invoke) {
     const target = event.target.closest('[data-computer-action]');
     if (closed || !target || !section.contains(target) || target.disabled) return;
     const action = target.dataset.computerAction;
-    if (action === 'demo') {field('text').value = '在当前窗口输入“PersonalAgent 电脑操作演示”，先不要发送或提交。'; paint(); return;}
+    if (action === 'demo') {field('text').value = '在当前窗口输入“Synstar 电脑操作演示”，先不要发送或提交。'; paint(); return;}
     if (action === 'demo-browser') {field('text').value = '用受控浏览器打开 https://example.com 并截图总结页面主要内容。'; paint(); return;}
     if (action === 'demo-vps') {field('text').value = '查询已启用的 VPS 主机和云桌面当前运行状态，列出主机名、内存与云桌面状态。'; paint(); return;}
     if (action === 'clear-draft') {field('text').value = ''; paint(); return;}

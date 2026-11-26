@@ -60,7 +60,7 @@ const {_electron}=require('playwright');
       console.log(JSON.stringify({assembledCharacters:lastGoal.length,utf8Bytes:Buffer.byteLength(lastGoal),tokens:'unmeasured'}));
       return;
     }
-    assert.match(panel.url(),/mode=panel/);assert.match(await panel.title(),/PersonalAgent/);
+    assert.match(panel.url(),/mode=panel/);assert.match(await panel.title(),/Synstar/);
     assert.equal((await read(panel)).connectionError,undefined,'Root Main has no connection error');
     assert.equal(await panel.locator('input[type=range]').count(),1);
     assert.equal(await panel.getByRole('slider',{name:/执行步骤预算|主思考模型|模型原生思考深度/}).count(),0);

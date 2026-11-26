@@ -1,4 +1,13 @@
 /** Remote runner panel. Secrets never enter the DOM. */
+function validConnectionAddress(address) {
+  if (typeof address !== 'string' || address.length > 253) return false;
+  try {
+    if (address.includes(':')) return /^[a-f\d:.]+$/i.test(address) && Boolean(new URL(`http://[${address}]/`).hostname);
+    return address.replace(/\.$/, '').split('.').every(label => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label))
+      && new URL(`http://${address}/`).hostname === address.toLowerCase();
+  } catch { return false; }
+}
+
 export function mountRemoteRunners(root, invoke) {
   const section = document.createElement('section');
   section.className = 'remote-runners';
@@ -382,10 +391,23 @@ export function mountRemoteRunners(root, invoke) {
         if (closed) return;
         const receipt = res?.receipt ?? {};
         const desktop = receipt.desktop ?? {};
-        const portArg = host.port && Number(host.port) !== 22 ? `-p ${host.port} ` : '';
-        const httpsPort = Number.isInteger(desktop.httpsPort) ? desktop.httpsPort : 3001;
-        const tunnelCmd = `ssh ${portArg}-N -L ${httpsPort}:127.0.0.1:${httpsPort} ${host.user}@${host.address}`;
-        const summary = receipt.summary || `${host.name} 状态：${res?.state ?? 'unknown'}`;
+        const summary = typeof receipt.summary === 'string' && receipt.summary ? receipt.summary : `${host.name} 状态：${desktop.status ?? res?.state ?? 'unknown'}`;
+        if (res?.hostId !== host.id) { showVpsMessage('云电脑状态返回的主机与所选主机不一致。'); return; }
+        const {httpsPort} = desktop;
+        if (res.state !== 'succeeded' || desktop.available !== true || desktop.status !== 'running'
+          || !Number.isInteger(httpsPort) || httpsPort < 1 || httpsPort > 65535) {
+          showVpsMessage(summary);
+          return;
+        }
+        const {user, address, port} = res;
+        if (!validConnectionAddress(address)
+          || typeof user !== 'string' || !/^[a-z_][a-z0-9_-]{0,31}$/.test(user)
+          || !Number.isInteger(port) || port < 1 || port > 65535) {
+          showVpsMessage(`${summary} · 请检查设置中的主机地址、用户名和端口。`);
+          return;
+        }
+        const portArg = port !== 22 ? `-p ${port} ` : '';
+        const tunnelCmd = `ssh ${portArg}-N -L ${httpsPort}:127.0.0.1:${httpsPort} ${user}@${address}`;
         showVpsMessage(`${summary} · 本机浏览器打开 https://127.0.0.1:${httpsPort}`, tunnelCmd);
       } catch (error) {
         if (!closed) showVpsMessage(`云电脑状态查询失败：${error?.message || '请检查连接与安装状态'}`);

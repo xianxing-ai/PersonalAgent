@@ -36,7 +36,7 @@ const {openSettings,settingsNavigationState,snapshot,captureMode}=require('../..
     const session={app,panel,report};
     admin=await openSettings(session,'models');
     admin.on('pageerror',error=>errors.push(error.message));
-    assert.match(await admin.title(),/PersonalAgent/);
+    assert.match(await admin.title(),/Synstar/);
     assert.match(await admin.locator('#content h2').first().textContent(),/AgentArts/);
     const older=await snapshot(admin);
     assert.equal(older.agentArts.configured,false);

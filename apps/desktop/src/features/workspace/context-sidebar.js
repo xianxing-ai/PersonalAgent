@@ -20,33 +20,26 @@ export function mountContextSidebar(side, hero, board, invoke) {
   }
   const computer = document.createElement('section');
   computer.className = 'cc-computer';
-  computer.innerHTML = '<div class="cc-computer-header"><h2>电脑</h2><div class="cc-computer-quickbar"><button type="button" class="cc-quick-btn" data-quick-computer="settings">电脑/浏览器设置</button><button type="button" class="cc-quick-btn" data-quick-computer="probe">检测浏览器扩展</button></div></div><details><summary><strong>VPS 电脑</strong><small role="status">读取主机中…</small></summary><div data-runner-controls><button type="button" class="btn btn-sm" data-refresh>刷新主机</button></div></details>';
+  computer.innerHTML = '<div class="cc-computer-header"><h2>电脑</h2><div class="cc-computer-quickbar"><button type="button" class="cc-quick-btn" data-quick-computer="settings">电脑设置与扩展检测</button><span role="status" data-settings-status></span></div></div><details><summary><strong>VPS 电脑</strong><small role="status">读取主机中…</small></summary><div data-runner-controls><button type="button" class="btn btn-sm" data-refresh>刷新主机</button></div></details>';
   const details = computer.querySelector('details');
   const status = computer.querySelector('small');
   const controls = computer.querySelector('[data-runner-controls]');
   const refreshButton = controls.querySelector('[data-refresh]');
   const quickSettings = computer.querySelector('[data-quick-computer="settings"]');
-  const quickProbe = computer.querySelector('[data-quick-computer="probe"]');
+  const settingsStatus = computer.querySelector('[data-settings-status]');
   const heartbeat = document.createElement('p');
   heartbeat.setAttribute('role', 'status');
   controls.append(heartbeat);
-  quickSettings.onclick = () => { void invoke('admin.open', {page: 'computer'}).catch(() => {}); };
-  quickProbe.onclick = async () => {
-    if (disposed || quickProbe.disabled) return;
-    quickProbe.disabled = true;
-    heartbeat.textContent = '正在检测现有浏览器 OpenCLI 扩展...';
+  quickSettings.onclick = async () => {
+    if (disposed || quickSettings.disabled) return;
+    quickSettings.disabled = true;
     try {
-      const res = await invoke('computer.control.probeConnectedBrowser', {});
-      if (disposed) return;
-      const cc = res?.computerControl ?? res;
-      const connected = cc?.browser?.connected;
-      const ready = connected?.extension?.connected === true || connected?.extension?.available === true || connected?.available === true;
-      const reason = typeof connected?.reason === 'string' && connected.reason.trim() ? connected.reason.trim().slice(0, 140) : '';
-      heartbeat.textContent = ready ? '现有浏览器扩展已连通' : (reason ? `现有浏览器扩展未连通：${reason}` : '现有浏览器扩展未连通');
+      await invoke('admin.open', {page: 'computer'});
+      if (!disposed) settingsStatus.textContent = '在电脑设置中点击“检测现有浏览器扩展”。';
     } catch (error) {
-      if (!disposed) heartbeat.textContent = error?.message ? `检测失败：${String(error.message).slice(0, 140)}` : '检测失败';
+      if (!disposed) settingsStatus.textContent = error?.message ? `打开设置失败：${String(error.message).slice(0, 140)}` : '打开电脑设置失败';
     } finally {
-      if (!disposed) quickProbe.disabled = false;
+      if (!disposed) quickSettings.disabled = false;
     }
   };
   let hosts = [], disposed = false, hostsRead;

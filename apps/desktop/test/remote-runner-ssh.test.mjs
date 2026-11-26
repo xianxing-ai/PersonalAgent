@@ -161,6 +161,7 @@ test('remote runner panel probes host key, adds VPS safely clearing secrets, que
   const field = label => all().find(node => node.attrs['aria-label'] === label);
 
   let hosts = [];
+  let desktop = {status: 'running', available: true, httpsPort: 3001};
   const calls = [];
   const ui = mountRemoteRunners(root, async (name, payload) => {
     calls.push({name, payload});
@@ -174,7 +175,8 @@ test('remote runner panel probes host key, adds VPS safely clearing secrets, que
       return {state: 'confirmed', record: hosts[0]};
     }
     if (name === 'runner.hosts.vpsStatus') {
-      return {hostId: 'vps-1', hostName: 'my-vps', state: 'succeeded', receipt: {summary: 'VPS cloud-1 (x64) 运行中；云桌面状态：running', desktop: {httpsPort: 3001}}};
+      const {id, name, address, user, port} = hosts[0];
+      return {hostId: id, hostName: name, address, user, port, state: 'succeeded', receipt: {summary: `云桌面状态：${desktop.status}`, desktop}};
     }
     if (name === 'runner.hosts.remove') {
       hosts = [];
@@ -223,6 +225,20 @@ test('remote runner panel probes host key, adds VPS safely clearing secrets, que
   } finally {
     if (origNav) Object.defineProperty(globalThis, 'navigator', origNav); else delete globalThis.navigator;
   }
+
+  for (const sample of [{status: 'unconfigured', available: false}, {status: 'exited', available: true, httpsPort: 3001},
+    {status: 'running', available: true}, {status: 'running', available: true, httpsPort: 65536}]) {
+    desktop = sample;
+    await button('云电脑状态').onclick();
+    assert.ok(root.textContent.includes(`云桌面状态：${sample.status}`));
+    assert.equal(button('复制隧道命令'), undefined);
+    assert.doesNotMatch(root.textContent, /https:\/\/127\.0\.0\.1/);
+  }
+  desktop = {status: 'running', available: true, httpsPort: 3001};
+  hosts[0].address = 'invalid host';
+  await button('云电脑状态').onclick();
+  assert.equal(button('复制隧道命令'), undefined);
+  assert.match(root.textContent, /请检查设置中的主机地址/);
 
   const beforeRefreshCalls = calls.filter(c => c.name === 'runner.hosts.list').length;
   button('刷新列表').onclick();

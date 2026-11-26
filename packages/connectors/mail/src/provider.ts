@@ -34,6 +34,7 @@ export interface MailFetchInput {
   folder?: string;
   cursor?: MailCursor;
   limit: number;
+  since?: string;
   signal?: AbortSignal;
 }
 

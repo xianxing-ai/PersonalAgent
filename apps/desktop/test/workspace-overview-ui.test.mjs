@@ -5,6 +5,41 @@ import {readFile} from 'node:fs/promises';
 import {resolve, extname, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+test('workspace sends extension detection to computer settings and displays feedback next to the button', {
+  skip: process.env.PA_WORKSPACE_VIEW_UI_TEST !== '1',
+}, async t => {
+  const {chromium} = await import('playwright');
+  const browser = await chromium.launch({headless:true,
+    ...(process.env.PA_WORKSPACE_VIEW_UI_BROWSER ? {executablePath:process.env.PA_WORKSPACE_VIEW_UI_BROWSER} : {})});
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const assets = new Set(['/workspace/context-sidebar.js','/workspace/context-sidebar.css','/conversation/remote-runners.js']);
+  await page.route('**/*', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (assets.has(path)) {
+      const file = new URL('../src/features' + path, import.meta.url);
+      return route.fulfill({contentType:path.endsWith('.js') ? 'text/javascript' : 'text/css', body:await readFile(file)});
+    }
+    if (path !== '/') return route.abort();
+    return route.fulfill({contentType:'text/html; charset=utf-8', body:`<main></main><script type="module">
+      import {mountContextSidebar} from '/workspace/context-sidebar.js';
+      window.calls=[];
+      mountContextSidebar(document.querySelector('main'),document.createElement('header'),document.createElement('section'),async(name,payload)=>{
+        window.calls.push({name,payload});
+        if (name==='runner.hosts.list') return {hosts:[]};
+        if (name!=='admin.open') throw Error('当前工作台无权执行此调用');
+      });
+    </script>`});
+  });
+  await page.goto('http://workspace.test/');
+  await page.getByRole('button', {name:'电脑设置与扩展检测'}).click();
+  const feedback = page.locator('[data-settings-status]');
+  assert.equal(await feedback.isVisible(), true);
+  assert.match(await feedback.textContent(), /检测现有浏览器扩展/);
+  assert.deepEqual(await page.evaluate(() => window.calls.filter(item => item.name !== 'runner.hosts.list')),
+    [{name:'admin.open',payload:{page:'computer'}}]);
+});
+
 // Browser plugin not available. Actual workspace view in installed Chromium;
 // task data and the IPC bridge are explicit offline fixtures, with no Runtime or account access.
 test('workspace overview mounts no task composer while session actions retain existing drafts', {

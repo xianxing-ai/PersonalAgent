@@ -127,7 +127,7 @@ export function operatorBrakeTrayLabel(snapshot) {
 }
 
 export function operatorBrakeTrayTooltip(snapshot) {
-  return snapshot?.paused === true ? 'PersonalAgent · 已暂停' : 'PersonalAgent';
+  return snapshot?.paused === true ? 'Synstar · 已暂停' : 'Synstar';
 }
 
 /** Single-flight tray controller synchronizing tray menu/tooltip and desktop surfaces. */

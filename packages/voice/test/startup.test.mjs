@@ -35,7 +35,7 @@ test('startup greets once, releases output then listens; resume delegates a fres
   try {
     assert.equal((await f.controller.start(first)).state,'listening');
     assert.deepEqual(f.calls,['speak','speech-stop:completed','listen']);
-    assert.equal(f.speechRequests[0].text,'你好，PersonalAgent 已启动。');
+    assert.equal(f.speechRequests[0].text,'你好，Synstar 已启动。');
     assert.equal(f.listenRequests[0].deadline,first.deadline);
     assert.equal(f.controller.snapshot().greeting,'completed');
     assert.equal(Object.isFrozen(f.controller.snapshot()),true);

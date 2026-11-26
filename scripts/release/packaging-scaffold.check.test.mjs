@@ -33,7 +33,7 @@ function createFixture({
     },
     build: {
       appId: 'com.personalagent.desktop',
-      productName: 'PersonalAgent',
+      productName: 'Synstar',
       directories: { output: 'release' },
       win: {
         target: ['nsis'],
@@ -88,7 +88,7 @@ function createFixture({
   requestedExecutionLevel: asInvoker`;
 
     const yamlContent = `appId: com.personalagent.desktop
-productName: PersonalAgent
+productName: Synstar
 directories:
   output: release
 files:

@@ -1,4 +1,6 @@
 import {createHash, createHmac, randomUUID, timingSafeEqual} from 'node:crypto';
+import {isIP} from 'node:net';
+import {domainToASCII} from 'node:url';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
 import type {DutyCursor} from '@personal-agent/github';
@@ -115,6 +117,19 @@ export function reconcileDutyCursor(local: DutyCursor | undefined, remote: {repo
 }
 
 const HOST_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+function hostAddress(value: unknown): string {
+  if (typeof value !== 'string') fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  const address = value.trim();
+  const ip = address.startsWith('[') && address.endsWith(']') ? address.slice(1, -1) : address;
+  if (!ip.includes('%') && (isIP(ip) === 6 || (ip === address && isIP(ip) === 4))) return ip;
+  if (!/^[\p{L}\p{N}\p{M}.-]+$/u.test(address)) fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  const ascii = domainToASCII(address);
+  const labels = ascii.replace(/\.$/, '').split('.');
+  if (!ascii || ascii.length > 253 || isIP(ascii) || labels.some(label => !/^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label))) {
+    fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  }
+  return ascii;
+}
 const REPO = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 function publicHost(input: unknown, secrets: {keyRef: string; tokenRef: string}): Omit<RemoteHostRecord, 'id' | 'version'> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_ARGUMENT', 'Remote host is invalid');
@@ -122,7 +137,7 @@ function publicHost(input: unknown, secrets: {keyRef: string; tokenRef: string})
   const allowed = ['name', 'address', 'port', 'user', 'provider', 'os', 'arch', 'limits', 'repos', 'hostKeyFingerprint', 'privateKey', 'runnerToken', 'hostKey', 'enabled'];
   if (Object.keys(raw).some(key => !allowed.includes(key))) fail('INVALID_ARGUMENT', 'Remote host has unknown fields');
   if (typeof raw.name !== 'string' || !HOST_NAME.test(raw.name)) fail('INVALID_ARGUMENT', 'Remote host name is invalid');
-  if (typeof raw.address !== 'string' || !raw.address.trim() || raw.address.length > 253) fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  const address = hostAddress(raw.address);
   if (!Number.isInteger(raw.port) || (raw.port as number) < 1 || (raw.port as number) > 65535) fail('INVALID_ARGUMENT', 'SSH port is invalid');
   if (typeof raw.user !== 'string' || !/^[a-z_][a-z0-9_-]{0,31}$/.test(raw.user)) fail('INVALID_ARGUMENT', 'SSH user is invalid');
   if (raw.provider !== 'huawei-ecs' && raw.provider !== 'vps' && raw.provider !== 'other') fail('INVALID_ARGUMENT', 'Provider label is invalid');
@@ -142,7 +157,7 @@ function publicHost(input: unknown, secrets: {keyRef: string; tokenRef: string})
   if (typeof raw.hostKey !== 'string' || !raw.hostKey.trim()) fail('INVALID_ARGUMENT', 'Host key material is required to pin it');
   if (createHash('sha256').update(raw.hostKey).digest('hex') !== raw.hostKeyFingerprint) fail('UNAUTHORIZED', 'Host key does not match the pinned fingerprint');
   if (typeof raw.enabled !== 'boolean') fail('INVALID_ARGUMENT', 'enabled must be boolean');
-  return {name: raw.name, address: raw.address.trim(), port: raw.port as number, user: raw.user, provider: raw.provider,
+  return {name: raw.name, address, port: raw.port as number, user: raw.user, provider: raw.provider,
     os: raw.os, arch: raw.arch, limits: {maxConcurrent: limits.maxConcurrent as number, maxJobsPerMinute: limits.maxJobsPerMinute as number},
     repos: [...raw.repos as string[]], hostKeyFingerprint: raw.hostKeyFingerprint, keyRef: secrets.keyRef, tokenRef: secrets.tokenRef, enabled: raw.enabled};
 }
@@ -259,12 +274,13 @@ export function createRemoteRunnerService(options: {
     return record;
   };
   const connect = async (host: RemoteHostRecord) => {
+    const address = hostAddress(host.address);
     const privateKey = options.secrets.get(host.keyRef);
     const runnerToken = options.secrets.get(host.tokenRef);
     const hostKey = options.secrets.get(`runner-hostkey:${host.id}`);
     if (!privateKey || !runnerToken || !hostKey) fail('UNAUTHORIZED', 'Remote host secrets are unavailable');
     if (createHash('sha256').update(hostKey).digest('hex') !== host.hostKeyFingerprint) fail('UNAUTHORIZED', 'Pinned host key is unavailable');
-    return {token: runnerToken, session: await options.transport.connect(host, {privateKey, runnerToken, hostKey})};
+    return {address, token: runnerToken, session: await options.transport.connect({...host, address}, {privateKey, runnerToken, hostKey})};
   };
   const submit = async (job: RemoteJobRequest): Promise<RemoteJobResult> => {
     if (job.kind !== 'developer-duty' && job.kind !== 'async-subagent' && job.kind !== 'cloud-persistent' && job.kind !== 'vps-ops') fail('INVALID_ARGUMENT', 'Job kind is not allowlisted');
@@ -405,7 +421,7 @@ export function createRemoteRunnerService(options: {
     const host = readHost(hostId);
     if (!host) fail('NOT_FOUND', 'Remote host does not exist');
     if (!host.enabled) fail('INVALID_ARGUMENT', 'Remote host is disabled');
-    const {token, session} = await connect(host);
+    const {address, token, session} = await connect(host);
     const message = {v: 1, id: ids(), idempotencyKey: `vps-status-${host.id}-${now()}`, kind: 'vps-ops', payload: {action: 'status'}, sentAt: new Date(now()).toISOString()};
     const signed = {...message, signature: signRunnerJob(message, token)};
     const sealed = canonical(signed);
@@ -425,7 +441,7 @@ export function createRemoteRunnerService(options: {
     return {
       hostId,
       hostName: host.name,
-      address: host.address,
+      address,
       port: host.port,
       user: host.user,
       state: response.state,

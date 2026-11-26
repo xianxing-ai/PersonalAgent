@@ -1,0 +1,105 @@
+@supports (appearance: base-select) {
+  .command-center .cc-internal-compose .cc-assistant-picker,
+  .cc-assistant-picker::picker(select) {
+    appearance: base-select;
+  }
+  .command-center .cc-internal-compose .cc-assistant-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: min(100%, 152px);
+    height: 28px;
+    padding: 0 8px 0 5px;
+    background: var(--cc-soft);
+    border-radius: 8px;
+    line-height: 1.25;
+  }
+  .cc-assistant-picker > button { display: contents; }
+  .cc-assistant-picker selectedcontent {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .cc-assistant-picker::picker-icon {
+    content: '';
+    flex: none;
+    width: 5px;
+    height: 5px;
+    margin: -2px 1px 0 auto;
+    border: solid var(--cc-muted);
+    border-width: 0 1.4px 1.4px 0;
+    transform: rotate(45deg);
+  }
+  .cc-assistant-picker:open::picker-icon { transform: translateY(2px) rotate(225deg); }
+  .command-center .cc-assistant-picker:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  .cc-assistant-picker::picker(select) {
+    box-sizing: border-box;
+    width: min(208px, calc(100dvw - 16px));
+    max-block-size: min(18rem, 44dvh);
+    margin-block: 4px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    padding: 4px;
+    border: 1px solid var(--cc-line);
+    border-radius: 11px;
+    background: #202226;
+    box-shadow: 0 9px 25px -8px rgb(0 0 0 / .52);
+    color: var(--cc-text);
+  }
+  :root[data-theme="light"] .cc-assistant-picker::picker(select) {
+    background: #fafafa;
+    box-shadow: 0 8px 22px -9px rgb(0 0 0 / .22);
+  }
+  .command-center .cc-internal-compose .cc-assistant-picker option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 3px 8px;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--cc-text);
+    font: 500 12px/1.4 var(--font-ui);
+    cursor: pointer;
+  }
+  .command-center .cc-internal-compose .cc-assistant-picker option:is(:hover,:focus-visible) {
+    outline: 0;
+    background: var(--cc-hover);
+  }
+  .cc-assistant-picker option::checkmark {
+    order: 1;
+    margin-inline-start: auto;
+    color: var(--cc-muted);
+  }
+  .cc-assistant-picker .assistant-choice-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .command-center .cc-assistant-picker .assistant-card-icon {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    box-sizing: border-box;
+    width: 22px;
+    height: 22px;
+    border: 1px solid;
+    border-radius: 6px;
+  }
+  .command-center .cc-assistant-picker selectedcontent .assistant-card-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+  }
+  .command-center .cc-assistant-picker .assistant-card-icon svg { width: 13px; height: 13px; }
+  @media (forced-colors: active) {
+    .cc-assistant-picker::picker(select) { background: Canvas; color: CanvasText; border-color: ButtonText; }
+    .command-center .cc-internal-compose .cc-assistant-picker option:focus-visible { outline: 1px solid Highlight; }
+  }
+}

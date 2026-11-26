@@ -1,14 +1,20 @@
+import {updateAssistantPicker} from './assistant-picker.js';
 import {stateNames,isTerminal} from '../conversation/state.js';
 import {mountInlineSubagents} from './inline-subagents.js';
 import {mountHeroStarfield} from './hero-starfield.js';
 import {mountContextSidebar} from './context-sidebar.js';
+import {createRecentConversations} from './recent-conversations.js';
 
 const paths={home:'m3 10 9-7 9 7v11h-7v-7h-4v7H3z',team:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m8-7a4 4 0 0 1 0 8',tasks:'M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01',memory:'M12 3c5 0 8 2 8 4s-3 4-8 4-8-2-8-4 3-4 8-4m-8 4v10c0 2 3 4 8 4s8-2 8-4V7M4 12c0 2 3 4 8 4s8-2 8-4',link:'m10 13 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',arrow:'m9 5 7 7-7 7',plus:'M12 5v14M5 12h14',search:'M21 21l-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',history:'M3 12a9 9 0 1 0 2-6M3 3v5h5m4-1v5l3 2',close:'m6 6 12 12M6 18 18 6',send:'m4 4 17 8-17 8 4-8-4-8m4 8h13',voice:'M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 6a7 7 0 0 0 14 0m-7 7v4'};
 export const centerIcon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]??paths.team}"/></svg>`;
 
+const isActiveChild=child=>!isTerminal(child)&&child?.state!=='waiting_reconciliation';
+
 // Keep source ordering inside each real state group; never manufacture workers.
 export function childThreadGroups(children=[]){
-  return [{label:'进行中',children:children.filter(child=>!isTerminal(child))},{label:'已结束',children:children.filter(isTerminal)}];
+  const inactive=children.filter(child=>!isActiveChild(child));
+  const label=inactive.some(child=>child.state==='waiting_reconciliation')?'待核实或已结束':'已结束';
+  return [{label:'进行中',children:children.filter(isActiveChild)},{label,collapsed:true,children:inactive}];
 }
 export function childThreadTitle(child){
   const goal=typeof child.goal==='string'?child.goal.replace(/^\[任务执行\]\s*/,'').trim():'';
@@ -26,7 +32,10 @@ function avatarShape(taskId){
   return ['squircle','circle','soft'][Math.floor(avatarHash(taskId)/5)%3];
 }
 function leadAvatarSvg(){
-  return '<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="14" cy="14" r="9.2" stroke="currentColor" stroke-width="1.2" opacity=".28"/><ellipse cx="14" cy="14" rx="11.6" ry="4.4" transform="rotate(-26 14 14)" stroke="currentColor" stroke-width="1.35" opacity=".82"/><ellipse cx="14" cy="14" rx="10.8" ry="3.8" transform="rotate(34 14 14)" stroke="currentColor" stroke-width="1.1" opacity=".36"/><circle cx="14" cy="14" r="3.6" fill="currentColor"/><circle cx="22.8" cy="10.2" r="1.35" fill="currentColor" opacity=".85"/></svg>';
+  return `<svg viewBox="0 0 32 32" aria-hidden="true" fill="currentColor">
+    <path opacity=".48" d="M13 5h11a4 4 0 0 1 4 4v11l-4-3h-3v-3a5 5 0 0 0-5-5H9a4 4 0 0 1 4-4Z"/>
+    <path fill-rule="evenodd" d="M8 11h10a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4h-6l-6.1 4v-4.5A4 4 0 0 1 3.8 20v-5A4.2 4.2 0 0 1 8 11Zm1.3 4.3a.9.9 0 0 0 0 1.8h7.2a.9.9 0 0 0 0-1.8Zm0 3.7a.9.9 0 0 0 0 1.8h3.6a.9.9 0 0 0 0-1.8Z"/>
+  </svg>`;
 }
 const agentGlyphPaths=[
   '<circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.5" opacity=".7"/><circle cx="10" cy="10" r="2.1" fill="currentColor"/>',
@@ -45,16 +54,16 @@ function agentGlyphSvg(taskId){
 export function commandCenterState(data){
   const tasks=Array.isArray(data.tasks)?data.tasks:[],children=Array.isArray(data.subagentTasks)?data.subagentTasks:[];
   return {tasks,children,active:tasks.filter(t=>!isTerminal(t)&&!t.outputTruncated&&!t.cancelRequested).length,
-    working:children.filter(t=>!isTerminal(t)).length,latest:tasks.findLast(t=>!isTerminal(t)&&!t.outputTruncated&&!t.cancelRequested)??tasks.at(-1),
+    working:children.filter(isActiveChild).length,latest:tasks.findLast(t=>!isTerminal(t)&&!t.outputTruncated&&!t.cancelRequested)??tasks.at(-1),
     activity:tasks.slice(-5).reverse(),configured:(data.health??[]).filter(h=>h.state==='ready').length};
 }
 
 /** Layout only: reuse the actual session, model picker, composer and child controls. */
-export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,report,escape,onThreadChange}){
+export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConversation,preferences,input,invoke,report,escape,onThreadChange}){
   const shell=root.querySelector('.workspace'),bar=root.querySelector('.workspace-titlebar'),main=root.querySelector('.workspace-main'),layout=root.querySelector('.workspace-layout');
   shell.classList.add('command-center');
   const rail=document.createElement('aside');rail.className='cc-rail';rail.setAttribute('aria-label','主导航');
-  rail.innerHTML=`<div class="cc-brand"><span class="cc-brand-orb" aria-hidden="true"></span><strong>PersonalAgent</strong><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div><nav>${[['home','工作台'],['tasks','任务记录'],['memory','知识与记忆']].map(([id,label])=>`<button type="button" data-cc-nav="${id}" ${id==='home'?'aria-current="page"':''} title="${label}">${centerIcon(id)}<span>${label}</span></button>`).join('')}<button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置与偏好</span></button></nav>`;
+  rail.innerHTML=`<div class="cc-brand"><span class="cc-brand-orb" aria-hidden="true"></span><strong>Synstar</strong><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div><nav>${[['home','工作台'],['tasks','任务记录'],['memory','知识与记忆']].map(([id,label])=>`<button type="button" data-cc-nav="${id}" ${id==='home'?'aria-current="page"':''} title="${label}">${centerIcon(id)}<span>${label}</span></button>`).join('')}<button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置与偏好</span></button></nav>`;
   shell.prepend(rail);
   for(const button of rail.querySelectorAll('button')){const label=button.querySelector('span')?.textContent;if(label){button.setAttribute('aria-label',label);button.title=label;}}
   bar.querySelector('.workspace-app-title').textContent='工作台';
@@ -67,7 +76,7 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   const top=root.querySelector('.workspace-top');
   top.hidden=true;
   const hero=document.createElement('section');hero.className='cc-hero';hero.setAttribute('aria-label','工作台概览');
-  hero.innerHTML='<div class="cc-hero-copy"><h1>PersonalAgent</h1><p class="cc-hero-tagline">把想法变成现实。</p><p>交代目标，保持掌控，让每一步进展清晰可见。</p><small data-cc-preview></small></div><div class="cc-hero-visual"><div class="cc-orbit cc-orbit-a"><i></i></div><div class="cc-orbit cc-orbit-b"><i></i></div><div class="cc-orbit cc-orbit-c"><i></i></div><div class="cc-orb-halo"></div></div>';
+  hero.innerHTML='<div class="cc-hero-copy"><h1>Synstar</h1><p class="cc-hero-tagline">把想法变成现实。</p><p>交代目标，保持掌控，让每一步进展清晰可见。</p><small data-cc-preview></small></div><div class="cc-hero-visual"><div class="cc-orbit cc-orbit-a"><i></i></div><div class="cc-orbit cc-orbit-b"><i></i></div><div class="cc-orbit cc-orbit-c"><i></i></div><div class="cc-orb-halo"></div></div>';
   hero.querySelector('.cc-hero-visual').append(root.querySelector('#workspace-orb'));
   const chat=root.querySelector('.workspace-chat'),heading=document.createElement('header');heading.className='cc-chat-heading';
   heading.innerHTML='<div><strong>主对话</strong><p><span data-cc-session></span></p></div>';
@@ -77,23 +86,24 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   stage.prepend(welcome);
   const side=document.createElement('aside');side.className='cc-context';side.setAttribute('aria-label','协作与活动');side.innerHTML=`<section class="cc-team"><header><h2>${centerIcon('team')}智能体协作</h2><span data-cc-team-count>暂无工人</span></header><div class="cc-team-lead"><span class="cc-agent-avatar">${centerIcon('home')}</span><div><strong>主对话</strong><p>日程、订阅和天气都在这里处理</p></div><span class="cc-state" data-cc-coordinator>待机</span></div><div class="cc-children"></div><div class="cc-team-hint"><span class="cc-constellation">✧</span><strong>工人负责重活</strong><p>主对话自己处理日程、订阅和天气。真正派工之后，工人会显示在这里。助手是另一类，用来聊天，不在这列。</p></div><div class="cc-child-actions"></div></section><section class="cc-activity"><header><h2>${centerIcon('history')}最近活动</h2><button type="button" data-cc-records>全部记录 ${centerIcon('arrow')}</button></header><div class="cc-activity-list"></div></section><div class="cc-trust"><span>◇</span><p>每一次行动，都由你掌控。<br><small>涉及外部操作时，沿用原有授权流程。</small></p></div>`;
   layout.append(side);
-  const lead=side.querySelector('.cc-team-lead'),leadButton=document.createElement('button');leadButton.type='button';leadButton.className='cc-team-lead';leadButton.setAttribute('aria-label','切换到主对话');  leadButton.innerHTML=`<span class="cc-thread-symbol cc-avatar cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span><span class="cc-lead-copy"><strong>主对话</strong><small>日程 · 订阅 · 天气</small></span><span class="cc-state" data-cc-coordinator>待机</span>`;lead.replaceWith(leadButton);
+  const leadButton = document.createElement('button');
+  leadButton.type = 'button';
+  leadButton.className = 'cc-team-lead';
+  leadButton.setAttribute('aria-label', '切换到主对话');
+  leadButton.innerHTML = `<span class="cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span>
+    <span class="cc-lead-copy"><span class="cc-lead-heading"><strong>主对话</strong><span class="cc-state" data-cc-coordinator>待机</span></span><small>日程 · 订阅 · 天气</small></span>`;
+  side.querySelector('.cc-team-lead').replaceWith(leadButton);
   side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>主对话只处理日程、订阅和天气。邮件、知识库和其他连接器交给助手自己的工人。工人可插话复用，不必一句话一个。</p>';side.querySelector('.cc-trust').hidden=true;
   const team=side.querySelector('.cc-team');team.querySelector('h2').textContent='工人';team.prepend(leadButton);rail.querySelector('.cc-thread-scroll').append(team);
   const internal=document.createElement('section');internal.className='cc-internal-chat';internal.setAttribute('aria-label','内部群聊');
-  internal.innerHTML=`<header><h2>内部群聊</h2><span>主对话 ↔ 助手</span></header><div class="cc-internal-list" data-internal-list></div><form class="cc-internal-compose" data-internal-compose><label>交给助手<select name="assistantId" required></select></label><textarea name="text" maxlength="2000" required placeholder="在后台交付工作，例如：处理邮件并回贴结论"></textarea><button type="submit">交付</button><p class="cc-internal-status" role="status"></p></form>`;
+  internal.innerHTML=`<header><h2>内部群聊</h2><span>主对话 ↔ 助手</span></header><div class="cc-internal-list" data-internal-list></div><form class="cc-internal-compose" data-internal-compose><label>交给助手<select class="cc-assistant-picker" name="assistantId" required><button type="button"><selectedcontent></selectedcontent></button></select></label><textarea name="text" maxlength="2000" required placeholder="在后台交付工作，例如：处理邮件并回贴结论"></textarea><button type="submit">交付</button><p class="cc-internal-status" role="status"></p></form>`;
   side.querySelector('.cc-activity')?.before(internal);
   const internalList=internal.querySelector('[data-internal-list]');
   const internalForm=internal.querySelector('[data-internal-compose]');
   const internalStatus=internal.querySelector('.cc-internal-status');
   const paintInternalChat=(data)=>{
     const assistants=Array.isArray(data?.assistants)?data.assistants:[];
-    const select=internalForm.elements.namedItem('assistantId');
-    const current=select.value;
-    select.innerHTML=assistants.length
-      ? assistants.map(item=>`<option value="${escape(item.assistantId)}">${escape(item.displayName||item.assistantId)}</option>`).join('')
-      : '<option value="">暂无助手</option>';
-    if(assistants.some(item=>item.assistantId===current))select.value=current;
+    updateAssistantPicker(internalForm.elements.namedItem('assistantId'), assistants);
     const messages=Array.isArray(data?.internalChat?.messages)?data.internalChat.messages:[];
     internalList.innerHTML=messages.length
       ? messages.map(item=>{
@@ -129,9 +139,37 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   leadButton.setAttribute('aria-pressed','true');leadButton.onclick=()=>{showHome();inline.main();closeSidebar();};
   const originalChildren=root.querySelector('.subagent-conversations');if(originalChildren)team.querySelector('.cc-child-actions').append(originalChildren);
   const history=document.createElement('aside');history.className='cc-history';history.id='cc-history';history.hidden=true;history.setAttribute('aria-label','历史会话');history.innerHTML=`<header><h2>对话历史</h2><button type="button" aria-label="关闭历史会话">${centerIcon('close')}</button></header>`;history.append(sessionRoot);layout.append(history);
-  rail.querySelector('.cc-history-toggle').setAttribute('aria-controls','cc-history');rail.querySelector('.cc-history-toggle').setAttribute('aria-expanded','false');
-  const toggleHistory=()=>{history.hidden=!history.hidden;rail.querySelector('.cc-history-toggle').setAttribute('aria-expanded',String(!history.hidden));};
-  search.onclick=()=>{toggleHistory();if(!history.hidden)history.querySelector('[data-session-list]').focus();};history.querySelector('header button').onclick=()=>{history.hidden=true;rail.querySelector('.cc-history-toggle').setAttribute('aria-expanded','false');search.focus();};
+  const recent = createRecentConversations(async id => {
+    if (await switchConversation(id)) {
+      setHistoryOpen(false);
+      showHome();
+      inline.main();
+      closeSidebar();
+      input.focus();
+    }
+  });
+  rail.querySelector('.cc-thread-scroll').append(assistantRoster, recent.element);
+  let historyOpener = search;
+  search.setAttribute('aria-controls', history.id);
+  search.setAttribute('aria-expanded', 'false');
+  function setHistoryOpen(open, opener = search) {
+    history.hidden = !open;
+    search.setAttribute('aria-expanded', String(open));
+    recent.allButton.setAttribute('aria-expanded', String(open));
+    if (open) {
+      historyOpener = opener;
+      showHome();
+      closeSidebar();
+      history.querySelector('[data-session-list]').focus();
+    }
+  }
+  function dismissHistory() {
+    setHistoryOpen(false);
+    (historyOpener.getClientRects().length ? historyOpener : railToggle).focus();
+  }
+  search.onclick = () => history.hidden ? setHistoryOpen(true) : dismissHistory();
+  recent.allButton.onclick = () => setHistoryOpen(true, recent.allButton);
+  history.querySelector('header button').onclick = dismissHistory;
   const openAdmin=page=>invoke('admin.open',{page}).catch(report);
   const local=document.createElement('section');local.className='cc-local';local.hidden=true;local.setAttribute('aria-label','工作台内容');
   local.innerHTML='<header><h2 data-cc-local-title></h2><button type="button" data-cc-local-back>返回对话</button></header><div data-cc-local-body></div>';
@@ -156,7 +194,7 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     if(status){status.textContent=statusText;return;}
     body.innerHTML=`<div class="cc-local-actions"><button type="button" data-cc-admin-page="memory">私人记忆与知识源设置</button><button type="button" data-cc-watch-check>查看知识关注</button><button type="button" data-cc-cognition-check>查看认知提议与回执</button></div><p data-cc-memory-status>${escape(statusText)}</p><form class="cc-local-search"><label>查找笔记<input name="query" type="search" maxlength="200" placeholder="输入要找的内容"></label><button type="submit">查找</button></form><div data-cc-memory-result></div><div data-cc-watch-result></div><div data-cc-cognition-result></div>`;
   };
-  const showLocal=key=>{localView=key;hero.hidden=true;layout.hidden=true;local.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav===key?'page':'false');paintLocal(lastData);closeSidebar();};
+  const showLocal=key=>{setHistoryOpen(false);localView=key;hero.hidden=true;layout.hidden=true;local.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav===key?'page':'false');paintLocal(lastData);closeSidebar();};
   local.querySelector('[data-cc-local-back]').onclick=()=>{showHome();input.focus();};
   let catalogReq=0,watchReq=0,cognitionReq=0;
   const loadCognition=async(button,feedback='')=>{
@@ -245,7 +283,7 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   });
   rail.querySelector('.cc-new-chat').onclick=()=>{showHome();inline.main();closeSidebar();sessionRoot.querySelector('[data-session-new]').click();input.focus();};
   rail.querySelector('.cc-settings').onclick=()=>openAdmin('settings');side.querySelector('[data-cc-records]').onclick=()=>showLocal('tasks');
-  rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{history.hidden=true;showHome();inline.main();input.focus();}};
+  rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{setHistoryOpen(false);showHome();inline.main();input.focus();}};
   const form=root.querySelector('.workspace-composer'),actions=form.querySelector('.workspace-composer-actions');
   input.placeholder='跟主对话说，例如查天气、看今天的日程、看订阅';actions.prepend(preferences);
   input.title='也可以输入 /压缩 或 /compact，把较早的对话收成摘要。';
@@ -275,9 +313,10 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     const button=event.target.closest('[data-child-task]');if(button)openChild({taskId:button.dataset.childTask,parentTaskId:button.dataset.parentTask});
   };
   side.querySelector('.cc-activity-list').onclick=event=>{const button=event.target.closest('[data-activity-task]');if(button){const turn=[...root.querySelectorAll('[data-turn]')].find(turn=>turn.dataset.turn===button.dataset.activityTask);turn?.querySelector('[data-view],[data-delegated-child]')?.click();}};
-  const onKey=event=>{if(event.key!=='Escape')return;if(!history.hidden){history.hidden=true;rail.querySelector('.cc-history-toggle').setAttribute('aria-expanded','false');search.focus();}else if(shell.classList.contains('cc-sidebar-open')){closeSidebar();railToggle.focus();}else if(side.classList.contains('cc-mobile-open')){side.classList.remove('cc-mobile-open');cardToggle.setAttribute('aria-expanded','false');cardToggle.focus();}};document.addEventListener('keydown',onKey);window.addEventListener('unload',()=>document.removeEventListener('keydown',onKey),{once:true});
+  const onKey=event=>{if(event.key!=='Escape')return;if(!history.hidden){dismissHistory();}else if(shell.classList.contains('cc-sidebar-open')){closeSidebar();railToggle.focus();}else if(side.classList.contains('cc-mobile-open')){side.classList.remove('cc-mobile-open');cardToggle.setAttribute('aria-expanded','false');cardToggle.focus();}};document.addEventListener('keydown',onKey);window.addEventListener('unload',()=>document.removeEventListener('keydown',onKey),{once:true});
   return {openChild,main(){showHome();inline.main();closeSidebar();},update(data){
     lastData=data;paintInternalChat(data);
+    recent.update(data.conversationState?.recentSessions);
     if(mainConversationId&&mainConversationId!==data.conversationState?.activeId)inline.main();mainConversationId=data.conversationState?.activeId;
     const state=commandCenterState(data),hasMessages=Boolean(state.tasks.length||data.messages?.length);
     welcome.hidden=hasMessages;shell.classList.toggle('cc-has-tasks',hasMessages);
@@ -299,13 +338,19 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     if(nextTeam!==teamSignature){
       teamSignature=nextTeam;team.querySelector('.cc-team-hint').hidden=Boolean(rows.length);
       const list=team.querySelector('.cc-children'),focused=list.contains(document.activeElement)?document.activeElement:null;
-      list.innerHTML=childThreadGroups(rows).filter(group=>group.children.length).map(group=>
-        `<section class="cc-agent-group" aria-label="${group.label}"><h3>${group.label}<span> · ${group.children.length}</span></h3>${group.children.map(child=>{
+      list.innerHTML=childThreadGroups(rows).filter(group=>group.children.length).map(group=>{
+        const itemsHtml=group.children.map(child=>{
           const id=escape(child.taskId),parent=escape(child.parentTaskId),title=escape(child.title);
           const selected=inline.selected?.taskId===child.taskId&&inline.selected?.parentTaskId===child.parentTaskId;
           const pending=pendingStops.has(JSON.stringify({taskId:child.taskId,parentTaskId:child.parentTaskId}));
-          return `<div class="cc-child-row"><button type="button" class="cc-child" data-child-task="${id}" data-parent-task="${parent}" title="${title}" aria-pressed="${selected}"><span class="cc-agent-symbol cc-avatar" data-color="${avatarColor(child.taskId)}" data-shape="${avatarShape(child.taskId)}" aria-hidden="true">${agentGlyphSvg(child.taskId)}</span><span><strong>${title}</strong><small>${escape(child.preview)}</small></span></button>${!isTerminal(child)?`<button type="button" class="cc-child-stop" data-stop-child="${id}" data-parent-task="${parent}" aria-label="停止工人：${title}" title="停止这个工人的当前执行" ${pending?'disabled':''}>■</button>`:''}</div>`;
-        }).join('')}</section>`).join('');
+          return `<div class="cc-child-row"><button type="button" class="cc-child" data-child-task="${id}" data-parent-task="${parent}" title="${title}" aria-pressed="${selected}"><span class="cc-agent-symbol cc-avatar" data-color="${avatarColor(child.taskId)}" data-shape="${avatarShape(child.taskId)}" aria-hidden="true">${agentGlyphSvg(child.taskId)}</span><span><strong>${title}</strong><small>${escape(child.preview)}</small></span></button>${isActiveChild(child)?`<button type="button" class="cc-child-stop" data-stop-child="${id}" data-parent-task="${parent}" aria-label="停止工人：${title}" title="停止这个工人的当前执行" ${pending?'disabled':''}>■</button>`:''}</div>`;
+        }).join('');
+        if(group.collapsed){
+          const endedOpen=group.children.some(child=>inline.selected?.taskId===child.taskId&&inline.selected?.parentTaskId===child.parentTaskId)?' open':'';
+          return `<details class="cc-agent-group cc-agent-ended" aria-label="${group.label}"${endedOpen}><summary class="cc-agent-ended-summary"><h3>${group.label}<span> · ${group.children.length}</span></h3></summary>${itemsHtml}</details>`;
+        }
+        return `<section class="cc-agent-group" aria-label="${group.label}"><h3>${group.label}<span> · ${group.children.length}</span></h3>${itemsHtml}</section>`;
+      }).join('');
       if(focused&&!focused.isConnected){
         const field=focused.dataset.stopChild?'stopChild':'childTask';
         [...list.querySelectorAll('button')].find(button=>button.dataset[field]===focused.dataset[field])?.focus({preventScroll:true});

@@ -76,7 +76,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   let connectorsRequested=true;
   const pendingCancelIds=new Set();
   root.innerHTML=`<section class="workspace focused-workspace">
-    <header class="workspace-titlebar"><span class="workspace-app-title">PersonalAgent</span><span class="spacer"></span>${windowControlsHtml('workspace')}</header>
+    <header class="workspace-titlebar"><span class="workspace-app-title">Synstar</span><span class="spacer"></span>${windowControlsHtml('workspace')}</header>
     <main class="workspace-main"><header class="workspace-top"><strong>悬浮球对话</strong><span class="spacer"></span><button class="icon-btn" id="connectors-toggle" aria-label="显示或隐藏连接器" aria-expanded="true">${icon('connectors')}</button><button class="icon-btn" data-open-settings="settings" aria-label="打开设置">${icon('settings')}</button></header>
     <div class="workspace-layout"><section class="workspace-chat"><p class="workspace-error" id="workspace-error" role="alert"></p><div class="workspace-stage" id="workspace-stage"><div class="workspace-welcome" id="workspace-welcome"><button class="workspace-orb" id="workspace-orb" aria-label="激活助手" aria-pressed="false"><canvas aria-hidden="true"></canvas></button><h1 id="workspace-greeting">从一个想法开始</h1><p id="workspace-intro"></p></div><div class="workspace-conversation" id="workspace-conversation" aria-live="polite"></div></div></section>
       <aside class="connector-board" aria-label="连接器信息"><header><div><h2>连接器</h2></div><button class="icon-btn" id="connectors-refresh" aria-label="刷新连接器">↻</button></header><div id="connector-cards"></div></aside>
@@ -232,8 +232,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const nativeReasoning=mountModelThinkingPicker(preferences,invoke,report,{readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
   composer.beforeSubmit=async()=>{await nativeReasoning.flush();return sessionControls.flush();};
   composer.onAccepted=token=>sessionControls.submitted(token);
-  const center=mountCommandCenter(root,{sessionRoot,preferences,input:draftInput,invoke,report,escape,onThreadChange:returnToMain});
-  root.querySelector('.cc-thread-scroll').append(assistantRoster);
+  const center=mountCommandCenter(root,{sessionRoot,assistantRoster,switchConversation:sessionControls.switchTo,preferences,input:draftInput,invoke,report,escape,onThreadChange:returnToMain});
   root.querySelector('.cc-rail').append(prohibitionsRoot);
   const goalControl=createGoalControl(invoke,()=>draftInput.value);
   goalControl.button.className='cc-goals';

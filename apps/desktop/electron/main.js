@@ -192,7 +192,7 @@ import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsM
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createNativeEgressHost} from './egress-dialog-host.js';
 import {extractGitSha40} from './egress-host.js';
-import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks, PROACTIVE_SOURCE_TASK_CHECKPOINT} from './usage-budget-product.js';
+import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
@@ -570,6 +570,7 @@ let dailyBriefingHost;
 let approvalFocus;
 let todoFailure = '';
 let personalDashboardHost;
+let personalDashboardFailure = '';
 let todoClosing;
 let todoClosed = false;
 let notepadHost;
@@ -1165,7 +1166,7 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
-    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'}}),
+    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:personalDashboardFailure || '个人数据看板将在 Runtime 连接后开始汇总'}}),
     dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
@@ -1514,7 +1515,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1180, area.width), height: Math.min(800, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 设置', frame: false, transparent: false,
+    {title: 'Synstar · 设置', frame: false, transparent: false,
       backgroundMaterial: adminAcrylic ? 'acrylic' : 'none',
       backgroundColor: adminAcrylic ? '#00000000' : '#090b10',
       roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
@@ -1665,7 +1666,7 @@ const operatorBrakeTray = createOperatorBrakeTrayController({
       {label: '打开设置', click: () => openAdmin()},
       {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
       {type: 'separator'},
-      {label: '退出 PersonalAgent', click: () => app.quit()},
+      {label: '退出 Synstar', click: () => app.quit()},
     ]));
   },
   publish: () => publish(),
@@ -1828,7 +1829,7 @@ async function openWorkspace() {
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+    {title: 'Synstar · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
   bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
   const window=workspace;
@@ -1938,7 +1939,7 @@ async function openSubagentConversation(payload,surface){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},activityTaskIds:childActivityTaskIds(detail),
     revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
   subagentWindows.set(key,record);
@@ -1998,7 +1999,7 @@ function openAllSubagentConversations(){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(900,area.width-32),height=Math.min(760,area.height-32);
   subagentListWindow=windowFor('subagent-list',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'PersonalAgent · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   subagentListWindow.on('closed',()=>{subagentListWindow=undefined;});
 }
 
@@ -2918,7 +2919,7 @@ async function initializeRuntime() {
             if (!item.batchId) return;
             return notificationApplicationHost.deliverBatch({batchId:item.batchId,
               scope:{kind:'connector',connectorId:'productivity'},expiresAt:new Date(Date.now()+30_000).toISOString(),
-              title:'PersonalAgent 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
+              title:'Synstar 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
@@ -2937,7 +2938,7 @@ async function initializeRuntime() {
           },
           readTaskBinding:taskId=>conversationToolAccess.resolveConversation(taskId),
           onPrompt:request=>{
-            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'PersonalAgent 本机确认',
+            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'Synstar 本机确认',
               body:'保持本次操作的应用在前台，按 F9 确认当前任务在场。具体写入仍按原任务审批。'}).show();
             publish();
           },
@@ -2964,7 +2965,7 @@ async function initializeRuntime() {
           await windowsControlHost.start({deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
         }
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
-          downloadDirectory:path.join(app.getPath('downloads'),'PersonalAgent'),
+          downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
           allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
@@ -3082,7 +3083,7 @@ async function initializeRuntime() {
         requestWorkspaceExportExact:(query,context)=>publicReferenceConsent?.requestExact(query,context),
         jobHelperExecutable:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async () => {
-          const result = await dialog.showOpenDialog(admin, {title:'选择允许 PersonalAgent 使用的编程工作区',
+          const result = await dialog.showOpenDialog(admin, {title:'选择允许 Synstar 使用的编程工作区',
             properties:['openDirectory']});
           return result.canceled ? undefined : result.filePaths[0];
         },
@@ -4235,7 +4236,11 @@ async function initializeRuntime() {
           },
         });
         await personalDashboardHost.start();
-      } catch { personalDashboardHost = undefined; }
+        personalDashboardFailure = '';
+      } catch {
+        personalDashboardHost = undefined;
+        personalDashboardFailure = '个人数据看板初始化失败，请检查本机安全存储与 Runtime 状态。';
+      }
     }
     if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
     if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
@@ -4585,17 +4590,8 @@ async function initializeRuntime() {
     submitTask: async input => {
       const conversationId = typeof input.conversationId === 'string' && input.conversationId.trim()
         ? input.conversationId.trim() : `proactive-source:${desktopHost.userNamespace}`;
-      const submit = async () => {
-        const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
-        try {
-          runtimeApplication?.runtime?.saveCheckpoint?.(result.taskId, PROACTIVE_SOURCE_TASK_CHECKPOINT, {
-            version: 1,
-            source: 'proactive-source',
-            conversationId,
-          });
-        } catch { /* Autonomous conversationId prefix already enforces budget gating. */ }
-        return {taskId: result.taskId, state: result.state ?? 'created'};
-      };
+      const deadline = new Date(Date.now() + readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
+      const submit = () => runtimeApplication.submitScheduledTextTask({...input, conversationId}, deadline);
       return usageBudgetProduct ? usageBudgetProduct.withOrigin('autonomous', submit) : submit();
     },
     namespace: desktopHost.userNamespace,

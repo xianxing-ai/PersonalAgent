@@ -29,7 +29,7 @@ test('Live final audio never invokes a legacy approval consumer, including a cap
   const preserved=request.instructions.split('\n').filter(line=>!line.startsWith('read_context 里的工具与参数')
     &&!line.startsWith('被打断后立刻')).join('\n');
   assert.equal(createHash('sha256').update(preserved).digest('hex'),
-    '041ab85d5829b44e6eebc2cdc065808f9120a104f8e6bba47733e40bd405bfae','all non-approval persona paragraphs are unchanged');
+    '112488f4e576e1ecbddc3dc392757342124996822ea47a93385bfc3c511b4757','all non-approval persona paragraphs are unchanged');
   assert.equal(host.snapshot().questionDelivery.playbackVerified,false);
   frames.onFrame({data:Uint8Array.of(0,0)});
   const speech=id=>{request.onEvent({type:'speech_started',utteranceId:id});request.onEvent({type:'speech_stopped',utteranceId:id});};

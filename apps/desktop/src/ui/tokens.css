@@ -1,4 +1,4 @@
-/* Shared tokens ported from the approved PersonalAgent design. */
+/* Shared tokens ported from the approved Synstar design. */
 
 /* ============ 主题 A：墨核 · 冷光（默认） ============ */
 :root {
@@ -54,9 +54,14 @@
   --r-lg: 14px;
   --r-pill: 999px;
 
-  --font-ui: "Segoe UI Variable Text", "Microsoft YaHei UI", "Microsoft YaHei",
-    "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
-  --font-num: "Segoe UI Variable Display", "Cascadia Mono", "JetBrains Mono",
+  --font-ui: "Candara", "Optima", "Corbel", "Segoe UI Variable Text",
+    "LXGW WenKai", "PingFang SC", "HarmonyOS Sans SC", "DengXian",
+    "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-display: "Palatino Linotype", "Constantia", "Garamond", "Georgia",
+    "FZFengYaSongS-GB", "Noto Serif SC", "Source Han Serif SC", "Songti SC",
+    "STZhongsong", "STKaiti", serif;
+  --font-brand: "Palatino Linotype", "Constantia", "Garamond", "Georgia", serif;
+  --font-num: "Cascadia Code", "Segoe UI Variable Display", "JetBrains Mono",
     Consolas, monospace;
 
   --fs-11: 11px;

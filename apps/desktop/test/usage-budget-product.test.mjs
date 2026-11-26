@@ -58,7 +58,7 @@ test('startup hooks record a real gateway call, survive restart, drive settings,
   await host.getModelGateway(expensive.id, expensive.configurationRef).complete(request());
   assert.deepEqual(calls, ['qwen-max']);
   assert.equal(notices.length, 1);
-  assert.equal(notices[0].title, 'PersonalAgent 用量');
+  assert.equal(notices[0].title, 'Synstar 用量');
   assert.match(notices[0].body, /接近上限/);
   assert.match(notices[0].id, /^usage-budget-approach-/);
 
@@ -329,4 +329,72 @@ test('proactive directory schedule keeps autonomous origin and is blocked before
   } finally {
     app.close();
   }
+});
+
+test('trusted schedule origin blocks the cloud send and survives reopen in the same panel conversation', async () => {
+  const base = new URL('../../../.cache/usage-budget-tests/', import.meta.url);
+  mkdirSync(base,{recursive:true});
+  const directory=mkdtempSync(base),notices=[],budget=product(directory);
+  bind(budget,notices);
+  budget.handleAction('usageBudget.configure',{dailyLimitYuan:1,monthlyLimitYuan:100,action:'pause'});
+  budget.recordLocal({modelId:'qwen-max',usage:{totalTokens:1_000_000}});
+  let sends=0,app,clock=Date.now(),mtimeMs=1;
+  const binding={gatewayUrl:'https://synthetic-budget.invalid',runtimeName:'budget'};
+  const transport=createAgentArtsTransportConfig({binding,environment:{},configurationProvider:{read:()=>({})},
+    fetchImpl:async(_url,init)=>{
+      sends++;
+      return new Response(JSON.stringify([{event:'message',data:{text:syntheticAgentArtsResult(JSON.parse(init.body), {kind:'text',text:'manual accepted'})}},
+        {event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});
+    },
+    onCloudRun:info=>budget.recordCloud({...info,origin:app.readTaskUsageOrigin(info.taskId)}),
+  });
+  const open=()=>createAgentArtsRuntimeApplication({
+    path:path.join(directory,'runtime.sqlite'),...binding,now:()=>new Date(clock),
+    preparePayload:syntheticPublicPayloadGate,
+    responseMode:'tool-proposal-json',authorizationProvider:{read:async()=> 'Bearer synthetic'},
+    beforeCompetitionSend:request=>budget.beforeCloudSend({userInitiated:app.readTaskUsageOrigin(request.taskId)==='user'}),
+    fetchImpl:transport.fetchImpl,
+  });
+  const settle=async id=>{
+    for(let n=0;n<400;n++){
+      const task=app.runtime.getTask(id);
+      if(['succeeded','failed','waiting_reconciliation'].includes(task.state))return task;
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }
+    throw Error('Budget test task did not settle');
+  };
+  const conversationId='desktop-panel:budget-test';
+  app=open();
+  try {
+    let scheduled,scheduledInput;
+    const sources=createProactiveSourceHost({getApplication:()=>app,getTools:()=>[],namespace:'budget-test',
+      now:()=>clock,scan:async()=>[{relativePath:'public.txt',size:1,mtimeMs}],
+      submitTask:async input=>{
+        scheduledInput={...input,conversationId};
+        scheduled=app.submitScheduledTextTask(scheduledInput,new Date(clock+30000).toISOString());
+        return scheduled;
+      }});
+    sources.authorize(directory);
+    sources.update({enabled:true,calendar:false,mail:false,quiet:false});
+    await sources.tick();
+    assert.equal(scheduled,undefined);
+    clock+=120001;mtimeMs++;
+    await sources.tick();
+    assert.ok(scheduled,'the trusted directory scheduler submitted the changed file task');
+    assert.equal((await settle(scheduled.taskId)).state,'failed');
+    assert.equal(sends,0);
+    assert.equal(app.submitScheduledTextTask(scheduledInput,new Date(clock+60000).toISOString()).taskId,scheduled.taskId);
+    const client=new Client(app,()=>clock);await client.connect();
+    const manual=await client.call('task.submit',{goal:'manual task',conversationId},{idempotencyKey:'manual-budget'});
+    assert.equal((await settle(manual.taskId)).state,'succeeded');
+    assert.equal(sends,1);
+    assert.ok(notices.some(notice=>/超|上限/.test(notice.body)));
+    assert.match(budget.decide({origin:'user'}).prompt,/这次仍会执行/);
+    app.close();
+    app=open();
+    assert.equal(app.readTaskUsageOrigin(scheduled.taskId),'autonomous');
+    assert.equal(app.readTaskUsageOrigin(manual.taskId),'user');
+    assert.deepEqual(product(directory).snapshot(),budget.snapshot());
+    assert.match(budget.snapshot().usageLine,/云端 [1-9]/);
+  } finally {app.close();}
 });

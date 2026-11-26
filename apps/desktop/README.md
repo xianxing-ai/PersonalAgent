@@ -1,4 +1,4 @@
-# PersonalAgent Desktop
+# Synstar Desktop
 
 F20 固定校验使用现有工作文件夹设置。选定工作区、可信 Node 和 PowerShell 后，在「F20 固定校验」选择 TypeScript 契约、实现及对应文档。运行时使用已固定的 AgentArts 版本与已就绪的本机 Laya。在普通主对话中请求「用 F20 验证案例 f20-case」，按原授权卡批准本次来源和隔离检查。TypeScript 检查使用隔离副本和应用随附的固定编译器。成功需要独立核对原文件、候选样例及校验回执，结果只交回对话。
 

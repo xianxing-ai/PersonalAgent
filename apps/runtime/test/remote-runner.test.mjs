@@ -46,6 +46,20 @@ test('signatures match the headless runner and a mismatched host key is refused'
   await assert.rejects(pool.tools.find(tool => tool.descriptor.name === 'runner.host.add').execute({host: {...hostInput, hostKey: 'other-key'}}, context(task.taskId)), {code: 'UNAUTHORIZED'});
 });
 
+test('host addresses are validated on registration and again when reading older records', async () => {
+  const runtime = new TaskRuntime(':memory:');
+  const task = parent(runtime);
+  const {pool} = service(runtime);
+  for (const address of ['invalid host', '-option', 'example.test/path', '300.0.0.1']) {
+    assert.throws(() => pool.propose('add', {...hostInput, address}), {code: 'INVALID_ARGUMENT'});
+  }
+  const host = await addHost(pool, task.taskId, {...hostInput, address: '[2001:db8::8]'});
+  assert.equal(host.address, '2001:db8::8');
+  const registry = runtime.findTaskByIdempotencyKey('remote-runner-registry:v1');
+  runtime.saveCheckpoint(registry.taskId, 'remote-runner-host:' + host.id, {...host, address:'legacy invalid host'});
+  await assert.rejects(pool.vpsStatus(host.id), {code:'INVALID_ARGUMENT'});
+});
+
 test('confirmed host heartbeats, polls without treating a gap as no change, and does not redo an unknown comment', async () => {
   const runtime = new TaskRuntime(':memory:');
   const task = parent(runtime);
