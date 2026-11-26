@@ -30,7 +30,7 @@ function avatarShape(taskId){
   return ['squircle','circle','soft'][Math.floor(avatarHash(taskId)/5)%3];
 }
 function leadAvatarSvg(){
-  return '<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="14" cy="14" r="9.5" stroke="currentColor" stroke-width="1.3" opacity=".38"/><ellipse cx="14" cy="14" rx="11.5" ry="4.5" transform="rotate(-24 14 14)" stroke="currentColor" stroke-width="1.4" opacity=".82"/><circle cx="14" cy="14" r="4.2" fill="currentColor"/></svg>';
+  return '<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="14" cy="14" r="9.2" stroke="currentColor" stroke-width="1.2" opacity=".28"/><ellipse cx="14" cy="14" rx="11.6" ry="4.4" transform="rotate(-26 14 14)" stroke="currentColor" stroke-width="1.35" opacity=".82"/><ellipse cx="14" cy="14" rx="10.8" ry="3.8" transform="rotate(34 14 14)" stroke="currentColor" stroke-width="1.1" opacity=".36"/><circle cx="14" cy="14" r="3.6" fill="currentColor"/><circle cx="22.8" cy="10.2" r="1.35" fill="currentColor" opacity=".85"/></svg>';
 }
 const agentGlyphPaths=[
   '<circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.5" opacity=".7"/><circle cx="10" cy="10" r="2.1" fill="currentColor"/>',
@@ -58,7 +58,7 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   const shell=root.querySelector('.workspace'),bar=root.querySelector('.workspace-titlebar'),main=root.querySelector('.workspace-main'),layout=root.querySelector('.workspace-layout');
   shell.classList.add('command-center');
   const rail=document.createElement('aside');rail.className='cc-rail';rail.setAttribute('aria-label','主导航');
-  rail.innerHTML=`<div class="cc-brand"><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div><nav>${[['home','工作台'],['tasks','任务记录'],['memory','知识与记忆']].map(([id,label])=>`<button type="button" data-cc-nav="${id}" ${id==='home'?'aria-current="page"':''} title="${label}">${centerIcon(id)}<span>${label}</span></button>`).join('')}<button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置与偏好</span></button></nav>`;
+  rail.innerHTML=`<div class="cc-brand"><span class="cc-brand-orb" aria-hidden="true"></span><strong>PersonalAgent</strong><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div><nav>${[['home','工作台'],['tasks','任务记录'],['memory','知识与记忆']].map(([id,label])=>`<button type="button" data-cc-nav="${id}" ${id==='home'?'aria-current="page"':''} title="${label}">${centerIcon(id)}<span>${label}</span></button>`).join('')}<button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置与偏好</span></button></nav>`;
   shell.prepend(rail);
   for(const button of rail.querySelectorAll('button')){const label=button.querySelector('span')?.textContent;if(label){button.setAttribute('aria-label',label);button.title=label;}}
   bar.querySelector('.workspace-app-title').textContent='工作台';
@@ -81,7 +81,7 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   stage.prepend(welcome);
   const side=document.createElement('aside');side.className='cc-context';side.setAttribute('aria-label','协作与活动');side.innerHTML=`<section class="cc-team"><header><h2>${centerIcon('team')}智能体协作</h2><span data-cc-team-count>暂无工人</span></header><div class="cc-team-lead"><span class="cc-agent-avatar">${centerIcon('home')}</span><div><strong>主对话</strong><p>日程、订阅和天气都在这里处理</p></div><span class="cc-state" data-cc-coordinator>待机</span></div><div class="cc-children"></div><div class="cc-team-hint"><span class="cc-constellation">✧</span><strong>工人负责重活</strong><p>主对话自己处理日程、订阅和天气。真正派工之后，工人会显示在这里。助手是另一类，用来聊天，不在这列。</p></div><div class="cc-child-actions"></div></section><section class="cc-activity"><header><h2>${centerIcon('history')}最近活动</h2><button type="button" data-cc-records>全部记录 ${centerIcon('arrow')}</button></header><div class="cc-activity-list"></div></section><div class="cc-trust"><span>◇</span><p>每一次行动，都由你掌控。<br><small>涉及外部操作时，沿用原有授权流程。</small></p></div>`;
   layout.append(side);
-  const lead=side.querySelector('.cc-team-lead'),leadButton=document.createElement('button');leadButton.type='button';leadButton.className='cc-team-lead';leadButton.setAttribute('aria-label','切换到主对话');  leadButton.innerHTML=`<span class="cc-thread-symbol cc-avatar cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span><span><strong>主对话</strong><small>日程 · 订阅 · 天气</small></span>`;lead.replaceWith(leadButton);
+  const lead=side.querySelector('.cc-team-lead'),leadButton=document.createElement('button');leadButton.type='button';leadButton.className='cc-team-lead';leadButton.setAttribute('aria-label','切换到主对话');  leadButton.innerHTML=`<span class="cc-thread-symbol cc-avatar cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span><span class="cc-lead-copy"><strong>主对话</strong><small>日程 · 订阅 · 天气</small></span><span class="cc-state" data-cc-coordinator>待机</span>`;lead.replaceWith(leadButton);
   side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>主对话只处理日程、订阅和天气。邮件、知识库和其他连接器交给助手自己的工人。工人可插话复用，不必一句话一个。</p>';side.querySelector('.cc-trust').hidden=true;
   const team=side.querySelector('.cc-team');team.querySelector('h2').textContent='工人';team.prepend(leadButton);rail.querySelector('.cc-thread-scroll').append(team);
   const internal=document.createElement('section');internal.className='cc-internal-chat';internal.setAttribute('aria-label','内部群聊');
@@ -289,6 +289,11 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     hero.querySelector('[data-cc-preview]').textContent=fake?'本地预览':'';
     lastData=data;if(localView!=='home')paintLocal(data);
     heading.querySelector('[data-cc-session]').textContent=data.conversationState?.sessions?.find(s=>s.id===data.conversationState?.activeId)?.title??'当前会话';
+    const coordinator=leadButton.querySelector('[data-cc-coordinator]');
+    if(coordinator){
+      coordinator.dataset.active=String(state.active>0);
+      coordinator.textContent=state.active>0?(stateNames[state.latest?.state]??'运行中'):'待机';
+    }
     team.querySelector('[data-cc-team-count]').textContent=String(state.children.length);
     const rows=state.children.map(child=>({
       taskId:child.taskId,parentTaskId:child.parentTaskId,title:childThreadTitle(child),state:child.state,
