@@ -53,7 +53,7 @@ test('trusted Runtime runs WSS as Competition, clears its send intent, and dispo
     assert.equal(intent.payloadDigest, frame.payloadDigest);
     assert.equal('payload' in intent, false);
     socket.accepted(frame); socket.result(frame, syntheticAgentArtsResult(frame.payload,'Synthetic WSS analysis'));
-  },{onWssRun:info=>usage.push(info)});
+  },{onWebSocketCloudRun:info=>usage.push(info)});
   application = h.app;
   const saveCheckpoint = h.app.runtime.saveCheckpoint.bind(h.app.runtime);
   let received = 0;
@@ -298,7 +298,7 @@ test('cancelling after WSS dispatch keeps the unresolved invocation in reconcili
   const usage=[];
   const h = factory(':memory:', (frame, socket) => {
     if (frame.type === 'invoke') socket.accepted(frame);
-  },{onWssRun:info=>usage.push(info)});
+  },{onWebSocketCloudRun:info=>usage.push(info)});
   try {
     const client = new Client(h.app); await client.connect();
     const {taskId} = await client.call('task.submit', {goal: 'Synthetic cancelled invocation', conversationId: 'wss'},
@@ -331,7 +331,7 @@ test('an over-budget trusted schedule never sends a WSS frame or records WSS dur
     beforeCompetitionSend:request=>{
       if(app.readTaskUsageOrigin(request.taskId)==='autonomous')throw Error('Budget exhausted');
     },
-    onWssRun:info=>usage.push(info),
+    onWebSocketCloudRun:info=>usage.push(info),
   });
   app=h.app;
   try{

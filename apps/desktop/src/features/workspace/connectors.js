@@ -38,6 +38,15 @@ const definitions = [
     defaultPreview: previews.calendar,
     render(data, escape) {
       const items = Array.isArray(data.todo?.items) ? data.todo.items : [];
+      const calendar = data.calendar;
+      const calendarConfigured = calendar?.configured === true;
+      const calendarUnavailable = calendar?.status === 'unavailable';
+      const calendarName = calendar?.calendarName || 'CalDAV 日历';
+      const calendarTag = calendarConfigured
+        ? `${escape(calendarName)} · ${calendar.readAvailable ? '已保存配置，读取需对话确认' : '已保存配置，等待读取宿主'}`
+        : calendarUnavailable
+          ? `${escape(calendarName)} · ${escape(calendar.reason || '日历不可用')}`
+          : '';
       if (items.length > 0) {
         const rows = items.slice(0, 3).map(todo => {
           const time = todo.reminder?.remindAt?.utc
@@ -49,14 +58,30 @@ const definitions = [
         return {
           status: data.todo.sessionAllowed ? '已允许' : '已就绪',
           preview: rows,
-          footer: `本地待办 · ${items.length} 项`,
+          footer: `本地待办 · ${items.length} 项${calendarTag ? ` · ${calendarTag}` : ''}`,
         };
       }
       if (data.todo?.available) {
         return {
-          status: '已就绪',
-          preview: previews.calendar,
-          footer: '本地待办已就绪',
+          status: calendarConfigured ? '已配置' : '已就绪',
+          preview: calendarConfigured
+            ? `<div class="agenda-row"><time>日历</time><div>${escape(calendarName)}<small>${escape(calendar.reason || '配置已在本机加密保存；读取或修改在对话提问卡确认')}</small></div></div>`
+            : previews.calendar,
+          footer: `本地待办已就绪${calendarTag ? ` · ${calendarTag}` : ''}`,
+        };
+      }
+      if (calendarConfigured) {
+        return {
+          status: calendar.readAvailable ? '已配置' : '待接入',
+          preview: `<div class="agenda-row"><time>日历</time><div>${escape(calendarName)}<small>${escape(calendar.reason || '配置已在本机加密保存；读取或修改在对话提问卡确认')}</small></div></div>`,
+          footer: calendarTag,
+        };
+      }
+      if (calendarUnavailable) {
+        return {
+          status: '不可用',
+          preview: `<p class="connector-empty">${escape(calendar.reason || '日历服务当前不可用。')}</p>`,
+          footer: calendarTag,
         };
       }
       return {
@@ -171,6 +196,6 @@ export function connectorCards(data, escape) {
       ? notifList.slice(0, 5).map(item => `<p>${escape(item.summary)}<small>${escape(new Date(item.occurredAt).toLocaleString())}</small></p>`).join('')
       : previews.notifications;
 
-  return cards + `<article class="connector-card notification-card"><header><h3>通知</h3><span class="connector-status">${escape(notifStatus)}</span></header>${notifContent}</article>`;
+  return cards + `<article class="connector-card notification-card" role="button" tabindex="0" aria-label="打开通知设置"><header><h3>通知</h3><span class="connector-status">${escape(notifStatus)}</span></header>${notifContent}</article>`;
 }
 

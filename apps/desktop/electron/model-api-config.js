@@ -2,7 +2,7 @@ import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'no
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {AsyncLocalStorage} from 'node:async_hooks';
-import {DEFAULT_CONTEXT_OUTPUT_TOKENS,DEFAULT_CONTEXT_POLICY,DEFAULT_HARNESS_STEPS,validateHarnessConfiguration} from './harness-configuration.js';
+import {DEFAULT_CONTEXT_OUTPUT_TOKENS,DEFAULT_CONTEXT_POLICY,DEFAULT_HARNESS_STEPS,upgradeSavedContextDefaults,validateHarnessConfiguration} from './harness-configuration.js';
 
 const providers = new Set(['pangu', 'openai-compatible']);
 const efforts = ['none', 'low', 'medium', 'high'];
@@ -86,7 +86,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
         restored.set(clean.id, {...clean, enabled: value.enabled});
       }
       if (data.defaultId !== undefined && (!restored.has(data.defaultId) || !restored.get(data.defaultId).enabled)) throw Error();
-      const restoredHarness=data.harness===undefined?harness:validateHarnessConfiguration(data.harness);
+      const restoredHarness=data.harness===undefined?harness:upgradeSavedContextDefaults(validateHarnessConfiguration(data.harness));
       entries = restored; defaultId = data.defaultId;harness=restoredHarness;
     } catch {restoreFailed = true;}
   }

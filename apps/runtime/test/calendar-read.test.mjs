@@ -60,3 +60,35 @@ test('deadline also bounds an unresolved credential adapter; NOT_FOUND does not 
   const missing=fixture(async()=>({status:207,ok:true,text:async()=>'<multistatus></multistatus>'}));
   await assert.rejects(missing.tool.execute(args,context()),{code:'NOT_FOUND'});
 });
+
+test('windows-system binding reads single event via WindowsSystemCalendarProvider without calendarUrl', async () => {
+  let calledOp = '';
+  const tool = createCalendarEventReadTool({
+    getBinding: () => ({configurationId, accountRef: 'account', providerKind: 'windows-system', calendarName: 'Windows 系统日历'}),
+    readAuthorization: () => 'windows-system:local',
+    windowsTransport: {
+      async run(req) {
+        calledOp = req.op;
+        if (req.op !== 'getEvent') return {event: null};
+        return {
+          event: {
+            localId: 'local-1',
+            roamingId: 'meeting-uid',
+            calendarId: 'win-local-cal',
+            subject: '系统本地日程',
+            startUtc: '2026-10-01T08:00:00.000Z',
+            endUtc: '2026-10-01T09:00:00.000Z',
+            changeNumber: 3,
+            canWrite: true,
+          },
+        };
+      },
+    },
+  });
+  const item = await tool.execute(args, context());
+  assert.equal(calledOp, 'getEvent');
+  assert.equal(item.accountRef, 'account');
+  assert.equal(item.externalId, 'meeting-uid');
+  assert.equal(item.dedupeKey, 'calendar:win-local-cal:meeting-uid:3');
+  assert.match(item.contentRef, /系统本地日程/);
+});

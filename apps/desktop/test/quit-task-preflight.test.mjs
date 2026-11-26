@@ -120,7 +120,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
   const optional = ['voiceStartupHost','remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','pluginCatalogHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','wikiImportHost','goalCloudHost','calendarMeetingHost',
-    'mailAnalysisHost','mailMonitorPreparation','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
+    'mailAnalysisHost','mailMonitorPreparation','connectorConversationTools','githubConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','f09FeedGraphHost','workflowGraphComposition','f15ReviewHost','f15ReviewOrigin','f15ReviewViewer','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','browserControlHost','browserControlClosing','computerVisionHost','computerVisionConfig','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
     'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing',
@@ -139,7 +139,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     liveVoice: liveUnknown ? {hasActive: () => true, async stop() {
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
-    localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
+    localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, remoteMcpPendingQuit: undefined, referenceClosed: false,
     windowsControlClosed: false, windowsControlClosing: undefined, browserControlClosed:false,harnessEventsClosed:false,connectorTriggersClosed:false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
@@ -316,6 +316,30 @@ test('Runtime startup guard keeps precedence over active-task preflight', async 
   const f = fixture({count: 1, startup: 'starting'});f.app.quit();await tick();
   assert.equal(f.exited, false);assert.equal(f.context.runtimeError, 'Runtime 正在连接，请稍后退出');
   assert.equal(f.calls.includes('wake-dispose'), false);assert.equal(f.calls.includes('voice-dispose'), false);
+});
+
+test('repeated quit shares pending remote MCP settlement and closes Runtime after it completes',async()=>{
+  const f=fixture({count:1});
+  let settle;
+  f.context.remoteMcpManagement={close(){}};
+  f.context.runtimeApplication.finishPendingRemoteMcpForExit=allow=>{
+    f.calls.push('settle-mcp');
+    assert.equal(allow(),true);
+    return new Promise(resolve=>{
+      settle=()=>{
+        f.context.runtimeApplication.activeTaskCount=0;
+        resolve();
+      };
+    });
+  };
+  f.app.quit();f.app.quit();
+  assert.equal(f.calls.filter(call=>call==='settle-mcp').length,1);
+  assert.equal(f.exited,false);
+  assert.equal(f.calls.includes('runtime-close'),false);
+  settle();
+  await tick();await tick();
+  assert.equal(f.exited,true);
+  assert.equal(f.calls.filter(call=>call==='runtime-close').length,1);
 });
 
 test('MCP cleanup waits for active work and releases the connection before Runtime closes',async()=>{

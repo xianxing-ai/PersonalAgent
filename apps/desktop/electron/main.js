@@ -13,6 +13,7 @@ import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {reconcileTaskFromSurface,skipReconciliationConflictFromSurface} from './reconcile-task-action.js';
 import {readReconciliationConflict,inspectReconciliationConflictOnce,recordUnavailableConflictNotification,assertNoUnresolvedWriteReplay} from './reconciliation-conflict.js';
 import {createFailureRepairHost} from './failure-repair-host.js';
+import {collectTrustedTaskCommandDiagnostics, resolveTaskLocateInput} from './task-locate-diagnostics.js';
 import {projectNodeCheckDiagnostics} from './node-check-diagnostics.js';
 import {createCrewReplanDispatcher} from './crew-replan-dispatcher.js';
 import {createLocateOpenHost} from './locate-open-host.js';
@@ -25,6 +26,8 @@ import {createOpenCliBrowserHost} from './opencli-browser-host.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
+import {createGitHubConfig} from './github-config.js';
+import {createGitHubConversationTools} from './github-conversation-tools.js';
 import {projectMailStatus} from './mail-status-projection.js';
 import {projectChildProgress,projectChildToolActivity,projectSubagentActivity,scopeSubagentConversations,openTaskConversation,readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction,handleWorkspaceSubagentAction} from './subagent-window-actions.js';
@@ -40,7 +43,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {freemem,totalmem,availableParallelism} from 'node:os';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
 import {openDesktopActivity} from './activity-host.js';
@@ -175,7 +178,7 @@ import {createBrowserControlHost} from './browser-control-host.js';
 import {prepareNativeDesktopComponent,nativeDesktopExecutable} from './native-desktop-component.js';
 import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
-import {createInstalledSkillsHost} from './installed-skills-host.js';
+import {checkInstalledSkillInput,createInstalledSkillsHost} from './installed-skills-host.js';
 import {createRemoteMcpCompetitionComposition} from './remote-mcp-competition.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createRemoteMcpRegistry} from './remote-mcp-registry.js';
@@ -188,7 +191,8 @@ import {prepareWorkflowHostPreflight} from './workflow-host-preflight.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createNativeEgressHost} from './egress-dialog-host.js';
-import {createUsageBudgetProduct, modelApiUsageHooks} from './usage-budget-product.js';
+import {extractGitSha40} from './egress-host.js';
+import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
@@ -474,7 +478,7 @@ const codingSettingsSnapshot=()=>({...(codingWorkspace?.snapshot()??defaultWorks
   f16f17:f16F17Snapshot(),f18:f18Snapshot(),f19:f19Snapshot()});
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
-let wakePreference = {enabled: false, duration: 'untilQuit'};
+let wakePreference = {enabled: false, duration: 'hours2'};
 let wakePreferenceLoaded = false;
 let panelBriefingRequested = false;
 let wakeQuitHandled = false;
@@ -529,6 +533,7 @@ function withReviewedRepairLock(work) {
 let productTools;
 let weatherCardHost;
 let connectorConversationTools;
+let githubConversationTools;
 let codingWorkspace;
 let f15ReviewHost,f15ReviewOrigin,f15ReviewViewer,f15ReviewInstalled=false,f15ReviewNotice='';
 let developerDeployment;
@@ -550,6 +555,7 @@ let knowledgeSourceConfig,knowledgeTools,wikiSourceMonitor,obsidianPairing,wikiI
 let competitionToolAvailabilityList = [];
 let mailConfig;
 let calendarConfig;
+let githubConfig;
 let calendarMeetingHost;
 let feedsHost;
 let f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
@@ -875,7 +881,15 @@ function projectFailureRepair(task) {
   if (runtimeClosed || !runtimeApplication || (task.state !== 'failed' && task.state !== 'waiting_reconciliation')) return {};
   try {
     const repair = failureRepairHost().view(task.taskId);
-    return repair ? {repair} : {};
+    const hasCommandDiagnostic = !task.bodyWithheld && Boolean(collectTrustedTaskCommandDiagnostics(
+      runtimeApplication.runtime,
+      task.taskId,
+      {readChildren: id => runtimeApplication?.readSubagentTasks?.(id)},
+    ));
+    return {
+      ...(repair ? {repair} : {}),
+      ...(hasCommandDiagnostic ? {hasCommandDiagnostic: true} : {}),
+    };
   } catch { return {}; }
 }
 
@@ -1135,6 +1149,7 @@ function snapshot(surface) {
     mail: mailSnapshot(),
     proactiveTasks: proactiveSourceHost?.snapshot(),
     calendar: calendarMeetingHost?.snapshot() ?? calendarConfig?.snapshot(),
+    github: githubConfig?.snapshot(),
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
@@ -1537,7 +1552,10 @@ function reportQuitFailure(message) {
   publish();
 }
 
-async function stopPanelVoice() {
+async function stopPanelVoice({preserveWake = false} = {}) {
+  const keepWake = preserveWake === true
+    && wakeVoice?.snapshot()?.phase === 'listening'
+    && (typeof currentWakePreference !== 'function' || currentWakePreference().enabled === true);
   const hadActiveVoice = Boolean(
     wakeQuitUnknown
     || wakeVoice?.hasActive?.()
@@ -1548,12 +1566,13 @@ async function stopPanelVoice() {
     || microphoneCaptureHost?.snapshot?.().busy
     || microphoneCaptureHost?.snapshot?.().active
   );
-  const results = await Promise.allSettled([stopWakeVoice()]);
-  if (voiceInput?.hasActive(panel?.webContents.id)) {
+  const results = keepWake ? [] : await Promise.allSettled([stopWakeVoice()]);
+  if (voiceInput?.hasActive?.(panel?.webContents.id)) {
     results.push(...await Promise.allSettled([voiceInput.cancelCapture(panel?.webContents.id)]));
   }
   results.push(...await Promise.allSettled([
-    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(), microphoneCaptureHost?.revoke(panel?.webContents.id),
+    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(),
+    ...(keepWake ? [] : [microphoneCaptureHost?.revoke(panel?.webContents.id)]),
   ]));
   if (results.some(result => result.status === 'rejected') || liveVoice?.hasActive()) throw Error('语音资源释放未确认');
   if (hadActiveVoice) publish();
@@ -2338,6 +2357,8 @@ function readDesktopRequestContext(scope) {
   return createConversationEnvironmentContext({readTodoState:current=>todoHost?.readConversationGuidance?.(current),
     readCalendarState:()=>({registered:connectorConversationTools?.tools.some(tool=>tool.descriptor.name==='calendar.create')===true,
       configured:calendarConfig?.snapshot().configured===true}),
+    readGitHubState:()=>({registered:typeof githubConversationTools!=='undefined'&&(githubConversationTools?.tools.length??0)>0,
+      configured:typeof githubConfig!=='undefined'&&githubConfig?.snapshot().configured===true}),
     readF20InputRef:()=>{
       const selected = codingWorkspace?.readF20CaseConfiguration();
       return selected?.configured === true ? selected.inputRef : undefined;
@@ -2549,11 +2570,13 @@ async function initializeInstalledSkills() {
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
       validateRunInput:async publicGoal=>{
         const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
+        const compileSkillGoal=(goal,prepared,messages)=>
+          checkInstalledSkillInput(compileCoordinationGoal(goal,prepared,messages));
         const limit=harnessContextHost?.runtimeHooks?.policy.maxSourceMessages;
         const context=readDesktopConversationContext({conversationId:conversations.activeConversationId('workspace'),
           deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal},limit);
-        if(harnessContextHost?.runtimeHooks)harnessContextHost.preflight(publicGoal,publicGoal,context,compileCoordinationGoal);
-        else compileCoordinationGoal(publicGoal,publicGoal,context);
+        if(harnessContextHost?.runtimeHooks)harnessContextHost.preflight(publicGoal,publicGoal,context,compileSkillGoal);
+        else compileSkillGoal(publicGoal,publicGoal,context);
       },
       selectDirectory:async()=>{
         const result=await dialog.showOpenDialog(admin,{title:'选择包含 SKILL.md 的 Skill 文件夹',properties:['openDirectory']});
@@ -2696,7 +2719,7 @@ async function initializeRuntime() {
     try {crewReplanDispatcher?.close();} catch {/* crew db best-effort */}
     crewReplanDispatcher=undefined;
     locateOpenHost=undefined;
-    runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;localAuthorizationOnly=false;
+    runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;personalDashboardHost=undefined;localAuthorizationOnly=false;
   }
   initializeAuthorizationHosts(runtimeModule);
   conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
@@ -2821,7 +2844,7 @@ async function initializeRuntime() {
           getBinding: () => {
             const binding = calendarConfig.binding();
             return binding ? {configurationId: calendarConfigurationId(binding), accountRef: binding.accountRef,
-              calendarUrl: binding.calendarUrl, calendarName: binding.calendarName} : undefined;
+              providerKind: binding.providerKind, calendarUrl: binding.calendarUrl, calendarName: binding.calendarName} : undefined;
           },
           readAuthorization: request => {
             const binding = calendarConfig.binding();
@@ -2875,21 +2898,6 @@ async function initializeRuntime() {
               title:'PersonalAgent 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
-      }
-      if (!syntheticMvp && runtimeApplication) {
-        try {
-          personalDashboardHost = createPersonalDashboardHost({
-            userData: app.getPath('userData'), safeStorage, namespace,
-            runtime: runtimeApplication.runtime,
-            dispatchTask: runtimeModule.dispatchPersonalDashboardTask,
-            calendarConfig, meetingSnapshot: () => calendarMeetingHost?.snapshot(),
-            mailConfig, now: Date.now, onUpdate: publish,
-            onNotification(item) {
-              if (Notification.isSupported()) new Notification({title: item.title, body: item.body}).show();
-            },
-          });
-          await personalDashboardHost.start();
-        } catch { personalDashboardHost = undefined; }
       }
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
@@ -3000,7 +3008,13 @@ async function initializeRuntime() {
         const observation=productTools.tools.find(tool=>tool.descriptor.name==='computer.system.observe');
         if(observation)systemObservationConversation=createSystemObservationConversation({tool:observation,
           getApplication:()=>runtimeApplication,resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
-          confirmExport:confirmDeveloperExport});
+          confirmExport:({taskId,conversationId,proposalId,payload,deadline,signal,isCurrent})=>
+            confirmApplicationAuthorization('computer.observation.export',payload,{
+              scope:{taskId,conversationId,proposalId,deadline,destination:runtimeApplication.readAuthorizationQuestionDestination(taskId),
+                purpose:'system-observation',readScope:'computer:system:read'},
+              summary:'允许将本次任务读取的 CPU、内存与运行时长聚合数据发送给当前配置的模型吗？',
+              deadline,signal,isCurrent,
+            })});
       }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();
@@ -3157,6 +3171,9 @@ async function initializeRuntime() {
         localInbox:mailHost?.tools.find(tool=>tool.descriptor.name==='mail.inbox'),
         getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
         onReadTask:({taskId})=>connectorMailReadOrigin.bind({taskId,conversationId:conversationToolAccess.resolveConversation(taskId)}),
+        confirmExport:confirmDeveloperExport});
+      if(!syntheticMvp)githubConversationTools=createGitHubConversationTools({github:githubConfig,question:authorizationQuestionPort,
+        getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
         confirmExport:confirmDeveloperExport});
       const {
         createDesktopSubagentDispatchTool,
@@ -3519,6 +3536,26 @@ async function initializeRuntime() {
         codingWorkspace,workflowEntries,
       });
       const genericWorkflowTools=(workflowGraphComposition?.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
+      const useDeveloperGitHub=()=>developerDeployment?.snapshot?.()?.configured===true;
+      const developerToolNames=new Set((developerDeployment?.host.tools??[]).map(tool=>tool.descriptor.name));
+      const githubToolMap=new Map((githubConversationTools?.tools??[]).map(tool=>[tool.descriptor.name,tool]));
+      const githubAvailMap=new Map((githubConversationTools?.competitionToolAvailability??[]).map(item=>[item.toolName,item]));
+      const githubExportMap=new Map((githubConversationTools?.competitionToolExports??[]).map(item=>[item.toolName,item]));
+      const muxedDeveloperTools=(developerDeployment?.host.tools??[]).map(tool=>{
+        const ghTool=githubToolMap.get(tool.descriptor.name);
+        return ghTool ? {descriptor:ghTool.descriptor,execute:(input,ctx)=>useDeveloperGitHub()?tool.execute(input,ctx):ghTool.execute(input,ctx)} : tool;
+      });
+      const muxedDeveloperAvailability=(developerDeployment?.host.competitionToolAvailability??[]).map(item=>{
+        const ghAvail=githubAvailMap.get(item.toolName);
+        return ghAvail ? {...item,available:scope=>useDeveloperGitHub()?item.available(scope):ghAvail.available(scope)} : item;
+      });
+      const muxedDeveloperExports=(developerDeployment?.host.competitionToolExports??[]).map(item=>{
+        const ghExport=githubExportMap.get(item.toolName);
+        return ghExport ? {toolName:item.toolName,toolVersion:item.toolVersion,exportPolicyVersion:'desktop-github-mux-v1',
+          accepts:scope=>useDeveloperGitHub()?item.accepts(scope):ghExport.accepts(scope),
+          project:scope=>useDeveloperGitHub()?item.project(scope):ghExport.project(scope)} : item;
+      });
+      const extraGithubTools=(githubConversationTools?.tools??[]).filter(tool=>!developerToolNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(f10Workflow?.tools??[]),
         ...(f26Workflow?.tools??[]),
@@ -3526,8 +3563,8 @@ async function initializeRuntime() {
         ...(f23DecisionConfiguration?[f23DecisionConfiguration.tool]:[]),
         ...(f23Workflow?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
-        ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
-        ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
+        ...muxedDeveloperTools,...(goalCloudHost?.tools??goalHost.tools),
+        ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),...extraGithubTools,
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
         ...(f01Workflow?.tools??[]),...(f21Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f28Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
@@ -3753,7 +3790,7 @@ async function initializeRuntime() {
             cloudRequestFailureNotice = '';
             const conversationOrigin=runtimeApplication.readSubagentConversationOrigin?.(request.taskId);
             if(conversationOrigin)installedSkillsHost?.assertTask(conversationOrigin.taskId);
-            installedSkillsHost?.assertTask(request.taskId);
+            installedSkillsHost?.assertTask(request.taskId,request.goal);
             const parent=runtimeApplication.readDelegatedUserTaskParent?.(request.taskId);
             const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!conversations?.containsConversation(conversationId)) return;
@@ -3828,8 +3865,8 @@ async function initializeRuntime() {
         beforeCompetitionSend:request=> {
           const task=runtimeApplication.runtime.getTask(request.taskId);
           const conversationId=typeof task.conversationId==='string'?task.conversationId:'';
-          usageBudgetProduct?.beforeCloudSend({userInitiated:runtimeApplication.readTaskUsageOrigin(request.taskId)==='user',
-            modelId:request.executionModel?.modelId});
+          const proactive=isAutonomousRuntimeTask(runtimeApplication.runtime,request.taskId);
+          usageBudgetProduct?.beforeCloudSend({userInitiated:!proactive,modelId:request.executionModel?.modelId});
           if (!proactiveHost && conversationId.startsWith('desktop-proactive-goals:')) {
             throw Error('目标主动分析宿主尚未就绪');
           }
@@ -3902,6 +3939,7 @@ async function initializeRuntime() {
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||scope.toolName==='mail.reconcile_send'||scope.toolName==='mail.reconcile_archive'
+          ||(scope.runId===`host-tool-${scope.taskId}`&&['mail.inbox','calendar.events','knowledge.search','connector.watch.start','connector.watch.stop'].includes(scope.toolName))
           ||scope.toolName==='decision.choose_candidate'
           ||scope.toolName==='workflow.host.f01_n09'
           ||scope.toolName===F23_INITIALIZE_TOOL
@@ -3918,8 +3956,13 @@ async function initializeRuntime() {
           await computerVisionHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
           await feedsHost?.prepareExport?.(scope);
-          await developerDeployment?.prepareExport(scope);
+          const ghTools=typeof githubConversationTools!=='undefined'?githubConversationTools:undefined;
+          const devConfigured=developerDeployment?.snapshot?.()?.configured===true;
+          const ghOwns=Boolean(ghTools?.tools?.some(item=>item.descriptor.name===proposal?.toolName));
+          const devOwns=Boolean(developerDeployment?.host?.tools?.some(item=>item.descriptor.name===proposal?.toolName));
+          if(devConfigured||!ghOwns)await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
+          if(!devConfigured||!devOwns)await ghTools?.prepareExport?.(scope);
           const configuredDecision=phase==='preflight'&&prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
           if(!configuredDecision)await codingWorkspace?.prepareExport?.(scope);
           await goalCloudHost?.prepareExport?.(scope);
@@ -3968,14 +4011,13 @@ async function initializeRuntime() {
             profile:'huawei_ict_agentarts',tools:conversationTools,
             competitionToolAvailability:[...(shadowPreview?[shadowPreview.availability]:[]),
               ...(workflowGraphComposition?.competitionToolAvailability??[]),
-              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
+              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...(githubConversationTools?.competitionToolAvailability??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...muxedDeveloperAvailability, ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
           competitionToolExports: [...(shadowPreview?[shadowPreview.exportBinding]:[]),
             ...(workflowGraphComposition?.competitionToolExports??[]),
-            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
+            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...(githubConversationTools?.competitionToolExports??[]).filter(item=>!developerToolNames.has(item.toolName)),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...muxedDeveloperExports, ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
-        onWssRun:info=>usageBudgetProduct?.recordCloud(info),
         ...(agentArtsTransportConfig.transport==='wss'?{recoverAcceptedStatus:true}:{}),
         invokeMode: agentArtsInvokeMode,
         ...(agentArtsTransportConfig.transport === 'wss' ? {onTransportState: state => {
@@ -3998,6 +4040,7 @@ async function initializeRuntime() {
         const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
         thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
       }
+      usageBudgetProduct?.bindRuntime?.(() => runtimeApplication?.runtime);
       wikiImportHost.bind(runtimeApplication.wikiImport);
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
@@ -4151,8 +4194,24 @@ async function initializeRuntime() {
         const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
         thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
       }
+      usageBudgetProduct?.bindRuntime?.(() => runtimeApplication?.runtime);
     }
     runtime = runtimeApplication.runtime;
+    if (!syntheticMvp && runtimeApplication) {
+      try {
+        personalDashboardHost = createPersonalDashboardHost({
+          userData: app.getPath('userData'), safeStorage, namespace: desktopHost.userNamespace,
+          runtime: runtimeApplication.runtime,
+          dispatchTask: runtimeModule.dispatchPersonalDashboardTask,
+          calendarConfig, meetingSnapshot: () => calendarMeetingHost?.snapshot(),
+          mailConfig, now: Date.now, onUpdate: publish,
+          onNotification(item) {
+            if (Notification.isSupported()) new Notification({title: item.title, body: item.body}).show();
+          },
+        });
+        await personalDashboardHost.start();
+      } catch { personalDashboardHost = undefined; }
+    }
     if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
     if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
     readEvents = after => runtimeApplication.readEvents(after);
@@ -4499,9 +4558,11 @@ async function initializeRuntime() {
     getTools: () => connectorConversationTools?.tools ?? [],
     sourceAdapters: businessSourceAdapters,
     submitTask: async input => {
-      const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
-      const deadline=new Date(Date.now()+readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
-      return runtimeApplication.submitScheduledTextTask({...input,conversationId},deadline);
+      const conversationId = typeof input.conversationId === 'string' && input.conversationId.trim()
+        ? input.conversationId.trim() : `proactive-source:${desktopHost.userNamespace}`;
+      const deadline = new Date(Date.now() + readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
+      const submit = () => runtimeApplication.submitScheduledTextTask({...input, conversationId}, deadline);
+      return usageBudgetProduct ? usageBudgetProduct.withOrigin('autonomous', submit) : submit();
     },
     namespace: desktopHost.userNamespace,
     onUpdate: publish,
@@ -4798,7 +4859,8 @@ async function action(event, name, payload) {
     publish();return result;
   }
   if (name === 'personalDashboard.period') {
-    if (sender !== admin || !personalDashboardHost) throw Error('请从管理后台更改汇总周期');
+    if (sender !== admin || event.senderFrame !== sender.webContents.mainFrame) throw Error('请从管理后台更改汇总周期');
+    if (!personalDashboardHost) throw Error('个人数据看板尚未就绪，请稍候或确认 Runtime 已连接');
     const result = personalDashboardHost.setPeriod(payload);
     publish();
     return result;
@@ -4926,7 +4988,15 @@ async function action(event, name, payload) {
   if (name === 'task.locate') {
     // MOD-35：对失败任务的错误输出做确定性定位（纯解析，无模型、无副作用）。
     if (sender !== panel && sender !== admin && sender !== workspace) throw Error('Untrusted sender for task.locate');
-    const text = typeof payload?.text === 'string' ? payload.text : '';
+    const text = typeof resolveTaskLocateInput === 'function'
+      ? resolveTaskLocateInput({
+        payload, sender, panel, admin, workspace,
+        tasks: typeof tasks !== 'undefined' ? tasks : undefined,
+        taskSurface: typeof taskSurface === 'function' ? taskSurface : undefined,
+        runtime: typeof runtimeClosed !== 'undefined' && !runtimeClosed ? runtimeApplication?.runtime : undefined,
+        readChildren: id => runtimeApplication?.readSubagentTasks?.(id),
+      })
+      : (typeof payload?.text === 'string' ? payload.text : '');
     if (!text.trim() || text.length > 2 * 1024 * 1024) throw Error('无可定位的错误输出');
     const {locateTestFailures} = await import('@personal-agent/coding-tools');
     const report = locateTestFailures(text, {root: repoRootForLocate(), allowedPaths: [], maxSnippetReads: 0, contextLines: 2});
@@ -5484,9 +5554,32 @@ async function action(event, name, payload) {
     if (sender !== admin || !competitionMode || syntheticMvp || !calendarConfig) throw Error('请从正式应用日历设置操作');
     if (name === 'calendar.configure' && (runtimeApplication?.activeTaskCount || runtimeStartup.snapshot().state === 'starting')) throw Error('请等待当前任务及启动结束后修改日历配置');
     await connectorConversationTools?.invalidate('calendar');
+    const revokeFlagPath = path.join(app.getPath('userData'), '.calendar-revoked');
     if (name === 'calendar.revoke') calendarMeetingHost?.invalidate();
     const result = name === 'calendar.configure' ? calendarConfig.configure(payload) : calendarConfig.revoke();
+    try {
+      if (name === 'calendar.revoke') {
+        mkdirSync(app.getPath('userData'), {recursive: true});
+        writeFileSync(revokeFlagPath, 'revoked', 'utf8');
+      } else if (existsSync(revokeFlagPath)) {
+        unlinkSync(revokeFlagPath);
+      }
+    } catch { /* ignore marker write failure */ }
     if (name === 'calendar.configure') calendarMeetingHost?.invalidate();
+    publish(); return result;
+  }
+  if (['github.configure','github.detectGh','github.revoke'].includes(name)) {
+    if (sender !== admin || !competitionMode || syntheticMvp || !githubConfig) throw Error('请从正式应用 GitHub 设置操作');
+    if (name === 'github.detectGh') {
+      if (payload?.importToken && (runtimeApplication?.activeTaskCount || runtimeStartup.snapshot().state === 'starting')) throw Error('请等待当前任务及启动结束后修改 GitHub 配置');
+      if (payload?.importToken) await githubConversationTools?.invalidate();
+      const result = await githubConfig.detectLocalGh(payload);
+      if (payload?.importToken) publish();
+      return result;
+    }
+    if (name === 'github.configure' && (runtimeApplication?.activeTaskCount || runtimeStartup.snapshot().state === 'starting')) throw Error('请等待当前任务及启动结束后修改 GitHub 配置');
+    await githubConversationTools?.invalidate();
+    const result = name === 'github.configure' ? await githubConfig.configure(payload) : githubConfig.revoke();
     publish(); return result;
   }
   if (['calendar.read','calendar.readTask','calendar.bindMeeting','calendar.refreshMeeting',
@@ -5562,8 +5655,11 @@ async function action(event, name, payload) {
           const notificationScope={kind:'connector',connectorId:'mail'},policy=notificationApplicationHost?.getInterruptionPolicy(notificationScope);
           if(!policy)throw Error('通知服务尚未就绪，邮件监测尚未开始');
           if(!policy.effective){
-            const configured=await notificationApplicationHost.configureSettings({operationId:randomUUID(),scope:notificationScope,
-              expectedRevision:policy.revision,patch:{...defaultNotificationSettings}},{isCurrent});
+            const globalPolicy=notificationApplicationHost?.getInterruptionPolicy({kind:'global'});
+            const targetScope=!globalPolicy?.effective?{kind:'global'}:notificationScope;
+            const targetRevision=!globalPolicy?.effective?(globalPolicy?.revision??0):policy.revision;
+            const configured=await notificationApplicationHost.configureSettings({operationId:randomUUID(),scope:targetScope,
+              expectedRevision:targetRevision,patch:{...defaultNotificationSettings}},{isCurrent});
             if(!isCurrent())return;
             if(configured.state!=='confirmed')throw Error('提醒设置尚未确认，请查看主对话授权卡后再启动监测');
           }
@@ -5928,7 +6024,26 @@ async function action(event, name, payload) {
     if (name === 'voice.play') {
       await stopWakeVoice();
       if (wakeVoice?.hasActive()) throw Error('请先关闭唤醒');
-      return voiceInput.playReply(senderId);
+      if (payload === undefined) return voiceInput.playReply(senderId);
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw Error('语音播报参数无效');
+      const keys = Object.keys(payload);
+      if (keys.length !== 1 || !['taskId', 'messageId'].includes(keys[0])) throw Error('语音播报参数无效');
+      let speechText = '';
+      if (typeof payload.taskId === 'string' && payload.taskId.trim()) {
+        const task = tasks.get(payload.taskId);
+        if (!task || taskSurface(task) !== 'panel' || task.bodyWithheld || task.outputTruncated) {
+          throw Error('该任务当前没有可播报的回答');
+        }
+        speechText = resultText(task.resultSummary, taskResultMetadata(task)) ?? '';
+      } else if (typeof payload.messageId === 'string' && payload.messageId.trim()) {
+        const message = conversations?.messages?.get(payload.messageId);
+        if (!message || message.role !== 'assistant' || typeof message.text !== 'string') {
+          throw Error('该消息没有可播报的回答');
+        }
+        speechText = message.text;
+      }
+      if (!speechText.trim()) throw Error('没有可播报的回答正文');
+      return voiceInput.speakText(senderId, speechText);
     }
     throw Error('Unsupported voice action');
   }
@@ -6650,8 +6765,7 @@ app.whenReady().then(async () => {
       .map(model => model.id)});
   costRouteBudget = usageBudgetProduct;
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage,
-    onCloudRun: info => usageBudgetProduct.recordCloud({...info,
-      ...(info.taskId?{origin:runtimeApplication?.readTaskUsageOrigin(info.taskId)}:{})})});
+    onCloudRun: info => usageBudgetProduct.recordCloud(info)});
   egressHost=createNativeEgressHost({dialog,authorizeTaskEgress:authorizeAgentArtsEgress,
     isTrustedIdentifier:id=>{
       if(typeof id!=='string')return false;
@@ -6675,6 +6789,29 @@ app.whenReady().then(async () => {
         }
       }
       return false;
+    },
+    readTrustedGitHubShas(taskId){
+      const runtime=runtimeApplication?.runtime;
+      if(!runtime||typeof taskId!=='string'||!taskId)return undefined;
+      const shas=new Set();
+      const collect=(value,key='',depth=0)=>{
+        if(depth>6||value==null)return;
+        if(typeof value==='string'){
+          if(['sha','headSha','baseSha'].includes(key)){const hex=extractGitSha40(value);if(hex)shas.add(hex);}
+          return;
+        }
+        if(Array.isArray(value)){for(const item of value)collect(item,'',depth+1);return;}
+        if(typeof value==='object'){for(const [k,v]of Object.entries(value))collect(v,k,depth+1);}
+      };
+      try{
+        for(const record of runtime.readToolExecutions(taskId)){
+          if(record.toolName?.startsWith('github.')&&record.state==='confirmed'&&record.executionStarted){
+            const saved=runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId);
+            if(saved?.result)collect(saved.result);
+          }
+        }
+      }catch{}
+      return shas;
     },
     readPendingWorkflowGraph({taskId,requestId,deadline}){
       const runtime=runtimeApplication?.runtime;
@@ -6748,7 +6885,21 @@ app.whenReady().then(async () => {
       createGateway:createConfiguredSubagentModelGateway,onUpdate:publish,...usageHooks});
     computerVisionConfig.setEgressHost(egressHost);
   }
-  if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
+  if (competitionMode && !syntheticMvp) {
+    calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
+    if (process.platform === 'win32') {
+      const calendarSnap = calendarConfig.snapshot();
+      const revokeFlagPath = path.join(app.getPath('userData'), '.calendar-revoked');
+      if (!calendarSnap.configured && calendarSnap.status !== 'unavailable' && !existsSync(revokeFlagPath)) {
+        try {
+          calendarConfig.configure({providerKind: 'windows-system', calendarName: 'Windows 系统日历'});
+        } catch {
+          // Leave explicit unconfigured state if safeStorage or userData cannot persist yet.
+        }
+      }
+    }
+  }
+  if (competitionMode && !syntheticMvp) githubConfig = createGitHubConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   ipcMain.on('desktop:live-event', (event, message) => {liveVoice?.receive(event, message);});
   ipcMain.on('desktop:voice-playback-event', (event, message) => {
@@ -6786,7 +6937,7 @@ app.whenReady().then(async () => {
   panel.once('closed', () => { panelPageLoaded = false; nativeTheme.removeListener('updated', onPanelThemeUpdated); });
   panel.webContents.on('did-finish-load', () => { panelPageLoaded = true; clearPanelBackingFlash(); });
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
-  panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
+  panel.on('hide', () => {void stopPanelVoice({preserveWake: true}).catch(reportPanelVoiceFailure);});
   panel.webContents.once('did-finish-load', () => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
   powerMonitor.on('suspend', () => {void voiceStartupHost?.suspend().catch(reportPanelVoiceFailure);});
   powerMonitor.on('resume', () => {void voiceStartupHost?.resume().catch(reportPanelVoiceFailure);});
@@ -6876,12 +7027,25 @@ app.whenReady().then(async () => {
     onReload: info => {console.warn('[memory] reloaded an oversized renderer', {pid: info.pid, megabytes: Math.round(info.bytes / 1024 / 1024)});},
   });
   memoryWatchdog.start();
+  let remoteMcpPendingQuit;
   app.on('before-quit', event => {
     if (runtimeStartup.snapshot().state === 'starting') {
       event.preventDefault(); reportQuitFailure('Runtime 正在连接，请稍后退出'); return;
     }
     if ((runtimeApplication?.activeTaskCount ?? 0) > 0 || submitting.size > 0) {
       event.preventDefault();
+      if(remoteMcpPendingQuit)return;
+      if(submitting.size===0 && remoteMcpManagement && !mailMonitorPreparation?.configurationPending()){
+        try {
+          const settling=runtimeApplication?.finishPendingRemoteMcpForExit(()=>draftQuitPreflight.allow());
+          if(settling===false)return;
+          if(settling){
+            remoteMcpPendingQuit=settling.then(()=>{remoteMcpPendingQuit=undefined;app.quit();})
+              .catch(()=>{remoteMcpPendingQuit=undefined;reportQuitFailure('远程 MCP 待批任务尚未停止，请稍后退出');});
+            return;
+          }
+        } catch { /* Fall through to the existing busy response. */ }
+      }
       app.isQuitting = false;
       reportQuitFailure('Runtime 仍有活动任务；请先等待完成或停止任务后再退出');
       return;
@@ -7036,6 +7200,7 @@ app.whenReady().then(async () => {
       goalCloudHost?.close();
       calendarMeetingHost?.close();
       void connectorConversationTools?.close();
+      void githubConversationTools?.close();
       computerVisionHost?.close();
       computerVisionConfig?.dispose();
       f15ReviewViewer?.close();f15ReviewHost?.close();

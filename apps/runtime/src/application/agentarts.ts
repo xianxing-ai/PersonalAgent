@@ -4,6 +4,7 @@ import {
   type AgentArtsAuthorizationProvider,
   type AgentArtsFailureDiagnostic,
   type AgentArtsFetch,
+  type CloudAgentPort,
   type CoordinationRequest,
   type AgentArtsTransportState,
   type AgentArtsWebSocketFactory,
@@ -70,8 +71,8 @@ export interface AgentArtsRuntimeApplicationOptions
   /** Offline/native socket injection, independent of the task transport protocol. */
   realtimeSocket?: RealtimeSocketConstructor;
   onTransportState?: (state: AgentArtsTransportState) => void;
-  /** Duration of WSS invocations that reached socket send, including unknown outcomes. */
-  onWssRun?: (info:{taskId:string;requestId:string;durationMs:number;origin:'user'|'autonomous'})=>void;
+  /** Optional host-only WSS cloud-run accounting hook; fires only when a frame was sent over WSS. */
+  onWebSocketCloudRun?: (info: {durationMs: number; ok: boolean; taskId: string; requestId: string; origin: 'user'|'autonomous'}) => void;
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
@@ -134,7 +135,7 @@ export function createAgentArtsRuntimeApplication(
     websocketFactory,
     realtimeSocket,
     onTransportState,
-    onWssRun,
+    onWebSocketCloudRun,
     onDiagnostic,
     beforeCompetitionSend,
     preparePayload:configuredPayloadPreparer,
@@ -149,6 +150,9 @@ export function createAgentArtsRuntimeApplication(
     observationApplicationId,
     ...runtimeOptions
   } = options;
+  if (onWebSocketCloudRun !== undefined && typeof onWebSocketCloudRun !== 'function') {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Invalid AgentArts WebSocket cloud run callback');
+  }
   if(recoverAcceptedStatus!==undefined&&(recoverAcceptedStatus!==true||transport!=='wss'))
     throw new ProtocolError('INVALID_ARGUMENT','Accepted-status recovery requires explicit WSS transport');
   if (deploymentVersion !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(deploymentVersion)) {
@@ -169,6 +173,8 @@ export function createAgentArtsRuntimeApplication(
     throw new ProtocolError('INVALID_ARGUMENT','New task continuations require the guarded Competition tool catalog');
   }
   let application: RuntimeApplication;
+  const wssStarted = new Map<string, {at: number; requestId: string}>();
+  const wssRunKey = (request: CoordinationRequest): string => `${request.taskId}\0${request.revision}`;
   const preparePayload:AgentArtsPayloadPreparer=configuredPayloadPreparer??(async()=>{
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local cloud-payload classification is unavailable');
   });
@@ -200,13 +206,15 @@ export function createAgentArtsRuntimeApplication(
     },
     onDiagnostic,
     transport !== 'wss' && websocketAuthorizationProvider === undefined && websocketFactory === undefined
-      && onTransportState === undefined ? undefined : {
+      && onTransportState === undefined && onWebSocketCloudRun === undefined ? undefined : {
         ...(websocketAuthorizationProvider === undefined ? {} : {authorizationProvider: websocketAuthorizationProvider}),
         ...(websocketFactory === undefined ? {} : {factory: websocketFactory}),
         ...(recoverAcceptedStatus===true?{recoverAcceptedStatus:true as const}:{}),
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
-        ...(onWssRun===undefined?{}:{onRunDuration:(info:{taskId:string;requestId:string;durationMs:number})=>onWssRun({...info,origin:application.readTaskUsageOrigin(info.taskId)})}),
         onDispatch: (request, receipt) => {
+          if (onWebSocketCloudRun !== undefined && receipt.serverInstanceId !== undefined) {
+            wssStarted.set(wssRunKey(request), {at: Date.now(), requestId: receipt.requestId});
+          }
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
           recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt,request);
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-received', null);
@@ -264,6 +272,30 @@ export function createAgentArtsRuntimeApplication(
     ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),...(invokeMode?{invokeMode}:{}),
     ...(workflowGoalInput?{workflowGoalInput}:{})}):undefined;
   const wikiHost=wikiImport&&wikiModel?createRuntimeWikiImportHost({...wikiImport,model:wikiModel}):undefined;
+  const trackedCloud: CloudAgentPort = onWebSocketCloudRun === undefined ? cloud : {
+    async invoke(request) {
+      const key = wssRunKey(request);
+      const record = (ok: boolean): void => {
+        const started = wssStarted.get(key);
+        if (started === undefined) return;
+        wssStarted.delete(key);
+        try {
+          onWebSocketCloudRun({durationMs: Math.max(1, Date.now() - started.at), ok, taskId: request.taskId,
+            requestId: started.requestId, origin: application.readTaskUsageOrigin(request.taskId)});
+        } catch {
+          /* Usage accounting never alters the cloud invocation outcome. */
+        }
+      };
+      try {
+        const result = await cloud.invoke(request);
+        record(true);
+        return result;
+      } catch (error) {
+        record(false);
+        throw error;
+      }
+    },
+  };
   const f20FromPorts=ownedImage&&f20WorkflowWorkerPorts?{...f20WorkflowWorkerPorts,image:ownedImage}:undefined;
   application = createRuntimeApplication({
     ...runtimeOptions,
@@ -292,12 +324,12 @@ export function createAgentArtsRuntimeApplication(
       ...(continuationContext==='goal'?{continuationContext:'goal'}:{}),
       ...(transport === 'wss' ? {transport,websocketUrl,allowHttpsFallback:allowHttpsFallback??false} : {}),
       ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion})})).digest('hex'),
-    coordination: new CompetitionCoordinator(cloud),
+    coordination: new CompetitionCoordinator(trackedCloud),
   });
   const statusReader=new CompetitionCloudStatusReader(application.runtime,application.coordinationConfigurationRef,cloud,transport==='wss');
   wikiHost?.bind(application);
   const closeRuntime = application.close.bind(application);
-  application.close = () => { closeRuntime(); statusReader.close(); cloud.close(); ownedImage?.close(); wikiHost?.close(); wikiModel?.close(); };
+  application.close = () => { wssStarted.clear(); closeRuntime(); statusReader.close(); cloud.close(); ownedImage?.close(); wikiHost?.close(); wikiModel?.close(); };
   // The platform observation consumer lives only on the Competition composition; the
   // default (local) application keeps no observation surface at all.
   const observationHost = createAgentArtsObservationHost({

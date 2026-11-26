@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {Client} from '@personal-agent/client';
+import {WindowsSystemCalendarProvider} from '@personal-agent/calendar';
+import {createDesktopDashboardSources} from '../electron/personal-dashboard-sources.js';
 import {createCalendarConfig} from '../electron/calendar-config.js';
 import {createDesktopTodoHost} from '../electron/todo-host.js';
 import {createDesktopNotificationPort} from '../electron/desktop-notification-port.js';
@@ -566,6 +568,96 @@ test('P-06 wires F16/F19 CI failure log binding, test intent guard, issue repair
     assert.equal(issueState, 'closed');
   } finally {
     ghService.dispose();
+    app.close();
+    try { rmSync(root, {recursive: true, force: true, maxRetries: 5, retryDelay: 50}); } catch { /* noop */ }
+  }
+});
+
+test('Windows system calendar provider integrates cleanly with calendarConfig, workflow hosts, and dashboard sources', async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'pa-win-cal-flow-'));
+  const userData = path.join(root, 'cfg');
+  mkdirSync(userData, {recursive: true});
+  const app = createRuntimeApplication({
+    path: path.join(root, 'runtime.sqlite'),
+    profile: 'huawei_ict_agentarts',
+    hostUserNamespace: 'win-cal-user',
+  });
+  const stored = new Map();
+  let fetchCount = 0;
+  const winTransport = {
+    async run(req) {
+      if (req.op === 'createEvent') {
+        const uid = req.uid ?? `win-${stored.size + 1}`;
+        const evt = {
+          localId: uid,
+          roamingId: uid,
+          calendarId: 'win-app',
+          subject: req.summary,
+          startUtc: req.startUtc,
+          endUtc: req.endUtc,
+          changeNumber: 1,
+          canWrite: true,
+        };
+        stored.set(uid, evt);
+        return {conflictCheck: false, event: evt};
+      }
+      if (req.op === 'fetchWindow') { fetchCount++; return {events: [...stored.values()]}; }
+      if (req.op === 'getEvent') return {event: stored.get(req.externalId) ?? null};
+      return {};
+    },
+  };
+  try {
+    const fixedNow = () => Date.parse('2026-11-21T00:00:00.000Z');
+    const calendarConfig = createCalendarConfig({userData, safeStorage});
+    calendarConfig.configure({providerKind: 'windows-system', calendarName: 'Windows 系统日历'});
+
+    const hosts = createDesktopBusinessWorkflowHosts({
+      getApplication: () => app,
+      getCalendarConfig: () => calendarConfig,
+      createWindowsCalendarProvider: opts => new WindowsSystemCalendarProvider({...opts, transport: winTransport}),
+      now: fixedNow,
+    });
+    const dashboard = createDesktopDashboardSources({
+      calendarConfig,
+      createWindowsCalendarProvider: opts => new WindowsSystemCalendarProvider({...opts, transport: winTransport}),
+      now: fixedNow,
+    });
+
+    // Fail-closed before session enable
+    const unauth = await dashboard.readTime({
+      fromUtc: '2026-11-21T00:00:00.000Z',
+      toUtc: '2026-11-22T00:00:00.000Z',
+    });
+    assert.equal(unauth.connected, false);
+
+    calendarConfig.enableSession({readConsent: true});
+
+    const calWritePort = hosts.findPort('calendar.registered_write');
+    const created = await calWritePort.read({
+      taskId: 'task-win-cal-1',
+      requestId: 'req-win-cal-1',
+      signal: new AbortController().signal,
+      deadline: new Date(fixedNow() + 60_000).toISOString(),
+      predecessorStates: {},
+      predecessorOutputs: {},
+      input: {
+        accountRef: 'desktop-calendar',
+        summary: '本地系统日历待办日程',
+        startUtc: '2026-11-21T03:00:00.000Z',
+        endUtc: '2026-11-21T04:00:00.000Z',
+        externalId: 'win-flow-1',
+      },
+    });
+    assert.equal(created.state, 'completed');
+    assert.equal(created.value.externalId, 'win-flow-1');
+
+    const timeSummary = await dashboard.readTime({
+      fromUtc: '2026-11-21T00:00:00.000Z',
+      toUtc: '2026-11-22T00:00:00.000Z',
+    });
+    assert.equal(timeSummary.connected, true);
+    assert.ok(fetchCount >= 1);
+  } finally {
     app.close();
     try { rmSync(root, {recursive: true, force: true, maxRetries: 5, retryDelay: 50}); } catch { /* noop */ }
   }

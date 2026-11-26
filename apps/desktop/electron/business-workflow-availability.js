@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {inferCalendarProviderKind, SUPPORTED_CALENDAR_PROVIDER_KINDS} from './calendar-provider-factory.js';
 
 /** Read the configured account/device and the original Todo lease; this grants no operation. */
 export function createBusinessWorkflowAvailability({namespace,getApplication,todoHost,notificationHost,
@@ -16,8 +17,12 @@ export function createBusinessWorkflowAvailability({namespace,getApplication,tod
       }
       if(workflowId==='F07'||workflowId==='F11'){
         const binding=readCalendarBinding();
-        if(!binding||typeof binding.accountRef!=='string'||!binding.accountRef||!binding.calendarUrl
-          ||!Number.isSafeInteger(binding.revision))return {ready:false};
+        const providerKind=inferCalendarProviderKind(binding);
+        const locationReady=providerKind==='windows-system'
+          ? typeof binding.calendarName==='string' && binding.calendarName.trim().length>0
+          : typeof binding.calendarUrl==='string' && binding.calendarUrl.length>0;
+        if(!binding||!SUPPORTED_CALENDAR_PROVIDER_KINDS.includes(providerKind)||typeof binding.accountRef!=='string'||!binding.accountRef
+          ||!locationReady||!Number.isSafeInteger(binding.revision))return {ready:false};
         if(workflowId==='F11'&&todoHost?.competitionToolAvailability?.find(item=>item.toolName==='todo.update')?.available(scope)!==true)
           return {ready:false};
         return {ready:true,bindingId:hash({namespace,workflowId,binding})};

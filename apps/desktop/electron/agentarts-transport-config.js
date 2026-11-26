@@ -180,6 +180,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
   };
   readToken();
   return {transport,...deploymentBinding,...payloadOptions,websocketUrl:address.href,allowHttpsFallback:fallback==='1',...httpsOptions(),
+    ...(typeof onCloudRun === 'function' ? {onWebSocketCloudRun: onCloudRun} : {}),
     websocketAuthorizationProvider:{read:async()=>readToken()}};
 }
 

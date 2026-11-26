@@ -20,6 +20,9 @@ test('business availability binds actual account revision and notification polic
   device=false;assert.equal(read('F06',scope).ready,false);
   assert.equal(read('F12',scope).ready,true);assert.notEqual(read('F12',scope).bindingId,notification.bindingId);device=true;
   binding=undefined;assert.equal(read('F07',scope).ready,false);assert.equal(read('F11',scope).ready,false);
+  binding={providerKind:'windows-system',accountRef:'Synthetic',calendarName:'Windows 系统日历',revision:3};
+  assert.equal(read('F07',scope).ready,true);assert.equal(read('F11',scope).ready,true);
+  binding=undefined;
   assert.equal(read('F08',scope).ready,false);assert.equal(read('F06',{...scope,signal:AbortSignal.abort()}).ready,false);
   active=false;assert.equal(read('F06',scope).ready,false);assert.equal(read('F12',scope).ready,false);
 });

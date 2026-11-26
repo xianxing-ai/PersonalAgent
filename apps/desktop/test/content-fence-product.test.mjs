@@ -65,6 +65,15 @@ test('IPC state and the workspace status use the same snapshot', async () => {
   renderContentFence(node, state);
   assert.equal(node.hidden, false);
   assert.match(node.textContent, /外部内容已围栏 · 邮件 mail\.inbox/);
+  renderContentFence(node, {
+    sources: [
+      {label: '工具结果', ref: 'weather.forecast'},
+      {label: '工具结果', ref: 'weather.forecast'},
+      {label: '工具结果', ref: 'weather.forecast'},
+    ],
+    blocked: '',
+  });
+  assert.equal(node.textContent, '外部内容已围栏 · 工具结果 weather.forecast');
   renderContentFence(node, {sources: [], blocked: ''});
   assert.equal(node.hidden, true);
 });

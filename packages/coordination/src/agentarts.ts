@@ -71,8 +71,6 @@ export interface AgentArtsWebSocketOptions {
   onAccepted?: (request: CoordinationRequest, receipt: AgentArtsUnknownReceipt) => void;
   /** Delivery receipt only; Runtime consumption must be durable before a send intent can clear. */
   onTerminal?: (request: CoordinationRequest, receipt: AgentArtsUnknownReceipt) => void;
-  /** Duration of an invocation that reached socket send, including unknown outcomes. */
-  onRunDuration?: (info: {taskId: string; requestId: string; durationMs: number}) => void;
 }
 
 export type AgentArtsDiagnosticStage =
@@ -182,7 +180,7 @@ export interface AgentArtsResponse {
 }
 
 /** Minimal fetch seam; the default implementation is the host's global fetch. */
-export type AgentArtsFetch = (url: string, init: AgentArtsFetchInit) => Promise<AgentArtsResponse>;
+export type AgentArtsFetch = (url: string, init: AgentArtsFetchInit, taskId?: string) => Promise<AgentArtsResponse>;
 
 type AbortCause = 'cancelled' | 'deadline';
 
@@ -1261,7 +1259,6 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly onWebSocketDispatch: AgentArtsWebSocketOptions['onDispatch'];
   private readonly onWebSocketAccepted: AgentArtsWebSocketOptions['onAccepted'];
   private readonly onWebSocketTerminal: AgentArtsWebSocketOptions['onTerminal'];
-  private readonly onWebSocketRunDuration: AgentArtsWebSocketOptions['onRunDuration'];
   private readonly identityObserver: AgentArtsRequestIdentityObserver | undefined;
   private readonly taskContinuationContext: ((taskId: string) => 'goal' | undefined) | undefined;
   private closed = false;
@@ -1334,10 +1331,6 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.onWebSocketDispatch = websocketOptions?.onDispatch;
     this.onWebSocketAccepted = websocketOptions?.onAccepted;
     this.onWebSocketTerminal = websocketOptions?.onTerminal;
-    if (websocketOptions?.onRunDuration !== undefined && typeof websocketOptions.onRunDuration !== 'function') {
-      invalid('AgentArts WebSocket duration observer is invalid');
-    }
-    this.onWebSocketRunDuration = websocketOptions?.onRunDuration;
     this.identityObserver = identityObserver;
     this.taskContinuationContext = taskContinuationContext;
     if(preparePayload!==undefined&&typeof preparePayload!=='function')invalid('Invalid local payload gate');
@@ -1517,7 +1510,6 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       // WSS rechecks after its asynchronous Upgrade/ready handshake, immediately
       // before exporting a catalog or continuation. HTTPS fallback rechecks too.
       const guards: AgentArtsSendGuards = {
-      ...(this.onWebSocketRunDuration ? {onRunDuration: (durationMs: number) => this.onWebSocketRunDuration?.({taskId, requestId, durationMs})} : {}),
       beforeCatalog: async () => {
         if(availableTools!==undefined){
           stage = 'catalog_guard';
@@ -1584,7 +1576,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         if (receipt === undefined) this.identityObserver?.(createAgentArtsUnknownReceipt(init), sendRequest);
         // The final synchronous guard and fetch share one uninterrupted stack.
         if (receipt !== undefined) { fallbackReceipt = receipt; fallbackStarted = true; }
-        const response = this.fetchImpl(url, init);
+        const response = this.fetchImpl(url, init, request.taskId);
         if (fallback) this.websocket!.reportFallback(sessionId, requestId, this.websocketDeploymentVersion);
         return response;
       };
