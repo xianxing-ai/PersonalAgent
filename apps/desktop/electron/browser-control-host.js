@@ -10,7 +10,7 @@ import {ProtocolError, ToolNotStartedError, validateToolValue} from '@personal-a
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {computerControlFailure} from './computer-control-errors.js';
 import {detectSecretsInText} from './authorization-operation-policy.js';
-import {computerControlRecoveryTaskStates,isComputerControlWrite} from './computer-control-lease.js';
+import {computerControlRecoveryTaskStates,isComputerControlWrite,isReadOnlyBrowserReceipt} from './computer-control-lease.js';
 import {createBrowserWorkspacePage,validateWorkspaceCommand} from './browser-workspace-page.js';
 
 const VERSION='1.0.0',SCOPE='browser:control',TTL=30_000,MAX_CONTROLS=100,MAX_TEXT=12_000,MAX_IMAGE=5_242_880;
@@ -230,6 +230,15 @@ export function createBrowserControlHost(options={}) {
   }
   return {
     tools:template.tools.map((tool,i)=>({...tool,execute:(args,scope)=>forTask(scope.taskId).tools[i].execute(args,scope)})),
+    restrictClickToIndependentRead(record,scope,input){
+      const prior=owner(record.taskId),next=owner(scope.taskId);
+      if(!prior||prior===internal||!next||next===internal||next===prior)return false;
+      // The Runtime browser-worker marker was introduced with isolated chat
+      // profiles. Old unscoped workflows cannot establish separate ownership.
+      const parent=application.runtime.loadCheckpoint(record.taskId,'browser-worker-scope:v1')?.parentTaskId;
+      if(!parent||parent!==application.runtime.loadCheckpoint(record.taskId,'subtask-parent')?.parentTaskId||owner(parent)!==prior)return false;
+      return sessions.get(next)?.restrictClickToRead(scope,input)===true;
+    },
     competitionToolAvailability:template.competitionToolAvailability.map((item,i)=>({...item,available:scope=>{
       const key=owner(scope.taskId);return !closed&&!!key&&(sessions.get(key)??template).competitionToolAvailability[i].available(scope);
     }})),
@@ -272,7 +281,8 @@ function* unfinishedBrowserWrites(runtime,includeNavigations=true){
   do{
     const batch=runtime.listTasks?.({states:computerControlRecoveryTaskStates,limit:100,...(beforeSequence===undefined?{}:{beforeSequence})})??{items:[]};
     for(const task of batch.items)if(runtime.readToolExecutions(task.taskId).some(run=>run.toolName?.startsWith('browser.')&&(includeNavigations||run.toolName!=='browser.open')
-      &&isComputerControlWrite(run.toolName)&&run.policyDecision==='allow'&&run.executionStarted&&['started','unknown'].includes(run.state)))yield task.taskId;
+      &&isComputerControlWrite(run.toolName)&&run.policyDecision==='allow'&&run.executionStarted&&['started','unknown'].includes(run.state)
+      &&!isReadOnlyBrowserReceipt(runtime,run)))yield task.taskId;
     beforeSequence=batch.nextBeforeSequence;
   }while(beforeSequence!==undefined);
 }
@@ -290,6 +300,21 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   let pageConversation,pageOrigin,documentEpoch=0,presented,mediaPlayback;
   let localRead,workspaceVisibility=0,previewSuspended=false;
   const targets=new Map(),artifacts=new Map(),exportScopes=new Map(),exportRequests=new Map();
+  const restrictedReads=new Map();
+  function restrictClickToRead(scope,args){
+    const view=targets.get(args.targetRef),field=view?.controls.find(item=>item.ref===args.ref);
+    if(!field||view.taskId!==scope.taskId||view.expiresAt<=now()||view.page!==page||!page||page.isClosed()||
+      view.url!==page.url()||view.generation!==generation)return false;
+    let kind;
+    if(['video','audio'].includes(field.tag)&&['play','pause'].includes(args.mediaAction))
+      kind='media';
+    else if(!args.mediaAction&&field.tag==='a'&&!field.downloadAttribute&&/^https?:/iu.test(field.downloadUrl))
+      kind='link';
+    else return false;
+    for(const [key,entry] of restrictedReads)if(entry.expires<=now())restrictedReads.delete(key);
+    restrictedReads.set(exportKey(scope.taskId,scope.runId),{kind,digest:toolArgumentsDigest(args),expires:Date.parse(scope.deadline)});
+    return true;
+  }
   const exportKey=(taskId,id)=>JSON.stringify([taskId,id]);
   const profile=path.join(userDataPath,'controlled-browser-profile'),artifactRoot=path.join(userDataPath,'controlled-browser-artifacts');
   const snapshot=()=>({state:closed?'disposed':blocked?'blocked':state,available:!closed&&!blocked&&state!=='unavailable',busy,
@@ -755,7 +780,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         return {ref,role,name,tag:type,inputType:el.getAttribute('type')??'',disabled:Boolean(el.disabled),
           ...(box?{bounds:{x:box.x,y:box.y,width:box.width,height:box.height},focused:document.activeElement===el,
             editable:el.isContentEditable,...(type==='select'?{multiple:el.multiple}:{})}:{}),
-          ...(type==='a'?{downloadUrl:el.href}:{}),
+          ...(type==='a'?{downloadUrl:el.href,downloadAttribute:el.hasAttribute('download')}:{}),
           ...(['video','audio'].includes(type)?{paused:el.paused===true,ended:el.ended===true}:{}),
           ...(type==='select'?{options:[...el.options].slice(0,40).map(o=>({value:o.value.slice(0,200),label:o.label.slice(0,200),
             ...(localView?{selected:o.selected,disabled:o.disabled||!!o.closest('optgroup[disabled]')}:{})}))}:{}),
@@ -787,7 +812,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     const safeUrl=new URL(url);safeUrl.search='';safeUrl.hash='';
     return {source:'playwright',state:action?'action_observed':'observed',targetRef:id,observedAt:new Date(now()).toISOString(),
       expiresAt:new Date(expiresAt).toISOString(),url:safeUrl.href,...data,
-      controls:data.controls.map(({downloadUrl,...control})=>({...control,...(downloadUrl?{downloadable:/^https?:/.test(downloadUrl)}:{})})),goalVerified:false};
+      controls:data.controls.map(({downloadUrl,downloadAttribute,...control})=>({...control,...(downloadUrl?{downloadable:/^https?:/.test(downloadUrl)}:{})})),goalVerified:false};
   }
   function currentTarget(scope,args,toolName) {
     const value=targets.get(args.targetRef);
@@ -818,7 +843,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     await permit(scope,args,toolName,origin);
     original(scope,args,toolName);
     const identity={taskId:scope.taskId,runId:scope.runId,toolName,toolVersion:VERSION,authorizationRef:scope.authorizationRef,
-      argumentsDigest:scope.argumentsDigest,...(activeOperation?.readOnlyNavigation?{readOnlyNavigation:true}:{}),...(args.targetRef?{targetRef:args.targetRef}:{})};
+      argumentsDigest:scope.argumentsDigest,...(activeOperation?.readOnlyNavigation?{readOnlyNavigation:true}:{}),
+      ...(activeOperation?.restrictedRead?{restrictedRead:true}:{}),...(args.targetRef?{targetRef:args.targetRef}:{})};
     if(!application.runtime.saveCheckpointOnce(scope.taskId,'browser-control-attempt:'+scope.runId,identity))fail('RESULT_UNKNOWN','原浏览器动作已经记录；不会重放');
     onRecorded();
     await attempts?.record?.(identity,{...scope,arguments:structuredClone(args)});active(scope);
@@ -838,6 +864,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   }
   async function execute(name,args,scope,read) {
     const toolName='browser.'+name;let dispatched=false,recorded=false,owned=false,downloadPending,failureStage=read?'read':'preflight';
+    const identity=exportKey(scope.taskId,scope.runId),restriction=restrictedReads.get(identity);
+    if(restriction&&(name!=='click'||restriction.digest!==toolArgumentsDigest(args)))fail('UNAUTHORIZED','受限浏览器读取与原调用不匹配');
+    restrictedReads.delete(identity);const restrictedRead=restriction?.kind;
     scope={...scope,signal:AbortSignal.any([scope.signal,session.signal])};
     try {
       original(scope,args,toolName);
@@ -857,7 +886,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         fail('UNAUTHORIZED','聊天提交后网页已变更或由另一项任务使用，请在当前聊天重新发出浏览请求');
       if(!read||name==='open')workspacePage.invalidate();
       presented=undefined;
-      busy=true;owned=true;activeOperation={scope,args,toolName,readOnlyNavigation:name==='open'&&!!authorizationQuestions,readOnlyObservation:read&&!!authorizationQuestions,
+      busy=true;owned=true;activeOperation={scope,args,toolName,restrictedRead,readOnlyNavigation:name==='open'&&!!authorizationQuestions||restrictedRead==='link',
+        readOnlyObservation:read&&!!authorizationQuestions||restrictedRead==='media',
         origins:new Set(pageOrigin?[pageOrigin]:[])};networkError=undefined;publish();
       return await bounded(scope,async()=>{
         if(name==='open') {
@@ -878,6 +908,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           if(name==='wait') {await new Promise(resolve=>setTimeout(resolve,args.milliseconds??300));return observe(scope,args,toolName);}
           const seen=await target(scope,args,toolName);let selected;
           if(args.ref)selected=await control(seen,args.ref);
+          if(restrictedRead==='link'&&(!selected?.type.href||selected.type.tag!=='a'||await selected.locator.getAttribute('download')!==null))
+            fail('REVISION_CONFLICT','原只读链接已经改变');
           if(name==='click'&&args.mediaAction&&!['video','audio'].includes(selected.type.tag))
             fail('INVALID_ARGUMENT','播放和暂停需要当前页面可见的音频或视频引用');
           if(name==='click'&&selected?.type.href){
@@ -969,6 +1001,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
                 mediaPlayback={page,document:page.url(),scope,url:url.href,origin:url.origin};
               }
             }
+            else if(restrictedRead==='link')await navigateGet(page,new URL(selected.type.href),()=>active(scope),()=>Math.max(1,Date.parse(scope.deadline)-now()));
             else if(selected.type.href&&await selected.locator.getAttribute('target')==='_blank')
               await page.goto(selected.type.href,{waitUntil:'domcontentloaded',timeout});
             else await selected.locator.click({timeout});
@@ -985,7 +1018,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       });
     } catch(error) {
       lastFailure=safeFailure(error,dispatched||recorded?'execute':failureStage);
-      if(owned&&activeOperation?.readOnlyNavigation){
+      if(owned&&(activeOperation?.readOnlyNavigation||restrictedRead)){
         if(recorded)application.runtime.saveCheckpointOnce(scope.taskId,'browser-navigation-failure:'+scope.runId,{
           stage:activeOperation.navigationStage??'before_navigation',code:lastFailure.code,
           ...(activeOperation.httpStatus?{httpStatus:activeOperation.httpStatus}:{}),
@@ -1163,7 +1196,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(needsRecovery??!unfinishedBrowserWrites(value.runtime).next().done){blocked=true;state='blocked';}
       publish();
     },
-    snapshot,workspace,bindWorkspaceHandoff,suspendWorkspaceView,releaseWorkspaceView,captureChatPage,bindChatTask,
+    snapshot,workspace,bindWorkspaceHandoff,suspendWorkspaceView,releaseWorkspaceView,captureChatPage,bindChatTask,restrictClickToRead,
     activeTasks:()=>activeOperation?.scope.taskId?[activeOperation.scope.taskId]:[],
     async start(scope) {await launch(scope);return snapshot();},
     async stop() {session.abort();await disposeContext();return snapshot();},

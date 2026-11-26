@@ -3067,7 +3067,8 @@ async function initializeRuntime() {
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
       if(!syntheticMvp){
-        computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
+        computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime,
+          readInSeparateBrowser:(record,scope,input)=>browserControlHost?.restrictClickToIndependentRead(record,scope,input)===true});
         toolPresenceHost=createToolPresenceHost({
           isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
