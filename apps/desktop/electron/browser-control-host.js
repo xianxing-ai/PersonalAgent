@@ -521,7 +521,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   const workspaceMedia=createWorkspaceMedia(),pointer=createWorkspacePointer({now,onUpdate:publish});
   const workspacePage=createBrowserWorkspacePage({checkUrl:url=>assertPublicBrowserUrl(url,networkOptions),readDocument,findControl:control,
     navigateGet:authorizationQuestions?navigateGet:undefined,
-    mediaAttribute:workspaceMedia.attribute,onMedia:async(ownedPage,media,check)=>{
+    mediaAttribute:workspaceMedia.attribute,currentMedia:ownedPage=>workspaceMedia.current(ownedPage),onMedia:async(ownedPage,media,check)=>{
       const source=!media.paused&&!media.ended&&/^https?:/i.test(media.source)?await assertPublicBrowserUrl(media.source,networkOptions):undefined;
       check();workspaceMedia.select(ownedPage,media);
       mediaPlayback=source?{page:ownedPage,document:ownedPage.url(),visibility:workspaceVisibility,url:source.href,origin:source.origin}:undefined;

@@ -9,7 +9,7 @@ const commands={
   state:object(),preview:object(),frame:object(),back:object(),forward:object(),reload:object(),close:object(),present:object(),
   media:object({restart:{type:'boolean'},stop:{type:'boolean'}},[]),
   open:object({url:{type:'string',minLength:1,maxLength:4096}}),handoff:object({viewId}),
-  click:object({viewId,ref}),press:object({viewId,ref,key:{enum:keys}}),
+  click:object({viewId,ref,mediaAction:{enum:['play','pause']}},['viewId','ref']),press:object({viewId,ref,key:{enum:keys}}),
   type:object({viewId,ref,text:{type:'string',maxLength:4096},submit:{type:'boolean'}},['viewId','ref','text']),
   select:object({viewId,ref,values:{type:'array',minItems:1,maxItems:20,items:{type:'string',maxLength:200}}}),
   scroll:object({viewId,direction:{enum:['up','down']},amount:{type:'integer',minimum:1,maximum:2000}},['viewId','direction']),
@@ -33,7 +33,7 @@ async function historyOf(page) {
   }finally{await driver.detach().catch(()=>{});}
 }
 // Holds one locally displayed observation; it can never be used as a worker targetRef.
-export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,navigateGet,mediaAttribute,onMedia,fail,now}) {
+export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,navigateGet,mediaAttribute,currentMedia,onMedia,fail,now}) {
   let view,revision=0;
   const attribute='data-pa-local-'+randomUUID().replaceAll('-','');
   function state(page) {
@@ -141,6 +141,8 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,na
     }
     const selected=seen.controls.find(item=>item.ref===args.ref);
     const {locator,type}=await findControl(seen,args.ref);
+    const mediaElement=['video','audio'].includes(type.tag);
+    if(args.mediaAction&&!mediaElement)fail('INVALID_ARGUMENT','此控件不是媒体播放器');
     if(action==='click'&&type.href){
       if(type.href!==selected.downloadUrl)fail('REVISION_CONFLICT','链接目标已变化');
       await allow(type.href);
@@ -151,15 +153,20 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,na
       if(type.tag==='input'&&['file','password'].includes(type.type))fail('UNAUTHORIZED','受保护控件不可操作');
       if(type.href&&await locator.getAttribute('target')==='_blank'){
         check();requireView(page,args.viewId);await page.goto(type.href,options());
-      }else if(['video','audio'].includes(type.tag)){
-        const play=await locator.evaluate(element=>element instanceof HTMLMediaElement&&element.paused);
+      }else if(mediaElement){
+        const play=args.mediaAction?args.mediaAction==='play':await locator.evaluate(element=>element instanceof HTMLMediaElement&&element.paused);
+        const current=args.mediaAction==='pause'?currentMedia?.(page):undefined;
+        if(args.mediaAction==='pause'&&(!selected.mediaPlaying||!current||current.tag!==type.tag))
+          fail('REVISION_CONFLICT','当前播放的媒体已变化');
         check();requireView(page,args.viewId);
         const token=randomUUID();
-        const media=await locator.evaluate(async(element,{play,mediaAttribute,token})=>{
-          if(!(element instanceof HTMLMediaElement))throw Error('Media unavailable');
+        const media=await locator.evaluate(async(element,{play,mediaAttribute,token,prior})=>{
+          if(!(element instanceof HTMLMediaElement)||!element.isConnected)return;
+          if(prior&&(element.getAttribute(mediaAttribute)!==prior.token||element.currentSrc!==prior.source))return;
           if(play){await element.play();element.setAttribute(mediaAttribute,token);}else element.pause();
           return {source:element.currentSrc,tag:element.localName,paused:element.paused,ended:element.ended,token};
-        },{play,mediaAttribute,token});
+        },{play,mediaAttribute,token,...(current?{prior:{token:current.token,source:current.source}}:{})});
+        if(!media)fail('REVISION_CONFLICT','原媒体播放器已变化');
         check();await onMedia(page,media,check);
       }else await locator.click(row);
     }else if(action==='type'){

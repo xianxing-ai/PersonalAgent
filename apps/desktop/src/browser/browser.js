@@ -128,7 +128,7 @@ export function mountBrowserPane(host, bridge) {
   }
   function controlLabel(control) {
     if (['video', 'audio'].includes(control.tag)) {
-      const action = control.ended ? '重新播放' : control.paused ? '播放' : '暂停';
+      const action = control.mediaPlaying ? '暂停' : control.ended ? '重新播放' : control.paused ? '播放' : '在侧栏播放';
       return action + (control.name ? ' · ' + control.name : controlKind(control));
     }
     return control.name || controlKind(control);
@@ -145,10 +145,11 @@ export function mountBrowserPane(host, bridge) {
     const current = mediaControl(), playing = page.mediaPlaying === true;
     const active = mediaState === 'playing', localGesture = mediaState === 'gesture';
     const decoding = active || mediaState === 'buffering' || localGesture;
+    const alreadyPlaying = current?.paused === false && !current.ended && !playing;
     $('media-bar').hidden = !screen || (!current && !playing);
     $('media-toggle').disabled = (!current && !localGesture) || running || page.busy;
-    $('media-toggle').textContent = localGesture ? '在侧栏播放' : playing ? '暂停' : '播放';
-    $('media-status').textContent = mediaDetail || (active ? '实时播放' : current?.ended ? '播放结束' : playing ? '正在读取媒体…' : '已暂停');
+    $('media-toggle').textContent = localGesture || alreadyPlaying ? '在侧栏播放' : playing ? '暂停' : '播放';
+    $('media-status').textContent = mediaDetail || (active ? '实时播放' : current?.ended ? '播放结束' : playing ? '正在读取媒体…' : alreadyPlaying ? '网页正在播放' : '已暂停');
     $('sound').disabled = !active;
     $('sound').textContent = player.muted ? '打开声音' : '静音';
     $('sound').setAttribute('aria-label', $('sound').textContent);
@@ -410,7 +411,10 @@ export function mountBrowserPane(host, bridge) {
     const control = selectedControl(ref);
     if (!control || running || page.busy || openDialog()) return;
     if (editable(control) || control.tag === 'select') showField(control);
-    else void perform('click', {viewId: screen.viewId, ref});
+    else {
+      const media = ['video','audio'].includes(control.tag);
+      void perform('click', {viewId: screen.viewId, ref, ...(media ? {mediaAction: control.mediaPlaying ? 'pause' : 'play'} : {})});
+    }
   }
   function scrollRemote(direction, amount = 540) {
     if (!screen || running || page.busy) return;
@@ -477,7 +481,7 @@ export function mountBrowserPane(host, bridge) {
     if (!control) return;
     event.preventDefault();
     if (running || page.busy || !screen) return;
-    if ((key === 'Space' || key === 'Enter') && (editable(control) || control.tag === 'select')) {
+    if ((key === 'Space' || key === 'Enter') && (editable(control) || ['select','video','audio'].includes(control.tag))) {
       useControl(ref);
       return;
     }
