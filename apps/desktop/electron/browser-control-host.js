@@ -255,7 +255,9 @@ export function createBrowserControlHost(options={}) {
       application=app;
       // Capture pre-existing uncertain writes on application bind, not when a
       // session is lazily materialized inside its first, already-started tool.
-      for(const id of unfinishedBrowserWrites(app.runtime))recoveryOwners.add(owner(id));
+      // An old unresolved navigation remains recorded. A fresh GET-only page
+      // does not replay it. The shared input lease still guards business writes.
+      for(const id of unfinishedBrowserWrites(app.runtime,false))recoveryOwners.add(owner(id));
     },
     activeTasks:()=>[...sessions.values()].flatMap(host=>host.activeTasks()),snapshot,
     start:scope=>forTask(scope.taskId).start(scope),
@@ -265,11 +267,11 @@ export function createBrowserControlHost(options={}) {
     readScreenshotArtifact:scope=>forTask(scope.taskId).readScreenshotArtifact(scope),
   };
 }
-function* unfinishedBrowserWrites(runtime){
+function* unfinishedBrowserWrites(runtime,includeNavigations=true){
   let beforeSequence;
   do{
     const batch=runtime.listTasks?.({states:computerControlRecoveryTaskStates,limit:100,...(beforeSequence===undefined?{}:{beforeSequence})})??{items:[]};
-    for(const task of batch.items)if(runtime.readToolExecutions(task.taskId).some(run=>run.toolName?.startsWith('browser.')
+    for(const task of batch.items)if(runtime.readToolExecutions(task.taskId).some(run=>run.toolName?.startsWith('browser.')&&(includeNavigations||run.toolName!=='browser.open')
       &&isComputerControlWrite(run.toolName)&&run.policyDecision==='allow'&&run.executionStarted&&['started','unknown'].includes(run.state)))yield task.taskId;
     beforeSequence=batch.nextBeforeSequence;
   }while(beforeSequence!==undefined);
@@ -303,6 +305,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   const networkOptions={dnsLookup,testOnlyAllowedOrigins:testOrigins,allowFakeIpProxy:Boolean(allowFakeIpProxy)};
   const startMinimized=process.platform==='win32'&&!injectedPlaywright;
   const workspacePage=createBrowserWorkspacePage({checkUrl:url=>assertPublicBrowserUrl(url,networkOptions),readDocument,findControl:control,
+    navigateGet:authorizationQuestions?navigateGet:undefined,
     beforeMediaPlay:startMinimized?presentWorkspacePage:undefined,fail,now});
   const chatPages=new WeakMap();
   function captureChatPage(conversationId){
@@ -499,7 +502,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         }
         await driver.send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse',{requestId});
       })().catch(async error=>{
-        if(activeOperation===operation&&operation&&(top||operation.downloadOrigin))networkError=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
+        if(activeOperation===operation&&operation&&(top||operation.downloadOrigin)&&(!operation.readOnlyNavigation||operation.navigationStage==='document_response'))
+          networkError=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
         await driver.send('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'}).catch(()=>{});
       });
     });
@@ -606,6 +610,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           await route.continue();return;
         }
         active(operation.scope);
+        if((operation.readOnlyNavigation||operation.readOnlyObservation)&&!['GET','HEAD'].includes(request.method()))
+          fail('UNAUTHORIZED','查看公共网页仅允许 GET 和 HEAD 请求');
         if(operation.downloadOrigin&&url.origin!==operation.downloadOrigin)fail('UNAUTHORIZED','下载不允许扩大到其他来源');
         if(operation.workspace){
           const write=!['GET','HEAD'].includes(request.method());
@@ -625,7 +631,10 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         if(activeOperation!==operation)fail('CANCELLED','网页操作已结束');
         active(operation.scope);await route.continue();
       }catch(error){
-        if(activeOperation===operation&&(!operation?.workspace||mainNavigation)&&(mainNavigation||Boolean(operation?.downloadOrigin)||(error instanceof ProtocolError&&error.code==='UNAUTHORIZED')))
+        const blocksOperation=operation?.readOnlyNavigation
+          ?mainNavigation&&request.method()==='GET'&&operation.navigationStage==='document_response'
+          :mainNavigation||Boolean(operation?.downloadOrigin)||(error instanceof ProtocolError&&error.code==='UNAUTHORIZED');
+        if(activeOperation===operation&&blocksOperation&&(!operation?.workspace||mainNavigation))
           networkError=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
         await route.abort('blockedbyclient').catch(()=>{});
       }
@@ -666,6 +675,65 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     const url=await assertPublicBrowserUrl(page.url(),networkOptions);
     await permit(scope,args,toolName,url.origin);return url;
   }
+  async function navigateGet(ownedPage,url,check,timeout){
+    const operation=activeOperation;
+    const current=()=>{check();if(page!==ownedPage||activeOperation!==operation)fail('CANCELLED','原网页读取已结束');};
+    operation.navigationStage='document_response';
+    const withoutFragment=value=>{const address=new URL(value);address.hash='';return address.href;};
+    const requested=withoutFragment(url.href),before=documentEpoch;
+    const documents=new Map();
+    const onResponse=response=>{
+      try{
+        let request=response.request();
+        if(!request.isNavigationRequest()||request.method()!=='GET'||request.frame()!==ownedPage.mainFrame())return;
+        while(request.redirectedFrom())request=request.redirectedFrom();
+        if(withoutFragment(request.url())===requested)documents.set(withoutFragment(response.url()),response);
+      }catch{/* A detached incidental frame is not a document receipt. */}
+    };
+    ownedPage.on('response',onResponse);
+    let response;
+    try{response=await ownedPage.goto(url.href,{waitUntil:'commit',timeout:timeout()});}
+    catch(error){
+      current();
+      if(before!==documentEpoch)response=documents.get(withoutFragment(ownedPage.url()));
+      if(!response){
+        if(networkError)fail(networkError,'目标网页的主文档请求已被拦截');
+        const detail=Object.getOwnPropertyDescriptor(error,'message')?.value;
+        const code=typeof detail==='string'?detail.match(/\bnet::(ERR_[A-Z0-9_]+)\b/u)?.[1]:undefined;
+        fail(code==='ERR_NAME_NOT_RESOLVED'?'NOT_FOUND':code==='ERR_TIMED_OUT'?'TIMEOUT':'EXTERNAL_FAILURE',
+          '未取得目标网页的主文档响应'+(code?'（'+code+'）':''));
+      }
+    }finally{ownedPage.off('response',onResponse);}
+    current();
+    const address=await assertPublicBrowserUrl(ownedPage.url(),networkOptions);current();
+    if(!operation.origins.has(address.origin))fail('UNAUTHORIZED','目标网页不属于本次获准的来源');
+    if(!response&&address.href!==url.href)fail('EXTERNAL_FAILURE','无法确认目标网页已装入');
+    if(response){
+      if(response.request().method()!=='GET'||response.frame()!==ownedPage.mainFrame())
+        fail('PROTOCOL_MISMATCH','未收到本次 GET 导航的主文档');
+      const status=response.status();
+      operation.httpStatus=status;
+      if(status>=400||status===204||status===205)
+        fail(status===404?'NOT_FOUND':status===401||status===403?'UNAUTHORIZED':'EXTERNAL_FAILURE','目标网站返回 HTTP '+status+'，未取得可读网页');
+    }
+    // Read the committed document as soon as it has useful content. Tracking
+    // scripts, analytics POSTs and unrelated frames cannot hold this read open.
+    operation.navigationStage='document_content';
+    try{
+      const ready=await ownedPage.waitForFunction(()=>document.body&&Boolean(document.body.innerText.trim()
+        ||document.querySelector('video,audio,img,input,button,a[href]')||document.readyState==='complete'),undefined,
+        {timeout:Math.min(timeout(),30_000),polling:100});
+      await ready.dispose();
+    }catch{
+      current();
+      if(networkError)fail(networkError,'目标网页的主文档请求已被拦截');
+      fail('EXTERNAL_FAILURE','网页主文档已装入，但尚未取得可读内容');
+    }
+    current();
+    const loaded=await assertPublicBrowserUrl(ownedPage.url(),networkOptions);current();
+    if(!operation.origins.has(loaded.origin))fail('UNAUTHORIZED','读回的主文档超出本次网页来源');
+    networkError=undefined;operation.navigationStage='observation';
+  }
   async function readDocument(ownedPage,attribute,localView=false) {
     return ownedPage.evaluate(({attribute,limit,textLimit,localView})=>{
       const visible=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';};
@@ -698,10 +766,20 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       return {title:document.title.slice(0,300),text:body.slice(0,textLimit),controls,truncated:all.length>limit||body.length>textLimit};
     },{attribute,limit:MAX_CONTROLS,textLimit:MAX_TEXT,localView});
   }
-  async function observe(scope,args,toolName,action=false) {
+  async function observe(scope,args,toolName,action=false,repeatRead=true) {
     const url=await currentPage(scope,args,toolName),attribute='data-pa-'+randomUUID().replaceAll('-','');
-    const data=await readDocument(page,attribute);
-    active(scope);await currentPage(scope,args,toolName);
+    const epoch=documentEpoch;
+    let data;
+    try{data=await readDocument(page,attribute);}catch(error){
+      active(scope);
+      if(repeatRead&&activeOperation?.readOnlyNavigation&&epoch!==documentEpoch)return observe(scope,args,toolName,action,false);
+      throw error;
+    }
+    active(scope);const after=await currentPage(scope,args,toolName);
+    if(epoch!==documentEpoch||url.href!==after.href){
+      if(repeatRead&&activeOperation?.readOnlyNavigation)return observe(scope,args,toolName,action,false);
+      fail('REVISION_CONFLICT','读取过程中主文档已改变，请重新观察当前页面');
+    }
     for(const [id,entry]of targets)if(entry.expiresAt<=now()||entry.taskId===scope.taskId)targets.delete(id);
     if(targets.size>=64)fail('REVISION_CONFLICT','浏览器观察容量已满');
     const id=randomUUID(),expiresAt=Math.min(now()+TTL,Date.parse(scope.deadline));
@@ -740,7 +818,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     await permit(scope,args,toolName,origin);
     original(scope,args,toolName);
     const identity={taskId:scope.taskId,runId:scope.runId,toolName,toolVersion:VERSION,authorizationRef:scope.authorizationRef,
-      argumentsDigest:scope.argumentsDigest,...(args.targetRef?{targetRef:args.targetRef}:{})};
+      argumentsDigest:scope.argumentsDigest,...(activeOperation?.readOnlyNavigation?{readOnlyNavigation:true}:{}),...(args.targetRef?{targetRef:args.targetRef}:{})};
     if(!application.runtime.saveCheckpointOnce(scope.taskId,'browser-control-attempt:'+scope.runId,identity))fail('RESULT_UNKNOWN','原浏览器动作已经记录；不会重放');
     onRecorded();
     await attempts?.record?.(identity,{...scope,arguments:structuredClone(args)});active(scope);
@@ -777,9 +855,10 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         fail('UNAUTHORIZED','当前页属于另一段对话');
       if(workspaceOwned&&page&&!page.isClosed()&&!belongsToHandoff(scope.taskId))
         fail('UNAUTHORIZED','聊天提交后网页已变更或由另一项任务使用，请在当前聊天重新发出浏览请求');
-      if(!read)workspacePage.invalidate();
+      if(!read||name==='open')workspacePage.invalidate();
       presented=undefined;
-      busy=true;owned=true;activeOperation={scope,args,toolName,origins:new Set(pageOrigin?[pageOrigin]:[])};networkError=undefined;publish();
+      busy=true;owned=true;activeOperation={scope,args,toolName,readOnlyNavigation:name==='open'&&!!authorizationQuestions,readOnlyObservation:read&&!!authorizationQuestions,
+        origins:new Set(pageOrigin?[pageOrigin]:[])};networkError=undefined;publish();
       return await bounded(scope,async()=>{
         if(name==='open') {
           const url=await assertPublicBrowserUrl(args.url,networkOptions);
@@ -787,7 +866,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           if(!page||page.isClosed()){workspaceOwned=false;handoffTask=undefined;}
           failureStage='start';await launch(scope);failureStage='preflight';
           await recordAttempt(scope,args,toolName,()=>{recorded=true;});dispatched=true;
-          await page.goto(url.href,{waitUntil:'domcontentloaded',timeout:Math.max(1,Date.parse(scope.deadline)-now())});
+          if(activeOperation.readOnlyNavigation)await navigateGet(page,url,()=>active(scope),()=>Math.max(1,Date.parse(scope.deadline)-now()));
+          else await page.goto(url.href,{waitUntil:'domcontentloaded',timeout:Math.max(1,Date.parse(scope.deadline)-now())});
           pageConversation=conversation;
         } else if(name==='close') {
           await permit(scope,args,toolName);await recordAttempt(scope,args,toolName,()=>{recorded=true;});dispatched=true;
@@ -905,6 +985,15 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       });
     } catch(error) {
       lastFailure=safeFailure(error,dispatched||recorded?'execute':failureStage);
+      if(owned&&activeOperation?.readOnlyNavigation){
+        if(recorded)application.runtime.saveCheckpointOnce(scope.taskId,'browser-navigation-failure:'+scope.runId,{
+          stage:activeOperation.navigationStage??'before_navigation',code:lastFailure.code,
+          ...(activeOperation.httpStatus?{httpStatus:activeOperation.httpStatus}:{}),
+          ...(trustedErrors.has(error)?{message:error.message}:{}),
+        });
+        if(dispatched)await disposeContext().catch(()=>{});
+        throw browserError(lastFailure.code,lastFailure.message);
+      }
       if(dispatched||recorded||error?.code==='RESULT_UNKNOWN') {
         blocked=true;state='blocked';targets.clear();
         await disposeContext().catch(()=>{});fail('RESULT_UNKNOWN','浏览器动作的结果未确认；停止自有浏览器并核实原任务，不会自动重试');
@@ -946,7 +1035,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     const visibility=workspaceVisibility;
     let release;
     const finished=new Promise(resolve=>{release=resolve;});
-    const operation={scope,workspace:true,passive,visibility,origins:new Set(),finished};
+    const operation={scope,workspace:true,passive,visibility,readOnlyNavigation:action==='open'&&!!authorizationQuestions,origins:new Set(),finished};
     const check=()=>{active(scope);if(activeOperation!==operation||workspaceVisibility!==visibility)fail('CANCELLED','工作台请求已结束');};
     const timeout=()=>Math.max(1,Date.parse(scope.deadline)-now());
     const timer=setTimeout(()=>owned.abort(),timeout());
@@ -1000,7 +1089,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       fail('REVISION_CONFLICT','派工期间网页已变化，请重新打开当前预览');
     workspaceOwned=true;handoffTask=taskId;pendingHandoff=undefined;return true;
   }
-  const tools=specs.map(([name,inputSchema,read,description])=>({descriptor:{name:'browser.'+name,version:VERSION,
+  const tools=specs.map(([name,inputSchema,readByDefault,description])=>{
+    const read=readByDefault||name==='open'&&!!authorizationQuestions;
+    return {descriptor:{name:'browser.'+name,version:VERSION,
     inputSchema:{...inputSchema,description},outputSchema:resultSchema,sideEffect:read?'read':'external_write',
     requiredScopes:[SCOPE],requiresPresence:false,idempotencySupport:false,recoverySupport:false},
     async execute(args,scope){
@@ -1013,7 +1104,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       exportScopes.set(id,{scope,args:structuredClone(args),toolName:'browser.'+name,approvedOrigin:request?.source,
         origin:result.url?new URL(result.url).origin:result.state==='downloaded'?new URL(page.url()).origin:undefined,resultDigest:sha(JSON.stringify(result)),generation,
         expiresAt:Math.min(now()+TTL,Date.parse(scope.deadline))});
-      return result;}}));
+      return result;}};
+  });
   return {
     tools,
     prepareExport(scope){

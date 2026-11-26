@@ -8,6 +8,14 @@ const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.s
 const controlled=name=>name==='computer.notepad.replace_text'||/^computer\.desktop\.[a-z_]+$/.test(name)||/^browser\.[a-z_]+$/.test(name);
 const isWrite=name=>controlled(name)&&!reads.has(name);
 export {isWrite as isComputerControlWrite};
+// Only new, explicitly GET/HEAD-restricted browser invocations receive this
+// trusted checkpoint. Historical uncertain writes retain their original guard.
+function readOnlyNavigation(runtime,record){
+  if(record.toolName!=='browser.open')return false;
+  const attempt=runtime.loadCheckpoint?.(record.taskId,'browser-control-attempt:'+record.evidenceId);
+  return attempt?.readOnlyNavigation===true&&attempt.taskId===record.taskId&&attempt.runId===record.evidenceId
+    &&attempt.toolName===record.toolName&&attempt.toolVersion===record.toolVersion;
+}
 // Native orchestration can end while its original tool outcome stays unknown.
 // Normal running tasks include the current Gateway's not-yet-dispatched started record.
 export const computerControlRecoveryTaskStates=Object.freeze(['waiting_reconciliation','failed','cancelled']);
@@ -50,7 +58,7 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
         const records=source.readToolExecutions(task.taskId);
         if(!Array.isArray(records))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录读取无效');
         if(records.some(record=>isWrite(record.toolName)&&record.policyDecision==='allow'&&record.executionStarted===true
-          &&['started','unknown'].includes(record.state)&&!skippedNotepadAttempt(source,record)))return true;
+          &&['started','unknown'].includes(record.state)&&!readOnlyNavigation(source,record)&&!skippedNotepadAttempt(source,record)))return true;
       }
       const next=page.nextBeforeSequence;
       if(next!==undefined&&(!Number.isSafeInteger(next)||next<0||(beforeSequence!==undefined&&next>=beforeSequence)))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录分页无效');
@@ -66,7 +74,7 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
     if(!controlled(tool?.descriptor?.name??''))return tool;
     if(wrappers.has(tool))return wrappers.get(tool);
     const wrapped={...tool,descriptor:tool.descriptor,async execute(input,context){
-      const write=isWrite(tool.descriptor.name);let source;
+      const write=isWrite(tool.descriptor.name)&&!(tool.descriptor.name==='browser.open'&&tool.descriptor.sideEffect==='read');let source;
       try{
         check(context);
         if(active)fail('REVISION_CONFLICT','另一个电脑控制引擎正在执行；本次尚未调用设备');

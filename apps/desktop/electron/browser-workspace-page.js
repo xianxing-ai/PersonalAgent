@@ -32,7 +32,7 @@ async function historyOf(page) {
   }finally{await driver.detach().catch(()=>{});}
 }
 // Holds one locally displayed observation; it can never be used as a worker targetRef.
-export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,beforeMediaPlay,fail,now}) {
+export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,navigateGet,beforeMediaPlay,fail,now}) {
   let view,revision=0;
   const attribute='data-pa-local-'+randomUUID().replaceAll('-','');
   function state(page) {
@@ -88,7 +88,9 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,be
     };
     const options=()=>({waitUntil:'domcontentloaded',timeout:timeout()});
     if(action==='open') {
-      const url=await allow(args.url);await page.goto(url.href,options());return;
+      const url=await allow(args.url);
+      if(navigateGet)await navigateGet(page,url,check,timeout);else await page.goto(url.href,options());
+      return;
     }
     const current=await allow(page.url());
     if(action==='reload'){await page.reload(options());return;}
