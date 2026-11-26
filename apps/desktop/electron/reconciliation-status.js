@@ -70,7 +70,16 @@ export function readReconciliationStatus(application,task,now=Date.now) {
         // This record is necessary for the original Runtime action, not proof
         // that its remaining deadline/children/cache/export guards will pass.
         if(records.some(record=>record.executionStarted===true&&record.policyDecision==='allow'&&record.state==='confirmed'
-          &&['subagent.dispatch','coding.repair.workflow'].includes(record.toolName)))status.actionLabel='按已有回执尝试结束';
+          &&['subagent.dispatch','coding.repair.workflow'].includes(record.toolName))) {
+          const children=application.readSubagentTasks?.(task.taskId)??[];
+          if(children.some(child=>!['failed','cancelled','succeeded'].includes(child.state)))
+            status.blockedReason='工人任务尚未结束，当前只有派工回执。';
+          else if(!task.cancelRequested&&status.deadlineExpired===false)
+            status.blockedReason='原任务仍在期限内，暂时无法按回执结束。';
+          else status.actionLabel='按已有回执尝试结束';
+        }
+        else if(records.some(record=>record.toolName==='computer.desktop.launch_app'&&record.policyDecision==='deny'&&record.executionStarted===false))
+          status.blockedReason='本次记事本操作在发送到 Windows 前被拦下。请查看原操作记录。';
         else status.blockedReason='当前没有该操作的自动核查入口。';
       }
     }

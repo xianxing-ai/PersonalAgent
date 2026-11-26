@@ -678,6 +678,7 @@ else {
         const terminal=isTerminal(t)||t.outputTruncated||t.conflictOnly;
         return `<article class="task turn" data-turn="${escape(t.taskId)}">${!t.conflictOnly&&t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}
           <div class="assistant-turn">${renderTaskAnswer(t,terminal)}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)&&t.state!=='waiting_reconciliation'?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}
+          ${t.state==='waiting_reconciliation'&&t.reconciliationStatus?.blockedReason?`<p class="notice">${escape(t.reconciliationStatus.blockedReason)}</p>`:''}
           ${t.state==='waiting_reconciliation'&&!t.conflictOnly&&t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}
           ${conflictDecisionMarkup(t,escape)}${!terminal&&t.state!=='waiting_reconciliation'&&data.fake?`<div class="turn-actions"><button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button></div>`:''}</article>`;
       }).join('')+delegatedDeliveryHtml(deliveries,escape,'panel');

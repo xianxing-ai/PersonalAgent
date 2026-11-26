@@ -36,8 +36,23 @@ export function readReconciliationConflict(application,task) {
     .map(key=>runtime.loadCheckpoint(task.taskId,key)??null);
   // Generic transport diagnostics alone do not prove a conflicting write or a cloud/local disagreement.
   if(!records.length&&!cloud&&!completion)return;
-  const conflictId=digest({taskId:task.taskId,executionEpoch,records,cloud:cloud??null,completion:completion??null,diagnostics}),saved=runtime.loadCheckpoint(task.taskId,decisionKey(conflictId));
-  const skipped=saved?.version===1&&saved.taskId===task.taskId&&saved.conflictId===conflictId&&saved.decision==='skip';
+  const fingerprint=epoch=>digest({taskId:task.taskId,executionEpoch:epoch,records,cloud:cloud??null,completion:completion??null,diagnostics});
+  const conflictId=fingerprint(executionEpoch);
+  function wasSkipped(id) {
+    const saved=runtime.loadCheckpoint(task.taskId,decisionKey(id));
+    return saved?.version===1&&saved.taskId===task.taskId&&saved.conflictId===id&&saved.decision==='skip';
+  }
+  let skipped=wasSkipped(conflictId);
+  // Cancellation advances the task epoch. Recognize its prior decision only
+  // for the identical single native attempt, with no unresolved cloud work.
+  if(!skipped&&task.cancelRequested&&!cloud&&!completion&&records.length===1) {
+    const [run]=records;
+    if(run.toolName==='computer.desktop.launch_app'&&run.toolVersion==='1.0.0'&&run.state==='unknown'&&run.executionStarted) {
+      const originalEpoch=runtime.loadCheckpoint(task.taskId,'execution-epoch:run:'+run.evidenceId);
+      if(Number.isSafeInteger(originalEpoch)&&originalEpoch>=0&&originalEpoch<executionEpoch)
+        skipped=wasSkipped(fingerprint(originalEpoch));
+    }
+  }
   return {conflictId,expectedRevision:task.revision,skipped,kind:completion?'cloud_local':task.state==='failed'?'failed':'unknown',
     notice:skipped?'已按你的明确决定跳过此冲突的后续执行；保留原失败或未知结果，不会重试，也不记为成功。'
       :completion?'云端已给出完成回答，但本地必需子任务尚未完成，已停止执行。请只读核实，或明确跳过这一次冲突；沉默不会跳过，也不会记为成功。'

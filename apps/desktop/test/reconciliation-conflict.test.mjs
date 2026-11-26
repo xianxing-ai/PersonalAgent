@@ -23,10 +23,19 @@ const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;')
 
 for(const state of ['waiting_reconciliation','failed'])test(state+' exact skip preserves original state and rejects a changed frontier',()=>{
  const f=fixture(state);if(state==='failed')f.records[0].executionStarted=false;
+ if(state==='waiting_reconciliation'){
+   Object.assign(f.records[0],{toolName:'computer.desktop.launch_app',toolVersion:'1.0.0'});
+   f.checkpoints.set('execution-epoch:run:run-1',0);
+ }
  const binding=readReconciliationConflict(f.application,f.task);assert.equal(binding.skipped,false);
  recordReconciliationConflictSkip(f.application,f.task,binding);
  assert.equal(readReconciliationConflict(f.application,f.task).skipped,true);assert.equal(f.task.state,state);
  recordReconciliationConflictSkip(f.application,f.task,binding);
+ if(state==='waiting_reconciliation') {
+   f.task.cancelRequested=true;
+   f.checkpoints.set('execution-epoch',1);
+   assert.equal(readReconciliationConflict(f.application,f.task).skipped,true);
+ }
  f.records[0].inputDigest='b'.repeat(64);
  assert.equal(readReconciliationConflict(f.application,f.task).skipped,false);
  assert.throws(()=>recordReconciliationConflictSkip(f.application,f.task,binding),/变化/);
