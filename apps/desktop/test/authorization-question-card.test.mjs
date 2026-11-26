@@ -111,6 +111,10 @@ test('Synthetic default agreement follows only the host task reuse suggestion an
   assert.deepEqual(authorizationQuestionResponse(value.questionId,'deny',[value],instant),{
     questionId:value.questionId,expectedRevision:2,decision:'deny'});
   assert.doesNotMatch(authorizationQuestionMarkup(question(),{now:instant}),/本任务相同范围不再询问/);
+  const reusableEgress=authorizationQuestionMarkup(question({egressReview:'{"query":"hello"}',canReuseTask:true,suggestedDecision:'allow_task'}),{now:instant});
+  assert.match(reusableEgress,/>本任务允许发送<\/button>/);
+  const singleEgress=authorizationQuestionMarkup(question({egressReview:'{"query":"hello"}',canReuseTask:false,suggestedDecision:'allow_once'}),{now:instant});
+  assert.match(singleEgress,/>仅本次发送<\/button>/);
 });
 
 test('Synthetic progress preserves expanded details and their keyboard focus',t=>{
@@ -173,4 +177,22 @@ test('Synthetic safety settings only select available sandbox and revoke exact r
   assert.deepEqual(calls[3],{name:'authorization.rule.revoke',body:{ruleId:'legacy',expectedRevision:2}});
   assert.ok(calls.every(item=>!item.name.includes('respond')),'settings cannot allow an operation');
   controls.show(false);controls.dispose();const before=calls.length;controls.show(true);assert.equal(calls.length,before);
+
+  const selectedMarkup=authorizationSettingsMarkup({
+    selected:{ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:2},
+    profiles:[
+      {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',available:true},
+      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',available:true},
+    ],
+    rules:[],
+  });
+  assert.match(selectedMarkup,/<option value="workspace-write" selected >/);
+  assert.doesNotMatch(selectedMarkup,/<p data-pro-only="true">当前权限模式：/);
+  assert.match(selectedMarkup,/<p>当前权限模式：<strong>受限写入<\/strong> · workspace-write<\/p>/);
+  assert.match(selectedMarkup,/强行弹授权卡询问，支持加入白名单放行/);
+
+  const forceCard=authorizationQuestionMarkup(question({forceAsk:true,canAlways:true}),{now:instant});
+  assert.match(forceCard,/>仅本次放行<\/button>/);
+  assert.match(forceCard,/>加入白名单<\/button>/);
+  assert.match(forceCard,/高敏凭据拦截/);
 });

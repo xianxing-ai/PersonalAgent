@@ -19,11 +19,17 @@ export interface AuthorizationQuestionRequest {
   taskConsent?:{taskId:string;bindingDigest:string;summary:string;mode:'read-only'|'workspace-write';requiresNative?:boolean};
   /** Complete trusted-host projection of dangerous content. Each operation needs an explicit decision. */
   contentConfirmation?:{digest:string;text:string};
+  /** Host opt-in. Forces a confirmation card even under full-access, while still allowing permanent allow_always whitelisting. */
+  forceAsk?:boolean;
 }
 export interface AuthorizationSandbox {
   ref:string;label:string;mode:'read-only'|'workspace-write'|'full-access';revision:number;available:boolean;reason?:string;
   /** Host opt-in. Read-like tool scopes may be allowed once; writes, sends and external processes still ask. */
   lowRiskAuto?:boolean;
+  /** Host opt-in. Workspace/local reversible writes may be allowed once under workspace-write mode. */
+  localWriteAuto?:boolean;
+  /** Host opt-in. Skip contentConfirmation cards in full-access when credential/secret checks pass. */
+  fullAccessAutoContent?:boolean;
   kind?:'application_policy';native?:AuthorizationNativeExecution;
 }
 export interface AuthorizationNativeExecution {required:boolean;available:boolean;backend:'windows-psec'|'none'|'unavailable';enforced:boolean;
@@ -41,9 +47,10 @@ interface Question {
   derivedFrom?:string;
   taskConsentFrom?:string;
   /** A fresh exact receipt from the user's selected policy, not a UI question. */
-  automatic?:'full-access'|'low-risk';
+  automatic?:'full-access'|'low-risk'|'local-write';
   taskConsent?:AuthorizationQuestionRequest['taskConsent'];
   contentConfirmation?:AuthorizationQuestionRequest['contentConfirmation'];
+  forceAsk?:boolean;
 }
 interface Rule {ruleId:string;revision:number;active:boolean;toolName:string;toolVersion:string;
   sandboxRef:string;sandboxRevision:number;sandboxLabel:string;requirements:AuthorizationRequirement[];summary:string;}
@@ -61,6 +68,7 @@ export interface AuthorizationQuestionsOptions {
   canExecute(request:Omit<AuthorizationQuestionRequest,'signal'>):boolean;
   resolveProfile?:(request:Omit<AuthorizationQuestionRequest,'signal'>,selected:AuthorizationSandbox)=>string;
   describeExecution?:(request:Omit<AuthorizationQuestionRequest,'signal'>|undefined,profile:AuthorizationSandbox)=>AuthorizationNativeExecution;
+  canAutoApprove?:(kind:'low-risk'|'local-write',request:Omit<AuthorizationQuestionRequest,'signal'>,profile:AuthorizationSandbox)=>boolean;
   onInvalidated?:(binding:{taskId:string;runId:string},state:'expired'|'cancelled'|'stale')=>void;
   now?:()=>number;onChange?:()=>void;
 }
@@ -75,19 +83,44 @@ const requirementRule=(requirement:AuthorizationRequirement)=>({requirementId:re
 const reusable=(requirements:AuthorizationRequirement[])=>requirements.every(item=>hash(item.ruleBindingDigest));
 const taskRule=(requirements:AuthorizationRequirement[])=>digest(requirements.map(item=>({...requirementRule(item),
   ruleBindingDigest:item.taskBindingDigest??item.ruleBindingDigest})).sort((a,b)=>a.requirementId.localeCompare(b.requirementId)));
-const canReuse=(question:Pick<Question,'requirements'|'taskConsent'|'contentConfirmation'>)=>!question.contentConfirmation
-  &&(Boolean(question.taskConsent)||reusable(question.requirements));
+const canReuse=(question:Pick<Question,'requirements'|'taskConsent'|'contentConfirmation'|'forceAsk'>)=>!question.contentConfirmation
+  &&!question.forceAsk&&(Boolean(question.taskConsent)||reusable(question.requirements));
 const consentNative=(native:AuthorizationNativeExecution|undefined)=>native?.required?native:{required:false};
 const ELEVATED_SCOPE = /(?:write|execute|verify|patch|send|create|delete|update|erase|install|enable|uninstall|configure|withdraw|respond)/iu;
 const READ_SCOPE = /(?:^|[.:])(?:read|list|search|get|status)$/iu;
-/** Conservative gate. Unknown, write, send, export and external-process requests stay pending. */
+const LOCAL_WRITE_SCOPE = /(?:^|[.:])(?:write|patch|create|update)$/iu;
+const FORBIDDEN_LOCAL_AUTO_SCOPE = /(?:execute|verify|send|delete|remove|erase|install|uninstall|configure|enable|activate|pair|withdraw|respond|publish|push|merge|pay|transfer|grant|revoke|admin|system)/iu;
+/** Conservative gate. Allows read-only tool/connector scopes and declared model:export; writes, sends and external processes stay pending. */
 export function isLowRiskAuthorizationRequest(request: Omit<AuthorizationQuestionRequest,'signal'>): boolean {
   if (!request?.requirements?.length) return false;
   if (request.sideEffect !== 'read') return false;
   if (request.taskConsent && (request.taskConsent.mode !== 'read-only' || request.taskConsent.requiresNative === true)) return false;
   if (/send|delete|erase|install|execute|withdraw|configure/iu.test(request.toolName)) return false;
-  return request.requirements.every(requirement => requirement.kind === 'tool' && requirement.scopes.length > 0
-    && requirement.scopes.every(scope => READ_SCOPE.test(scope) && !ELEVATED_SCOPE.test(scope)));
+  if (!request.requirements.some(requirement => requirement.kind === 'tool')) return false;
+  return request.requirements.every(requirement => {
+    if (!requirement.scopes.length) return false;
+    if (requirement.kind === 'export') return requirement.scopes.every(scope => scope === 'model:export');
+    if (requirement.kind === 'tool' || requirement.kind === 'connector_session') {
+      return requirement.scopes.every(scope => READ_SCOPE.test(scope) && !ELEVATED_SCOPE.test(scope));
+    }
+    return false;
+  });
+}
+/** Gate for workspace-write mode. Allows local reversible writes/workspace edits and model:export; external writes/sends/deletes/native commands stay pending. */
+export function isLocalWriteAuthorizationRequest(request: Omit<AuthorizationQuestionRequest,'signal'>): boolean {
+  if (!request?.requirements?.length) return false;
+  if (request.sideEffect !== 'read' && request.sideEffect !== 'local_write') return false;
+  if (request.taskConsent?.requiresNative === true) return false;
+  if (/send|publish|delete|remove|erase|pay|transfer|grant|revoke|install|uninstall|push|merge|close|configure|enable|activate|pair/iu.test(request.toolName)) return false;
+  if (!request.requirements.some(requirement => requirement.kind === 'tool')) return false;
+  return request.requirements.every(requirement => {
+    if (!requirement.scopes.length) return false;
+    if (requirement.kind === 'export') return requirement.scopes.every(scope => scope === 'model:export');
+    if (requirement.kind === 'tool' || requirement.kind === 'connector_session') {
+      return requirement.scopes.every(scope => (READ_SCOPE.test(scope) || LOCAL_WRITE_SCOPE.test(scope)) && !FORBIDDEN_LOCAL_AUTO_SCOPE.test(scope));
+    }
+    return false;
+  });
 }
 
 const MAX_STORED_QUESTIONS=256;
@@ -183,7 +216,8 @@ export class AuthorizationQuestions {
       toolVersion:question.toolVersion,argumentsDigest:question.argumentsDigest,deadline:question.deadline,
       ...(question.sideEffect!==undefined?{sideEffect:question.sideEffect}:{}),
       requirements:structuredClone(question.requirements),...(question.taskConsent?{taskConsent:structuredClone(question.taskConsent)}:{}),
-      ...(question.contentConfirmation?{contentConfirmation:structuredClone(question.contentConfirmation)}:{})};
+      ...(question.contentConfirmation?{contentConfirmation:structuredClone(question.contentConfirmation)}:{}),
+      ...(question.forceAsk?{forceAsk:true}:{})};
   }
   private normalize(request:AuthorizationQuestionRequest):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:request.taskId,proposalId:request.proposalId,runId:request.runId,toolName:request.toolName,
@@ -191,6 +225,7 @@ export class AuthorizationQuestions {
       ...(request.sideEffect!==undefined?{sideEffect:request.sideEffect}:{}),
       ...(request.taskConsent?{taskConsent:structuredClone(request.taskConsent)}:{}),
       ...(request.contentConfirmation?{contentConfirmation:structuredClone(request.contentConfirmation)}:{}),
+      ...(request.forceAsk===true?{forceAsk:true}:{}),
       requirements:request.requirements.map(requirement=>({requirementId:requirement.requirementId,kind:requirement.kind,
         scopes:[...requirement.scopes],bindingDigest:requirement.bindingDigest,summary:requirement.summary,
         ...(requirement.ruleBindingDigest!==undefined?{ruleBindingDigest:requirement.ruleBindingDigest}:{}),
@@ -212,6 +247,7 @@ export class AuthorizationQuestions {
   private validate(request:AuthorizationQuestionRequest):void {
     if(!request||['taskId','proposalId','runId','toolName','toolVersion'].some(key=>!text(request[key as keyof AuthorizationQuestionRequest]))
       ||request.sideEffect!==undefined&&!['read','local_write','external_write'].includes(request.sideEffect)
+      ||request.forceAsk!==undefined&&typeof request.forceAsk!=='boolean'
       ||!hash(request.argumentsDigest)||!Number.isFinite(Date.parse(request.deadline))||Date.parse(request.deadline)<=this.now()
       ||!request.signal||request.signal.aborted||!Array.isArray(request.requirements)||request.requirements.length<1||request.requirements.length>24)
       throw new ProtocolError('INVALID_ARGUMENT','Invalid authorization question binding');
@@ -238,7 +274,7 @@ export class AuthorizationQuestions {
       this.validate(request);
       if(this.closed)fail('当前对话授权卡不可用，操作未获允许');
       const signal=request.signal,input=this.normalize(request),binding=this.options.readBinding(input),selected=this.profile();
-      if((input.contentConfirmation||selected.mode!=='full-access')&&!this.options.available())fail('当前对话授权卡不可用，操作未获允许');
+      if((input.contentConfirmation||input.forceAsk||selected.mode!=='full-access')&&!this.options.available())fail('当前对话授权卡不可用，操作未获允许');
       const profileRef=this.options.resolveProfile?.(input,selected)??selected.ref;
       const resolved=this.options.profiles.find(profile=>profile.ref===profileRef);
       if(!resolved||profileRef!==selected.ref&&resolved.mode==='full-access')fail('不允许自动扩大为完全访问');
@@ -251,11 +287,17 @@ export class AuthorizationQuestions {
       const question:Question={questionId:randomUUID(),revision:1,state:'pending',...structuredClone(input),
         expiresAt:new Date(Math.min(Date.parse(request.deadline),Date.parse(decisionDeadline))).toISOString(),
         conversationId:binding.conversationId,sandbox:profile,baseSandboxRef:selected.ref,ownerBinding:binding.digest,consumed:{}};
-      if(!question.contentConfirmation&&selected.mode==='full-access'&&profile.mode==='full-access'){
+      if(!question.contentConfirmation&&!question.forceAsk&&selected.mode==='full-access'&&profile.mode==='full-access'){
         question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='full-access';
-      } else if(!question.contentConfirmation && question.state==='pending' && selected.lowRiskAuto===true && profile.ref===selected.ref
-        && profile.native?.required!==true && isLowRiskAuthorizationRequest(input)){
+      } else if(!question.contentConfirmation && !question.forceAsk && question.state==='pending' && selected.lowRiskAuto===true && profile.ref===selected.ref
+        && profile.native?.required!==true && isLowRiskAuthorizationRequest(input)
+        && (this.options.canAutoApprove?.('low-risk',input,profile)??true)){
         question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='low-risk';
+      } else if(!question.contentConfirmation && !question.forceAsk && question.state==='pending' && selected.localWriteAuto===true
+        && selected.mode==='workspace-write' && profile.ref===selected.ref && profile.native?.required!==true
+        && isLocalWriteAuthorizationRequest(input)
+        && (this.options.canAutoApprove?.('local-write',input,profile)??true)){
+        question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='local-write';
       }
       this.liveBindings.set(question.questionId,()=>!signal.aborted&&assertCurrent());
       this.mutate(state=>{
@@ -383,7 +425,7 @@ export class AuthorizationQuestions {
   deriveConsumedResult(parentReceipt:AuthorizationQuestionReceipt,parentRequest:AuthorizationQuestionRequest,requirementId:string,
     consumerId:string,request:AuthorizationQuestionRequest,assertCurrent:()=>boolean):AuthorizationQuestionReceipt {
     this.assertConsumedResult(parentReceipt,parentRequest,requirementId,consumerId);this.validate(request);
-    if(request.contentConfirmation)fail('本次操作内容需要重新明确确认');
+    if(request.contentConfirmation||request.forceAsk)fail('本次操作内容需要重新明确确认');
     if(Date.parse(request.deadline)>Date.parse(parentRequest.deadline)||request.toolName!==parentRequest.toolName
       ||request.toolVersion!==parentRequest.toolVersion||request.requirements.length!==parentRequest.requirements.length
       ||request.requirements.some(item=>{
@@ -409,10 +451,11 @@ export class AuthorizationQuestions {
     return this.readView().questions.filter(question=>!question.automatic&&!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
       questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,sourceApprovalId:question.runId,
       revision:question.revision,state:question.state,
-      title:question.contentConfirmation?'确认本次操作的目标与完整内容':'同意这项操作？',description:(question.contentConfirmation?.text??question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='intent')?.summary
+      title:question.forceAsk?'检测到疑似密钥或凭据，是否放行？':question.contentConfirmation?'确认本次操作的目标与完整内容':'同意这项操作？',description:(question.contentConfirmation?.text??question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='intent')?.summary
         ??question.requirements.find(item=>item.requirementId==='tool')?.summary??'完成这项操作。')
         +(question.requirements.some(item=>item.kind==='export')&&!/云端|模型/u.test(question.taskConsent?.summary??'')?' 必要结果将用于本次云端对话。':''),toolName:question.toolName,
       expiresAt:question.expiresAt,canAlways:!question.contentConfirmation&&question.requirements.every(requirement=>hash(requirement.ruleBindingDigest)),
+      ...(question.forceAsk?{forceAsk:true}:{}),
       canReuseTask:canReuse(question),suggestedDecision:canReuse(question)?'allow_task' as const:'allow_once' as const,
       requirements:question.requirements.map(({requirementId,kind,summary,scopes})=>({requirementId,kind,summary,scopes:[...scopes]})),
       sandbox:{kind:'application_policy' as const,label:question.sandbox.label,mode:question.sandbox.mode,revision:question.sandbox.revision,
@@ -429,7 +472,7 @@ export class AuthorizationQuestions {
   sandboxSnapshot() {
     const state=this.readView(),selected=this.profile(state);
     const execution=this.options.describeExecution?.(undefined,selected);
-    return {selected:{label:selected.label,mode:selected.mode,revision:selected.revision},
+    return {selected:{ref:selected.ref,label:selected.label,mode:selected.mode,revision:selected.revision},
       nativeExecution:execution?{available:execution.available,backend:execution.backend,enforced:execution.enforced,
         ...(execution.reason?{reason:execution.reason}:{})}:{available:false,backend:'unavailable',enforced:false},
       profiles:this.options.profiles.map(({ref,label,mode,available,reason})=>({ref,label,mode,available,...(reason?{reason}:{})})),
@@ -448,10 +491,26 @@ export class AuthorizationQuestions {
   revokeRule(input:{ruleId:string;expectedRevision:number}) {
     if(!input||Object.keys(input).some(key=>!['ruleId','expectedRevision'].includes(key))||!Number.isSafeInteger(input.expectedRevision))
       throw new ProtocolError('INVALID_ARGUMENT','Invalid rule revocation');
+    const revokedWaiters:string[]=[];
     this.mutate(state=>{const rule=state.rules.find(item=>item.ruleId===input?.ruleId);
       if(!rule||rule.revision!==input.expectedRevision)throw new ProtocolError('REVISION_CONFLICT','授权规则已变化');
-      rule.active=false;rule.revision++;state.revision++;for(const item of state.rules)item.active=false;});
-    for(const questionId of this.waiters.keys())this.end(questionId,'stale','rule_revoked');
+      const previousRevision=state.revision;
+      rule.active=false;rule.revision++;state.revision++;
+      for(const item of state.rules){
+        if(item!==rule&&item.active&&item.sandboxRevision===previousRevision)item.sandboxRevision=state.revision;
+      }
+      for(const question of state.questions){
+        const sameTool=question.toolName===rule.toolName&&question.toolVersion===rule.toolVersion;
+        if(question.state==='pending'&&this.waiters.has(question.questionId)){
+          if(sameTool)revokedWaiters.push(question.questionId);
+          else if(question.sandbox.revision===previousRevision)question.sandbox.revision=state.revision;
+        }else if(question.state==='allowed'&&question.decision==='allow_task'&&this.taskConsents.has(question.questionId)
+          &&!sameTool&&question.sandbox.revision===previousRevision){
+          question.sandbox.revision=state.revision;
+        }
+      }
+    });
+    for(const questionId of revokedWaiters)this.end(questionId,'stale','rule_revoked');
     this.options.onChange?.();return this.sandboxSnapshot();
   }
   close():void {this.closed=true;for(const questionId of this.waiters.keys())this.end(questionId,'cancelled','host_closed');this.liveBindings.clear();this.taskConsents.clear();}
