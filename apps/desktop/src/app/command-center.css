@@ -50,18 +50,60 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-rail {grid-column:1;grid-row:1/-1;display:flex;flex-direction:column;min-height:0;min-width:0;padding:10px 11px 12px;border-right:1px solid var(--cc-line);background:var(--cc-rail);overflow:hidden}
 .cc-brand {padding:0 9px;margin:0 0 24px;display:flex;align-items:center;gap:6px;min-height:27px;-webkit-app-region:drag}
 .cc-brand strong {font-size:18px;font-weight:550;letter-spacing:-.4px;color:var(--cc-text)}
-.cc-rail nav span,.cc-settings span,.cc-profile,.cc-rail nav i {display:none!important}
+.cc-profile {display:none!important}
 .command-center .cc-brand .cc-history-toggle {width:25px;height:25px;margin:0 0 0 auto;padding:4px;border:0;-webkit-app-region:no-drag}
 .command-center .cc-new-chat {display:flex;align-items:center;gap:10px;margin:0 3px 22px;padding:8px 9px;border:0;border-radius:7px;background:transparent;color:var(--cc-text);font-size:13px;text-align:left}
 .command-center .cc-new-chat:hover {background:var(--cc-hover)}
 .cc-thread-scroll {flex:1;min-height:0;min-width:0;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--cc-line) transparent}
 .cc-system {padding:12px 9px 8px;font-size:9px;color:var(--cc-dim)}.cc-system strong {font-weight:400}.cc-system p {margin:5px 0 0;font-size:9px}
 .cc-brand-orb {display:block;position:relative;width:25px;height:25px;border-radius:50%;background:radial-gradient(circle at 33% 28%,var(--cc-dot) 0 1px,transparent 1.6px),radial-gradient(circle at 68% 35%,var(--cc-dot) 0 1px,transparent 1.6px),radial-gradient(circle at 75% 63%,var(--cc-dot) 0 1px,transparent 1.6px),radial-gradient(circle at 40% 76%,var(--cc-dot) 0 1px,transparent 1.6px),radial-gradient(circle at 23% 53%,var(--cc-dot) 0 1px,transparent 1.6px),var(--cc-orb);border:1px solid var(--cc-line)}
-.cc-rail nav {display:flex;gap:7px;width:100%;padding-top:10px;border-top:1px solid var(--cc-line)}
-.command-center .cc-rail nav button,.command-center .cc-history-toggle,.command-center .cc-settings {display:flex;align-items:center;justify-content:center;width:36px;height:36px;padding:9px;margin-inline:auto;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--cc-muted)}
-.cc-rail nav button svg,.cc-history-toggle svg,.cc-settings svg {width:18px;height:18px}
-.command-center .cc-rail nav button[aria-current] {background:var(--cc-hover);color:var(--cc-text);border-color:var(--cc-line)}
-.command-center .cc-rail nav button:hover,.command-center .cc-history-toggle:hover,.command-center .cc-settings:hover {background:var(--cc-hover);color:var(--cc-text)}
+.command-center .cc-history-toggle {display:flex;align-items:center;justify-content:center;width:36px;height:36px;padding:9px;margin-inline:auto;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--cc-muted)}
+.cc-history-toggle svg {width:18px;height:18px}
+.command-center .cc-history-toggle:hover {background:var(--cc-hover);color:var(--cc-text)}
+.cc-rail nav {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:5px;
+  width:100%;
+  padding-top:10px;
+  border-top:1px solid var(--cc-line);
+}
+.command-center .cc-rail nav button {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  min-width:0;
+  min-height:48px;
+  padding:5px 0;
+  border:1px solid var(--cc-line);
+  border-radius:10px;
+  background:var(--cc-soft);
+  color:color-mix(in srgb,var(--cc-text) 68%,var(--cc-muted));
+  font-size:10.5px;
+  line-height:1.15;
+  font-weight:500;
+  white-space:nowrap;
+  cursor:pointer;
+}
+.cc-rail nav button svg {width:17px;height:17px}
+.command-center .cc-rail nav button:hover {
+  background:var(--cc-hover);
+  border-color:color-mix(in srgb,var(--cc-text) 32%,var(--cc-line));
+  color:var(--cc-text);
+}
+.command-center .cc-rail nav button[aria-current="page"] {
+  background:color-mix(in srgb,var(--cc-text) 88%,var(--cc-rail));
+  border-color:transparent;
+  color:var(--cc-rail);
+  font-weight:650;
+}
+.command-center .cc-rail nav button[aria-current="page"]:hover {background:var(--cc-text)}
+.command-center .cc-rail nav button:focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
+@media (forced-colors:active) {
+  .command-center .cc-rail nav button[aria-current="page"] {border:2px solid Highlight}
+}
 .cc-rail-spacer {flex:0 0 10px}
 .cc-recent {margin:20px 2px 8px}
 .cc-recent header {display:flex;align-items:center;justify-content:space-between;padding:0 8px 4px}
