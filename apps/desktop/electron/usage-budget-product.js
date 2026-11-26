@@ -17,7 +17,8 @@ export function isAutonomousRuntimeTask(runtime, taskId) {
     } catch {
       return false;
     }
-    return runtime.loadCheckpoint(id, 'desktop-proactive-workflow-v1') != null
+    return runtime.loadCheckpoint(id, 'scheduled-text-origin:v1')?.origin === 'autonomous'
+      || runtime.loadCheckpoint(id, 'desktop-proactive-workflow-v1') != null
       || runtime.loadCheckpoint(id, PROACTIVE_SOURCE_TASK_CHECKPOINT) != null;
   };
   if (isDirectAutonomous(taskId)) return true;
@@ -275,7 +276,7 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
   const currentOrigin = () => originStore.getStore() === 'autonomous' ? 'autonomous' : 'user';
   let readRuntime;
   let notifier = async notice => {
-    if (Notification?.isSupported?.()) new Notification({title: 'PersonalAgent 用量', body: notice.body}).show();
+    if (Notification?.isSupported?.()) new Notification({title: 'Synstar 用量', body: notice.body}).show();
   };
   const budget = createUsageBudgetHost({
     userData, safeStorage, now, timeZone,
@@ -303,7 +304,7 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
     bindNotifier(port) {
       if (!port || typeof port.sendAdvisoryNotification !== 'function') throw Error('用量通知端口无效');
       notifier = async notice => {
-        await port.sendAdvisoryNotification({id: notice.id, title: 'PersonalAgent 用量', body: notice.body, source: 'usage-budget'});
+        await port.sendAdvisoryNotification({id: notice.id, title: 'Synstar 用量', body: notice.body, source: 'usage-budget'});
       };
     },
     decide(input) { return budget.decide({...input, candidates: input.candidates ?? candidates?.() ?? []}); },

@@ -46,7 +46,7 @@ import {freemem,totalmem,availableParallelism} from 'node:os';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
-import {openDesktopActivity} from './activity-host.js';
+import {openDesktopActivity, projectRepairActivityFromCheckpoint} from './activity-host.js';
 import {panelBounds, clampOrb, dockedOrbBounds, draggedGroupBounds, placeOrb, ORB_DOCK_HANDLE_WIDTH, ORB_DOCK_HANDLE_HEIGHT} from './placement.js';
 import {orbShapeRects} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
@@ -192,7 +192,7 @@ import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsM
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createNativeEgressHost} from './egress-dialog-host.js';
 import {extractGitSha40} from './egress-host.js';
-import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks, PROACTIVE_SOURCE_TASK_CHECKPOINT} from './usage-budget-product.js';
+import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
@@ -894,6 +894,18 @@ function projectFailureRepair(task) {
   } catch { return {}; }
 }
 
+function recordTaskRepairActivity(taskId) {
+  if (runtimeClosed || !runtimeApplication?.runtime || !activityProduct || typeof taskId !== 'string' || !taskId) return;
+  try {
+    const checkpoint = runtimeApplication.runtime.loadCheckpoint(taskId, 'repair-decision:v1');
+    const executions = typeof runtimeApplication.runtime.readToolExecutions === 'function'
+      ? runtimeApplication.runtime.readToolExecutions(taskId) : [];
+    const lastTool = Array.isArray(executions) ? executions.at(-1)?.toolName : undefined;
+    const projected = projectRepairActivityFromCheckpoint(taskId, checkpoint, lastTool);
+    if (projected) activityProduct.recordRepair(projected);
+  } catch { /* Activity recording never interrupts task state projection or repair actions. */ }
+}
+
 function taskResultMetadata(task) {
   if (runtimeClosed || !runtimeApplication) return undefined;
   const source=runtimeApplication.runtime;
@@ -1503,7 +1515,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1180, area.width), height: Math.min(800, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 设置', frame: false, transparent: false,
+    {title: 'Synstar · 设置', frame: false, transparent: false,
       backgroundMaterial: adminAcrylic ? 'acrylic' : 'none',
       backgroundColor: adminAcrylic ? '#00000000' : '#090b10',
       roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
@@ -1654,7 +1666,7 @@ const operatorBrakeTray = createOperatorBrakeTrayController({
       {label: '打开设置', click: () => openAdmin()},
       {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
       {type: 'separator'},
-      {label: '退出 PersonalAgent', click: () => app.quit()},
+      {label: '退出 Synstar', click: () => app.quit()},
     ]));
   },
   publish: () => publish(),
@@ -1817,7 +1829,7 @@ async function openWorkspace() {
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+    {title: 'Synstar · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
   bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
   const window=workspace;
@@ -1927,7 +1939,7 @@ async function openSubagentConversation(payload,surface){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},activityTaskIds:childActivityTaskIds(detail),
     revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
   subagentWindows.set(key,record);
@@ -1987,7 +1999,7 @@ function openAllSubagentConversations(){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(900,area.width-32),height=Math.min(760,area.height-32);
   subagentListWindow=windowFor('subagent-list',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'PersonalAgent · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   subagentListWindow.on('closed',()=>{subagentListWindow=undefined;});
 }
 
@@ -2165,6 +2177,9 @@ function applyEvent(event) {
       if (current?.state !== 'failed' && ['UNAUTHORIZED', 'SCOPE_DENIED', 'TIMEOUT', 'CANCELLED'].includes(failureCode)) {
         const auditAction = failureCode === 'TIMEOUT' ? 'timeout' : failureCode === 'CANCELLED' ? 'cancelled' : 'denied';
         permissionAudit?.recordEvent(auditAction, `task:${event.taskId}:${failureCode}`);
+      }
+      if (event.type === 'task.failed' || event.payload?.state === 'waiting_reconciliation') {
+        recordTaskRepairActivity(event.taskId);
       }
     }
     if (event.type === 'task.created' && event.payload.conversationId?.startsWith('knowledge-watch:')
@@ -2703,6 +2718,14 @@ function ensureRiskAutonomyHost() {
     store: createEncryptedAutonomyStore(storage),
     channel: {sendAdvisoryNotification: input => desktopNotificationPort?.sendAdvisoryNotification(input)},
     getApplication: () => runtimeApplication,
+    onActivity: record => activityProduct?.recordAutonomy(record),
+  });
+  activityProduct?.bindAutonomy({
+    revert: auditId => {
+      const result = riskAutonomyHost.compensateAudit(auditId);
+      if (!result?.executed) throw Error('自动执行补偿已不可用');
+      publish();
+    },
   });
   return riskAutonomyHost;
 }
@@ -2896,7 +2919,7 @@ async function initializeRuntime() {
             if (!item.batchId) return;
             return notificationApplicationHost.deliverBatch({batchId:item.batchId,
               scope:{kind:'connector',connectorId:'productivity'},expiresAt:new Date(Date.now()+30_000).toISOString(),
-              title:'PersonalAgent 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
+              title:'Synstar 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
@@ -2915,7 +2938,7 @@ async function initializeRuntime() {
           },
           readTaskBinding:taskId=>conversationToolAccess.resolveConversation(taskId),
           onPrompt:request=>{
-            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'PersonalAgent 本机确认',
+            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'Synstar 本机确认',
               body:'保持本次操作的应用在前台，按 F9 确认当前任务在场。具体写入仍按原任务审批。'}).show();
             publish();
           },
@@ -2942,7 +2965,7 @@ async function initializeRuntime() {
           await windowsControlHost.start({deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
         }
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
-          downloadDirectory:path.join(app.getPath('downloads'),'PersonalAgent'),
+          downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
           authorizePresence:async scope=>{
@@ -3058,7 +3081,7 @@ async function initializeRuntime() {
         requestWorkspaceExportExact:(query,context)=>publicReferenceConsent?.requestExact(query,context),
         jobHelperExecutable:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async () => {
-          const result = await dialog.showOpenDialog(admin, {title:'选择允许 PersonalAgent 使用的编程工作区',
+          const result = await dialog.showOpenDialog(admin, {title:'选择允许 Synstar 使用的编程工作区',
             properties:['openDirectory']});
           return result.canceled ? undefined : result.filePaths[0];
         },
@@ -4566,21 +4589,13 @@ async function initializeRuntime() {
     submitTask: async input => {
       const conversationId = typeof input.conversationId === 'string' && input.conversationId.trim()
         ? input.conversationId.trim() : `proactive-source:${desktopHost.userNamespace}`;
-      const submit = async () => {
-        const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
-        try {
-          runtimeApplication?.runtime?.saveCheckpoint?.(result.taskId, PROACTIVE_SOURCE_TASK_CHECKPOINT, {
-            version: 1,
-            source: 'proactive-source',
-            conversationId,
-          });
-        } catch { /* Autonomous conversationId prefix already enforces budget gating. */ }
-        return {taskId: result.taskId, state: result.state ?? 'created'};
-      };
+      const deadline = new Date(Date.now() + readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
+      const submit = () => runtimeApplication.submitScheduledTextTask({...input, conversationId}, deadline);
       return usageBudgetProduct ? usageBudgetProduct.withOrigin('autonomous', submit) : submit();
     },
     namespace: desktopHost.userNamespace,
     onUpdate: publish,
+    onActivity: outcome => activityProduct?.recordProactive(outcome),
   });
   eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
     void pumpEvents(); if(!operatorPaused){void todoHost?.tick(); void personalDashboardHost?.tick();}
@@ -4786,6 +4801,7 @@ async function action(event, name, payload) {
   if (name === 'task.repair') {
     if ((sender !== panel && sender !== workspace) || !runtimeApplication) throw Error('请从当前对话处理失败');
     const result = failureRepairHost().act(payload);
+    if (typeof payload?.taskId === 'string') recordTaskRepairActivity(payload.taskId);
     publish();
     return result;
   }
@@ -6746,6 +6762,15 @@ app.whenReady().then(async () => {
   powerMonitor.on('on-battery',sampleResources);powerMonitor.on('on-ac',sampleResources);
   desktopHost = createDesktopHost({onOrbPlacementChanged: reconfigureOrbPlacement});
   activityProduct = openDesktopActivity({userData:app.getPath('userData'),onUpdate:publish});
+  activityProduct.bindRepair({
+    stopRetry: taskId => {
+      if (runtimeClosed || !runtimeApplication?.runtime) throw Error('运行时尚未就绪');
+      const result = failureRepairHost().act({taskId, action: 'abandon'});
+      if (!result?.accepted) throw Error(result?.reason || '停止重试未受理');
+      recordTaskRepairActivity(taskId);
+      publish();
+    },
+  });
   microphonePermissionGate = createMicrophonePermissionGate({
     expectedPageUrl: pathToFileURL(entry).href,
     isTrustedWindow: (contents,mode) => {

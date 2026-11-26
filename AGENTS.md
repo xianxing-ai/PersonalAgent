@@ -1,4 +1,4 @@
-# PersonalAgent 开发 Agent 工作规范
+# Synstar 开发 Agent 工作规范
 
 <!-- current-design-20261015 -->
 > 当前设计与协作入口：[当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) · [28项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [历史图文导航](docs/design/README.md) · [具体分工与接线](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [协作与评审规则](CONTRIBUTING.md)。具体模型、部署与调度实验以当前设计及接口目录为依据，不在长期协作规则中固定选型；架构未最终定型。每位 MOD 负责人交付实现、实际调用方接线、测试、Evidence 和文档。常规 PR 首轮须有四位协作者中任意一位非作者的有效批准，批准在后续 CI 修复提交中保留；Owner 可按下文对具体 PR 作有记录的审核例外，技术 CI 仍必须通过。四位协作者长期均衡承担审查与合并。设计不等于已实现；历史验收与作者记录保留。

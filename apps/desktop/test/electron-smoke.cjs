@@ -22,7 +22,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    }
    assert.ok(orb,'orb window loaded');await orb.waitForSelector('canvas');
    for(const page of app.windows())page.on('pageerror',e=>errors.push(e.message));
-   assert.equal(await orb.title(),'PersonalAgent');
+   assert.equal(await orb.title(),'Synstar');
    assert.equal(await orb.evaluate(()=>typeof require),'undefined');
    assert.equal(await orb.locator('canvas').evaluate(c=>getComputedStyle(c).filter),'none');
    await orb.screenshot({path:path.join(output,'orb.png'),omitBackground:true});

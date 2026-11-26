@@ -1,0 +1,485 @@
+{
+  "endpoint": "https://huggingface.co/mcp",
+  "server": {
+    "name": "huggingface.co/mcp",
+    "version": "0.4.38"
+  },
+  "directoryDigest": "1597a63f0387dd8f707884025f7bb4fc175931e5e8f1ccb1b146029f5872cc9f",
+  "tool": {
+    "remoteName": "hf_fs",
+    "descriptor": {
+      "name": "mcp.remote.huggingface_hub",
+      "version": "1.0.0",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "operations": {
+            "minItems": 1,
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cmd": {
+                  "type": "string",
+                  "enum": [
+                    "ls",
+                    "cat",
+                    "attach",
+                    "stat",
+                    "find",
+                    "search"
+                  ],
+                  "description": "Command to execute."
+                },
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Command arguments. First item must be an hf:// URI, not a local path or bare filename. One argument per array item. search discovers resources, not repository contents; use root/owner discovery scopes, find for file discovery, or cat for a known text file. --tag requires hf://models|datasets|spaces[/OWNER]; --kind requires hf://spaces[/OWNER] and its only valid value is mcp."
+                }
+              },
+              "required": [
+                "cmd",
+                "args"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "operations"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "minItems": 1,
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "success"
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "uri": {
+                          "type": "string"
+                        },
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "ls",
+                            "cat",
+                            "attach",
+                            "stat",
+                            "find",
+                            "search"
+                          ]
+                        },
+                        "entries": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "file",
+                                  "dir",
+                                  "repo",
+                                  "bucket",
+                                  "collection",
+                                  "paper",
+                                  "link"
+                                ]
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "uri": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "target_uri": {
+                                "type": "string"
+                              },
+                              "repo_type": {
+                                "type": "string",
+                                "enum": [
+                                  "model",
+                                  "dataset",
+                                  "space",
+                                  "bucket"
+                                ]
+                              },
+                              "size": {
+                                "type": "number"
+                              },
+                              "total_files": {
+                                "type": "number"
+                              },
+                              "lfs": {
+                                "type": "boolean"
+                              },
+                              "private": {
+                                "type": "boolean"
+                              },
+                              "gated": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean",
+                                    "const": false
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "auto",
+                                      "manual"
+                                    ]
+                                  }
+                                ]
+                              },
+                              "likes": {
+                                "type": "number"
+                              },
+                              "downloads": {
+                                "type": "number"
+                              },
+                              "task": {
+                                "type": "string"
+                              },
+                              "library": {
+                                "type": "string"
+                              },
+                              "tags": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "trending_score": {
+                                "type": "number"
+                              },
+                              "sdk": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "category": {
+                                "type": "string"
+                              },
+                              "semantic_relevance": {
+                                "type": "number"
+                              },
+                              "anchor": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "upvotes": {
+                                "type": "number"
+                              },
+                              "created_at": {
+                                "type": "string"
+                              },
+                              "published_at": {
+                                "type": "string"
+                              },
+                              "daily_papers_date": {
+                                "type": "string"
+                              },
+                              "daily_papers_uri": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "arxiv_url": {
+                                "type": "string"
+                              },
+                              "observed_at": {
+                                "type": "string"
+                              },
+                              "updated_at": {
+                                "type": "string"
+                              },
+                              "content_type": {
+                                "type": "string",
+                                "enum": [
+                                  "application/json",
+                                  "text/markdown"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "path"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "content_type": {
+                          "type": "string",
+                          "enum": [
+                            "application/json",
+                            "text/markdown"
+                          ]
+                        },
+                        "mime_type": {
+                          "type": "string",
+                          "enum": [
+                            "image/jpeg",
+                            "image/png",
+                            "image/webp"
+                          ]
+                        },
+                        "section": {
+                          "type": "string"
+                        },
+                        "bytes": {
+                          "type": "number"
+                        },
+                        "exists": {
+                          "type": "boolean"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "namespace",
+                            "repo",
+                            "dir",
+                            "file",
+                            "collection",
+                            "paper",
+                            "link",
+                            "missing"
+                          ]
+                        },
+                        "namespace": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "number"
+                        },
+                        "lfs": {
+                          "type": "boolean"
+                        },
+                        "target_uri": {
+                          "type": "string"
+                        },
+                        "published_at": {
+                          "type": "string"
+                        },
+                        "daily_papers_date": {
+                          "type": "string"
+                        },
+                        "daily_papers_uri": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "arxiv_url": {
+                          "type": "string"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        },
+                        "truncation_reason": {
+                          "type": "string",
+                          "enum": [
+                            "entry_limit",
+                            "max_bytes",
+                            "limit",
+                            "provider_limit",
+                            "output_budget"
+                          ]
+                        },
+                        "truncation_message": {
+                          "type": "string"
+                        },
+                        "next_offset": {
+                          "type": "number"
+                        },
+                        "warnings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "uri",
+                        "op"
+                      ],
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "op": {
+                                "const": "attach"
+                              }
+                            },
+                            "required": [
+                              "op"
+                            ]
+                          },
+                          "then": {
+                            "properties": {
+                              "path": {
+                                "type": "string"
+                              },
+                              "mime_type": {
+                                "type": "string",
+                                "enum": [
+                                  "image/jpeg",
+                                  "image/png",
+                                  "image/webp"
+                                ]
+                              },
+                              "bytes": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 8388608
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "mime_type",
+                              "bytes"
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "output_truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "status",
+                    "result"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "error"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "HF_FS_INVALID_ARGUMENT",
+                            "HF_FS_NOT_FOUND",
+                            "HF_FS_NOT_A_DIRECTORY",
+                            "HF_FS_NOT_A_FILE",
+                            "HF_FS_UNSUPPORTED_OPERATION",
+                            "HF_FS_ACCESS_DENIED",
+                            "HF_FS_TEXT_ONLY",
+                            "HF_FS_IMAGE_ONLY",
+                            "HF_FS_UNSUPPORTED_MEDIA",
+                            "HF_FS_IMAGE_TOO_LARGE",
+                            "HF_FS_ATTACHMENT_BUDGET_EXCEEDED",
+                            "HF_FS_IMAGE_CONTENT_DISABLED",
+                            "HF_FS_ATTACHMENT_INTEGRITY"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "recovery": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean",
+                          "const": false
+                        },
+                        "suggestedOperation": {
+                          "type": "string",
+                          "enum": [
+                            "ls",
+                            "cat",
+                            "attach",
+                            "stat",
+                            "search"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "recovery",
+                        "retryable"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "status",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "truncation_reason": {
+            "type": "string",
+            "const": "output_budget"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "requiredScopes": [
+        "mcp:remote:huggingface_hub:read"
+      ]
+    }
+  }
+}

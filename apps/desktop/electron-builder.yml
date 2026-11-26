@@ -1,5 +1,5 @@
 appId: com.personalagent.desktop
-productName: PersonalAgent
+productName: Synstar
 
 directories:
   output: release
@@ -42,7 +42,7 @@ nsis:
   deleteAppDataOnUninstall: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  shortcutName: PersonalAgent
+  shortcutName: Synstar
   requestedExecutionLevel: asInvoker
 
 # 图标待补，当前使用 electron-builder 默认配置

@@ -262,12 +262,74 @@ export function assistantStatusLabel(status) {
   return '空闲';
 }
 
+const ASSISTANT_ICON_PRESETS = Object.freeze({
+  coder: {
+    tone: 'sky',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.1 5.8 2.8 9l3.3 3.2M11.9 5.8 15.2 9l-3.3 3.2M10.1 4.3 7.9 13.7"/></svg>',
+  },
+  coordinator: {
+    tone: 'mint',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="5.8" r="1.9"/><circle cx="13" cy="5.8" r="1.9"/><circle cx="9" cy="12.8" r="1.9"/><path d="M6.9 5.8h4.2M5.9 7.5l2.1 3.6M12.1 7.5 10 11.1"/></svg>',
+  },
+  planner: {
+    tone: 'amber',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="6.2"/><polygon points="11.9,6.1 9.9,9.9 6.1,11.9 8.1,8.1" fill="currentColor" stroke="none"/></svg>',
+  },
+  researcher: {
+    tone: 'violet',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.8 4.8c1.9-.5 4-.2 6.2 1 2.2-1.2 4.3-1.5 6.2-1v8.4c-1.9-.4-4-.1-6.2 1-2.2-1.1-4.3-1.4-6.2-1Z"/><path d="M9 5.8v8.4"/></svg>',
+  },
+  reviewer: {
+    tone: 'rose',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.6 14.4 4.7v4.1c0 3.3-2.2 5.6-5.4 6.6-3.2-1-5.4-3.3-5.4-6.6V4.7Z"/><path d="m6.6 9.1 1.7 1.7 3.2-3.2"/></svg>',
+  },
+});
+
+const ASSISTANT_FALLBACK_POOL = Object.freeze([
+  {
+    tone: 'teal',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.5 10.8 7.2 15.5 9l-4.7 1.8L9 15.5 7.2 10.8 2.5 9l4.7-1.8Z"/></svg>',
+  },
+  {
+    tone: 'indigo',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 9h2.8l1.8-4.2 3.4 8.4 2-4.2h3"/></svg>',
+  },
+  {
+    tone: 'ochre',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.6 14.6 5.8v6.4L9 15.4 3.4 12.2V5.8Z"/><path d="M3.4 5.8 9 9l5.6-3.2M9 9v6.4"/></svg>',
+  },
+  {
+    tone: 'lime',
+    svg: '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.8 2.6 4.6 9.8h4.1l-.5 5.6 5.2-7.2H9.3Z"/></svg>',
+  },
+]);
+
+export function assistantVisualSpec(assistant = {}) {
+  const id = String(assistant?.assistantId ?? '').trim().toLowerCase();
+  const role = String(assistant?.role ?? '').trim().toLowerCase();
+  if (ASSISTANT_ICON_PRESETS[id]) return ASSISTANT_ICON_PRESETS[id];
+  if (ASSISTANT_ICON_PRESETS[role]) return ASSISTANT_ICON_PRESETS[role];
+  const hint = `${assistant?.displayName ?? ''} ${assistant?.instructions ?? ''}`.toLowerCase();
+  if (/编码|代码|开发|工程|脚本|code|dev/.test(hint)) return ASSISTANT_ICON_PRESETS.coder;
+  if (/协作|统筹|沟通|群聊|传达|coord|collab|team/.test(hint)) return ASSISTANT_ICON_PRESETS.coordinator;
+  if (/规划|计划|拆解|路线|排期|plan|road/.test(hint)) return ASSISTANT_ICON_PRESETS.planner;
+  if (/资料|检索|文档|知识|笔记|阅读|论文|research|doc|wiki/.test(hint)) return ASSISTANT_ICON_PRESETS.researcher;
+  if (/审查|评审|检查|安全|风险|测试|review|audit|qa/.test(hint)) return ASSISTANT_ICON_PRESETS.reviewer;
+  if (/写|文案|润色|翻译|总结|创作|write|draft/.test(hint)) return ASSISTANT_FALLBACK_POOL[0];
+  if (/监控|追踪|提醒|简报|动态|watch|monitor/.test(hint)) return ASSISTANT_FALLBACK_POOL[1];
+  let hash = 0;
+  const seed = String(assistant?.assistantId || assistant?.displayName || 'assistant');
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return ASSISTANT_FALLBACK_POOL[hash % ASSISTANT_FALLBACK_POOL.length];
+}
+
 export function assistantCardHtml(assistant, escape) {
   const unread = assistant.unreadCount > 0 ? `<span class="unread">${assistant.unreadCount} 条未读</span>` : '';
   const cleanSummary = stripProfileMetadata(assistant.lastSummary || '');
   const summary = cleanSummary ? `<em>${escape(cleanSummary)}</em>` : '';
   const status = assistant.status || 'idle';
-  return `<button type="button" class="assistant-card" data-assistant-id="${escape(assistant.assistantId)}" data-status="${escape(status)}"><strong>${escape(assistant.displayName)}</strong><small>${escape(assistant.instructions || '')}</small><small>${assistantStatusLabel(status)} ${unread}</small>${summary}</button>`;
+  const spec = assistantVisualSpec(assistant);
+  return `<button type="button" class="assistant-card" data-assistant-id="${escape(assistant.assistantId)}" data-status="${escape(status)}" data-tone="${spec.tone}"><span class="assistant-card-icon" data-tone="${spec.tone}" aria-hidden="true">${spec.svg}</span><strong>${escape(assistant.displayName)}</strong><small>${escape(assistant.instructions || '')}</small><small>${assistantStatusLabel(status)}${unread ? ` ${unread}` : ''}</small>${summary}</button>`;
 }
 
 const traceDoneStates = new Set(['succeeded', 'failed', 'cancelled', 'waiting_reconciliation']);

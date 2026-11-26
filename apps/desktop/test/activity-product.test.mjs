@@ -5,8 +5,12 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createPluginCatalogService} from '@personal-agent/plugin-catalog';
 import {openLocalSkillStore, readLocalSkillDirectory} from '@personal-agent/skills';
+import {planRuntimeTaskFailure, TASK_FAILURE_REPAIR_CHECKPOINT} from '@personal-agent/agentarts';
 import {createPluginCatalogHost} from '../electron/plugin-catalog-host.js';
-import {openDesktopActivity} from '../electron/activity-host.js';
+import {createRiskAutonomyHost} from '../electron/risk-autonomy-host.js';
+import {createProactiveSourceHost} from '../electron/proactive-source-host.js';
+import {createFailureRepairHost} from '../electron/failure-repair-host.js';
+import {openDesktopActivity, projectRepairActivityFromCheckpoint} from '../electron/activity-host.js';
 import {activityTimelineHtml, mountActivityTimeline} from '../src/features/admin/activity-timeline.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -155,4 +159,155 @@ test('a real plugin install reaches the activity page and survives a restart', a
   assert.match(admin, /items: \['dashboard', 'tasks', 'activity'\]/);
   assert.match(admin, /mountActivityTimeline/);
   rmSync(root, {recursive: true, force: true});
+});
+
+test('autonomy, proactive source, and failure repair sources record into activity-ledger.jsonl without body leakage and wire undo (L-05)', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'activity-three-sources-'));
+  try {
+    const activity = openDesktopActivity({userData: root, onUpdate() {}});
+
+    // 1. #630 Risk autonomy source + revert compensation
+    let savedAutonomy;
+    const submittedCompensations = [];
+    const autonomy = createRiskAutonomyHost({
+      store: {load: () => savedAutonomy, save: value => { savedAutonomy = structuredClone(value); }},
+      channel: {async sendAdvisoryNotification() { return {delivered: true}; }},
+      getApplication: () => ({
+        runtime: {respondApproval() {}},
+        submitHostToolTask(input) {
+          submittedCompensations.push(input);
+          return {task: {taskId: 'undo-task-1', state: 'created'}};
+        },
+      }),
+      onActivity: record => activity.recordAutonomy(record),
+    });
+    activity.bindAutonomy({
+      revert: auditId => {
+        const result = autonomy.compensateAudit(auditId);
+        if (!result?.executed) throw new Error('自动执行补偿已不可用');
+      },
+    });
+    autonomy.setStance('autonomous');
+    const runId = 'run-autonomy-l05';
+    const invoke = {
+      runId,
+      toolName: 'todo.update',
+      toolVersion: '1.0.0',
+      sideEffect: 'local_write',
+      requiredScopes: ['todo:write'],
+      argumentsDigest: 'a'.repeat(64),
+      compensation: {toolName: 'todo.update', available: true},
+    };
+    const decision = autonomy.gate.review(invoke);
+    assert.equal(decision.disposition, 'execute_and_notify');
+    autonomy.gate.recordGranted({...invoke, disposition: decision.disposition});
+    autonomy.gate.rememberCompensation({
+      runId,
+      toolName: 'todo.update',
+      toolVersion: '1.0.0',
+      arguments: {id: 'todo-1', secretBody: 'PRIVATE_COMPENSATION_ARG_NEVER_IN_LEDGER'},
+    });
+    autonomy.gate.recordExecutionState({runId, state: 'confirmed'});
+
+    // 2. #631 Proactive source trigger (calendar/mail/file) without summary leakage
+    const proactiveRuntime = {
+      tasks: new Map(),
+      approvals: new Map(),
+      schedules: [],
+      submitTask(input) { const t = {taskId: 'gate-1', state: 'created', goal: input.goal}; this.tasks.set(t.taskId, t); return t; },
+      saveCheckpoint() {},
+      transitionTask(id, state) { this.tasks.get(id).state = state; },
+      requestToolApproval() { throw new Error('unused'); },
+      listSchedules() { return []; },
+      reconcileSchedules() {},
+      createSchedule() {},
+      dispatchDueSchedules() { return []; },
+    };
+    let clock = Date.parse('2026-11-11T08:00:00.000Z');
+    let files = [{relativePath: 'secret-note.txt', size: 10, mtimeMs: 1}];
+    const proactive = createProactiveSourceHost({
+      getApplication: () => ({runtime: proactiveRuntime}),
+      getTools: () => [],
+      submitTask: async () => ({taskId: 'proactive-task-1', state: 'created'}),
+      namespace: 'desktop',
+      scan: async () => files,
+      now: () => clock,
+      onActivity: outcome => activity.recordProactive(outcome),
+    });
+    proactive.authorize(path.resolve(root));
+    proactive.update({enabled: true, calendar: false, mail: false, quiet: false});
+    await proactive.tick();
+    files = [{relativePath: 'secret-note.txt', size: 25, mtimeMs: 2}];
+    clock += 300_000;
+    await proactive.tick();
+
+    // 3. #633 Failure repair source + stop_retry compensation without FailureSignal.message leakage
+    const repairCheckpoints = new Map();
+    const repairTask = {taskId: 'task-repair-l05', state: 'failed', goal: '查询当前天气预报', conversationId: 'desktop-panel'};
+    const repairRuntime = {
+      getTask(id) { if (id !== repairTask.taskId) throw new Error('missing'); return repairTask; },
+      loadCheckpoint(id, key) { return repairCheckpoints.get(`${id}:${key}`); },
+      saveCheckpoint(id, key, value) { repairCheckpoints.set(`${id}:${key}`, value); },
+      readToolExecutions() { return [{toolName: 'weather.forecast', toolVersion: '1.0.0', inputDigest: 'b'.repeat(64)}]; },
+    };
+    const repairRecord = planRuntimeTaskFailure({
+      taskId: repairTask.taskId,
+      errorCode: 'TIMEOUT',
+      effect: 'read',
+      outcome: 'failed',
+      occurredAt: '2026-11-11T08:10:00.000Z',
+    });
+    repairRuntime.saveCheckpoint(repairTask.taskId, TASK_FAILURE_REPAIR_CHECKPOINT, repairRecord);
+    activity.bindRepair({
+      stopRetry: taskId => {
+        const res = createFailureRepairHost(repairRuntime).act({taskId, action: 'abandon'});
+        if (!res.accepted) throw new Error(res.reason);
+      },
+    });
+    const projectedRepair = projectRepairActivityFromCheckpoint(
+      repairTask.taskId,
+      repairRuntime.loadCheckpoint(repairTask.taskId, TASK_FAILURE_REPAIR_CHECKPOINT),
+      'weather.forecast',
+    );
+    assert.ok(projectedRepair);
+    activity.recordRepair(projectedRepair);
+
+    const page = activity.snapshot();
+    const autonomyItem = page.items.find(item => item.source === 'autonomy');
+    const proactiveItem = page.items.find(item => item.source === 'proactive');
+    const repairItem = page.items.find(item => item.source === 'repair');
+    assert.ok(autonomyItem, 'autonomy activity should be recorded');
+    assert.equal(autonomyItem.undoable, true);
+    assert.ok(proactiveItem, 'proactive directory trigger activity should be recorded');
+    assert.equal(proactiveItem.summary, '主动触发：目录变化');
+    assert.ok(repairItem, 'failure repair activity should be recorded');
+    assert.equal(repairItem.undoable, true);
+
+    const rawLedger = readFileSync(path.join(root, 'activity-ledger.jsonl'), 'utf8');
+    assert.equal(rawLedger.includes('PRIVATE_COMPENSATION_ARG_NEVER_IN_LEDGER'), false);
+    assert.equal(rawLedger.includes('secret-note.txt'), false);
+
+    // Undo autonomy executes stored compensation tool; undo repair transitions repair card to abandoned
+    await activity.handle('activity.undo', {id: autonomyItem.id});
+    assert.equal(submittedCompensations.length, 1);
+    assert.equal(submittedCompensations[0].toolName, 'todo.update');
+    await activity.handle('activity.undo', {id: repairItem.id});
+    assert.equal(createFailureRepairHost(repairRuntime).view(repairTask.taskId).abandoned, true);
+
+    // Restart preserves all three sources and their undone state
+    const restarted = openDesktopActivity({userData: root, onUpdate() {}});
+    const restartedSources = new Set(restarted.snapshot().items.map(item => item.source));
+    assert.equal(restartedSources.has('autonomy'), true);
+    assert.equal(restartedSources.has('proactive'), true);
+    assert.equal(restartedSources.has('repair'), true);
+
+    const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
+    assert.match(main, /onActivity:\s*record\s*=>\s*activityProduct\?\.recordAutonomy\(record\)/);
+    assert.match(main, /activityProduct\?\.bindAutonomy\(/);
+    assert.match(main, /onActivity:\s*outcome\s*=>\s*activityProduct\?\.recordProactive\(outcome\)/);
+    assert.match(main, /activityProduct\.bindRepair\(/);
+    assert.match(main, /recordTaskRepairActivity\(/);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
 });

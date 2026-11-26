@@ -1,0 +1,69 @@
+{
+  "endpoint": "https://learn.microsoft.com/api/mcp",
+  "server": {
+    "name": "Microsoft Learn MCP Server",
+    "version": "1.0.0",
+    "protocolVersion": "2025-06-18"
+  },
+  "directoryDigest": "f842a0ab65ebf862e47fe6201feea090ee1d65519f55d3cd2a76e1bb6b1cd97a",
+  "tool": {
+    "remoteName": "microsoft_docs_search",
+    "descriptor": {
+      "name": "mcp.remote.microsoft_learn",
+      "version": "1.0.0",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "description": "a query or topic about Microsoft/Azure products, services, platforms, developer tools, frameworks, or APIs",
+            "type": "string",
+            "default": null
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "contentUrl": {
+                  "type": "string"
+                },
+                "content_omitted": {
+                  "type": "boolean"
+                },
+                "extensionData": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "requiredScopes": [
+        "mcp:remote:microsoft_learn:read"
+      ]
+    }
+  }
+}

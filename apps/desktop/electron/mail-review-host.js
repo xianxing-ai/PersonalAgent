@@ -252,7 +252,7 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
               contentRef:'云端信头复核提示有邮件需要关注；请查看原邮件后确认。',occurredAt:new Date(now()).toISOString(),fetchedAt:new Date(now()).toISOString(),sensitivity:'private'}],{scope});
               const batch=notifications.drain().batches.find(batch=>batch.itemRefs.includes(id));if(!batch)continue;entry.batchId=batch.id;persist();}
             const outcome=await notifications.deliverBatch({batchId:entry.batchId,scope,expiresAt:entry.deadline,
-              title:'PersonalAgent · 邮件复核提醒',body:'云端信头复核提示有邮件需要关注；请查看原邮件后确认。',source:'mail-cloud-review'});
+              title:'Synstar · 邮件复核提醒',body:'云端信头复核提示有邮件需要关注；请查看原邮件后确认。',source:'mail-cloud-review'});
             recordNotification(entry,outcome);
           }
           }catch{entry.state='failed';persist();}
