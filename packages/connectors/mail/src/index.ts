@@ -27,7 +27,7 @@ const inboxInputSchema: ToolDescriptor['inputSchema'] = {
   description: '增量读取邮件（缺省收件箱）。绑定多个邮箱账号时必须给出 account（可用 mail.accounts 查询已绑定列表）；只绑定一个账号时可省略。游标按账号隔离，取该账号上一页返回的 nextCursor（`uidValidity:lastUid`）；uidValidity 变化返回 CURSOR_EXPIRED，需从头同步。邮件内容敏感（sensitivity: private），条目只含发件人/主题/已读状态。',
   properties: {
     account: {type: 'string', minLength: 1, description: '要读取的已绑定账号标识；省略时若恰好只绑定一个账号则用它。'},
-    cursor: {type: 'string', minLength: 1, description: '上一页的 nextCursor；空串或省略表示从头开始。'},
+    cursor: {type: 'string', minLength: 1, description: '传入相同账号、文件夹和排序方式下上一页的 nextCursor。省略时从第一页开始。'},
     limit: {type: 'integer', minimum: 1, maximum: 100, description: '单页条数上限，默认 20。'},
     folder: {type: 'string', minLength: 1, description: 'IMAP 文件夹路径，默认 INBOX。'},
     order: {type: 'string', enum: ['oldest', 'newest'], description: '排序方向：oldest 按 UID 从旧到新增量同步（默认）；newest 返回最新收到的 limit 封（从新到旧排列）。'},

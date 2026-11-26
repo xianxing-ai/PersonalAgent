@@ -1,7 +1,7 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import type { ProtocolContracts } from '@personal-agent/contracts';
 import type { MailCursor, MailMessage, MailOperationContext, MailProvider, MailSendResult } from './provider.js';
-import { guardMailWrite } from './provider.js';
+import { encodeMailCursor, guardMailWrite } from './provider.js';
 
 type ConnectorItem = ProtocolContracts['connectorItem'];
 type ConnectorAction = ProtocolContracts['connectorAction'];
@@ -45,6 +45,10 @@ export class MailService {
     if (options.signal?.aborted) throw new ProtocolError('CANCELLED', 'Mail fetch cancelled');
     const limit = options.limit ?? 20;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new ProtocolError('INVALID_ARGUMENT', 'limit must be 1..100');
+    const newest = options.order === 'newest';
+    if (options.cursor && (options.cursor.order === 'newest') !== newest) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Mail cursor belongs to a different sort order');
+    }
     // 聚合提供商分页直到满足 limit 或取尽；提供商页大小可能小于请求的 limit。
     const collected: MailMessage[] = [];
     let cursor = options.cursor;
@@ -66,12 +70,12 @@ export class MailService {
       // UID order is the paging order, regardless of server fetch iteration order.
       // Stamping from the page keeps the projection epoch correct even when a
       // provider omitted it on individual messages.
-      const messages = [...page.messages].sort((a, b) => a.uid - b.uid);
+      const messages = [...page.messages].sort((a, b) => newest ? b.uid - a.uid : a.uid - b.uid);
       if (cursor !== undefined && cursor.uidValidity !== page.uidValidity) {
         throw new ProtocolError('CURSOR_EXPIRED', 'Mailbox epoch changed during pagination');
       }
       if (messages.some((message, index) => !Number.isSafeInteger(message.uid) || message.uid < 1
-        || (cursor !== undefined && message.uid <= cursor.lastUid)
+        || (cursor !== undefined && (newest ? message.uid >= cursor.lastUid : message.uid <= cursor.lastUid))
         || (index > 0 && message.uid === messages[index - 1]?.uid)
         || (message.uidValidity !== undefined && message.uidValidity !== page.uidValidity))) {
         throw new ProtocolError('EXTERNAL_FAILURE', 'Mail provider returned an invalid UID page', false);
@@ -89,14 +93,12 @@ export class MailService {
     // epoch（uidValidity）轮换后旧 lastUid 不再是本 epoch 的水位——只有 epoch 未变才沿用，
     // 重置时从新 epoch 实际返回的条目重算（goo122 2026-09-09 复审 P1）。
     const returned = collected.slice(0, limit);
-    const ordered = options.order === 'newest' ? [...returned].reverse() : returned;
     const seed = options.cursor !== undefined && options.cursor.uidValidity === uidValidity ? options.cursor.lastUid : 0;
-    const lastReturnedUid = returned.reduce((max, message) => Math.max(max, message.uid), seed);
-    const nextCursor: MailCursor = {uidValidity, lastUid: lastReturnedUid};
+    const nextCursor: MailCursor = {uidValidity, lastUid: returned.at(-1)?.uid ?? seed, ...(newest ? {order: 'newest'} : {})};
     const fetchedAt = this.isoNow();
     return {
-      items: ordered.map(message => messageToItem(message, accountRef, fetchedAt)),
-      nextCursor: `${nextCursor.uidValidity}:${nextCursor.lastUid}`,
+      items: returned.map(message => messageToItem(message, accountRef, fetchedAt)),
+      nextCursor: encodeMailCursor(nextCursor),
       hasMore: providerHasMore || collected.length > returned.length,
       folder: options.folder ?? 'INBOX',
     };
