@@ -2,7 +2,7 @@ import {errorDisplayText} from '../../shared/error-display.js';
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {conflictDecisionMarkup,conflictDecisionPayload} from '../conversation/conflict-decision.js';
 import {mountModelThinkingPicker} from '../conversation/model-thinking-picker.js';
-import {DISPATCH_ACK, answerCardHtml, assistantStatusLabel, assistantVisualSpec, createDelegatedDeliveryTracker, delegatedDeliveryHtml, liveFromTranscript, rememberActivity, replaceAnswerCard, replaceTraceBlock, stripProfileMetadata, syncContainerAnswerDisclosures, syncTraceDisclosures, traceBlockHtml} from '../conversation/answer-block.js';
+import {DISPATCH_ACK, answerCardHtml, approvalWaitLabel, assistantStatusLabel, assistantVisualSpec, createDelegatedDeliveryTracker, delegatedDeliveryHtml, liveFromTranscript, rememberActivity, replaceAnswerCard, replaceTraceBlock, stripProfileMetadata, syncContainerAnswerDisclosures, syncTraceDisclosures, traceBlockHtml} from '../conversation/answer-block.js';
 import {assistantThreadActionsHtml, bindAssistantThreadActions, mountAssistantRoster} from '../conversation/assistant-roster-ui.js';
 import {mountFailureRepairCard} from '../conversation/failure-repair-card.js';
 import {createGoalControl} from '../conversation/goal-view.js';
@@ -504,6 +504,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
         const task=entry.value,children=childrenByParent.get(task.taskId)??[];
         const live=liveTurns.get(task.taskId);
         const traceHtml=traceBlockHtml(task,live,children,escape);
+        const awaiting=approvalWaitLabel(task,children);
         const replies=mainChatReplies(task,children,live?.answer);
         const failure=task.bodyWithheld||task.outputTruncated?undefined:task.error?.message;
         const streaming=!isTerminal(task)&&!task.bodyWithheld&&!task.outputTruncated;
@@ -514,7 +515,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
           ?replies.map(text=>`<div class="assistant-message"${streamAttr}>${escape(text)}</div>`).join('')
           :streamedChild
             ?`<div class="assistant-message"${streamAttr}>${escape(streamedChild)}</div>`
-            :isTerminal(task)||task.outputTruncated||task.bodyWithheld?'':delegated
+            :isTerminal(task)||task.outputTruncated||task.bodyWithheld?'':awaiting
+              ?`<div class="assistant-message" role="status">${escape(awaiting)}，请查看下方授权卡。</div>`:delegated
               ?`<div class="assistant-message cc-dispatch-ack"${streamAttr}>${DISPATCH_ACK}</div>`
               :`<div class="assistant-message cc-typing"${streamAttr}>正在回复…</div>`;
         const locateHtml=failure&&!task.resultSummary?`<div class="locate-block" data-locate-for="${escape(task.taskId)}"><button type="button" class="turn-action" data-locate-id="${escape(task.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';

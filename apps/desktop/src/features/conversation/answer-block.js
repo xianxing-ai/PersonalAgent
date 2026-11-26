@@ -390,31 +390,40 @@ function collectTraceSteps(task, live, children = []) {
   return ordered;
 }
 
+export function approvalWaitLabel(task, children = []) {
+  if (task.cancelRequested || task.state === 'cancelling') return '';
+  if (task.state === 'waiting_approval') return '等待你的授权';
+  if (!traceDoneStates.has(task.state) && children.some(child => child.state === 'waiting_approval')) return '子任务等待你的授权';
+  return '';
+}
+
 export function traceBlockHtml(task, live, children = [], escape) {
   if (!task || task.bodyWithheld || task.conflictOnly) return '';
   const steps = collectTraceSteps(task, live, children);
   const isActive = !traceDoneStates.has(task.state) && !task.outputTruncated && !task.cancelRequested;
+  const waitingForApproval = approvalWaitLabel(task, children);
+  const showActivity = isActive && !waitingForApproval;
   const delegated = children.length > 0 || task.backgroundDelegation === true;
   const reasoning = typeof live?.reasoning === 'string' ? live.reasoning.trim() : '';
   if (!reasoning && !steps.length && !isActive && !delegated) return '';
   const openDisclosures = live?.openDisclosures instanceof Set ? live.openDisclosures : new Set();
   const elapsed = formatElapsed(live, !isActive);
-  const phase = activePhaseLabel(task);
+  const phase = waitingForApproval || activePhaseLabel(task);
   const hasAnswer = Boolean((live?.answer ?? '').trim() || (typeof task.resultSummary === 'string' && task.resultSummary.trim()));
-  const showThinking = Boolean(reasoning) || (isActive && !steps.length && !hasAnswer && !delegated);
+  const showThinking = Boolean(reasoning) || (showActivity && !steps.length && !hasAnswer && !delegated);
   const thinkingHtml = showThinking
-    ? `<details class="trace-disclosure trace-thinking" data-disclosure-key="thinking"${openDisclosures.has('thinking') ? ' open' : ''}><summary>${traceHeadIconHtml('think')}<span class="trace-label${isActive ? ' is-shimmer' : ''}">${isActive ? '正在思考' : '思考过程'}${elapsed}</span><span class="trace-chevron" aria-hidden="true"></span></summary><div class="trace-thinking-body">${escape(reasoning || '正在分析任务并规划步骤…')}</div></details>`
+    ? `<details class="trace-disclosure trace-thinking" data-disclosure-key="thinking"${openDisclosures.has('thinking') ? ' open' : ''}><summary>${traceHeadIconHtml('think')}<span class="trace-label${showActivity ? ' is-shimmer' : ''}">${showActivity ? '正在思考' : '思考过程'}${elapsed}</span><span class="trace-chevron" aria-hidden="true"></span></summary><div class="trace-thinking-body">${escape(reasoning || '正在分析任务并规划步骤…')}</div></details>`
     : '';
   const showProcess = steps.length > 0 || delegated;
   let processHtml = '';
   if (showProcess) {
     const label = steps.length > 0
       ? (isActive ? `${phase} · 执行过程 · ${steps.length} 步` : `执行过程 · ${steps.length} 步${elapsed}`)
-      : (isActive ? `${phase} · 子智能体执行中` : '子智能体已结束');
+      : waitingForApproval || (isActive ? `${phase} · 子智能体执行中` : '子智能体已结束');
     const body = steps.length > 0
       ? `<ol class="trace-step-list">${steps.map(step => {
         const icon = traceStepGlyph(step.state);
-        const stepRunning = icon.cls === 'running';
+        const stepRunning = !waitingForApproval && icon.cls === 'running';
         const logo = describeTraceStepLogo(step);
         const verb = describeTraceStepVerb(step);
         const meta = [
@@ -424,8 +433,8 @@ export function traceBlockHtml(task, live, children = [], escape) {
         const duration = step.durationMs !== undefined ? `<span class="trace-step-time">${escape(String(step.durationMs))}ms</span>` : '';
         return `<li class="trace-step-item" data-step-state="${escape(icon.cls)}"><div class="trace-step-row"><span class="trace-step-verb${stepRunning ? ' is-shimmer' : ''}">${escape(verb)}</span>${traceLogoHtml(logo)}<strong class="trace-step-target${stepRunning ? ' is-shimmer' : ''}">${escape(step.label)}</strong>${duration}<span class="trace-step-glyph" aria-hidden="true">${icon.glyph}</span></div>${meta ? `<small class="trace-step-meta">${escape(meta)}</small>` : ''}</li>`;
       }).join('')}</ol>`
-      : `<p class="trace-empty-note">${escape(isActive ? '子智能体正在后台处理，你可以继续在主对话输入…' : '已委派子智能体完成执行。')}</p>`;
-    processHtml = `<details class="trace-disclosure trace-process" data-disclosure-key="process"${openDisclosures.has('process') ? ' open' : ''}><summary>${traceHeadIconHtml('process')}<span class="trace-label${isActive ? ' is-shimmer' : ''}">${escape(label)}</span><span class="trace-chevron" aria-hidden="true"></span></summary>${body}</details>`;
+      : `<p class="trace-empty-note">${escape(waitingForApproval ? '请查看当前对话中的授权请求。' : isActive ? '子智能体正在后台处理，你可以继续在主对话输入…' : '已委派子智能体完成执行。')}</p>`;
+    processHtml = `<details class="trace-disclosure trace-process" data-disclosure-key="process"${openDisclosures.has('process') ? ' open' : ''}><summary>${traceHeadIconHtml('process')}<span class="trace-label${showActivity ? ' is-shimmer' : ''}">${escape(label)}</span><span class="trace-chevron" aria-hidden="true"></span></summary>${body}</details>`;
   }
   if (!thinkingHtml && !processHtml) return '';
   return `<div class="trace-block" data-trace-for="${escape(task.taskId)}" data-live="${isActive ? 'true' : 'false'}">${thinkingHtml}${processHtml}</div>`;
