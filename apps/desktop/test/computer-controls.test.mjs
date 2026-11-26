@@ -304,3 +304,27 @@ test('connected browser probe shows extension guidance without launching a task'
   assert.match(ui.field('browser').textContent, /扩展已连通/);
   assert.match(ui.field('connected-guide').textContent, /已连通/);
 });
+
+test('quick demo templates and capability badges update drafts cleanly without firing IPC', async t => {
+  const ui = harness(t);
+  ui.render(status({browser:{state:'ready', available:true,
+    connected:{source:'opencli', available:false, reason:'尚未连接扩展', extension:{connected:false}}}}));
+  const badge = name => ui.section.querySelector(`[data-computer-badge="${name}"]`);
+  assert.equal(badge('host').textContent, '已就绪');
+  assert.equal(badge('host').attributes.get('data-tone'), 'ready');
+  assert.equal(badge('browser').textContent, '已准备');
+  assert.equal(badge('connected').textContent, '未连通');
+
+  await ui.click('demo-browser');
+  assert.match(ui.field('text').value, /https:\/\/example\.com/);
+  assert.equal(ui.field('launch').disabled, false);
+
+  await ui.click('demo-vps');
+  assert.match(ui.field('text').value, /VPS/);
+  assert.equal(ui.field('launch').disabled, false);
+
+  await ui.click('clear-draft');
+  assert.equal(ui.field('text').value, '');
+  assert.equal(ui.field('launch').disabled, true);
+  assert.equal(ui.calls.length, 0);
+});

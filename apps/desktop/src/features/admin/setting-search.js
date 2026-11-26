@@ -17,7 +17,7 @@ const aliases = {
   notifications: '通知 提醒 安静时段 汇总 风险 自主',
   appearance: '外观 主题 深色 浅色 动效 玻璃',
   pets: '桌面宠物 悬浮球 形态 ORB 粒子 伙伴 状态预览',
-  computer: '电脑 操控 浏览器 视觉 观察 主动 持续工作流',
+  computer: '电脑 操控 浏览器 vps 云电脑 远端执行器 ssh 代理 opencli edge chrome 桌面 视觉 观察 主动 持续工作流',
   briefing: '简报 日报 日程 审批 早上',
   shortcuts: '热键 快捷键',
 };

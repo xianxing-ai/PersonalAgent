@@ -13,7 +13,7 @@ internal sealed class DesktopSession(InputController inputs)
 {
     private sealed record Listed(string Ref, WindowFacts Window, DateTime Expires, long Epoch, long InputGeneration, string Monitors);
     private sealed record Target(string Ref, Listed Listed, long InputGeneration, string Monitors, DateTime Expires, long Epoch,
-        Dictionary<string, AutomationElement> Elements, bool Sensitive);
+        Dictionary<string, AutomationElement> Elements, bool Sensitive, bool Truncated);
     private readonly Dictionary<string, Listed> windows = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Target> targets = new(StringComparer.Ordinal);
     private long epoch;
@@ -239,8 +239,34 @@ internal sealed class DesktopSession(InputController inputs)
         Fields(p, "windowRef"); var listed = ResolveWindow(Text(p, "windowRef", 128), false, context);
         context.Check();
         if (listed.Epoch != Interlocked.Read(ref epoch) || listed.InputGeneration != inputs.Generation) throw new Refusal("USER_TAKEOVER");
+        if (Native.GetForegroundWindow() != listed.Window.Hwnd)
+        {
+            var beforeForeground = Native.GetForegroundWindow();
+            var fgThread = beforeForeground != 0 ? Native.GetWindowThreadProcessId(beforeForeground, out _) : 0;
+            var ownThread = Native.GetCurrentThreadId();
+            var attached = false;
+            try
+            {
+                if (fgThread != 0 && fgThread != ownThread) attached = Native.AttachThreadInput(ownThread, fgThread, true);
+                Native.BringWindowToTop(listed.Window.Hwnd);
+                Native.SetForegroundWindow(listed.Window.Hwnd);
+            }
+            finally { if (attached) Native.AttachThreadInput(ownThread, fgThread, false); }
+            var focusBy = Min(context.Deadline, DateTime.UtcNow.AddMilliseconds(600));
+            while (Native.GetForegroundWindow() != listed.Window.Hwnd && DateTime.UtcNow < focusBy)
+            {
+                context.Check();
+                if (listed.Epoch != Interlocked.Read(ref epoch) || listed.InputGeneration != inputs.Generation) throw new Refusal("USER_TAKEOVER");
+                context.Token.WaitHandle.WaitOne(25);
+            }
+            if (Native.GetForegroundWindow() != listed.Window.Hwnd)
+            {
+                if (Native.GetForegroundWindow() == beforeForeground && listed.Epoch == Interlocked.Read(ref epoch) && listed.InputGeneration == inputs.Generation)
+                    throw new Refusal("TARGET_STALE", false);
+                throw new Refusal("RESULT_UNKNOWN", true);
+            }
+        }
         context.Dispatched = true;
-        if (!Native.SetForegroundWindow(listed.Window.Hwnd)) throw new Refusal("RESULT_UNKNOWN", true);
         var after = Native.ReadWindow(listed.Window.Hwnd, true);
         context.Check();
         if (!Native.Same(listed.Window, after) || listed.Epoch != Interlocked.Read(ref epoch) || listed.InputGeneration != inputs.Generation)
@@ -305,7 +331,7 @@ internal sealed class DesktopSession(InputController inputs)
         { items.RemoveAt(items.Count - 1); truncated = true; }
         foreach (var key in targets.Where(v => v.Value.Listed.Window.Hwnd == hwnd).Select(v => v.Key).ToArray()) targets.Remove(key);
         if (targets.Count >= 64) throw new Refusal("RESOURCE_BUSY", context.Dispatched);
-        targets.Add(referenceId, new(referenceId, listed, generation, monitors, expires, currentEpoch, elements, sensitive || truncated));
+        targets.Add(referenceId, new(referenceId, listed, generation, monitors, expires, currentEpoch, elements, sensitive, truncated));
         return Result();
     }
     private static string Bounded(string? value, int length) => value is null ? "" : value.Length <= length ? value : value[..length];
@@ -370,7 +396,7 @@ internal sealed class DesktopSession(InputController inputs)
         if (element is not null)
         {
             var state = element.Current;
-            if (state.ProcessId != target.Listed.Window.Pid || state.IsPassword || state.IsOffscreen || !state.IsEnabled || !ToBox(state.BoundingRectangle).Intersects(target.Listed.Window.Bounds)) throw new Refusal("UNAUTHORIZED");
+            if (state.ProcessId != target.Listed.Window.Pid || state.IsPassword || state.IsOffscreen || !state.IsEnabled || SensitiveName(Bounded(state.Name, 256)) || !ToBox(state.BoundingRectangle).Intersects(target.Listed.Window.Bounds)) throw new Refusal("UNAUTHORIZED");
             var root = element;
             for (var count = 0; count < 64 && root is not null; count++)
             {
@@ -422,7 +448,7 @@ internal sealed class DesktopSession(InputController inputs)
         void KeyboardGuard()
         {
             Guard(); var focused = AutomationElement.FocusedElement;
-            if (focused is null || focused.Current.IsPassword || focused.Current.ProcessId != target.Listed.Window.Pid) throw new Refusal("UNAUTHORIZED", context.Dispatched);
+            if (focused is null || focused.Current.IsPassword || focused.Current.ProcessId != target.Listed.Window.Pid || SensitiveName(Bounded(focused.Current.Name, 256))) throw new Refusal("UNAUTHORIZED", context.Dispatched);
             for (var count = 0; count < 64 && focused is not null; count++)
             {
                 if (focused.Current.NativeWindowHandle == target.Listed.Window.Hwnd) return;
@@ -529,7 +555,7 @@ internal sealed class DesktopSession(InputController inputs)
     private object Screenshot(JsonElement p, RequestContext context)
     {
         Fields(p, "targetRef"); var target = TargetFor(p); Check(target, context);
-        if (target.Sensitive) throw new Refusal("UNAUTHORIZED");
+        if (target.Sensitive || target.Truncated) throw new Refusal("UNAUTHORIZED");
         RequireSafeTree(target, context);
         Native.RequireUncovered(target.Listed.Window);
         var bounds = target.Listed.Window.Bounds;

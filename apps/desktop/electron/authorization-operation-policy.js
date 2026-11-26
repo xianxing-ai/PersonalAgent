@@ -82,6 +82,17 @@ export function operationSummary(source) {
     if(clean(args.title))changes.push(`名称改为“${clean(args.title)}”`);
     return `更新${target}${changes.length?'：'+changes.join('，'):''}。`;
   }
+  if(name==='runner.vps.status')return '查询已连接 VPS 主机与云桌面运行状态。';
+  if(name==='runner.vps.exec'){
+    const cmd=Array.isArray(args.command)?args.command.map(clean).filter(Boolean).join(' '):'';
+    const targetLabel=args.target==='desktop'?'云桌面容器':'VPS 主机';
+    return `在${targetLabel}执行受控命令${cmd?`：${cmd}`:''}。`;
+  }
+  if(name==='runner.vps.desktop'){
+    const action=clean(args.desktopAction);
+    const detail=clean(args.url)||(Array.isArray(args.command)?args.command.map(clean).filter(Boolean).join(' '):'');
+    return `操作 VPS 云桌面（${action||'status'}${detail?`：${detail}`:''}）。`;
+  }
   return `执行 ${clean(name)}。`;
 }
 

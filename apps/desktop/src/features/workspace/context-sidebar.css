@@ -33,6 +33,42 @@
 .cc-context .cc-context-switch button:hover { background: var(--cc-soft); color: var(--cc-text); }
 .cc-context[data-context-view="activity"] :is([data-connector="obsidian"], [data-connector="feeds"], [data-connector="mail"]),
 .cc-context[data-context-view="library"] :is(.cc-computer, .cc-activity, .notification-card, [data-connector="weather"], [data-connector="calendar"]) { display: none; }
+.cc-computer .cc-computer-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cc-computer .cc-computer-header h2 {
+  margin: 0;
+  color: var(--cc-muted);
+  font-size: 11px;
+  font-weight: 560;
+}
+.cc-computer .cc-computer-quickbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cc-computer [data-runner-controls] .rr-refresh-btn {
+  display: none;
+}
+.cc-computer .cc-quick-btn,
+.cc-computer .btn {
+  padding: 4px 9px;
+  border: 1px solid var(--cc-line);
+  border-radius: 8px;
+  background: var(--cc-soft);
+  color: var(--cc-text);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.cc-computer .cc-quick-btn:hover:not(:disabled),
+.cc-computer .btn:hover:not(:disabled) {
+  background: var(--cc-hover);
+}
 .cc-computer details {
   border: 1px solid var(--cc-line);
   border-radius: 12px;
@@ -43,9 +79,40 @@
 .cc-computer summary small { display: block; margin-top: 4px; color: var(--cc-muted); overflow-wrap: anywhere; }
 .cc-computer [data-runner-controls] { padding: 0 12px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .cc-computer [data-runner-controls] > p:empty, .cc-computer .remote-runners > h2 { display: none; }
-.cc-computer .remote-runners ul { padding: 0; list-style: none; }
-.cc-computer .remote-runners li > span { display: block; margin-bottom: 6px; }
-.cc-computer .remote-runners li + li { margin-top: 10px; }
-.cc-computer button, .cc-computer input, .cc-computer select, .cc-computer pre { max-width: 100%; }
+.cc-computer .remote-runners ul { padding: 0; list-style: none; margin: 8px 0 0; }
+.cc-computer .rr-toolbar,
+.cc-computer .rr-host-actions,
+.cc-computer .rr-form-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cc-computer .rr-host-card {
+  padding: 8px;
+  border: 1px solid var(--cc-line);
+  border-radius: 8px;
+}
+.cc-computer .rr-host-card + .rr-host-card { margin-top: 8px; }
+.cc-computer .rr-host-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.cc-computer .rr-host-meta { margin: 4px 0 6px; font-size: 11px; color: var(--cc-muted); }
+.cc-computer .remote-runners-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--cc-line);
+  border-radius: 8px;
+}
+.cc-computer .remote-runners-form input,
+.cc-computer .remote-runners-form select,
+.cc-computer .remote-runners-form textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+}
+.cc-computer button, .cc-computer input, .cc-computer select, .cc-computer textarea, .cc-computer pre { max-width: 100%; box-sizing: border-box; }
 .cc-computer pre { white-space: pre-wrap; }
-.cc-computer button { margin: 2px; }
+.cc-computer .rr-vps-result {
+  margin: 6px 0;
+  padding: 8px;
+  border: 1px solid var(--cc-line);
+  border-radius: 8px;
+}
+.cc-computer .rr-tunnel-cmd { display: block; font-size: 11px; overflow-wrap: anywhere; margin: 4px 0; }

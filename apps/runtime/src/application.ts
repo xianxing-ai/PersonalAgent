@@ -212,6 +212,7 @@ export {
   createRemoteRunnerService, createMemoryRunnerSecrets, createLoopbackRunnerTransport, localDutyFallback,
   signRunnerJob, verifyRunnerJob, reconcileDutyCursor, redactRunnerText,
   RUNNER_HOST_ADD, RUNNER_HOST_LIST, RUNNER_HOST_CONFIRM, RUNNER_HOST_TEST,
+  RUNNER_VPS_STATUS, RUNNER_VPS_EXEC, RUNNER_VPS_DESKTOP,
 } from './application/remote-runner.js';
 export type {RemoteHostRecord, RemoteJobRequest, RemoteJobResult, RunnerSecretPort, RemoteRunnerTransport} from './application/remote-runner.js';
 export {

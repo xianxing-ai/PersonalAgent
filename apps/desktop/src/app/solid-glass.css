@@ -336,6 +336,98 @@
 .command-center .cc-hero-field {animation:none;filter:none}
 :root[data-theme="light"] .command-center .cc-hero-field {filter:invert(1)}
 
+/* Computer controls elevated cards, status badges, and VPS runner form */
+.admin .main[data-section="computer"] [data-computer="status"] {
+  margin:0 0 14px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:550;line-height:1.5;
+  border:1px solid var(--adm-border,var(--sg-line));background:var(--adm-card-alt,var(--sg-card));
+}
+.admin .main[data-section="computer"] [data-computer="status"][data-tone="ready"] {
+  border-color:color-mix(in srgb,var(--adm-ok,#3ecf8e) 35%,transparent);
+  background:var(--adm-ok-soft,rgba(62,207,142,.12));
+}
+.admin .main[data-section="computer"] [data-computer="status"][data-tone="warn"] {
+  border-color:color-mix(in srgb,var(--adm-warn,#ebb549) 35%,transparent);
+  background:var(--adm-warn-soft,rgba(235,181,73,.12));
+}
+.admin .main[data-section="computer"] [data-computer="status"][data-tone="blocked"] {
+  border-color:color-mix(in srgb,var(--adm-danger,#f06a74) 40%,transparent);
+  background:var(--adm-danger-soft,rgba(240,106,116,.14));
+}
+.admin .cc-cap-grid {
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 14px;width:100%;
+}
+.admin .cc-cap-card {
+  min-width:0;padding:12px 14px;border-radius:12px;border:1px solid var(--adm-border,var(--sg-line));
+  background:var(--adm-pod,var(--sg-pane));display:flex;flex-direction:column;gap:6px;box-sizing:border-box;
+}
+.admin .cc-cap-head {display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.admin .cc-cap-head strong {font-size:13px;font-weight:620;color:var(--adm-text,var(--fg))}
+.admin .cc-cap-card .computer-controls-hint {margin:0;overflow-wrap:anywhere;font-size:12px;line-height:1.5}
+.admin .cc-cap-badge,
+.admin .rr-badge {
+  display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;
+  border:1px solid var(--adm-border,var(--sg-line));background:var(--adm-control,var(--sg-control));color:var(--adm-muted,var(--muted));
+}
+.admin .cc-cap-badge[data-tone="ready"],
+.admin .rr-badge[data-tone="ready"] {
+  color:var(--adm-ok,#3ecf8e);background:var(--adm-ok-soft,rgba(62,207,142,.14));border-color:color-mix(in srgb,var(--adm-ok,#3ecf8e) 35%,transparent);
+}
+.admin .cc-cap-badge[data-tone="warn"] {
+  color:var(--adm-warn,#ebb549);background:var(--adm-warn-soft,rgba(235,181,73,.15));border-color:color-mix(in srgb,var(--adm-warn,#ebb549) 35%,transparent);
+}
+.admin .cc-cap-badge[data-tone="blocked"] {
+  color:var(--adm-danger,#f06a74);background:var(--adm-danger-soft,rgba(240,106,116,.14));border-color:color-mix(in srgb,var(--adm-danger,#f06a74) 35%,transparent);
+}
+.admin .computer-control-toggles {
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:0 0 10px;
+}
+.admin .computer-control-toggle {
+  display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;
+  border:1px solid var(--adm-border,var(--sg-line));background:var(--adm-pod,var(--sg-pane));cursor:pointer;font-size:13px;
+}
+.admin .computer-controls-actions,
+.admin .computer-controls-demos {
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0;
+}
+.admin .vps-runner-sheet {margin-top:16px}
+.admin .vps-runner-sheet .remote-runners > h2 {display:none}
+.admin .vps-runner-sheet .rr-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0 6px}
+.admin .vps-runner-sheet .remote-runners-status {margin:0;font-size:12.5px;color:var(--adm-text-2,var(--fg))}
+.admin .vps-runner-sheet .rr-cloud-status {margin:4px 0 10px;font-size:12px;color:var(--adm-muted,var(--muted))}
+.admin .vps-runner-sheet .remote-runners-form {
+  display:flex;flex-direction:column;gap:12px;margin:12px 0;padding:14px 16px;border-radius:12px;
+  border:1px solid var(--adm-border-strong,var(--sg-line));background:var(--adm-pod,var(--sg-pane));
+}
+.admin .vps-runner-sheet .rr-form-group {display:flex;flex-direction:column;gap:8px}
+.admin .vps-runner-sheet .rr-form-heading {margin:0;font-size:12.5px;font-weight:620;color:var(--adm-text,var(--fg))}
+.admin .vps-runner-sheet .rr-form-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.admin .vps-runner-sheet .rr-field {display:flex;flex-direction:column;gap:4px;min-width:0}
+.admin .vps-runner-sheet .rr-field-wide {grid-column:1/-1}
+.admin .vps-runner-sheet .rr-field-label {font-size:12px;color:var(--adm-muted,var(--muted))}
+.admin .vps-runner-sheet .rr-form-actions {display:flex;flex-wrap:wrap;gap:8px}
+.admin .vps-runner-sheet .rr-host-list {
+  list-style:none;padding:0;margin:10px 0 0;display:grid;gap:10px;
+}
+.admin .vps-runner-sheet .rr-host-card {
+  padding:12px 14px;border-radius:12px;border:1px solid var(--adm-border,var(--sg-line));
+  background:var(--adm-pod,var(--sg-pane));display:flex;flex-direction:column;gap:8px;min-width:0;
+}
+.admin .vps-runner-sheet .rr-host-head {display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.admin .vps-runner-sheet .rr-host-name {font-size:13.5px;font-weight:620;color:var(--adm-text,var(--fg))}
+.admin .vps-runner-sheet .rr-host-meta {margin:0;font-size:12px;color:var(--adm-muted,var(--muted));overflow-wrap:anywhere}
+.admin .vps-runner-sheet .rr-host-actions {display:flex;flex-wrap:wrap;gap:8px}
+.admin .vps-runner-sheet .rr-vps-result {
+  margin:10px 0;padding:10px 12px;border-radius:10px;
+  border:1px solid color-mix(in srgb,var(--adm-accent,#4cc9be) 35%,transparent);
+  background:var(--adm-accent-soft,rgba(76,201,190,.12));
+}
+.admin .vps-runner-sheet .rr-vps-summary {margin:0 0 6px;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere}
+.admin .vps-runner-sheet .rr-tunnel-row {display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.admin .vps-runner-sheet .rr-tunnel-cmd {
+  padding:4px 8px;border-radius:6px;background:var(--adm-control,var(--sg-control));font-size:12px;overflow-wrap:anywhere;
+}
+.admin .vps-runner-sheet .rr-copy-hint {font-size:12px;color:var(--adm-ok,#3ecf8e)}
+
 @media(prefers-reduced-motion:reduce) {
   .admin .side nav button,
   .admin summary::before {transition:none}

@@ -52,32 +52,52 @@ export function mountComputerControls(root, invoke) {
   const section = document.createElement('section');
   section.className = 'sheet computer-controls';
   section.setAttribute('aria-label', '通用电脑操作');
-  section.innerHTML = `<h2>电脑操作</h2>
-    <p class="computer-controls-intro">在主对话中说明要操作哪个窗口、完成什么。应用会核对目标，执行状态和结果以原任务记录为准。</p>
-    <label class="computer-control-toggle"><input type="checkbox" data-computer="enabled" checked disabled><span>启用电脑操作</span></label>
-    <label class="computer-control-toggle"><input type="checkbox" data-computer="export" disabled><span>允许将目标窗口观察用于当前模型对话</span></label>
+  section.innerHTML = `<h2>电脑与浏览器操控</h2>
+    <p class="computer-controls-intro">在主对话中说明要操作哪个窗口或网页、完成什么任务。应用会先核对目标并征得确认，执行状态与结果以原任务记录为准。</p>
+    <p data-computer="status" data-tone="off" role="status" aria-live="polite"></p>
+    <div class="cc-cap-grid" aria-label="操控能力就绪概览">
+      <article class="cc-cap-card">
+        <div class="cc-cap-head"><strong>本机 Windows 操控</strong><span class="cc-cap-badge" data-computer-badge="host" data-tone="off">等待中</span></div>
+        <p data-computer="provider" class="computer-controls-hint"></p>
+      </article>
+      <article class="cc-cap-card">
+        <div class="cc-cap-head"><strong>独立受控浏览器</strong><span class="cc-cap-badge" data-computer-badge="browser" data-tone="off">未准备</span><span class="cc-cap-badge" data-tone="ready">支持本机代理</span></div>
+        <p data-computer="browser" class="computer-controls-hint"></p>
+      </article>
+      <article class="cc-cap-card">
+        <div class="cc-cap-head"><strong>现有日常浏览器</strong><span class="cc-cap-badge" data-computer-badge="connected" data-tone="off">未连通</span></div>
+        <p data-computer="connected-guide" class="computer-controls-hint"></p>
+      </article>
+    </div>
+    <div class="computer-control-toggles">
+      <label class="computer-control-toggle"><input type="checkbox" data-computer="enabled" checked disabled><span>启用电脑操控</span></label>
+      <label class="computer-control-toggle"><input type="checkbox" data-computer="export" disabled><span>允许将目标窗口观察用于当前模型对话</span></label>
+    </div>
     <p class="computer-controls-hint">完全访问模式会自动同意应用授权，也会尊重你明确关闭目标窗口观察导出的选择；受限模式沿用当前任务的授权卡。这里的在场确认只继续原任务，不代替操作授权。切换窗口或扩大范围仍需重新核对。</p>
-    <p data-computer="status" role="status" aria-live="polite"></p>
-    <p data-computer="provider" class="computer-controls-hint"></p>
-    <p data-computer="browser" class="computer-controls-hint"></p>
-    <p data-computer="connected-guide" class="computer-controls-hint"></p>
     <p data-computer="failure" role="alert" aria-live="polite"></p>
     <div class="form-actions computer-controls-actions">
       <button type="button" class="btn" data-computer-action="prepare" disabled>准备 / 重试</button>
       <button type="button" class="btn" data-computer-action="probe-connected" disabled>检测现有浏览器扩展</button>
       <button type="button" class="btn btn-danger" data-computer-action="stop" disabled>立即停止电脑输入</button>
-      <button type="button" class="btn" data-computer-action="confirm" hidden disabled>确认本次在场</button>
+      <button type="button" class="btn btn-primary" data-computer-action="confirm" hidden disabled>确认本次在场</button>
       <button type="button" class="btn" data-computer-action="open" disabled>查看原对话</button>
     </div>
     <p class="computer-controls-hint">停止后会核实最后一步；结果未知时不会自动重做。准备组件不会替你执行任务。</p>
     <form class="computer-controls-form">
-      <label>要做什么<textarea data-computer="text" maxlength="4000" rows="3" placeholder="例如：在当前窗口填写一段文字，先不要提交"></textarea></label>
-      <div class="form-actions"><button type="submit" class="btn btn-primary" data-computer="launch" disabled>在主对话开始操作</button><button type="button" class="btn" data-computer-action="demo">填入演示</button></div>
+      <label>要做什么<textarea data-computer="text" maxlength="4000" rows="3" placeholder="例如：用受控浏览器打开网页、操作当前窗口，或查询已连接的 VPS 云电脑"></textarea></label>
+      <div class="form-actions computer-controls-demos">
+        <button type="submit" class="btn btn-primary" data-computer="launch" disabled>在主对话开始操作</button>
+        <button type="button" class="btn btn-sm" data-computer-action="demo">演示：本机电脑</button>
+        <button type="button" class="btn btn-sm" data-computer-action="demo-browser">演示：浏览器打开网页</button>
+        <button type="button" class="btn btn-sm" data-computer-action="demo-vps">演示：查看 VPS 云电脑</button>
+        <button type="button" class="btn btn-sm" data-computer-action="clear-draft">清空输入</button>
+      </div>
     </form>
     <p data-computer="feedback" role="status" aria-live="polite"></p>`;
   const anchor = root.querySelector('#error');
   if (anchor) anchor.before(section); else root.append(section);
   const field = name => section.querySelector(`[data-computer="${name}"]`);
+  const badgeNode = name => section.querySelector(`[data-computer-badge="${name}"]`);
   const button = name => section.querySelector(`[data-computer-action="${name}"]`);
   const form = section.querySelector('form');
   let state, pending, operation = 0, publication = 0, closed = false, unconfirmed = false;
@@ -85,6 +105,12 @@ export function mountComputerControls(root, invoke) {
   const blocked = () => blockedStates.has(state?.state) || state?.input?.state === 'blocked';
   const busy = () => state?.input?.busy === true;
   const originalTask = () => taskId(state?.recoveryTaskId) ?? taskId(state?.activeTaskId) ?? lastTaskId;
+  const setBadge = (name, label, tone) => {
+    const el = badgeNode(name);
+    if (!el) return;
+    el.textContent = label;
+    el.setAttribute('data-tone', tone);
+  };
   function paint() {
     if (closed) return;
     const known = Boolean(state);
@@ -92,6 +118,11 @@ export function mountComputerControls(root, invoke) {
     field('enabled').checked = state?.enabled ?? true;
     field('export').checked = state?.observationExportAllowed ?? false;
     field('enabled').disabled = field('export').disabled = !known || Boolean(pending) || unconfirmed;
+    const statusTone = !known ? 'off'
+      : blocked() || state.input?.writeBlocked === true ? 'blocked'
+        : state.waitingConfirmation || !state.available ? 'warn'
+          : !state.enabled ? 'off' : 'ready';
+    field('status').setAttribute('data-tone', statusTone);
     field('status').textContent = !known ? '正在等待可信宿主报告电脑操作状态。'
       : blocked() ? '最后一次电脑操作或停止结果待核实，后续输入已暂停。'
         : state.waitingConfirmation ? '原任务正在等待本次在场确认；请保持目标窗口不变，再确认或按 F9。'
@@ -102,12 +133,17 @@ export function mountComputerControls(root, invoke) {
     const source = {'windows-native':'Windows 原生组件', 'windows-native-broker':'Windows 原生组件',
       'windows-broker':'Windows 原生组件', 'windows-mcp':'兼容电脑组件', synthetic:'离线联调组件'}[state?.provider?.source];
     field('provider').textContent = !known ? '' : `本机操作：${state.providerAvailable ? '组件已连接' : '组件未就绪'}${source ? ` · ${source}` : ''}`;
+    setBadge('host', !known ? '等待中' : !state.enabled ? '已关闭' : blocked() || state.input?.writeBlocked === true ? '已暂停' : state.providerAvailable ? '已就绪' : '未就绪',
+      !known || !state.enabled ? 'off' : blocked() || state.input?.writeBlocked === true ? 'blocked' : state.providerAvailable ? 'ready' : 'warn');
     const browser = state?.browser;
     const connected = browser?.connected;
     field('browser').textContent = browser ? `独立浏览器：${browser.available === true ? '已准备' : '未就绪'}${browser.reason ? ` · ${safeReason(browser.reason, '请准备浏览器组件后重试')}` : ''}${connected ? `；现有浏览器：${safeReason(connected.reason, '需要 OpenCLI 扩展连接')}${connected.extension?.connected === true || connected.extension?.available === true ? ' · 扩展已连通' : connected.extension ? ' · 扩展未连通' : ''}` : ''}` : '';
+    setBadge('browser', !browser ? '等待中' : browser.available === true ? '已准备' : '未准备', !browser ? 'off' : browser.available === true ? 'ready' : 'warn');
+    const connectedReady = connected?.extension?.connected === true || connected?.extension?.available === true || connected?.available === true;
+    setBadge('connected', !known ? '等待中' : connectedReady ? '已连通' : '未连通', !known ? 'off' : connectedReady ? 'ready' : 'off');
     const guide = connectedGuide(state);
     field('connected-guide').textContent = !known ? ''
-      : connected?.extension?.connected === true || connected?.extension?.available === true || connected?.available === true
+      : connectedReady
         ? '现有浏览器扩展已连通；任务仍须原对话授权与在场确认。'
         : guide || '安装应用依赖不会自动安装浏览器扩展。可点“检测现有浏览器扩展”查看连通结果。';
     field('failure').textContent = state?.failure ? failureText(state.failure, 'host') : '';
@@ -184,6 +220,9 @@ export function mountComputerControls(root, invoke) {
     if (closed || !target || !section.contains(target) || target.disabled) return;
     const action = target.dataset.computerAction;
     if (action === 'demo') {field('text').value = '在当前窗口输入“PersonalAgent 电脑操作演示”，先不要发送或提交。'; paint(); return;}
+    if (action === 'demo-browser') {field('text').value = '用受控浏览器打开 https://example.com 并截图总结页面主要内容。'; paint(); return;}
+    if (action === 'demo-vps') {field('text').value = '查询已启用的 VPS 主机和云桌面当前运行状态，列出主机名、内存与云桌面状态。'; paint(); return;}
+    if (action === 'clear-draft') {field('text').value = ''; paint(); return;}
     if (action === 'open') {
       const original = originalTask(); if (!original) return;
       try {await invoke('task.openConversation', {taskId: original});}

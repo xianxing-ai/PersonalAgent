@@ -15,6 +15,7 @@ import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-contr
 import {mountProactiveTaskControls} from '../../app/proactive-task-controls.js';
 import {mountComputerControls} from '../../app/computer-controls.js';
 import {mountComputerVisionControls} from '../../app/computer-vision-controls.js';
+import {mountRemoteRunners} from '../conversation/remote-runners.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
 import {mountGitHubControls} from '../../app/github-controls.js';
@@ -71,7 +72,7 @@ const sectionSubtitles = {
   pets: '实时切换 8 种悬浮球形态并预览 6 种动态交互状态',
   models: '选择日常对话与子任务的默认模型',
   capabilities: '查看 28 图工作流目录、已安装技能与 Runtime 能力目录',
-  computer: '配置本机电脑操控、可选视觉模型与记事本执行边界',
+  computer: '管理本机 Windows 电脑操控、代理环境浏览器、可选视觉模型与 VPS 云电脑',
   workspace: '选择这台电脑上用来读写与核对代码的工作文件夹',
   experiments: '管理默认启用的只读实验能力与预览选项',
   dashboard: '按日、周、月周期汇总已授权数据源的个人趋势',
@@ -116,7 +117,7 @@ const navGroups = [
   {id: 'safety', label: '安全与提醒', items: ['authorizations', 'notifications', 'briefing']},
   {id: 'telemetry', label: '观测与记录', items: ['dashboard', 'tasks', 'activity']},
 ];
-const SIMPLE_PAGES = new Set(['profile', 'settings', 'models', 'voice', 'connections', 'authorizations']);
+const SIMPLE_PAGES = new Set(['profile', 'settings', 'models', 'voice', 'connections', 'computer', 'authorizations']);
 const ADMIN_PRO_MODE_KEY = 'pa-admin-pro-mode';
 const readAdminProMode = () => {
   try { return typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_PRO_MODE_KEY) === 'true'; }
@@ -127,7 +128,7 @@ const writeAdminProMode = value => {
   catch {}
 };
 const groupForPage = page => navGroups.find(group => group.items.includes(page));
-const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
+const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'computer', vps:'computer', overview:'usage'};
 const canonicalPage = page => pageAliases[page] ?? page;
 
 const iconPaths = {
@@ -289,12 +290,12 @@ export function mountAdmin(root, invoke, escape) {
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,githubControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls,mailSourceControls;
   window.addEventListener('unload',()=>mailSourceControls?.dispose(),{once:true});
-  let installedSkillsControls,pluginCatalogControls,activityControls,sisControls,notificationControls,riskAutonomyControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
+  let installedSkillsControls,pluginCatalogControls,activityControls,sisControls,notificationControls,riskAutonomyControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls,vpsRunnerRoot,vpsRunnerControls,vpsRefreshedForVisit=false;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
   window.addEventListener('unload',()=>authorizationSettingsControls?.dispose(),{once:true});
-  window.addEventListener('unload',()=>{computerControls?.dispose();computerVisionControls?.dispose();},{once:true});
+  window.addEventListener('unload',()=>{computerControls?.dispose();computerVisionControls?.dispose();vpsRunnerControls?.dispose();},{once:true});
   const showPage = mountPageMotion(root.querySelector('.main'));
 
   function capabilityTable(data) {
@@ -640,6 +641,21 @@ export function mountAdmin(root, invoke, escape) {
     computerControls?.render(data.computerControl);computerControls?.show(section==='computer');
     if(section==='computer')computerVisionControls??=mountComputerVisionControls(root.querySelector('.main'),invoke);
     computerVisionControls?.render(data.computerControl?.vision);computerVisionControls?.show(section==='computer');
+    if(section==='computer'&&!vpsRunnerControls){
+      vpsRunnerRoot=document.createElement('section');
+      vpsRunnerRoot.className='sheet vps-runner-sheet';
+      vpsRunnerRoot.setAttribute('aria-label','VPS 与云电脑');
+      vpsRunnerRoot.innerHTML='<h2>VPS 与云电脑</h2><p class="computer-controls-intro">登记并管理你的 Linux VPS 与 Ubuntu XFCE 云桌面（仅绑定 VPS 回环地址并通过加密 SSH 通道控制，一键部署脚本见 <code>scripts/remote-runner/install-cloud-desktop.sh</code>）。</p>';
+      root.querySelector('.main').append(vpsRunnerRoot);
+      vpsRunnerControls=mountRemoteRunners(vpsRunnerRoot,invoke);
+    }
+    if(vpsRunnerRoot)vpsRunnerRoot.hidden=section!=='computer';
+    if(section==='computer'&&vpsRunnerControls&&!vpsRefreshedForVisit){
+      vpsRefreshedForVisit=true;
+      void vpsRunnerControls.refresh();
+    }else if(section!=='computer'){
+      vpsRefreshedForVisit=false;
+    }
     if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
     proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
     if (section==='computer') proactiveWorkflowControls ??= mountProactiveWorkflowControls(root.querySelector('.main'),invoke,{settings:true});

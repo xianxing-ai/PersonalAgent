@@ -2942,6 +2942,7 @@ async function initializeRuntime() {
         }
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
           downloadDirectory:path.join(app.getPath('downloads'),'PersonalAgent'),
+          allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
           authorizePresence:async scope=>{
@@ -2949,6 +2950,7 @@ async function initializeRuntime() {
             return windowsControlHost.hasPresence(scope.taskId);
           },onUpdate:publish});
         openCliBrowserHost=createOpenCliBrowserHost({
+          allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           readTask:taskId=>{try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}},
           authorize:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
@@ -5039,12 +5041,49 @@ async function action(event, name, payload) {
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
     return openSubagentConversation(payload,sender===admin?undefined:sender===workspace?'workspace':'panel');
   }
-  if(name==='runner.hosts.list'||name==='runner.hosts.test'||name==='runner.hosts.disable'||name==='runner.hosts.enable'){
+  if(name==='runner.hosts.list'||name==='runner.hosts.test'||name==='runner.hosts.vpsStatus'||name==='runner.hosts.probeKey'||name==='runner.hosts.add'||name==='runner.hosts.remove'||name==='runner.hosts.disable'||name==='runner.hosts.enable'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话查看远端执行器');
     if(!remoteRunnerHost)throw Error('远端执行器尚未装配');
     if(name==='runner.hosts.list')return {hosts:remoteRunnerHost.service.list(), jobs:remoteRunnerHost.service.jobs()};
     if(name==='runner.hosts.test')return remoteRunnerHost.service.test(payload?.id);
-    const drafted=remoteRunnerHost.service.propose(name==='runner.hosts.disable'?'disable':'enable', {id:payload?.id});
+    if(name==='runner.hosts.vpsStatus')return remoteRunnerHost.service.vpsStatus(payload?.id);
+    if(name==='runner.hosts.probeKey')return remoteRunnerHost.probeHostKey({address:payload?.address, port:payload?.port??22});
+    if(name==='runner.hosts.add'){
+      if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('远端主机配置格式无效');
+      const allowedKeys=['name','address','port','user','provider','os','arch','limits','repos','hostKey','hostKeyFingerprint','privateKey','runnerToken','enabled'];
+      if(Object.keys(payload).some(key=>!allowedKeys.includes(key)))throw Error('远端主机配置包含未支持字段');
+      const hostKey=typeof payload.hostKey==='string'?payload.hostKey.trim():'';
+      if(!hostKey)throw Error('请先探测或填写 VPS 主机公钥');
+      const computedFingerprint=createHash('sha256').update(hostKey).digest('hex');
+      const givenFingerprint=typeof payload.hostKeyFingerprint==='string'&&payload.hostKeyFingerprint.trim()
+        ?payload.hostKeyFingerprint.trim().toLowerCase():computedFingerprint;
+      const rawPrivateKey=typeof payload.privateKey==='string'?payload.privateKey.replace(/\r\n/g,'\n'):'';
+      const privateKey=rawPrivateKey&&!rawPrivateKey.endsWith('\n')?`${rawPrivateKey}\n`:rawPrivateKey;
+      const limits=payload.limits&&typeof payload.limits==='object'&&!Array.isArray(payload.limits)
+        ?{maxConcurrent:Number(payload.limits.maxConcurrent??2), maxJobsPerMinute:Number(payload.limits.maxJobsPerMinute??20)}
+        :{maxConcurrent:2, maxJobsPerMinute:20};
+      const normalized={
+        name:typeof payload.name==='string'?payload.name.trim():'',
+        address:typeof payload.address==='string'?payload.address.trim():'',
+        port:Number(payload.port??22),
+        user:typeof payload.user==='string'?payload.user.trim():'',
+        provider:payload.provider||'vps',
+        os:payload.os||'ubuntu',
+        arch:payload.arch||'x86_64',
+        limits,
+        repos:Array.isArray(payload.repos)?payload.repos:[],
+        hostKey,
+        hostKeyFingerprint:givenFingerprint,
+        privateKey,
+        runnerToken:typeof payload.runnerToken==='string'?payload.runnerToken.trim():'',
+        enabled:payload.enabled!==false,
+      };
+      const drafted=remoteRunnerHost.service.propose('add', normalized);
+      const {keyRef:_k, tokenRef:_t, ...publicRecord}=remoteRunnerHost.service.confirm(drafted.proposalId, drafted.digest);
+      return {state:'confirmed', record:publicRecord};
+    }
+    const op=name==='runner.hosts.remove'?'remove':name==='runner.hosts.disable'?'disable':'enable';
+    const drafted=remoteRunnerHost.service.propose(op, {id:payload?.id});
     return remoteRunnerHost.service.confirm(drafted.proposalId, drafted.digest);
   }
   if(name==='asyncSubagents.list'||name==='asyncSubagents.instruct'||name==='asyncSubagents.stop'||name==='asyncSubagents.pause'||name==='asyncSubagents.resume'||name==='asyncSubagents.redirect'||name==='asyncSubagents.handoff'||name==='asyncSubagents.emergencyStop'){

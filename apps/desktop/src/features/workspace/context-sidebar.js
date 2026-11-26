@@ -20,14 +20,35 @@ export function mountContextSidebar(side, hero, board, invoke) {
   }
   const computer = document.createElement('section');
   computer.className = 'cc-computer';
-  computer.innerHTML = '<header><h2>电脑</h2></header><details><summary><strong>VPS 电脑</strong><small role="status">读取主机中…</small></summary><div data-runner-controls><button type="button" data-refresh>刷新主机</button></div></details>';
+  computer.innerHTML = '<div class="cc-computer-header"><h2>电脑</h2><div class="cc-computer-quickbar"><button type="button" class="cc-quick-btn" data-quick-computer="settings">电脑/浏览器设置</button><button type="button" class="cc-quick-btn" data-quick-computer="probe">检测浏览器扩展</button></div></div><details><summary><strong>VPS 电脑</strong><small role="status">读取主机中…</small></summary><div data-runner-controls><button type="button" class="btn btn-sm" data-refresh>刷新主机</button></div></details>';
   const details = computer.querySelector('details');
   const status = computer.querySelector('small');
   const controls = computer.querySelector('[data-runner-controls]');
   const refreshButton = controls.querySelector('[data-refresh]');
+  const quickSettings = computer.querySelector('[data-quick-computer="settings"]');
+  const quickProbe = computer.querySelector('[data-quick-computer="probe"]');
   const heartbeat = document.createElement('p');
   heartbeat.setAttribute('role', 'status');
   controls.append(heartbeat);
+  quickSettings.onclick = () => { void invoke('admin.open', {page: 'computer'}).catch(() => {}); };
+  quickProbe.onclick = async () => {
+    if (disposed || quickProbe.disabled) return;
+    quickProbe.disabled = true;
+    heartbeat.textContent = '正在检测现有浏览器 OpenCLI 扩展...';
+    try {
+      const res = await invoke('computer.control.probeConnectedBrowser', {});
+      if (disposed) return;
+      const cc = res?.computerControl ?? res;
+      const connected = cc?.browser?.connected;
+      const ready = connected?.extension?.connected === true || connected?.extension?.available === true || connected?.available === true;
+      const reason = typeof connected?.reason === 'string' && connected.reason.trim() ? connected.reason.trim().slice(0, 140) : '';
+      heartbeat.textContent = ready ? '现有浏览器扩展已连通' : (reason ? `现有浏览器扩展未连通：${reason}` : '现有浏览器扩展未连通');
+    } catch (error) {
+      if (!disposed) heartbeat.textContent = error?.message ? `检测失败：${String(error.message).slice(0, 140)}` : '检测失败';
+    } finally {
+      if (!disposed) quickProbe.disabled = false;
+    }
+  };
   let hosts = [], disposed = false, hostsRead;
   function readHosts() {
     if (!hostsRead) hostsRead = invoke('runner.hosts.list', {}).finally(() => { hostsRead = undefined; });
@@ -49,11 +70,18 @@ export function mountContextSidebar(side, hero, board, invoke) {
         heartbeat.textContent = result?.hostId === payload.id && result.state === 'succeeded' && Number.isFinite(at)
           ? name + ' · ' + new Date(at).toLocaleTimeString() + ' 收到心跳'
           : name + ' · 未收到有效心跳';
+      } else if (action === 'runner.hosts.vpsStatus') {
+        const summary = result?.receipt?.summary;
+        heartbeat.textContent = typeof summary === 'string' && summary
+          ? summary.slice(0, 180)
+          : `${result?.hostName ?? 'VPS'} · 状态：${result?.state ?? 'unknown'}`;
       }
       return result;
     } catch (error) {
+      const reason = typeof error?.message === 'string' ? error.message.trim().slice(0, 160) : '';
       if (!disposed && action === 'runner.hosts.list') status.textContent = '主机列表读取失败';
-      if (!disposed && action === 'runner.hosts.test') heartbeat.textContent = '连接测试失败';
+      if (!disposed && action === 'runner.hosts.test') heartbeat.textContent = reason ? `连接测试失败：${reason}` : '连接测试失败';
+      if (!disposed && action === 'runner.hosts.vpsStatus') heartbeat.textContent = reason ? `云电脑状态查询失败：${reason}` : '云电脑状态查询失败';
       throw error;
     }
   }

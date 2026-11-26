@@ -55,6 +55,21 @@ function safeFailure(error,stage) {
 }
 const sha=value=>createHash('sha256').update(value).digest('hex');
 
+export const FAKE_IP_DIAGNOSTIC='检测到域名被本机代理软件解析为 Fake-IP（198.18.x.x），安全边界拒绝访问；请关闭代理软件的 TUN / Fake-IP 模式（或改用 Redir-Host / 系统代理模式）后重试';
+
+export function isFakeIpAddress(address) {
+  let value=String(address??'').toLowerCase().replace(/^\[|\]$/g,'');
+  if(value.startsWith('::ffff:')) {
+    const tail=value.slice(7);
+    if(tail.includes('.'))value=tail;
+    else {const parts=tail.split(':');if(parts.length!==2)return false;
+      value=[parseInt(parts[0],16)>>8,parseInt(parts[0],16)&255,parseInt(parts[1],16)>>8,parseInt(parts[1],16)&255].join('.');}
+  }
+  if(isIP(value)!==4)return false;
+  const [a,b]=value.split('.').map(Number);
+  return a===198&&(b===18||b===19);
+}
+
 // Conservatively reject special-use address space, including IPv4-mapped IPv6.
 export function isPublicBrowserAddress(address) {
   let value=address.toLowerCase().replace(/^\[|\]$/g,'');
@@ -77,7 +92,7 @@ export function isPublicBrowserAddress(address) {
 
 /** Public network admission is rechecked for every redirect and subresource.
  * testOnlyAllowedOrigins is a trusted, exact-origin seam requiring explicit driver injection. */
-export async function assertPublicBrowserUrl(input,{dnsLookup=lookup,testOnlyAllowedOrigins=[]}={}) {
+export async function assertPublicBrowserUrl(input,{dnsLookup=lookup,testOnlyAllowedOrigins=[],allowFakeIpProxy=false}={}) {
   let url;try{url=new URL(input);}catch{fail('INVALID_ARGUMENT','请指定完整的公共 HTTP(S) 地址');}
   if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.href.length>4096)fail('UNAUTHORIZED','浏览器仅支持无内嵌凭据的公共 HTTP(S) 页面');
   if(testOnlyAllowedOrigins.includes(url.origin))return url;
@@ -87,7 +102,9 @@ export async function assertPublicBrowserUrl(input,{dnsLookup=lookup,testOnlyAll
   const addresses=isIP(host)?[{address:host}]:await dnsLookup(host,{all:true,verbatim:true}).catch(error=>{
     const failure=safeFailure(error,'resolve');fail(failure.code,'公共地址解析失败：'+failure.message);
   });
-  if(!addresses.length||addresses.some(item=>!isPublicBrowserAddress(item.address)))fail('UNAUTHORIZED','来源解析到了非公共网络');
+  const allowedAddress=address=>isPublicBrowserAddress(address)||(allowFakeIpProxy&&!isIP(host)&&isFakeIpAddress(address));
+  if(!addresses.length||addresses.some(item=>!allowedAddress(item.address)))
+    fail('UNAUTHORIZED',addresses.some(item=>isFakeIpAddress(item.address))?FAKE_IP_DIAGNOSTIC:'来源解析到了非公共网络');
   return url;
 }
 
@@ -98,7 +115,7 @@ function cleanHeaders(headers) {
 }
 /** Authenticated loopback egress only. Destination IPs are checked and pinned to the
  * actual TCP dial; HTTPS CONNECT remains end-to-end TLS, never a local MITM. */
-export async function createBrowserEgressProxy({dnsLookup=lookup,testOnlyAllowedOrigins=[],authorize=()=>true,onResponseBytes=()=>{},
+export async function createBrowserEgressProxy({dnsLookup=lookup,testOnlyAllowedOrigins=[],allowFakeIpProxy=false,authorize=()=>true,onResponseBytes=()=>{},
   connect=netConnect}={}) {
   const username=randomBytes(24).toString('hex'),password=randomBytes(32).toString('hex');
   const expected=Buffer.from('Basic '+Buffer.from(username+':'+password).toString('base64')),sockets=new Set();
@@ -109,7 +126,7 @@ export async function createBrowserEgressProxy({dnsLookup=lookup,testOnlyAllowed
     try{onResponseBytes(url,chunk.length);done(null,chunk);}catch(error){done(error);}}});guard.on('error',onFailure);return guard;};
   async function destination(input) {
     if(closed)fail('CANCELLED');
-    const url=await assertPublicBrowserUrl(input,{dnsLookup,testOnlyAllowedOrigins});
+    const url=await assertPublicBrowserUrl(input,{dnsLookup,testOnlyAllowedOrigins,allowFakeIpProxy});
     const port=Number(url.port||(url.protocol==='https:'?443:80));
     if(![80,443].includes(port)&&!testOnlyAllowedOrigins.includes(url.origin))fail('UNAUTHORIZED');
     if(!await authorize(url))fail('UNAUTHORIZED');
@@ -117,9 +134,11 @@ export async function createBrowserEgressProxy({dnsLookup=lookup,testOnlyAllowed
     // A second lookup is deliberate: the result immediately used by net.connect is
     // independently checked, even when the prior admission saw a public answer.
     const addresses=isIP(host)?[{address:host}]:await dnsLookup(host,{all:true,verbatim:true});
-    if(!addresses.length||!testOnlyAllowedOrigins.includes(url.origin)&&addresses.some(item=>!isPublicBrowserAddress(item.address)))fail('UNAUTHORIZED');
+    const allowedAddress=address=>isPublicBrowserAddress(address)||(allowFakeIpProxy&&!isIP(host)&&isFakeIpAddress(address));
+    if(!addresses.length||!testOnlyAllowedOrigins.includes(url.origin)&&addresses.some(item=>!allowedAddress(item.address)))fail('UNAUTHORIZED');
     if(closed)fail('CANCELLED');
-    return {url,port,address:addresses[0].address};
+    const chosen=addresses.find(item=>isIP(item.address)===4)??addresses[0];
+    return {url,port,address:chosen.address};
   }
   const server=createServer(async(request,response)=>{
     if(!authenticated(request)){response.writeHead(407,{'proxy-authenticate':'Basic realm="controlled-browser"'});response.end();return;}
@@ -162,7 +181,7 @@ export async function createBrowserEgressProxy({dnsLookup=lookup,testOnlyAllowed
 /** One library driver behind the original Runtime/Policy/Gateway. No agent loop, JS tool,
  * CDP endpoint, imported browser profile, or second task/authorization store. */
 export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,authorizePresence,attempts,onUpdate=()=>{},now=Date.now,
-  playwright:injectedPlaywright,dnsLookup=lookup,testOnlyAllowedOrigins=[],downloadDirectory,maxDownloadBytes=10_485_760,
+  playwright:injectedPlaywright,dnsLookup=lookup,testOnlyAllowedOrigins=[],allowFakeIpProxy=false,downloadDirectory,maxDownloadBytes=10_485_760,
   authorizeWorkflowTarget}={}) {
   if(typeof userDataPath!=='string'||!path.isAbsolute(userDataPath)||typeof authorizePresence!=='function'
     ||testOnlyAllowedOrigins.length&&!injectedPlaywright)fail('INVALID_ARGUMENT','浏览器需要可信宿主路径、权限端口及明确测试配置');
@@ -183,7 +202,7 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     if(!Number.isFinite(Date.parse(scope.deadline))||now()>=Date.parse(scope.deadline))fail('TIMEOUT');
     if(blocked)fail('RESULT_UNKNOWN','原浏览器动作结果未知；先核实原任务，不会自动重放');
   }
-  const networkOptions={dnsLookup,testOnlyAllowedOrigins:testOrigins};
+  const networkOptions={dnsLookup,testOnlyAllowedOrigins:testOrigins,allowFakeIpProxy:Boolean(allowFakeIpProxy)};
   function original(scope,args,toolName) {
     active(scope);
     if(!application?.runtime||!scope.authorizationRef||!scope.scopes?.includes(SCOPE)||!scope.runId
@@ -309,7 +328,11 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     const edgeAvailable=process.platform==='win32'&&[
       path.join(process.env['ProgramFiles(x86)']??'C:/Program Files (x86)','Microsoft/Edge/Application/msedge.exe'),
       path.join(process.env.ProgramFiles??'C:/Program Files','Microsoft/Edge/Application/msedge.exe')].some(file=>existsSync(file));
-    const channel=!injectedPlaywright&&!existsSync(lib.chromium.executablePath())&&edgeAvailable?'msedge':undefined;
+    const chromeAvailable=process.platform==='win32'&&[
+      path.join(process.env.ProgramFiles??'C:/Program Files','Google/Chrome/Application/chrome.exe'),
+      path.join(process.env['ProgramFiles(x86)']??'C:/Program Files (x86)','Google/Chrome/Application/chrome.exe'),
+      ...(process.env.LOCALAPPDATA?[path.join(process.env.LOCALAPPDATA,'Google/Chrome/Application/chrome.exe')]:[])].some(file=>existsSync(file));
+    const channel=!injectedPlaywright&&!existsSync(lib.chromium.executablePath())?(edgeAvailable?'msedge':chromeAvailable?'chrome':undefined):undefined;
     egress=await createBrowserEgressProxy({...networkOptions,authorize:url=>{if(!activeOperation)return false;active(activeOperation.scope);
       return !activeOperation.downloadOrigin||url.origin===activeOperation.downloadOrigin;},onResponseBytes:(url,size)=>{
       const pending=expectedDownload;if(!pending)return;
@@ -331,15 +354,20 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     context=launched;
     try {
     await context.route('**/*',async route=>{
-      const request=route.request();
+      const request=route.request(),operation=activeOperation;
+      let mainNavigation=false;
+      try{mainNavigation=request.isNavigationRequest()&&request.frame()===page?.mainFrame();}catch{}
       try {
-        const url=await assertPublicBrowserUrl(request.url(),networkOptions),operation=activeOperation;
+        const url=await assertPublicBrowserUrl(request.url(),networkOptions);
         if(!operation)fail('UNAUTHORIZED');active(operation.scope);
         if(operation.downloadOrigin&&url.origin!==operation.downloadOrigin)fail('UNAUTHORIZED','下载不允许扩大到其他来源');
-        if(request.isNavigationRequest()&&request.frame()===page?.mainFrame())
-          await permit(operation.scope,operation.args,operation.toolName,url.origin);
+        if(mainNavigation)await permit(operation.scope,operation.args,operation.toolName,url.origin);
         active(operation.scope);await route.continue();
-      }catch(error){networkError=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';await route.abort('blockedbyclient').catch(()=>{});}
+      }catch(error){
+        if(mainNavigation||Boolean(operation?.downloadOrigin)||(error instanceof ProtocolError&&error.code==='UNAUTHORIZED'))
+          networkError=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
+        await route.abort('blockedbyclient').catch(()=>{});
+      }
     });
     // Browser socket connections bypass HTTP routing. Keep them disabled until an equally
     // scoped transport adapter is explicitly implemented; service workers are blocked too.
