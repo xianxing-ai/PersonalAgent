@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
-import {detectSecretsInArguments,detectSecretsInText,operationContentConfirmation,operationSummary,requiresContentConfirmation,taskOperationBinding} from './authorization-operation-policy.js';
+import {operationContentConfirmation,operationSummary,requiresContentConfirmation,taskOperationBinding} from './authorization-operation-policy.js';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','原操作的精确授权已失效，未执行或发送新的资料');};
@@ -25,9 +25,6 @@ const questionFailureReasons=Object.freeze({
   '原操作的精确授权已失效，未执行或发送新的资料':'original_scope_changed',
   '不允许自动扩大为完全访问':'sandbox_escalation_denied',
   '授权决定期限已过':'decision_deadline_expired',
-  '检测到操作参数中包含疑似密钥、口令或凭据信息，已阻止执行':'credential_in_arguments',
-  '检测到操作内容中包含疑似密钥或凭据信息，已阻止自动放行':'secret_in_prepared_content',
-  '无法安全校验本次操作参数，未获允许':'unsafe_arguments',
 });
 
 /** Enforce declared fields recursively even when an old descriptor permits arbitrary keys. */
@@ -52,7 +49,7 @@ function boundedProjection(schema,value,depth=0) {
 
 /** Trusted Main adapter. Never receives a profile, task binding or requirement from Renderer. */
 export function createDesktopAuthorizationQuestionHost({createQuestions,getApplication,namespace,resolveConversation,
-  available,onUpdate=()=>{},profiles,defaultProfileRef,resolveProfile,describeExecution,canAutoApprove,now=Date.now}) {
+  available,onUpdate=()=>{},profiles,defaultProfileRef,resolveProfile,describeExecution,now=Date.now}) {
   const preparations=new Map(),operations=new Map(),owners=new Map(),batchDerivations=new Map(),projections=new Map();let application,questions,closed=false;
   function stateStore(){
     const current=getApplication();if(closed||!current?.runtime)denied();
@@ -113,7 +110,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       questions?.close();application=current;
       const store=wrapStateStore(current.runtime.bindTrustedHostState('desktop-authorization:'+digest(namespace)));
       questions=createQuestions({store,profiles,
-        defaultProfileRef,now,available,onChange:onUpdate,resolveProfile,describeExecution,canAutoApprove,
+        defaultProfileRef,now,available,onChange:onUpdate,resolveProfile,describeExecution,
         readBinding:request=>{
           const original=current.readAuthorizationQuestionBinding(request);
           if(!original||getApplication()!==current)return undefined;
@@ -144,75 +141,38 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       ||value.deadline!==scope.deadline)denied();
     return {...value,signal:scope.signal};
   }
-  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline,contentConfirmation,forceAsk}={}) {
+  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline,contentConfirmation}={}) {
     const source=original(scope),identity=key(source),prior=preparations.get(identity);
     if(operations.has(identity))denied();
     const requested=structuredClone(requirements);
     if(prior&&prior.argumentsDigest!==source.argumentsDigest)denied();
     if(prior?.taskConsent&&taskConsent&&!same(prior.taskConsent,taskConsent))denied();
-    if(forceAsk!==undefined&&typeof forceAsk!=='boolean')denied();
-    if(prior?.forceAsk!==undefined&&forceAsk!==undefined&&prior.forceAsk!==forceAsk)denied();
     if(contentConfirmation&&(typeof contentConfirmation.text!=='string'||!contentConfirmation.text||contentConfirmation.text.length>950_000
       ||contentConfirmation.digest!==digest(contentConfirmation.text)||prior?.contentConfirmation&&!same(prior.contentConfirmation,contentConfirmation)))denied();
     if(decisionDeadline!==undefined&&(!Number.isFinite(Date.parse(decisionDeadline))||Date.parse(decisionDeadline)>Date.parse(source.deadline)))denied();
     const merged=new Map((prior?.requirements??[]).map(item=>[item.requirementId,item]));
     for(const requirement of requested){const old=merged.get(requirement.requirementId);if(old&&!same(old,requirement))denied();merged.set(requirement.requirementId,requirement);}
-    const mergedForceAsk=forceAsk??prior?.forceAsk;
     preparations.set(identity,{...requestFields(source),requirements:[...merged.values()],
       ...((taskConsent??prior?.taskConsent)?{taskConsent:structuredClone(taskConsent??prior.taskConsent)}:{}),
       ...((contentConfirmation??prior?.contentConfirmation)?{contentConfirmation:structuredClone(contentConfirmation??prior.contentConfirmation)}:{}),
-      ...(mergedForceAsk===true?{forceAsk:true}:{}),
       decisionDeadline:new Date(Math.min(Date.parse(source.deadline),Date.parse(decisionDeadline??source.deadline),
         Date.parse(prior?.decisionDeadline??source.deadline))).toISOString(),
       assertCurrent:()=>assertCurrent()&&(prior?.assertCurrent?.()??true)});
   }
-  function isFullAccessAutoContent() {
-    const selected=service().sandboxSnapshot().selected;
-    return selected.mode==='full-access'
-      &&profiles?.some(profile=>(selected.ref?profile.ref===selected.ref:profile.label===selected.label)&&profile.fullAccessAutoContent===true)===true;
-  }
-  function collectSecretDetection(source,prepared,requireValidArgs) {
-    const categories=new Set(),fingerprints=new Set();
-    const fromArgs=detectSecretsInArguments(source,{requireValidArgs});
-    if(fromArgs){
-      for(const item of fromArgs.categories)categories.add(item);
-      for(const fp of fromArgs.fingerprints)fingerprints.add(fp);
-    }
-    const fromPrepared=prepared?.contentConfirmation?detectSecretsInText(prepared.contentConfirmation.text):undefined;
-    if(fromPrepared){
-      for(const item of fromPrepared.categories)categories.add(item);
-      for(const fp of fromPrepared.fingerprints)fingerprints.add(fp);
-    }
-    return fingerprints.size?{categories:[...categories],fingerprints:[...fingerprints].sort()}:undefined;
-  }
   function buildRequest(source,prepared){
-    const autoFullContent=isFullAccessAutoContent();
-    const secrets=collectSecretDetection(source,prepared,autoFullContent);
-    const forceAsk=Boolean(secrets)||prepared?.forceAsk===true;
-    let contentConfirmation;
-    if(!forceAsk&&!autoFullContent)contentConfirmation=operationContentConfirmation(source);
-    const extraRequirements=prepared?.requirements??[];
-    const hasReusableExtra=extraRequirements.some(item=>item.requirementId!=='tool'&&item.ruleBindingDigest);
-    const hasNonReusableExtra=extraRequirements.some(item=>item.requirementId!=='tool'&&!item.ruleBindingDigest);
-    const canBindRule=!contentConfirmation&&!hasNonReusableExtra&&(Boolean(secrets)||hasReusableExtra||source.sideEffect!=='external_write');
-    const summary=secrets
-      ?`检测到疑似凭据信息（${secrets.categories.join('、')}）：${operationSummary(source)}（确认后可加入白名单）`
-      :operationSummary(source);
+    const contentConfirmation=operationContentConfirmation(source);
     const tool={requirementId:'tool',kind:'tool',scopes:[...source.scopes],bindingDigest:digest({taskId:source.taskId,runId:source.runId,
       toolName:source.toolName,toolVersion:source.toolVersion,argumentsDigest:source.argumentsDigest,deadline:source.deadline}),
-      ...(canBindRule
-        ?{ruleBindingDigest:digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort(),
-            ...(secrets?{secretFingerprints:secrets.fingerprints}:{})}),
-          ...(!secrets&&!forceAsk?{taskBindingDigest:taskOperationBinding(source)}:{})}:{}),
-      summary};
+      ...((prepared?.requirements??[]).some(item=>item.requirementId!=='tool'&&item.ruleBindingDigest)
+        ?{ruleBindingDigest:digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort()}),
+          taskBindingDigest:taskOperationBinding(source)}:{}),
+      summary:operationSummary(source)};
     return {...requestFields(source),...(contentConfirmation?{contentConfirmation}:{}),
-      ...(forceAsk?{forceAsk:true}:{}),
-      ...(prepared?.taskConsent&&!forceAsk?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
-      requirements:[tool,...extraRequirements.filter(item=>item.requirementId!=='tool')]};
+      ...(prepared?.taskConsent?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
+      requirements:[tool,...(prepared?.requirements??[]).filter(item=>item.requirementId!=='tool')]};
   }
   function withPreparedContent(request,prepared){
     if(!prepared?.contentConfirmation)return request;
-    if(request.forceAsk||isFullAccessAutoContent())return request;
     const text=[request.contentConfirmation?.text,prepared.contentConfirmation.text].filter(Boolean).join('\n\n');
     if(text.length>1_000_000)denied();
     return {...request,contentConfirmation:{digest:digest(text),text}};
