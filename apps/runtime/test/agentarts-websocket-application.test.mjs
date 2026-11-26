@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, readFile, rm} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
@@ -18,7 +20,7 @@ async function waitState(app, taskId, states) {
 }
 function factory(path, respond, extras = {}) {
   const sockets = [], fetches = [], states = [];
-  const app = createAgentArtsRuntimeApplication({...target, path,
+  const app = createSyntheticAgentArtsRuntimeApplication({...target, path,
     authorizationProvider: {read: async () => 'Bearer synthetic-outer'},
     websocketAuthorizationProvider: {read: async () => 'Bearer synthetic-app'},
     websocketFactory: () => { const socket = new SyntheticWebSocket(respond); sockets.push(socket); return socket; },
@@ -42,7 +44,7 @@ function syntheticToolOptions(execute) {
 }
 
 test('trusted Runtime runs WSS as Competition, clears its send intent, and disposes reusable sessions', async () => {
-  let application;
+  let application;const usage=[];
   const h = factory(':memory:', (frame, socket) => {
     if (frame.type !== 'invoke') return;
     const taskId = application.runtime.listTasks({}).items[0].taskId;
@@ -50,8 +52,8 @@ test('trusted Runtime runs WSS as Competition, clears its send intent, and dispo
     assert.equal(intent.requestId, frame.requestId);
     assert.equal(intent.payloadDigest, frame.payloadDigest);
     assert.equal('payload' in intent, false);
-    socket.accepted(frame); socket.result(frame, 'Synthetic WSS analysis');
-  });
+    socket.accepted(frame); socket.result(frame, syntheticAgentArtsResult(frame.payload,'Synthetic WSS analysis'));
+  },{onWebSocketCloudRun:info=>usage.push(info)});
   application = h.app;
   const saveCheckpoint = h.app.runtime.saveCheckpoint.bind(h.app.runtime);
   let received = 0;
@@ -79,6 +81,9 @@ test('trusted Runtime runs WSS as Competition, clears its send intent, and dispo
     assert.equal(h.app.runtime.loadCheckpoint(taskId, 'competition-cloud-received'), null);
     assert.equal(received, 1);
     assert.equal(h.fetches.length, 0); assert.deepEqual(task.evidenceRefs, []);
+    assert.deepEqual(usage.map(({taskId,requestId,origin})=>({taskId,requestId,origin})),
+      [{taskId,requestId:h.sockets[0].sent.find(frame=>frame.type==='invoke').requestId,origin:'user'}]);
+    assert.ok(Number.isSafeInteger(usage[0].durationMs)&&usage[0].durationMs>0);
   } finally { h.app.close(); }
   assert.equal(h.sockets[0].terminations, 1);
 });
@@ -88,7 +93,7 @@ test('parsed proposals are committed before intent clears and confirmed continua
   const h = factory(':memory:', (frame, socket) => {
     if (frame.type !== 'invoke') return;
     invocations++; socket.accepted(frame);
-    socket.result(frame, JSON.stringify(invocations === 1 ? syntheticProposal : {kind: 'text', text: 'Synthetic continuation consumed'}));
+    socket.result(frame, syntheticAgentArtsResult(frame.payload,invocations === 1 ? syntheticProposal : {kind: 'text', text: 'Synthetic continuation consumed'}));
   }, syntheticToolOptions(async () => { executions++; return {value: 'synthetic local value'}; }));
   const saveCheckpoint = h.app.runtime.saveCheckpoint.bind(h.app.runtime);
   h.app.runtime.saveCheckpoint = (taskId, key, value) => {
@@ -129,7 +134,7 @@ test('a valid wire terminal with an invalid application result retains its send 
     const h = factory(':memory:', (frame, socket) => {
       if (frame.type !== 'invoke') return;
       invocations++; socket.accepted(frame);
-      socket.result(frame, JSON.stringify(continuation && invocations === 1 ? syntheticProposal
+      socket.result(frame, syntheticAgentArtsResult(frame.payload,continuation && invocations === 1 ? syntheticProposal
         : {kind: 'text', text: privateMarker, verification: 'verified'}));
     }, syntheticToolOptions(async () => { executions++; return {value: 'synthetic local value'}; }));
     try {
@@ -162,16 +167,18 @@ const terminalCrashProgram = `
 import {writeFileSync} from 'node:fs';
 import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication} from ${JSON.stringify(new URL('../dist/application.js', import.meta.url).href)};
+import {syntheticAgentArtsOptions,syntheticAgentArtsResult} from ${JSON.stringify(new URL('../../../tests/helpers/synthetic-agentarts.mjs', import.meta.url).href)};
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import {SyntheticWebSocket} from ${JSON.stringify(new URL('../../../packages/coordination/test/fixtures/websocket.mjs', import.meta.url).href)};
 const [path, roundText] = process.argv.slice(1), crashRound = Number(roundText);
 const proposal = ${JSON.stringify(syntheticProposal)}, descriptor = ${JSON.stringify(syntheticDescriptor)};
 let invocations = 0, executions = 0, received = 0;
-const app = createAgentArtsRuntimeApplication({...${JSON.stringify(target)}, path,
+const app = createSyntheticAgentArtsRuntimeApplication({...${JSON.stringify(target)}, path,
   authorizationProvider: {read: async () => 'Bearer synthetic'}, responseMode: 'tool-proposal-json',
   websocketFactory: () => new SyntheticWebSocket((frame, socket) => {
     if (frame.type !== 'invoke') return;
     invocations++; socket.accepted(frame);
-    socket.result(frame, JSON.stringify(crashRound === 2 && invocations === 1 ? proposal
+    socket.result(frame, syntheticAgentArtsResult(frame.payload,crashRound === 2 && invocations === 1 ? proposal
       : {kind: 'text', text: 'Synthetic terminal not yet consumed'}));
   }), fetchImpl: async () => { throw Error('Unexpected fallback'); },
   competitionToolExports: [{toolName: proposal.toolName, toolVersion: proposal.toolVersion,
@@ -288,9 +295,10 @@ test('post-send disconnect enters waiting_reconciliation and persists only corre
 });
 
 test('cancelling after WSS dispatch keeps the unresolved invocation in reconciliation', async () => {
+  const usage=[];
   const h = factory(':memory:', (frame, socket) => {
     if (frame.type === 'invoke') socket.accepted(frame);
-  });
+  },{onWebSocketCloudRun:info=>usage.push(info)});
   try {
     const client = new Client(h.app); await client.connect();
     const {taskId} = await client.call('task.submit', {goal: 'Synthetic cancelled invocation', conversationId: 'wss'},
@@ -312,7 +320,27 @@ test('cancelling after WSS dispatch keeps the unresolved invocation in reconcili
     assert.equal(h.fetches.length, 0);
     for (let i = 0; i < 200 && h.app.activeTaskCount; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.equal(h.app.activeTaskCount, 0);
+    assert.equal(usage.length,1);
+    assert.equal(usage[0].requestId,unknown.requestId);
   } finally { h.app.close(); }
+});
+
+test('an over-budget trusted schedule never sends a WSS frame or records WSS duration', async()=>{
+  const usage=[];let app;
+  const h=factory(':memory:',()=>assert.fail('No frame expected'),{
+    beforeCompetitionSend:request=>{
+      if(app.readTaskUsageOrigin(request.taskId)==='autonomous')throw Error('Budget exhausted');
+    },
+    onWebSocketCloudRun:info=>usage.push(info),
+  });
+  app=h.app;
+  try{
+    const task=app.submitScheduledTextTask({goal:'Scheduled check',conversationId:'desktop-panel:budget',idempotencyKey:'wss-budget'},
+      new Date(Date.now()+30_000).toISOString());
+    assert.equal((await waitState(app,task.taskId,['failed','succeeded'])).state,'failed');
+    assert.equal(h.sockets.flatMap(socket=>socket.sent).filter(frame=>frame.type==='invoke').length,0);
+    assert.deepEqual(usage,[]);
+  }finally{app.close();}
 });
 
 test('a confirmed local tool receipt cannot resend an unknown cloud continuation, including an interrupted-send intent', async t => {
@@ -323,7 +351,7 @@ test('a confirmed local tool receipt cannot resend an unknown cloud continuation
   const h = factory(':memory:', (frame, socket) => {
     if (frame.type !== 'invoke') return;
     invocations++; socket.accepted(frame);
-    if (invocations === 1) socket.result(frame, JSON.stringify(proposal));
+    if (invocations === 1) socket.result(frame, syntheticAgentArtsResult(frame.payload,proposal));
     else socket.disconnect();
   }, {responseMode: 'tool-proposal-json',
     ...(inputHooks ? {coordinationInput: {beforeCoordinationSend: () => {}}} : {}),
@@ -363,7 +391,7 @@ test('a confirmed local tool receipt cannot resend an unknown cloud continuation
 
 test('HTTPS fallback delivery ambiguity uses the same durable unknown guard instead of reopening the loop', async () => {
   const sockets = [], fetches = [];
-  const app = createAgentArtsRuntimeApplication({...target, path: ':memory:',
+  const app = createSyntheticAgentArtsRuntimeApplication({...target, path: ':memory:',
     authorizationProvider: {read: async () => 'Bearer synthetic'},
     websocketFactory: () => {
       const socket = new SyntheticWebSocket(undefined, {autoReady: false}); sockets.push(socket);
@@ -406,14 +434,14 @@ test('refused close preserves an accepted active WSS task and its original resul
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(h.app.runtime.getTask(taskId).state, 'running');
     assert.equal(h.app.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown'), undefined);
-    originalSocket.result(originalFrame, 'Original accepted task completed');
+    originalSocket.result(originalFrame, syntheticAgentArtsResult(originalFrame.payload,'Original accepted task completed'));
     const task = await waitState(h.app, taskId, ['succeeded', 'failed', 'waiting_reconciliation']);
     assert.equal(task.state, 'succeeded');
     assert.match(task.resultSummary, /Original accepted task completed/);
     assert.equal(h.app.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight'), null);
     assert.equal(h.fetches.length, 0);
   } finally {
-    if (originalFrame && originalSocket.terminations === 0) originalSocket.result(originalFrame, 'Cleanup original result');
+    if (originalFrame && originalSocket.terminations === 0) originalSocket.result(originalFrame, syntheticAgentArtsResult(originalFrame.payload,'Cleanup original result'));
     if (taskId) await waitState(h.app, taskId, ['succeeded', 'failed', 'waiting_reconciliation']);
     h.app.close();
   }

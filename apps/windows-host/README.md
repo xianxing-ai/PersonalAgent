@@ -28,7 +28,7 @@
 
 传入 `ConfirmedNotepadTarget` **不代表**授权证据。Host 已加入单进程互斥、持久 runId 记录及重启状态查询。正式调用方复用 `prepareHostToolTask → observe → finalizeHostToolTask → authorization.respond → Policy/ToolGateway`；F9 只确认当前明确文本和新独立空白窗口，不能形成持续授权。窗口基线不完整时 Host 拒绝该会话观察，不会在查询恢复后选择此前遗漏的旧窗口。上述生产接线已存在，正式 Desktop/原生目标/Evidence 的实机验收仍未完成。UIA `ValuePattern` 和标签结构并不适用于所有版本记事本；多控件、元数据查询异常或不可访问控件均拒绝。离线 .NET 编译和死句柄 fixture 仅验证代码结构与失效拦截逻辑，不能证明真实现代记事本真实可写。读回只证明当前控件文本等于新值，不证明文件保存、模型提案或完整任务完成。`GetLastInputInfo` 与前台窗口检查不能捕获所有并发接管，实机仍需有意插入输入/窗口切换验证。
 
-构建要求 Windows 及 .NET 8 Windows Desktop SDK：`dotnet build apps/windows-host/WindowsHost.csproj`。Linux 环境没有 .NET SDK，不能执行或声称构建与 UIA 实测。详情及手工验收见 [模块记录](../../docs/modules/MOD-16-WINDOWS-EXECUTION-01.md)。
+构建要求 Windows 及 .NET 8 Windows Desktop SDK：`dotnet build apps/windows-host/WindowsHost.csproj`。Linux 环境没有 .NET SDK，不能执行或声称构建与 UIA 实测。先运行 `node packages/windows-client/scripts/check-native-platform.mjs`；它不启动宿主。详情、手工验收与本轮未跑项见 [模块记录](../../docs/modules/MOD-16-WINDOWS-EXECUTION-01.md) 与 [CW10 设备记录](../../docs/competition/evidence/CW10_VOICE_WINDOWS_DEVICE_20261103.md)。
 
 普通用户可从仓库根目录执行 `dotnet run --project apps/windows-host/manual/ManualNotepadProbe.csproj` 进行一次手工探测。程序创建随机合成临时文本文件，启动 System32 `notepad.exe`，启动前快照已有 Notepad 顶层 HWND/PID/启动时间；之后只接受全局唯一、身份可信且新增的可见顶层 HWND（可属于既有 PID），从不选择旧 HWND 的新标签。不读取既有私人标签、窗口标题或文本。零新增窗口、身份不可核及多个新增窗口分别拒绝。显示随机文本和 `CONFIRM` 提示前复用核心的 UIA 单标签检查，目标含多个标签或结构无法判清即拒绝。唯一新窗口仍须亲眼确认完整随机合成文本，输入 `CONFIRM` 后在五秒内手动切回。结果为 `Verified` 时还须目视确认，再关闭记事本且不保存。若新标签页落入旧 HWND、MSIX 未暴露唯一标签或不提供单一 ValuePattern，本探测拒绝，不能切到私人窗口重试。此程序不经过产品授权链，仅供测试，不能作为生产入口；探测并非 PA-016 的端到端验收。
 

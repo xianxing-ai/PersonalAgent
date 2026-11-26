@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
+import {retainedContextBoundary} from '@personal-agent/runtime/application';
 import {validateContextConfiguration} from './harness-configuration.js';
 
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','Original context summary permission or source is unavailable');};
@@ -76,12 +77,10 @@ export function createDesktopHarnessContextHost({readConfiguration,modelApi,getA
       assertConfiguration();compile(goal,prepared,[]);
       try{return compile(goal,prepared,messages);}catch(error){
         if(error?.code!=='INVALID_ARGUMENT')throw error;
-        let boundary=Math.max(0,messages.length-policy.retainMessages);
-        while(boundary>0&&boundary<messages.length&&messages[boundary]?.taskId
-          &&messages[boundary]?.taskId===messages[boundary-1]?.taskId)boundary--;
+        const boundary=retainedContextBoundary(messages,policy);
         if(!boundary)throw error;
         const tail=compile(goal,prepared,messages.slice(boundary));
-        if(tail.length>=policy.targetCharacters)throw error;
+        if(tail.length>policy.maxCharacters)throw error;
         // Actual summary text and final budget are checked by Runtime, after consent.
         return tail;
       }

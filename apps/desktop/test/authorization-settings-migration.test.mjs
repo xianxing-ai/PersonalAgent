@@ -36,6 +36,12 @@ test('Synthetic mail config saves credentials without a consent field and config
   assert.deepEqual(Object.keys(payload).sort(),['authCode','user']);assert.equal(payload.authCode,'','credential DTO is cleared after the host call');
   assert.equal(field('key').value,'');assert.equal(field('read').disabled,false,'all old consent false does not block starting the exact card challenge');
   await field('read').onclick();assert.equal(f.calls[1].name,'mail.read');
+  assert.equal(field('dashboardEnable').disabled,false);assert.equal(field('dashboardRevoke').disabled,true);
+  await field('dashboardEnable').onclick();
+  assert.deepEqual(f.calls[2],{name:'mail.dashboard.enable',input:{readConsent:true,scope:'personal-dashboard'}});
+  f.controls.render({configured:true,sessionAllowed:false,dashboardSessionAllowed:true,localModelReady:true,status:'disabled'});
+  assert.equal(field('dashboardEnable').disabled,true);assert.equal(field('dashboardRevoke').disabled,false);
+  await field('dashboardRevoke').onclick();assert.deepEqual(f.calls[3],{name:'mail.dashboard.revoke',input:undefined});
   f.controls.render({configured:false,localModelReady:true,status:'unconfigured'});assert.equal(field('read').disabled,true,'a card cannot replace missing credentials');
 });
 
@@ -64,4 +70,14 @@ test('Synthetic calendar retains credentials and read/cancel entry, with no sett
   f.controls.render({configured:true,readAvailable:true,readTask:{taskId:'original',state:'waiting_approval'}});
   assert.equal(field('read').disabled,true);assert.equal(field('cancel').disabled,false);
   await field('cancel').onclick();assert.equal(f.calls[2].name,'calendar.cancel');assert.equal(f.calls[2].input,'original');
+});
+
+test('Calendar controls support one-click Windows system calendar configuration without URL or password',async t=>{
+  const f=fixture(t,mountCalendarControls,{configured:false});
+  const field=name=>f.root.querySelector(`[data-calendar="${name}"]`);
+  assert.ok(field('use-system'));
+  await field('use-system').onclick();
+  assert.deepEqual(f.calls[0],{name:'calendar.configure',input:{providerKind:'windows-system',calendarName:'Windows 系统日历'}});
+  f.controls.render({configured:true,providerKind:'windows-system',calendarName:'Windows 系统日历',reason:'已保存'});
+  assert.match(field('status').textContent,/Windows 系统日历/);
 });

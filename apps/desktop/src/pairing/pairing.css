@@ -1,10 +1,65 @@
-body {font: 15px "Microsoft YaHei", sans-serif; padding: 18px; color: #20242a; background: #f7f8fa;}
-h1 {font-size: 22px; margin: 0 0 12px;} p {line-height: 1.6;} input {display: block; width: 95%; margin: 8px 0 12px; padding: 8px;}
-button {padding: 8px 16px; margin-right: 8px; cursor: pointer;}
-
 :root {color-scheme:light dark}
-body {color:light-dark(#20242a,#edf0f5);background:light-dark(#e9ebee,#111215)}
-form {padding:16px;border:1px solid light-dark(#d1d5db,#414248);border-radius:16px;background:light-dark(#fafbfc,#25262b);box-shadow:inset 0 1px 0 light-dark(#fff,#ffffff1a)}
-input,button {box-sizing:border-box;border:1px solid light-dark(#cbd0d7,#484a51);border-radius:9px;background:light-dark(#f3f4f6,#2c2d33);color:inherit}
-input:focus-visible,button:focus-visible {outline:2px solid light-dark(#526a88,#adc3e0);outline-offset:2px}
+body {
+  box-sizing:border-box;
+  max-width:560px;
+  margin:0 auto;
+  padding:24px 20px;
+  font:14px/1.6 "Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+  color:light-dark(#1d2229,#edf0f5);
+  background:light-dark(#e9ebee,#111215);
+}
+h1 {font-size:21px;font-weight:650;letter-spacing:-.015em;margin:0 0 10px}
+p {margin:0 0 14px;color:light-dark(#4f5866,#a3aab6);line-height:1.62}
+form {
+  padding:18px 20px;
+  border:1px solid light-dark(#d1d5db,#3b3d44);
+  border-radius:16px;
+  background:light-dark(#fafbfc,#1e2026);
+  box-shadow:inset 0 1px 0 light-dark(#fff,#ffffff14),0 10px 26px -18px #0005;
+}
+label {display:block;font-size:12px;font-weight:500;color:light-dark(#3b4350,#c0c6d0);margin-bottom:6px}
+input {
+  display:block;
+  box-sizing:border-box;
+  width:100%;
+  margin:0 0 14px;
+  padding:9px 11px;
+  border:1px solid light-dark(#cbd0d7,#464850);
+  border-radius:10px;
+  background:light-dark(#f3f4f6,#282a31);
+  color:inherit;
+  font:inherit;
+  transition:border-color .15s ease,background-color .15s ease;
+}
+input:hover {border-color:light-dark(#9aa3b0,#626673)}
+button {
+  box-sizing:border-box;
+  padding:8px 16px;
+  margin-right:8px;
+  border:1px solid light-dark(#cbd0d7,#464850);
+  border-radius:10px;
+  background:light-dark(#f3f4f6,#282a31);
+  color:inherit;
+  font:inherit;
+  cursor:pointer;
+  transition:background-color .15s ease,border-color .15s ease,transform .12s ease;
+}
+button[type="submit"] {
+  background:light-dark(#1f2937,#e5e7eb);
+  border-color:light-dark(#1f2937,#e5e7eb);
+  color:light-dark(#fff,#111215);
+  font-weight:500;
+}
+button:hover:not(:disabled) {
+  background:light-dark(#e5e7eb,#343740);
+  border-color:light-dark(#9aa3b0,#626673);
+}
+button[type="submit"]:hover:not(:disabled) {
+  background:light-dark(#111827,#ffffff);
+  border-color:light-dark(#111827,#ffffff);
+}
+button:active:not(:disabled) {transform:translateY(1px)}
+button:disabled {opacity:.48;cursor:default}
+input:focus-visible,button:focus-visible {outline:2px solid light-dark(#3b5b84,#adc3e0);outline-offset:2px}
+#status {margin-top:14px;font-size:12px}
 @media(forced-colors:active) {form {box-shadow:none;border:1px solid CanvasText}}

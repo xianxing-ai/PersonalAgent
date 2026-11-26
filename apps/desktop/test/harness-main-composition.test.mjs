@@ -12,6 +12,7 @@ const {createDesktopHarnessEventsHost}=await import(new URL('./harness-events-ho
 const {createDesktopProactiveWorkflowApplication}=await import(new URL('./proactive-workflow-host.js',mainUrl));
 const {createHarnessExperienceAdminHost}=await import(new URL('./harness-experience-host.js',mainUrl));
 const {withNativeReadbackScope}=await import(new URL('./native-readback-scope.js',mainUrl));
+const {createDesktopCloudPersistentHost}=await import(new URL('./cloud-persistent-host.js',mainUrl));
 const source=readFileSync(mainUrl,'utf8');
 const ast=ts.createSourceFile('main.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
 const declaration=name=>{const node=ast.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text===name);
@@ -28,6 +29,7 @@ test('actual Main constructs original workflow/event hosts without acquiring or 
   const application={runtime,coordinationConfigurationRef:'original-config',startProactiveTask(){dispatches++;assert.fail('No dispatch at construction');}};
   const context=vm.createContext({competitionMode:true,runtimeApplication:application,
     proactiveWorkflowApplication:undefined,proactiveSourceRouter:undefined,harnessEventsHost:undefined,
+    cloudPersistentWorkflowHost:undefined,remoteRunnerHost:undefined,createDesktopCloudPersistentHost,
     createDesktopProactiveWorkflowApplication(options){workflowOptions=options;
       const host=createDesktopProactiveWorkflowApplication({...options,createAdapter(){descriptions++;assert.fail('No describe at construction');}});
       const acquire=host.acquireMaintenance;host.acquireMaintenance=(...args)=>{acquisitions++;return acquire(...args);};return host;},
@@ -38,7 +40,8 @@ test('actual Main constructs original workflow/event hosts without acquiring or 
     readDesktopDeveloperHarnessConfiguration:()=>({workspaceRef:'original',configurationRef:revision}),
     readProactiveWorkflowConfiguration(){configurationReads++;return {contractRef:'original',adapter:{config:{deploymentVersion:revision}}};},
     conversationToolAccess:{resolveConversation:()=>undefined},notificationApplicationHost:undefined,
-    app:{isQuitting:false},publish(){},createDesktopProactiveContextPorts(){assert.fail('No context acquisition at construction');},
+    app:{isQuitting:false,getPath:name=>{assert.equal(name,'userData');return '.cache/cloud-host-construction-fixture';}},
+    publish(){},createDesktopProactiveContextPorts(){assert.fail('No context acquisition at construction');},
     proactiveHost:undefined,obsidianPairing:undefined,knowledgeSourceConfig:undefined,
     desktopHost:{userNamespace:'original-namespace'},modelApiHost:{readHarnessConfiguration:()=>({revision,enabled:true,events:{enabled:true,quiet:false}})},
     feedsHost:undefined});
@@ -46,6 +49,7 @@ test('actual Main constructs original workflow/event hosts without acquiring or 
   const readPersistedRuntimeProactiveWorkflow=()=>{assert.fail('No persisted workflow read at construction');};
   const readPersistedHarnessOriginalDelivery=()=>{assert.fail('No persisted delivery read at construction');};
   context.initializeHarnessEventPorts({readPersistedRuntimeProactiveWorkflow,readPersistedHarnessOriginalDelivery});
+  assert.ok(context.cloudPersistentWorkflowHost);
   assert.equal(configurationReads,0);assert.equal(acquisitions,0);assert.equal(descriptions,0);assert.equal(dispatches,0);
   assert.equal(workflowOptions.readConfiguration,eventOptions.readWorkflowConfiguration);
   assert.equal(eventOptions.readPersistedWorkflow,readPersistedRuntimeProactiveWorkflow);

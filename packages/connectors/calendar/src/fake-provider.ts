@@ -135,7 +135,17 @@ export class FakeCalendarProvider implements CalendarProvider {
       const endUtc = assertFakeUtc(input?.endUtc, 'endUtc');
       if (Date.parse(endUtc) <= Date.parse(startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
       const uid = input.uid === undefined ? `evt-fake-${++this.nextEventId}` : assertFakeUid(input.uid);
-      if (this.events.has(uid)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event UID already exists');
+      if (this.events.has(uid)) {
+        const existing = this.events.get(uid)!;
+        const loc = input.location === undefined ? '' : input.location.trim();
+        const nts = input.notes === undefined ? '' : input.notes.trim();
+        if (existing.title === summary && existing.startUtc === startUtc && existing.endUtc === endUtc
+          && (existing.location ?? '') === loc
+          && (existing.notes ?? '') === nts) {
+          return Promise.resolve(structuredClone(existing));
+        }
+        throw new ProtocolError('REVISION_CONFLICT', 'Calendar event UID already exists with different content');
+      }
       const record: CalendarEventRecord = {
         externalId: uid, calendarId: 'cal-fake', title: summary,
         startUtc, endUtc, timeZone: 'UTC',
@@ -150,6 +160,27 @@ export class FakeCalendarProvider implements CalendarProvider {
     updateEvent: (input: CalendarEventUpdateInput): Promise<CalendarEventRecord> => {
       const existing = this.events.get(input?.uid ?? '');
       if (existing === undefined) throw new ProtocolError('NOT_FOUND', `Calendar event ${input?.uid} not found`);
+      if (input.expectedSequence !== undefined) {
+        if (!Number.isSafeInteger(input.expectedSequence) || input.expectedSequence < 0) {
+          throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event expectedSequence must be a non-negative integer');
+        }
+        if (existing.sequence !== input.expectedSequence) {
+          throw new ProtocolError('REVISION_CONFLICT', `Calendar event ${existing.externalId} sequence changed (expected ${input.expectedSequence}, actual ${existing.sequence})`);
+        }
+      }
+      if (input.ifMatch !== undefined) {
+        const expectedEtag = `"${existing.externalId}:${existing.sequence}"`;
+        const seqEtag = `"${existing.sequence}"`;
+        const dedupeKey = `calendar:${existing.calendarId}:${existing.externalId}:${existing.sequence}`;
+        if (
+          input.ifMatch !== expectedEtag &&
+          input.ifMatch !== seqEtag &&
+          input.ifMatch !== String(existing.sequence) &&
+          input.ifMatch !== dedupeKey
+        ) {
+          throw new ProtocolError('REVISION_CONFLICT', `Calendar event ${existing.externalId} ETag mismatch`);
+        }
+      }
       const merged: CalendarEventRecord = {...existing};
       if (typeof input.summary === 'string' && input.summary.trim()) merged.title = input.summary.trim();
       if (input.startUtc !== undefined) merged.startUtc = assertFakeUtc(input.startUtc, 'startUtc');

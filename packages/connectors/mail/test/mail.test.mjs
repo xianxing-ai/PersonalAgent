@@ -18,12 +18,12 @@ import {ProtocolError, validateContract} from '@personal-agent/contracts';
 const NOW = Date.parse('2026-09-07T02:00:00.000Z');
 const ACCOUNT = 'qq-me';
 
-function syntheticQQ({searchResult,fetchUids=[],abortSearch}={}){
+function syntheticQQ({searchResult,fetchUids=[],abortSearch,expectedSearch={uid:'11:*'}}={}){
   let released=0,fetches=0,searches=0;
   const provider=new QQMailProvider({user:'synthetic@qq.com',authCode:'SyntheticOnly'});
   provider.connect=async()=>({mailbox:{uidValidity:123,exists:5000},
     async getMailboxLock(){return{release(){released++;}};},
-    async search(query,options){searches++;assert.deepEqual(query,{uid:'11:*'});assert.deepEqual(options,{uid:true});abortSearch?.();return searchResult;},
+    async search(query,options){searches++;assert.deepEqual(query,expectedSearch);assert.deepEqual(options,{uid:true});abortSearch?.();return searchResult;},
     async *fetch(uids,query,options){fetches++;assert.deepEqual(uids,[11,12]);assert.equal(options.uid,true);
       for(const uid of fetchUids)yield{uid,envelope:{subject:'Synthetic public header'},flags:new Set()};}});
   return {provider,input:{folder:'INBOX',cursor:{uidValidity:123,lastUid:10},limit:2},
@@ -34,6 +34,14 @@ test('QQ failed UID search never becomes a completed empty page',async()=>{
   const f=syntheticQQ({searchResult:false});
   await assert.rejects(f.provider.fetchPage(ACCOUNT,f.input),{code:'EXTERNAL_FAILURE',message:'Mail UID search did not return a confirmed result'});
   assert.equal(f.input.cursor.lastUid,10);assert.deepEqual(f.stats(),{released:1,fetches:0,searches:1});
+});
+
+test('dashboard mail window uses the message date together with the UID cursor',async()=>{
+  const since='2026-11-25T13:00:00.000Z';
+  const f=syntheticQQ({searchResult:[],expectedSearch:{uid:'11:*',not:{sentBefore:new Date('2026-11-24T13:00:00.000Z')}}});
+  const page=await new MailService(f.provider,{now:()=>NOW}).fetchInbox(ACCOUNT,{...f.input,since});
+  assert.equal(page.hasMore,false);
+  assert.equal(f.stats().searches,1);
 });
 test('QQ missing or incomplete UID fetch fails without committing a cursor',async()=>{
   for(const fetchUids of [[],[11],[11,11],[11,13]]){

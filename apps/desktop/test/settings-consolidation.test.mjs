@@ -38,7 +38,7 @@ test('actual panel renders only runtime voice controls; settings own all voice c
  page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(['error','warning'].includes(message.type()))errors.push(message.text());});
  const url='http://127.0.0.1:'+server.address().port;
  await page.goto(url+'/?mode=panel');await page.locator('#live-open-settings').waitFor();
- assert.match(await page.title(),/PersonalAgent/);assert.match(page.url(),/mode=panel/);
+ assert.match(await page.title(),/Synstar/);assert.match(page.url(),/mode=panel/);
  assert.equal(await page.locator('input[type=password],#sis-region,#live-workspace,[data-model-api]').count(),0);
  assert.match(await page.locator('#live-runtime-status').textContent(),/配置已保存.*未开启麦克风/);
  assert.match(await page.locator('body').textContent(),/经 AgentArts 暂不可用/);

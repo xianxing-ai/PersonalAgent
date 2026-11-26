@@ -98,7 +98,7 @@ test('demo-server：接口返回真实数据；数据缺失返回 503 而不是�
     // 静态页可访问
     const page = await fetch(`${url}/`);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /PersonalAgent 在线 Demo/);
+    assert.match(await page.text(), /Synstar 在线 Demo/);
 
     // 防目录穿越
     const evil = await fetch(`${url}/..%2f..%2f..%2fpackage.json`);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {assistantThreadActionsHtml, bindAssistantThreadActions, mountAssistantRoster} from '../src/features/conversation/assistant-roster-ui.js';
-import {answerCardHtml, rememberActivity, replaceAnswerCard, syncContainerAnswerDisclosures} from '../src/features/conversation/answer-block.js';
+import {answerCardHtml, assistantCardHtml, assistantVisualSpec, rememberActivity, replaceAnswerCard, syncContainerAnswerDisclosures} from '../src/features/conversation/answer-block.js';
 
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
 
@@ -104,7 +104,7 @@ test('create, rename and delete stay on the existing desktop action channel', ()
   assert.match(main, /name === 'assistant.delete'/);
   assert.match(main, /runtimeApplication\.createAssistant/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action'/);
-  assert.match(renderer, /mountAssistantRoster/);
+  assert.match(workspace, /mountAssistantRoster/);
   assert.match(workspace, /bindAssistantThreadActions/);
   assert.match(workspace, /assistant\.submit/);
 });
@@ -208,4 +208,20 @@ test('streaming increments preserve expanded thinking/tool disclosures and summa
   const snapshotHtml = answerCardHtml(task, store.get('task-stream-1'), escape);
   assert.match(snapshotHtml, /<details class="thinking-block" data-disclosure-key="thinking" open>/);
   assert.match(snapshotHtml, /<details class="tool-step" data-disclosure-key="step:step-a" open>/);
+});
+
+test('assistantVisualSpec assigns distinct semantic icons and tones to built-in and custom assistants', () => {
+  const builtins = [
+    {assistantId: 'coder', displayName: '编码助手', role: 'coder'},
+    {assistantId: 'coordinator', displayName: '协作助手', role: 'coordinator'},
+    {assistantId: 'planner', displayName: '规划助手', role: 'planner'},
+    {assistantId: 'researcher', displayName: '资料助手', role: 'researcher'},
+    {assistantId: 'reviewer', displayName: '审查助手', role: 'reviewer'},
+  ];
+  const specs = builtins.map(item => assistantVisualSpec(item));
+  assert.equal(new Set(specs.map(item => item.tone)).size, 5);
+  assert.equal(new Set(specs.map(item => item.svg)).size, 5);
+  const custom = assistantCardHtml({assistantId: 'user-writer', displayName: '文案润色', instructions: '总结与润色文稿', status: 'idle', unreadCount: 0}, escape);
+  assert.match(custom, /class="assistant-card-icon" data-tone="teal"/);
+  assert.match(custom, /<svg viewBox="0 0 18 18"/);
 });

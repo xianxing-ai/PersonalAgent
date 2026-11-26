@@ -6,6 +6,16 @@ import {createDesktopProactiveWorkflowApplication} from '../electron/proactive-w
 import {createDesktopProactiveRuntimePump} from '../electron/proactive-runtime-pump.js';
 
 const until=async predicate=>{for(let n=0;n<500;n++){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}throw Error('Synthetic proactive pump state did not arrive');};
+
+test('approved native maintenance runs before unavailable platform acquisition, but not after its original deadline',async()=>{
+  let clock=Date.now();const actions=[],binding={taskId:'native',sourceTaskId:'source',imageBinding:'fixed',taskDeadline:new Date(clock+1000).toISOString()};
+  const pump=createDesktopProactiveRuntimePump({getApplication:()=>({runtime:{}}),getWorkflow:()=>({
+    snapshot:()=>({state:'configured_not_verified'}),maintenancePage:()=>({items:[{binding,state:'created'}],snapshotSequence:1}),
+    acquireMaintenance:async()=>{actions.push('platform');throw Error('Explicit offline platform fixture');}}),
+    resolveUserConversation:()=> 'original-conversation',beforeNativeMaintenance:async()=>{actions.push('native');},now:()=>clock});
+  assert.equal((await pump.tick()).sessions[0].state,'unavailable');assert.deepEqual(actions,['native','platform']);
+  clock+=1001;assert.equal((await pump.tick()).sessions[0].state,'deadline_expired');assert.deepEqual(actions,['native','platform']);
+});
 test('Synthetic original Scheduler wake enters the original signed responsibility once, including pump recreation',async()=>{
   let clock=Date.now(),app,workflow,changed=false;
   const deadline=new Date(clock+60_000).toISOString(),proofs=createProactiveHostProofs('synthetic-public-proactive-pump-key-32');

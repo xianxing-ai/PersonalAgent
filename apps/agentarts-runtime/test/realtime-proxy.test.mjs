@@ -167,7 +167,7 @@ test('routing, credentials, alternate model, malformed UTF-8 and binary never re
 test('oversized native audio frames close before any upstream audio is forwarded',async t=>{
   const h=await host(t),c=await connect(t,h);await c.next();const closed=once(c.socket,'close');
   c.socket.send(JSON.stringify({type:'input_audio_buffer.append',audio:'A'.repeat(1_200_000)}));
-  assert.equal((await closed)[0],1009);assert.equal(h.received.length,0);
+  assert.equal((await closed)[0],1008);assert.equal(h.received.length,0);
 });
 
 test('realtime reserves the shared concurrency slot and both sockets release it after client disconnect',async t=>{

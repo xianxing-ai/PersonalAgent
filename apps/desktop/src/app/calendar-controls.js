@@ -1,7 +1,7 @@
 export function mountCalendarControls(root, invoke) {
   const settings = document.createElement('details');
   settings.className = 'sis-settings';
-  settings.innerHTML = '<summary>CalDAV 日历配置</summary><div class="sis-fields"><p class="notice">凭据仅在本机加密保存。保存配置不会自动读取或修改日历；需要访问时在当前对话提问卡确认本次范围，不在此重复授权。非本机地址必须 HTTPS；本机地址（localhost/127.0.0.1/[::1]）允许 HTTP（如本地 Radicale 验收服务器）。</p><label>日历名称<input data-calendar="name" autocomplete="off" maxlength="120"></label><label>日历集合地址<input data-calendar="url" type="url" autocomplete="off" maxlength="2048" placeholder="https://server/calendars/user/default/"></label><label>账号<input data-calendar="user" autocomplete="off" maxlength="256"></label><label>应用密码<input data-calendar="password" type="password" autocomplete="off" maxlength="4096" placeholder="原地址及账号未变时留空可保留已存凭据"></label><button data-calendar="save" type="button">保存配置</button><button data-calendar="revoke" type="button">撤销并清除配置</button><p data-calendar="status" class="notice" role="status"></p><p class="notice">可在主对话提出日程查询或修改请求；需要确认时使用该次对话的操作卡。</p><details data-calendar="read-controls"><summary>高级：按事件标识读取</summary><label>日历事件标识（UID）<input data-calendar="event" autocomplete="off" maxlength="512" placeholder="从日历事件获取 UID"></label><button data-calendar="read" type="button">读取此事件</button><button data-calendar="cancel" type="button">停止读取</button><p data-calendar="read-status" class="notice" role="status"></p><p data-calendar="read-result" class="notice"></p></details></div>';
+  settings.innerHTML = '<summary>日历配置（系统本地日历 / CalDAV）</summary><div class="sis-fields"><p class="notice">在 Windows 上可直接使用系统本地日历（无需手动搭建 Radicale 服务或输入密码）；如需连接远程 CalDAV 服务器可填写下方字段。凭据仅在本机加密保存，访问时需在当前对话操作卡确认。非本机地址必须 HTTPS；本机地址允许 HTTP。</p><button data-calendar="use-system" type="button">使用 Windows 系统本地日历（免配置）</button><label>日历名称<input data-calendar="name" autocomplete="off" maxlength="120"></label><label>日历集合地址<input data-calendar="url" type="url" autocomplete="off" maxlength="2048" placeholder="https://server/calendars/user/default/"></label><label>账号<input data-calendar="user" autocomplete="off" maxlength="256"></label><label>应用密码<input data-calendar="password" type="password" autocomplete="off" maxlength="4096" placeholder="原地址及账号未变时留空可保留已存凭据"></label><button data-calendar="save" type="button">保存配置</button><button data-calendar="revoke" type="button">撤销并清除配置</button><p data-calendar="status" class="notice" role="status"></p><p class="notice">可在主对话提出日程查询或修改请求；需要确认时使用该次对话的操作卡。</p><details data-calendar="read-controls"><summary>高级：按事件标识读取</summary><label>日历事件标识（UID）<input data-calendar="event" autocomplete="off" maxlength="512" placeholder="从日历事件获取 UID"></label><button data-calendar="read" type="button">读取此事件</button><button data-calendar="cancel" type="button">停止读取</button><p data-calendar="read-status" class="notice" role="status"></p><p data-calendar="read-result" class="notice"></p></details></div>';
   const anchor = root.querySelector('#error');
   if (anchor) anchor.before(settings); else root.append(settings);
   const field = name => settings.querySelector(`[data-calendar="${name}"]`);
@@ -9,6 +9,7 @@ export function mountCalendarControls(root, invoke) {
   const buttons = () => {
     const task = state.readTask;
     const active = task && !['succeeded','failed','cancelled','unavailable'].includes(task.state);
+    field('use-system').disabled = busy;
     field('save').disabled = busy;
     field('revoke').disabled = busy || (!state.configured && state.status !== 'unavailable');
     field('read-controls').hidden = !state.readAvailable;
@@ -21,6 +22,10 @@ export function mountCalendarControls(root, invoke) {
     catch {field('status').textContent = '日历配置操作未完成，请检查输入及本机安全存储';}
     finally {busy = false; buttons();}
   };
+  field('use-system').onclick = () => run('calendar.configure', {
+    providerKind: 'windows-system',
+    calendarName: field('name').value.trim() || 'Windows 系统日历',
+  });
   field('save').onclick = async () => {
     const payload = {providerKind: 'caldav', calendarUrl: field('url').value.trim(),
       calendarName: field('name').value.trim(), username: field('user').value.trim(),
@@ -48,7 +53,7 @@ export function mountCalendarControls(root, invoke) {
   field('cancel').onclick = () => state.readTask?.taskId && readAction('calendar.cancel',state.readTask.taskId);
   function render(value = {}) {
     state = value ?? {};
-    field('status').textContent = `${state.calendarName || 'CalDAV 日历'} · ${state.configured ? '已保存配置' : '未配置'} · ${state.reason ?? '日历读取能力尚未接入'}`;
+    field('status').textContent = `${state.calendarName || (state.providerKind === 'windows-system' ? 'Windows 系统日历' : 'CalDAV 日历')} · ${state.configured ? '已保存配置' : '未配置'} · ${state.reason ?? '日历读取能力尚未接入'}`;
     const task = state.readTask;
     const messages = {created:'读取任务已受理',planning:'正在准备读取',running:'正在读取日历',
       verifying:'正在核对结果',waiting_approval:'等待本次读取确认',waiting_reconciliation:'结果待核实，请勿重复读取',

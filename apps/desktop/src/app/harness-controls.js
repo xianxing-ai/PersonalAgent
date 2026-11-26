@@ -1,29 +1,32 @@
-const contextCharacterLimit=128_000;
+import {DEFAULT_CONTEXT_CHARACTERS as contextCharacterLimit,DEFAULT_CONTEXT_OUTPUT_TOKENS,DEFAULT_CONTEXT_POLICY}
+  from '../shared/harness-context-defaults.js';
+
 const defaultExecutorSteps=32;
-const recommendedContext={maxOutputTokens:2048,triggerCharacters:96000,targetCharacters:64000,
-  retainMessages:8,maxSourceMessages:2000,segmentCharacters:32000,maxSummaryCharacters:4000};
+const recommendedContext={...DEFAULT_CONTEXT_POLICY,maxOutputTokens:DEFAULT_CONTEXT_OUTPUT_TOKENS,
+  retainMessages:DEFAULT_CONTEXT_POLICY.retainTurns};
+const formatCharacters=value=>new Intl.NumberFormat('zh-CN').format(value);
 const budgetFields=[['maxOutputTokens','摘要输出 Token 预算',1],['triggerCharacters','触发摘要的字符数',1],
-  ['targetCharacters','摘要后的目标字符数',1],['retainMessages','完整保留的近期消息数',0],
+  ['targetCharacters','摘要后的目标字符数',1],['retainMessages','近期原文保留数量',0],
   ['maxSourceMessages','历史来源消息范围',1],['segmentCharacters','每段历史的字符预算',1],['maxSummaryCharacters','每段摘要的字符预算',1]];
 
 /** Existing model settings surface; all validation and persistence stay in main. */
 export function mountHarnessControls(root,invoke) {
   const settings=document.createElement('details');settings.className='sis-settings';
-  settings.innerHTML=`<summary>开发者 Harness</summary><div class="sis-fields">
-    <p class="notice">主对话负责交互、澄清与汇总，子智能体执行实际工作。请在「设置 → 工作文件夹」选择本地工作区并重启装配；执行仍沿用原工具权限。</p>
+  settings.innerHTML=`<summary>开发者 Harness（已默认自动启用）</summary><div class="sis-fields">
+    <p class="notice">子智能体开发任务规划（默认 32 步预算）已自动启用；仅在需要自定义步数、配置上下文自动压缩模型或手动停用时在此调整。执行仍沿用原工作区和工具权限。</p>
     <label><input data-harness="enabled" type="checkbox">启用子智能体开发任务规划</label>
     <p class="notice">新配置默认允许 32 个执行步骤；达到预算后停止。步骤可能消耗所选模型额度。</p>
     <fieldset><legend>会话上下文自动压缩</legend>
       <label><input data-harness="contextEnabled" type="checkbox">启用自动压缩及 /压缩 命令</label>
       <label>摘要模型<select data-harness="modelId"><option value="">请选择已保存的辅助模型</option></select></label>
-      <p class="notice">达到阈值时自动压缩旧历史；在对话中发送 /压缩 或 /compact 可提前执行。原聊天记录不删除，近期消息保持原文，摘要经来源校验后用于后续消息。</p>
+      <p class="notice" data-harness="retentionNotice"></p>
       <p class="notice">只使用这里明确选定的模型版本。新材料发送前仍需原出机确认，取消就停止。摘要仅在本次运行中复用；重启后从原文重新生成。摘要可能遗漏细节，可通过原历史核实。</p>
     </fieldset>
     <details class="sis-advanced"><summary>高级预算（通常无需修改）</summary>
       <label>执行子智能体的总步骤预算<input data-harness="maxExecutorSteps" type="number" min="1" step="1" inputmode="numeric"></label>
-      <button class="btn" data-harness="recommend" type="button">恢复默认摘要预算（96,000 → 64,000 字符）</button>
+      <button class="btn" data-harness="recommend" type="button">恢复默认摘要预算（${formatCharacters(recommendedContext.triggerCharacters)} → ${formatCharacters(recommendedContext.targetCharacters)} 字符）</button>
       ${budgetFields.map(([name,label,min])=>`<label>${label}<input data-harness="${name}" type="number" min="${min}" step="1" inputmode="numeric" placeholder="明确填写预算"></label>`).join('')}
-      <p class="notice">任务与历史上下文合并后上限为 ${contextCharacterLimit} 字符。目标字符数 ≤ 触发字符数 ≤ ${contextCharacterLimit}，完整尾部数量须小于来源范围。字符预算不代表模型 Token 窗口。保存不会调用模型；真实连接以实际任务回执为准。</p>
+      <p class="notice">任务与历史上下文合并后上限为 ${formatCharacters(contextCharacterLimit)} 字符。默认在 75% 时开始压缩，目标为 50%。模型 Token 和传输字节预算可能更早触发。完整尾部数量须小于来源范围。</p>
     </details>
     <details class="sis-advanced"><summary>事件接入（可选）</summary>
       <label><input data-harness="eventsEnabled" type="checkbox">将原持续工作流的来源变化与唤醒交给执行子智能体</label>
@@ -34,7 +37,7 @@ export function mountHarnessControls(root,invoke) {
     <p data-harness="status" class="notice" role="status"></p></div>`;
   root.append(settings);
   const field=name=>settings.querySelector(`[data-harness="${name}"]`);
-  let state={},busy=false,closed=false,signature,contextLimit=contextCharacterLimit;
+  let state={},busy=false,closed=false,signature,contextLimit=contextCharacterLimit,retainTurns=true;
   const controls=()=>{
     settings.setAttribute('aria-busy',String(busy));
     settings.querySelectorAll('input,select,button').forEach(input=>{input.disabled=busy;});
@@ -48,6 +51,10 @@ export function mountHarnessControls(root,invoke) {
     field('eventsEnabled').checked=config.events?.enabled===true;field('eventsQuiet').checked=config.events?.quiet===true;
     field('maxExecutorSteps').value=config.maxExecutorSteps??defaultExecutorSteps;
     contextLimit=context.policy?.maxCharacters??contextCharacterLimit;
+    retainTurns=!context.policy||context.policy.retainTurns!==undefined;
+    field('retentionNotice').textContent=retainTurns
+      ?'按完整用户轮次保留原文。达到预算后压缩旧历史，也可发送 /压缩 或 /compact。'
+      :'此配置按近期消息数保留。恢复默认预算可切换为保留最近 4 个完整用户轮次。';
     field('modelId').replaceChildren();
     for(const model of [{id:'',displayName:'请选择已保存的辅助模型'},...(value.models??[])]) {
       const option=document.createElement('option');option.value=model.id;
@@ -56,6 +63,7 @@ export function mountHarnessControls(root,invoke) {
     }
     field('modelId').value=context.modelId??'';
     for(const [name]of budgetFields)field(name).value=(name==='maxOutputTokens'?context.maxOutputTokens:context.policy?.[name])??recommendedContext[name];
+    if(retainTurns)field('retainMessages').value=context.policy?.retainTurns??recommendedContext.retainTurns;
     field('status').textContent=config.enabled||context.enabled
       ?`设置已保存；${config.executionReason??(config.enabled?'子智能体规划按当前工作区许可启用':'开发任务规划未启用')}；${context.enabled?(config.contextAvailable===false?(config.contextReason||'摘要宿主或模型版本不可用，请检查设置')
         :config.contextModelAvailable?'摘要模型版本已绑定，真实模型尚未验证':'摘要模型版本不可用，请重新选择并保存'):'历史摘要未启用'}。`
@@ -83,6 +91,11 @@ export function mountHarnessControls(root,invoke) {
         payload.context={enabled:true,modelId:selected.id,configurationRef:selected.configurationRef,maxOutputTokens:integer('maxOutputTokens'),
           policy:Object.fromEntries(budgetFields.filter(([name])=>name!=='maxOutputTokens').map(([name])=>[name,integer(name)]))};
         payload.context.policy.maxCharacters=contextLimit;
+        if(retainTurns){
+          payload.context.policy.retainTurns=payload.context.policy.retainMessages;
+          payload.context.policy.retainMessages=0;
+          if(payload.context.policy.retainTurns<1||payload.context.policy.retainTurns>=payload.context.policy.maxSourceMessages)throw Error('policy');
+        }
         const policy=payload.context.policy;
         if(policy.targetCharacters>policy.triggerCharacters||policy.triggerCharacters>contextLimit||policy.retainMessages>=policy.maxSourceMessages)throw Error('policy');
       }
@@ -94,8 +107,9 @@ export function mountHarnessControls(root,invoke) {
   }
   field('save').onclick=()=>save();field('disable').onclick=()=>save(true);
   field('recommend').onclick=()=>{
+    retainTurns=true;contextLimit=contextCharacterLimit;
+    field('retentionNotice').textContent='按完整用户轮次保留原文。达到预算后压缩旧历史，也可发送 /压缩 或 /compact。';
     for(const [name]of budgetFields)field(name).value=recommendedContext[name];
-    contextLimit=contextCharacterLimit;
     field('status').textContent='已填入推荐预算；请选择摘要模型、勾选启用并保存后生效。';
   };
   render();

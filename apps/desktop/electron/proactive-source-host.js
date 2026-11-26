@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {createRuntimeAtomicStatePort} from '@personal-agent/runtime';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {
   createNodeReadOnlyDirectoryScan,
   createProactiveSourceTrigger,
@@ -23,8 +24,8 @@ function defaults() {
 }
 
 /** Host assembly for the cognition trigger. Reads only public calendar.events and mail.inbox tools. */
-export function createProactiveSourceHost({getApplication, getTools, submitTask, namespace, scan = createNodeReadOnlyDirectoryScan(),
-  chooser, risk, now = Date.now, onUpdate = () => {}}) {
+export function createProactiveSourceHost({getApplication, getTools, sourceAdapters, submitTask, namespace, scan = createNodeReadOnlyDirectoryScan(),
+  chooser, risk, now = Date.now, onUpdate = () => {}, onActivity}) {
   if (typeof getApplication !== 'function' || typeof getTools !== 'function' || typeof submitTask !== 'function' || !namespace) {
     throw new Error('主动任务宿主缺少运行时端口');
   }
@@ -33,6 +34,7 @@ export function createProactiveSourceHost({getApplication, getTools, submitTask,
   let trigger;
   let triggerKey = '';
   let nextReadAt = 0;
+  let readSequence = 0;
   const conversationId = `proactive-source:${namespace}`;
 
   function hydrate() {
@@ -55,22 +57,108 @@ export function createProactiveSourceHost({getApplication, getTools, submitTask,
     if (!application?.runtime) throw new Error('运行时尚未就绪');
     return application.runtime;
   }
+  function emitActivity(outcome) {
+    if (typeof onActivity !== 'function' || !outcome?.eventId) return;
+    if (!['calendar', 'mail', 'file'].includes(outcome.source)) return;
+    const riskLevel = outcome.kind === 'calendar.rescheduled'
+      || outcome.status === 'waiting_approval' || outcome.status === 'review' ? 'high' : 'low';
+    try {
+      // Never forward SourceChangeEvent.summary or message text into the activity ledger.
+      onActivity({
+        at: new Date(now()).toISOString(),
+        eventId: outcome.eventId,
+        source: outcome.source,
+        ...(outcome.kind ? {kind: outcome.kind} : {}),
+        status: outcome.status,
+        ...(outcome.ruleId ? {ruleId: outcome.ruleId} : {}),
+        risk: riskLevel,
+      });
+    } catch { /* Activity recording never interrupts proactive source polling. */ }
+  }
   function remember(outcomes) {
     const rows = outcomes.filter(item => item.eventId).map(item => ({
       at: new Date(now()).toISOString(), source: item.source, status: item.status, summary: item.kind ?? item.status,
     }));
     settings.recent = [...rows, ...settings.recent].slice(0, 8);
+    for (const item of outcomes) emitActivity(item);
   }
   function ports() {
     const invoke = async (name, input, context) => {
-      const tool = getTools()?.find(item => item.descriptor?.name === name);
+      const candidates = [...(sourceAdapters?.proactiveTools ?? []), ...(getTools() ?? [])];
+      const tool = candidates.find(item => item.descriptor?.name === name);
       if (!tool || tool.descriptor.sideEffect !== 'read' || !['calendar.events', 'mail.inbox'].includes(name)) {
         const error = new Error('来源工具不可用');
         error.code = 'UNSUPPORTED_CAPABILITY';
         throw error;
       }
-      return tool.execute(input, {taskId: conversationId, runId: conversationId, signal: context.signal, deadline: context.deadline,
-        authorizationRef: conversationId, scopes: [...context.scopes]});
+      const seq = ++readSequence;
+      const current = runtime();
+      const scopes = [...context.scopes];
+      // Production TaskRuntime: bind each read to a formal task, runId and single-use Policy grant.
+      if (typeof current.policy?.grant === 'function' && typeof current.transitionTask === 'function') {
+        const readConversationId = `${conversationId}:read`;
+        const readTask = current.submitTask({
+          goal: `主动读取来源（${name}）`,
+          conversationId: readConversationId,
+          idempotencyKey: `proactive-read:${name}:${now()}:${seq}:${digest(input ?? {})}`,
+        });
+        if (readTask.state === 'created') current.transitionTask(readTask.taskId, 'planning');
+        if (current.getTask?.(readTask.taskId)?.state === 'planning' || readTask.state === 'created') {
+          current.transitionTask(readTask.taskId, 'running');
+        }
+        const runId = `proactive-run-${readTask.taskId}-${seq}`;
+        const authorizationRef = `proactive-auth-${readTask.taskId}-${seq}`;
+        current.policy.grant({
+          authorizationRef,
+          taskId: readTask.taskId,
+          toolName: name,
+          scopes,
+          expiresAt: context.deadline,
+          maxUses: 1,
+          argumentsDigest: toolArgumentsDigest(input ?? {}),
+        });
+        try {
+          const result = await tool.execute(input, {
+            taskId: readTask.taskId,
+            runId,
+            signal: context.signal,
+            deadline: context.deadline,
+            authorizationRef,
+            scopes,
+            conversationId: readConversationId,
+            scope: 'proactive-source',
+          });
+          try {
+            current.transitionTask(readTask.taskId, 'verifying');
+            current.transitionTask(readTask.taskId, 'succeeded', {resultSummary: `主动来源 ${name} 已读取`});
+          } catch { /* 保持已提交记录 */ }
+          return result;
+        } catch (error) {
+          try {
+            current.transitionTask(readTask.taskId, 'failed', {
+              error: {
+                code: typeof error?.code === 'string' ? error.code : 'EXTERNAL_FAILURE',
+                message: '主动来源读取未完成',
+                retryable: Boolean(error?.retryable),
+              },
+            });
+          } catch { /* 保持原异常 */ }
+          throw error;
+        } finally {
+          try { current.policy.revoke?.(authorizationRef); } catch { /* noop */ }
+        }
+      }
+      // Synthetic mock runtime path: never reuse conversationId as taskId, runId or authorizationRef.
+      return tool.execute(input, {
+        taskId: `proactive-source-task:${namespace}:${seq}`,
+        runId: `proactive-source-run:${namespace}:${seq}`,
+        signal: context.signal,
+        deadline: context.deadline,
+        authorizationRef: `proactive-source-auth:${namespace}:${seq}`,
+        scopes,
+        conversationId,
+        scope: 'proactive-source',
+      });
     };
     const calendar = settings.calendar ? createPublicToolReadPort({invoke, toolName: 'calendar.events', scope: 'calendar:read', source: 'calendar'}) : undefined;
     const mail = settings.mail ? createPublicToolReadPort({invoke, toolName: 'mail.inbox', scope: 'mail:read', source: 'mail'}) : undefined;
@@ -140,8 +228,9 @@ export function createProactiveSourceHost({getApplication, getTools, submitTask,
       let approval;
       try { approval = current.getApproval(record.approvalId); } catch { continue; }
       if (approval.state === 'pending' || approval.argumentsDigest !== record.argumentsDigest) continue;
-      await active.resumeApproved({eventId, approvalId: record.approvalId, revision: record.revision,
+      const resumed = await active.resumeApproved({eventId, approvalId: record.approvalId, revision: record.revision,
         state: approval.state === 'allowed' ? 'allowed' : 'denied', argumentsDigest: record.argumentsDigest, signal, deadline});
+      if (resumed) emitActivity(resumed);
       const gate = settings.gates[eventId];
       if (gate) {
         try { current.requestCancel(gate.taskId, '主动任务审批已处理'); } catch { /* 审批载体取消失败不重放业务任务 */ }

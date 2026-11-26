@@ -2,7 +2,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationToolProposalResult} from '@personal-agent/coordination';
 import type {SubtaskDefinition} from '@personal-agent/agents';
-import {SUBAGENT_DISPATCH_TOOL_NAME, SUBAGENT_DISPATCH_TOOL_VERSION} from './subagent-host.js';
+import {SUBAGENT_DISPATCH_TOOL_NAME, SUBAGENT_DISPATCH_TOOL_VERSION, readRuntimeSubagentBinding} from './subagent-host.js';
 import type {TaskRuntime} from '../index.js';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {isDeepStrictEqual} from 'node:util';
@@ -31,6 +31,17 @@ export function readUserTaskDelegation(runtime: TaskRuntime, taskId: string): Us
     throw new ProtocolError('REVISION_CONFLICT', 'Original user task delegation binding changed');
   }
   return saved;
+}
+
+/** The one Runtime-bound user worker may use user-conversation tools; arbitrary children may not. */
+export function readCanonicalUserWorkParent(runtime:TaskRuntime,taskId:string):string|undefined {
+  const child=runtime.getTask(taskId),saved=runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+  if(!saved?.parentTaskId)return undefined;
+  const original=readUserTaskDelegation(runtime,saved.parentTaskId);if(!original)return undefined;
+  const {parentTaskId,parentDeadline,...subtask}=readRuntimeSubagentBinding(runtime,taskId);
+  if(child.conversationId!==`desktop-subtask:${parentTaskId}`||parentDeadline!==original.deadline
+    ||!isDeepStrictEqual(subtask,original.subtask))return undefined;
+  return parentTaskId;
 }
 
 export function userTaskDelegationProposal(binding: UserTaskDelegation): CoordinationToolProposalResult {
@@ -65,16 +76,21 @@ export function assertUserTaskDelegationInvocation(runtime: TaskRuntime,
 }
 
 /** Reuses the original Competition loop and authorization path; no additional executor or scheduler. */
-export function userTaskDelegationPort(runtime: TaskRuntime, port: CoordinationPort,
-  binding: UserTaskDelegation): CoordinationPort {
+export function userTaskDelegationPort(runtime: TaskRuntime, binding: UserTaskDelegation): CoordinationPort {
   return {execute: async request => {
+    const executionEpoch=request.executionEpoch;
+    if(executionEpoch===undefined)throw new ProtocolError('REVISION_CONFLICT','Original user task delegation execution epoch is required');
+    runtime.assertExecutionEpoch(request.taskId,executionEpoch);
     const current = readUserTaskDelegation(runtime, request.taskId);
     if (!isDeepStrictEqual(current, binding) || request.goal !== binding.goal || request.deadline !== binding.deadline) {
       throw new ProtocolError('REVISION_CONFLICT', 'Original user task delegation scope changed');
     }
     const proposal = userTaskDelegationProposal(binding);
-    // The host, not a prompt or a model decision, requires a real child before any cloud summary.
-    if (request.continuation === undefined) return proposal;
+    // The host, not a prompt or a model decision, requires a real child before reporting completion.
+    if (request.continuation === undefined) {
+      runtime.assertExecutionEpoch(request.taskId,executionEpoch);
+      return {...proposal,executionEpoch};
+    }
     const runId = `competition-tool-${request.taskId}-1`;
     const child = runtime.findTaskByIdempotencyKey(`subagent-dispatch-${request.taskId}-${binding.subtask.subtaskId}`);
     const record = runtime.readToolExecutions(request.taskId).find(item => item.evidenceId === runId);
@@ -84,10 +100,11 @@ export function userTaskDelegationPort(runtime: TaskRuntime, port: CoordinationP
       || !record || record.toolName !== proposal.toolName || record.toolVersion !== proposal.toolVersion
       || record.state !== 'confirmed' || !record.executionStarted || record.policyDecision !== 'allow'
       || !runtime.matchesToolExecutionInput(record, {arguments: proposal.arguments, scopeRef: runId})) {
-      throw new ProtocolError('UNAUTHORIZED', 'User summary requires its original confirmed child receipt');
+      throw new ProtocolError('UNAUTHORIZED', 'User result requires its original confirmed child receipt');
     }
-    const result = await port.execute(request);
-    if (result.kind !== 'text') throw new ProtocolError('SCOPE_DENIED', 'User conversation may only summarize delegated results');
-    return result;
+    runtime.assertExecutionEpoch(request.taskId,executionEpoch);
+    assertUserTaskDelegationComplete(runtime, request.taskId);
+    const mock = child.resultSummary?.endsWith('\n[profile=huawei_ict_agentarts; verification=mock]');
+    return {kind: 'text', text: '子助手已完成。执行记录和结果在子对话中。', verification: mock ? 'mock' : 'unverified', executionEpoch};
   }};
 }

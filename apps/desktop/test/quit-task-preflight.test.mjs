@@ -68,11 +68,14 @@ test('H6 close failure unlocks preflight drafts before retaining the original Ru
 test('connector watches stop before local Laya decisions and Runtime close',async()=>{
   const f=fixture();
   Object.assign(f.context,{connectorWatchHost:{async close(){f.calls.push('connector-watch-close');}},
-    connectorChangeHost:{async close(){f.calls.push('connector-change-close');}}});
+    connectorChangeHost:{async close(){f.calls.push('connector-change-close');}},
+    workflowGraphComposition:{close(){f.calls.push('workflow-graph-close');}}});
   f.app.quit();await tick();await tick();await tick();
   assert.equal(f.exited,true);
   assert.ok(f.calls.indexOf('connector-watch-close')<f.calls.indexOf('connector-change-close'));
   assert.ok(f.calls.indexOf('connector-change-close')<f.calls.indexOf('runtime-close'));
+  assert.ok(f.calls.indexOf('workflow-graph-close')>f.calls.indexOf('runtime-close'));
+  assert.equal(f.calls.filter(call=>call==='workflow-graph-close').length,1);
   assert.equal(f.calls.filter(call=>call==='connector-watch-close').length,1);
 });
 
@@ -117,10 +120,12 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
   const optional = ['voiceStartupHost','remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','pluginCatalogHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','wikiImportHost','goalCloudHost','calendarMeetingHost',
-    'mailAnalysisHost','mailMonitorPreparation','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
-    'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
+    'mailAnalysisHost','mailMonitorPreparation','connectorConversationTools','githubConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
+    'publicReferenceConsent','feedsHost','f09FeedGraphHost','workflowGraphComposition','f15ReviewHost','f15ReviewOrigin','f15ReviewViewer','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','browserControlHost','browserControlClosing','computerVisionHost','computerVisionConfig','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
-    'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing'];
+    'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing',
+    'f18ReviewCases','f18Workflow','f18ActiveRevision','f19IssueCases','f19Workflow','f19ActiveRevision',
+    'f01Workflow','f22Configuration','f22Workflow','f25Configuration','f25Workflow','f08SourceChanges','f08SourceActions','f23DecisionConfiguration'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, clearImmediate, console, app, voiceInput, wakeVoice,
     resourcePoll:undefined,eventContinuation:undefined,snapshotPublisher:createSnapshotPublisher({project:()=>({})}),
@@ -134,7 +139,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     liveVoice: liveUnknown ? {hasActive: () => true, async stop() {
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
-    localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
+    localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, remoteMcpPendingQuit: undefined, referenceClosed: false,
     windowsControlClosed: false, windowsControlClosing: undefined, browserControlClosed:false,harnessEventsClosed:false,connectorTriggersClosed:false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
@@ -313,6 +318,30 @@ test('Runtime startup guard keeps precedence over active-task preflight', async 
   assert.equal(f.calls.includes('wake-dispose'), false);assert.equal(f.calls.includes('voice-dispose'), false);
 });
 
+test('repeated quit shares pending remote MCP settlement and closes Runtime after it completes',async()=>{
+  const f=fixture({count:1});
+  let settle;
+  f.context.remoteMcpManagement={close(){}};
+  f.context.runtimeApplication.finishPendingRemoteMcpForExit=allow=>{
+    f.calls.push('settle-mcp');
+    assert.equal(allow(),true);
+    return new Promise(resolve=>{
+      settle=()=>{
+        f.context.runtimeApplication.activeTaskCount=0;
+        resolve();
+      };
+    });
+  };
+  f.app.quit();f.app.quit();
+  assert.equal(f.calls.filter(call=>call==='settle-mcp').length,1);
+  assert.equal(f.exited,false);
+  assert.equal(f.calls.includes('runtime-close'),false);
+  settle();
+  await tick();await tick();
+  assert.equal(f.exited,true);
+  assert.equal(f.calls.filter(call=>call==='runtime-close').length,1);
+});
+
 test('MCP cleanup waits for active work and releases the connection before Runtime closes',async()=>{
   const f=fixture({count:1});let release;
   f.context.remoteMcpManagement={close(){f.calls.push('mcp-window-close');}};
@@ -407,14 +436,14 @@ test('unknown SIS release stays blocked and does not repeat permanent disposal',
 
 // Original initialization/config/record functions; replace only dynamic imports with explicit Fake factories.
 function reconfigurationFixture() {
-  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, webContents: {id: 9}}, admin = {};
+  const f = fixture(), inputs = [], asr = [], panel = {isVisible: () => true, isMinimized: () => false, webContents: {id: 9}}, admin = {};
   const oldDispose = f.voiceInput.dispose;
   let oldDisposed = false;
   f.voiceInput.dispose = async () => {if (oldDisposed) return;oldDisposed = true;
     await oldDispose();f.context.runtimeApplication.activeTaskCount = 1;};
   f.wakeVoice.disable = async () => {};
   let configuration = {region: 'cn-north-4', projectId: 'synthetic-old'}, failInitialization = false;
-  Object.assign(f.context, {panel, admin, competitionMode: true, client: {}, voiceConfigurationPending: false,
+  Object.assign(f.context, {panel, admin, workspace: undefined, competitionMode: true, client: {}, voiceConfigurationPending: false,
     voicePcmSource: undefined, sisPlaybackHost: undefined, panelHiding: false, voiceInitializationFailure: null,
     sisConfigHost: {snapshot: () => ({configured: true}), currentAccessKey:()=>undefined, current: () => configuration,
       configure(value) {configuration = value;f.calls.push('configure');}},

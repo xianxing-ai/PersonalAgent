@@ -53,13 +53,30 @@ test('a user assistant keeps its own chat across restart and can be renamed or d
   again.close();
 });
 
+test('a stored worker awaiting reconciliation stays paused when the assistant roster is read', () => {
+  const app=createRuntimeApplication({path:':memory:',text:{mode:'fake'}});
+  try {
+    const assistant=app.listAssistants().find(item=>item.assistantId==='coder');
+    const child=app.runtime.submitTask({conversationId:'roster-test',goal:'Synthetic work',idempotencyKey:'roster-reconciliation'});
+    app.runtime.saveCheckpoint(child.taskId,'subtask-parent',{role:assistant.role});
+    app.runtime.transitionTask(child.taskId,'planning');
+    app.runtime.transitionTask(child.taskId,'running');
+    app.runtime.transitionTask(child.taskId,'waiting_reconciliation',{error:{code:'RESULT_UNKNOWN',message:'Synthetic receipt pending',retryable:false}});
+    app.runtime.updateAssistant(assistant.assistantId,{status:'working',activeTaskId:child.taskId});
+    const projected=app.listAssistants().find(item=>item.assistantId===assistant.assistantId);
+    assert.equal(projected.status,'idle');
+    assert.equal(projected.activeTaskId,undefined);
+    assert.equal(app.runtime.getTask(child.taskId).state,'waiting_reconciliation');
+  } finally {app.close();}
+});
+
 test('a running user assistant accepts an interruption and still waits for tool approval', async t => {
   const root = await directory(t);
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   let executions = 0;
   const descriptor = {
-    name: 'fixture.read', version: '1.0.0',
+    name: 'weather.forecast', version: '1.0.0',
     inputSchema: {type: 'object', additionalProperties: false, required: ['path'], properties: {path: {type: 'string'}}},
     outputSchema: {type: 'object', additionalProperties: false, properties: {value: {type: 'string'}}},
     sideEffect: 'read', requiredScopes: ['fixture:read'], idempotencySupport: true, recoverySupport: true, requiresPresence: false,
@@ -70,9 +87,9 @@ test('a running user assistant accepts an interruption and still waits for tool 
     tools: [{descriptor, execute: async () => { executions += 1; return {value: 'synthetic'}; }}],
     competitionToolExports: [{toolName: descriptor.name, toolVersion: descriptor.version, exportPolicyVersion: 'public-v1', accepts: () => true, project: ({result}) => result}],
     competitionToolAvailability: [{toolName: descriptor.name, toolVersion: descriptor.version, available: () => true}],
-    coordination: {execute: async () => {
+    coordination: {execute: async request => {
       await gate;
-      return {kind: 'tool_proposal', proposalId: 'user-assistant-1', toolName: descriptor.name, toolVersion: descriptor.version, arguments: {path: 'notes.md'}, verification: 'unverified'};
+      return {kind: 'tool_proposal', proposalId: 'user-assistant-1', toolName: descriptor.name, toolVersion: descriptor.version, arguments: {path: 'notes.md'}, verification: 'unverified', executionEpoch: request.executionEpoch};
     }},
   });
   try {
