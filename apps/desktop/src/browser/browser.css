@@ -28,7 +28,11 @@ button.icon { width: 32px; height: 32px; padding: 0; font: 21px/1 "Segoe UI Symb
 .url-mark { color: var(--faint); font-size: 17px; }
 #address { min-width: 0; flex: 1; border: 0; background: transparent; padding: 7px 0; outline: none; }
 .go { font-size: 12px; border: 0; padding: 3px 8px; color: var(--fg-2); }
-.live { background: var(--accent-soft); border-color: transparent; color: var(--accent); white-space: nowrap; }
+#media-bar { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 3px 14px 8px; }
+#media-bar button { font-size: 12px; white-space: nowrap; padding: 3px 10px; }
+#media-toggle { font-weight: 600; }
+#media-status { font-size: 12px; color: var(--muted); }
+#sound { margin-left: auto; }
 #error { grid-row: 2; gap: 8px; justify-content: space-between; padding: 6px 16px; background: var(--surface-2); color: var(--warn); border-bottom: 1px solid var(--border-strong); overflow-wrap: anywhere; }
 main { grid-row: 3; display: flex; min-height: 0; min-width: 0; }
 #canvas { position: relative; flex: 1; overflow: auto; min-width: 0; background: var(--bg); overscroll-behavior: contain; }
@@ -38,7 +42,12 @@ main { grid-row: 3; display: flex; min-height: 0; min-width: 0; }
 #empty p { color: var(--muted); }
 #viewport { height: auto; display: block; margin: 0 auto; }
 #canvas:not(.natural) #viewport { width: 100%; }
-#capture { pointer-events: none; }
+#capture, #media-target, #pointer { pointer-events: none; }
+#media-dock { width: 100%; background: #111; }
+#player { width: 100%; max-height: 100%; height: 100%; display: block; object-fit: contain; background: #111; }
+#media-dock #player { max-height: 50vh; height: auto; }
+#pointer path { fill: #ffbf46; stroke: #252027; stroke-width: 2; stroke-linejoin: round; }
+.pointer-ring { opacity: 0; fill: none; stroke: #ffbf46; stroke-width: 3; transform-box: fill-box; transform-origin: center; }
 #hotspots rect { cursor: pointer; fill: transparent; }
 #hotspots rect:hover, #hotspots rect:focus-visible { fill: rgba(35, 133, 210, .1); stroke: #2087d9; stroke-width: 2; vector-effect: non-scaling-stroke; outline: none; }
 #controls-pane { width: clamp(195px, 25%, 320px); overflow: auto; border-left: 1px solid var(--border-strong); background: var(--surface); }
@@ -73,7 +82,7 @@ dialog p { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
   .mast { padding-inline: 10px; } nav { gap: 0; padding: 6px 7px 9px; }
   nav .icon { width: 26px; height: 28px; font-size: 18px; }
   #location { margin-inline: 2px 5px; padding-left: 6px; gap: 4px; }
-  .live { padding: 5px 7px; font-size: 12px; }
+  #media-bar { padding: 2px 9px 7px; }
   .url-mark { display: none; } .go { padding-inline: 5px; }
   footer { flex-wrap: wrap; gap: 3px; padding: 5px 8px; }
   #status { max-width: 100%; } .actions { margin-left: auto; }

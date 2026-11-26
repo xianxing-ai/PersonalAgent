@@ -1,3 +1,4 @@
+import {createBrowserMediaPlayer} from './media-player.js';
 const svgNs = 'http://www.w3.org/2000/svg';
 const remoteKeys = new Set(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'Space']);
 const textInputs = new Set(['', 'text', 'email', 'url', 'search', 'tel', 'number', 'date', 'datetime-local', 'time', 'month', 'week']);
@@ -16,8 +17,12 @@ const layout = `<div class="shell">
         <input id="address" aria-label="网页地址" placeholder="输入网址" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="4096">
         <button id="go" type="submit" class="go" aria-label="打开输入的网址" title="打开网址">前往</button>
       </form>
-      <button id="present" class="live" title="打开同一受控网页的实时窗口，可以在那里播放视频和声音" disabled>实时窗口 ↗</button>
     </nav>
+    <div id="media-bar" hidden>
+      <button id="media-toggle" type="button">播放</button>
+      <span id="media-status" role="status"></span>
+      <button id="sound" type="button" aria-label="打开声音" aria-pressed="false" disabled>打开声音</button>
+    </div>
   </header>
   <div id="error" role="alert" hidden><span id="error-text"></span><button id="clear-error" class="quiet">收起</button></div>
   <main>
@@ -27,9 +32,12 @@ const layout = `<div class="shell">
         <h2 id="empty-title">打开网页</h2>
         <p id="empty-message">在地址栏输入要访问的公开网址。</p>
       </div>
+      <div id="media-dock" hidden><video id="player" autoplay muted playsinline disablepictureinpicture aria-label="当前网页的实时媒体"></video></div>
       <svg id="viewport" xmlns="http://www.w3.org/2000/svg" aria-label="当前网页，可通过已识别的控件操作" hidden>
         <image id="capture" x="0" y="0" preserveAspectRatio="none" aria-hidden="true"></image>
+        <foreignObject id="media-target" aria-hidden="true" hidden></foreignObject>
         <g id="hotspots"></g>
+        <g id="pointer" aria-hidden="true" hidden><circle class="pointer-ring" r="12"></circle><path d="M0 0 3 21 8 15 13 23 17 20 12 13 20 12Z"></path></g>
       </svg>
     </section>
     <aside id="controls-pane" hidden aria-label="页面控件">
@@ -87,10 +95,16 @@ export function mountBrowserPane(host, bridge) {
   let editingAddress = false;
   let shown = false;
   let disposed = false;
-  let presentingRequest = false;
+  let pointerTimer, pointerStamp = 0, ignorePointerBefore = 0;
+  let mediaState = 'idle', mediaDetail = '';
   let poll;
   let release = Promise.resolve();
   const inForeground = () => shown && !disposed && !document.hidden && document.hasFocus();
+  const player = $('player');
+  const media = createBrowserMediaPlayer(player, {
+    read: payload => bridge.call('media', payload),
+    changed(state, detail) { mediaState = state; mediaDetail = detail; renderMedia(); }
+  });
 
   function message(error) {
     const raw = typeof error?.message === 'string' ? error.message : '';
@@ -130,6 +144,57 @@ export function mountBrowserPane(host, bridge) {
   function selectedControl(ref) {
     return screen?.controls?.find(control => control.ref === ref && !control.disabled);
   }
+  function mediaControl() {
+    const items = (screen?.controls || []).filter(control => !control.disabled && ['video', 'audio'].includes(control.tag));
+    return items.find(control => control.mediaPlaying) ?? (items.length === 1 ? items[0] : undefined);
+  }
+  function renderMedia() {
+    const current = mediaControl(), playing = page.mediaPlaying === true;
+    const active = mediaState === 'playing', localGesture = mediaState === 'gesture';
+    const decoding = active || mediaState === 'buffering' || localGesture;
+    $('media-bar').hidden = !screen || (!current && !playing);
+    $('media-toggle').disabled = (!current && !localGesture) || running || page.busy;
+    $('media-toggle').textContent = localGesture ? '在侧栏播放' : playing ? '暂停' : '播放';
+    $('media-status').textContent = mediaDetail || (active ? '实时播放' : current?.ended ? '播放结束' : playing ? '正在读取媒体…' : '已暂停');
+    $('sound').disabled = !active;
+    $('sound').textContent = player.muted ? '打开声音' : '静音';
+    $('sound').setAttribute('aria-label', $('sound').textContent);
+    $('sound').setAttribute('aria-pressed', String(!player.muted));
+    const bounds = current?.mediaPlaying && current.tag === 'video' ? current.bounds : undefined;
+    const embedded = bounds && [bounds.x,bounds.y,bounds.width,bounds.height].every(Number.isFinite) && bounds.width > 0 && bounds.height > 0;
+    const target = embedded ? $('media-target') : $('media-dock');
+    if (player.parentNode !== target) {
+      // moveBefore preserves player state where Chromium supports atomic DOM moves.
+      if (target.moveBefore) target.moveBefore(player, null);
+      else { target.append(player); if (active) void player.play().catch(() => {}); }
+    }
+    if (embedded) for (const key of ['x','y','width','height']) target.setAttribute(key, String(bounds[key]));
+    $('media-target').toggleAttribute('hidden', !embedded || !decoding);
+    $('media-dock').hidden = embedded || !decoding || current?.tag === 'audio';
+  }
+  function clearPointer() {
+    clearTimeout(pointerTimer);
+    pointerStamp = 0;
+    $('pointer').setAttribute('hidden', '');
+  }
+  function renderPointer(marker) {
+    if (!marker || !screen || !inForeground()) { clearPointer(); return; }
+    const {x,y,at,action,width,height} = marker;
+    const remaining = 2200 - (Date.now() - at);
+    if (![x,y,at,width,height].every(Number.isFinite) || width <= 0 || height <= 0 || x < 0 || y < 0 || x > width || y > height ||
+        !['prepare','click','type','select'].includes(action) || at < ignorePointerBefore || remaining <= 0) { clearPointer(); return; }
+    if (pointerStamp === at) return;
+    clearTimeout(pointerTimer);
+    pointerStamp = at;
+    const node = $('pointer');
+    const scale = Math.max(1, screen.width / Math.max(1, $('viewport').getBoundingClientRect().width));
+    node.setAttribute('transform', 'translate(' + (x * screen.width / width) + ' ' + (y * screen.height / height) + ') scale(' + scale + ')');
+    node.toggleAttribute('hidden', false);
+    node.dataset.action = action;
+    const ring = node.querySelector('circle');
+    if (action === 'click') ring.animate([{opacity:1,transform:'scale(.5)'},{opacity:0,transform:'scale(1.7)'}], {duration:650});
+    pointerTimer = setTimeout(clearPointer, Math.min(2200, remaining));
+  }
 
   function updateChrome() {
     const connected = page.connected === true;
@@ -139,7 +204,6 @@ export function mountBrowserPane(host, bridge) {
     $('back').disabled = !connected || !page.canGoBack || running || page.busy;
     $('forward').disabled = !connected || !page.canGoForward || running || page.busy;
     $('reload').disabled = !connected || running || page.busy;
-    $('present').disabled = !connected || !page.url || running || page.busy || blocked;
     $('sync').disabled = !connected || running || page.busy;
     $('end').disabled = !connected || running || page.busy;
     $('show-controls').disabled = !screen;
@@ -160,6 +224,7 @@ export function mountBrowserPane(host, bridge) {
       $('show-controls').setAttribute('aria-expanded', 'false');
     }
     $('canvas').setAttribute('aria-label', page.title ? '当前网页 · ' + page.title : '网页视口');
+    renderMedia();
   }
 
   function renderControls() {
@@ -205,10 +270,13 @@ export function mountBrowserPane(host, bridge) {
     if (!value || typeof value.connected !== 'boolean') throw Error('浏览器返回了无效的页面状态。');
     const prior = screen;
     const oldUrl = page.url;
-    const wasPresenting = page.presenting;
     page = value;
-    if (wasPresenting !== page.presenting) updatePolling();
-    if (!page.connected || oldUrl !== page.url || page.viewId !== screen?.viewId) screen = undefined;
+    if (oldUrl !== page.url && oldUrl) {
+      clearPointer(); ignorePointerBefore = Date.now();
+      media.stop();
+      player.muted = true;
+    }
+    if (!page.connected || oldUrl !== page.url || (!page.busy && page.viewId !== screen?.viewId)) screen = undefined;
     if (validScreen(value)) { screen = value; observedAt = Date.now(); }
     if (prior?.image !== screen?.image) {
       if (screen) {
@@ -230,17 +298,36 @@ export function mountBrowserPane(host, bridge) {
       if (passive) notice = '';
     }
     updateChrome();
+    renderPointer(page.pointer);
+    if (page.mediaPlaying && page.connected && inForeground()) media.start();
+    else media.stop();
   }
   function openDialog() {
     return root.querySelector('dialog[open]');
   }
-  async function sync(passive = false, force = false, manual = false) {
-    if (!inForeground() || presentingRequest || running || refreshing || (passive && openDialog())) return;
+  async function sync(passive = false, force = false) {
+    if (!inForeground() || running || refreshing || (passive && openDialog())) return;
     refreshing = (async () => {
       const summary = await bridge.call('state', {});
       if (running || !inForeground()) return;
       apply(summary, true);
-      if (summary.connected && summary.url && !summary.busy && (!summary.presenting || manual) && (force || (!screen && !passiveError))) {
+      if (summary.connected && summary.url && !summary.busy && (force || (!screen && !passiveError))) {
+        // Pixels may change while the actionable controls are identical. Renew the complete
+        // observation periodically so new controls also become keyboard/click targets.
+        if (passive && screen && screen.viewId === summary.viewId && Date.now() - observedAt < 4500) {
+          const frame = await bridge.call('frame', {});
+          if (running || !inForeground()) return;
+          if (frame?.state === 'waiting') return;
+          if (frame?.state === 'frame' && validScreen(frame) && frame.viewId === screen.viewId &&
+              frame.url === page.url && frame.width === screen.width && frame.height === screen.height) {
+            $('capture').setAttribute('href', frame.image);
+            screen.image = frame.image;
+            renderPointer(frame.pointer);
+            if (passiveError) showError('');
+            passiveError = false;
+            return;
+          }
+        }
         const value = await bridge.call('preview', {});
         if (running || !inForeground()) return;
         apply(value, true);
@@ -259,18 +346,13 @@ export function mountBrowserPane(host, bridge) {
     } finally { refreshing = undefined; }
   }
   function scheduleSync(delay = 160) {
-    clearTimeout(timer);
-    if (!inForeground() || presentingRequest) return;
-    timer = setTimeout(() => { void sync(true); }, delay);
+    if (!inForeground() || timer !== undefined) return;
+    timer = setTimeout(() => { timer = undefined; void sync(true); }, delay);
   }
 
   async function perform(action, payload = {}, options = {}) {
     if (disposed || !shown || document.hidden || running) return false;
     running = true;
-    if (action === 'present') {
-      presentingRequest = true;
-      pausePolling();
-    }
     notice = '';
     showError('');
     updateChrome();
@@ -285,9 +367,7 @@ export function mountBrowserPane(host, bridge) {
       }
       const value = await bridge.call(action, payload);
       if (disposed) return false;
-      if (shown && (!document.hidden || action === 'present')) apply(value);
-      if (action === 'present' && value.presenting === true)
-        notice = '实时窗口已打开，可在网页播放器中播放声音和视频。';
+      if (shown && !document.hidden) apply(value);
       passiveError = false;
       return true;
     } catch (error) {
@@ -298,10 +378,6 @@ export function mountBrowserPane(host, bridge) {
       return false;
     } finally {
       running = false;
-      if (action === 'present') {
-        presentingRequest = false;
-        updatePolling();
-      }
       if (!disposed) updateChrome();
     }
   }
@@ -363,8 +439,17 @@ export function mountBrowserPane(host, bridge) {
   });
   $('clear-error').addEventListener('click', () => showError(''));
   for (const action of ['back', 'forward', 'reload']) $(action).addEventListener('click', () => { void perform(action); });
-  $('sync').addEventListener('click', () => { void sync(false, true, true); });
-  $('present').addEventListener('click', () => { void perform('present'); });
+  $('sync').addEventListener('click', () => { if (mediaState === 'unavailable') media.stop(); void sync(false, true); });
+  $('media-toggle').addEventListener('click', () => {
+    if (mediaState === 'gesture') { void player.play().catch(error => showError(message(error))); return; }
+    const control = mediaControl();
+    if (control) useControl(control.ref);
+  });
+  $('sound').addEventListener('click', () => {
+    player.muted = !player.muted;
+    if (!player.muted) void player.play().catch(error => { player.muted = true; renderMedia(); showError(message(error)); });
+    renderMedia();
+  });
   $('dismiss').addEventListener('click', () => bridge.dismiss());
   $('up').addEventListener('click', () => { void scrollRemote('up'); });
   $('down').addEventListener('click', () => { void scrollRemote('down'); });
@@ -464,14 +549,24 @@ export function mountBrowserPane(host, bridge) {
     }
   });
 
-  const offState = bridge.onState?.(() => { if (shown && !refreshing && !running) scheduleSync(); });
+  const offState = bridge.onState?.(() => { if (shown && !refreshing && !running) scheduleSync(30); });
   function pausePolling() {
     clearTimeout(timer); clearTimeout(wheelTimer); clearInterval(poll); wheelDelta = 0;
-    poll = undefined;
+    timer = poll = undefined;
+    clearPointer(); ignorePointerBefore = Date.now();
+    media.stop();
   }
   function updatePolling() {
-    if (!inForeground() || presentingRequest || page.presenting) { pausePolling(); return; }
-    if (poll === undefined) poll = setInterval(() => { if (page.connected && !passiveError) void sync(true, true); }, 3500);
+    if (!inForeground()) { pausePolling(); return; }
+    if (poll !== undefined) return;
+    let lastRefresh = 0;
+    poll = setInterval(() => {
+      if (!page.connected || running || refreshing || openDialog()) return;
+      const interval = passiveError ? 5000 : page.mediaPlaying ? 3500 : 1200;
+      if (Date.now() - lastRefresh < interval) return;
+      lastRefresh = Date.now();
+      void sync(true, true);
+    }, 1200);
   }
   function releasePane() {
     pausePolling();
@@ -485,7 +580,7 @@ export function mountBrowserPane(host, bridge) {
   async function resume() {
     await release;
     if (refreshing) await refreshing.catch(() => {});
-    if (!inForeground() || presentingRequest) return;
+    if (!inForeground()) return;
     updatePolling();
     await sync(false, true);
   }
