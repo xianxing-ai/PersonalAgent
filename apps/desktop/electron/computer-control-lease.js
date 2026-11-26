@@ -1,5 +1,6 @@
 import {ProtocolError,ToolNotStartedError,isToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 import {randomUUID} from 'node:crypto';
+import {skippedNotepadAttempt} from './reconciliation-conflict.js';
 
 const OBSERVE='computer.desktop.observe';
 const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.screenshot','computer.desktop.wait','computer.desktop.suggest_control',
@@ -37,7 +38,7 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
     const resolved=record.state==='confirmed'&&record.policyDecision==='allow'&&record.executionStarted===true
       &&(!settling.uncertain||record.reconciliationOutcome==='applied');
     const notApplied=record.state==='failed'&&record.reconciliationOutcome==='not_applied';
-    if(resolved||notApplied)settling=undefined;
+    if(resolved||notApplied||skippedNotepadAttempt(source,record))settling=undefined;
   }
   function originalUnknown(source) {
     let beforeSequence;
@@ -49,7 +50,7 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
         const records=source.readToolExecutions(task.taskId);
         if(!Array.isArray(records))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录读取无效');
         if(records.some(record=>isWrite(record.toolName)&&record.policyDecision==='allow'&&record.executionStarted===true
-          &&['started','unknown'].includes(record.state)))return true;
+          &&['started','unknown'].includes(record.state)&&!skippedNotepadAttempt(source,record)))return true;
       }
       const next=page.nextBeforeSequence;
       if(next!==undefined&&(!Number.isSafeInteger(next)||next<0||(beforeSequence!==undefined&&next>=beforeSequence)))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录分页无效');

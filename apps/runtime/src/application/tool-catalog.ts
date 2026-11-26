@@ -8,6 +8,7 @@ import {MAX_AVAILABLE_TOOLS, MAX_AVAILABLE_TOOLS_JSON_BYTES} from '@personal-age
 import type {TaskRuntime} from '../index.js';
 import type {CompetitionToolExport} from './coordination.js';
 import {TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION} from './tool-discovery.js';
+import {isDirectNotepadRequest} from './capability-context.js';
 
 const CHECKPOINT = 'competition-tool-catalog';
 const DISCOVERY_POOL = 'competition-tool-discovery-pool:v1';
@@ -324,6 +325,10 @@ export class RuntimeCompetitionToolCatalog {
       if(!this.discoveryEnabled||!discovery||!fitsCatalog([discovery]))
         throw new ProtocolError('INVALID_ARGUMENT','Competition tool catalog structure exceeds its limit');
       selected.splice(0,selected.length,discovery);
+      if (isDirectNotepadRequest(this.runtime.getTask(input.taskId).goal ?? '')) {
+        const launch = originalEntries.find(item=>item.name==='computer.desktop.launch_app');
+        if (launch && fitsCatalog([discovery,launch])) selected.push(launch);
+      }
     }
     this.assertCurrent({...input, revision});
     if(this.discoveryEnabled) {

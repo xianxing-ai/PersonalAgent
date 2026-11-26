@@ -223,6 +223,7 @@ test('vps-ops enforces fail-closed policy, allowlisted argv/desktop actions, sec
     webtopHttpsPort: 3001,
     maxTimeoutMs: 10000,
     allowedExecutables: ['node', 'xdg-open'],
+    allowedCommands: [['node','-v']],
   };
   const blockedBin = await handleRunnerJob(state, mkMsg('ex-rm', {action: 'exec', command: ['rm', '-rf', '/']}), {
     token,

@@ -20,7 +20,7 @@ export function mountContextSidebar(side, hero, board, invoke) {
   }
   const computer = document.createElement('section');
   computer.className = 'cc-computer';
-  computer.innerHTML = '<div class="cc-computer-header"><h2>电脑</h2><div class="cc-computer-quickbar"><button type="button" class="cc-quick-btn" data-quick-computer="settings">电脑设置与扩展检测</button><span role="status" data-settings-status></span></div></div><details><summary><strong>VPS 电脑</strong><small role="status">读取主机中…</small></summary><div data-runner-controls><button type="button" class="btn btn-sm" data-refresh>刷新主机</button></div></details>';
+  computer.innerHTML = '<div class="cc-computer-header"><h2>电脑</h2><div class="cc-computer-quickbar"><button type="button" class="cc-quick-btn" data-quick-computer="settings">浏览器连接</button><span role="status" data-settings-status></span></div></div><details><summary><strong>VPS 电脑</strong><small role="status">读取主机中…</small></summary><div data-runner-controls><button type="button" class="btn btn-sm" data-refresh>刷新主机</button></div></details>';
   const details = computer.querySelector('details');
   const status = computer.querySelector('small');
   const controls = computer.querySelector('[data-runner-controls]');
@@ -34,8 +34,8 @@ export function mountContextSidebar(side, hero, board, invoke) {
     if (disposed || quickSettings.disabled) return;
     quickSettings.disabled = true;
     try {
-      await invoke('admin.open', {page: 'computer'});
-      if (!disposed) settingsStatus.textContent = '在电脑设置中点击“检测现有浏览器扩展”。';
+      await invoke('admin.open', {page: 'connections'});
+      if (!disposed) settingsStatus.textContent = '';
     } catch (error) {
       if (!disposed) settingsStatus.textContent = error?.message ? `打开设置失败：${String(error.message).slice(0, 140)}` : '打开电脑设置失败';
     } finally {

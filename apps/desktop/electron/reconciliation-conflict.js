@@ -76,6 +76,19 @@ export function recordReconciliationConflictSkip(application,task,{conflictId,ex
   if(!isDeepStrictEqual(runtime.loadCheckpoint(task.taskId,key),value))throw new ProtocolError('REVISION_CONFLICT','原冲突决定已变化');
   return {...binding,skipped:true};
 }
+
+// A skipped, finished Notepad attempt can release the device for a new task.
+// It remains unknown in Runtime, and its original identity still cannot run again.
+export function skippedNotepadAttempt(runtime,record) {
+  if (record?.toolName !== 'computer.desktop.launch_app' || record.toolVersion !== '1.0.0'
+      || record.state !== 'unknown' || record.executionStarted !== true || record.policyDecision !== 'allow'
+      || runtime.isToolExecutionActive?.(record) !== false) return false;
+  const task = runtime.getTask(record.taskId);
+  const attempt = runtime.loadCheckpoint(task.taskId, 'windows-desktop-attempt:' + record.evidenceId);
+  return attempt?.app === 'notepad' && attempt.taskId === task.taskId && attempt.runId === record.evidenceId
+    && attempt.toolName === record.toolName && attempt.toolVersion === record.toolVersion
+    && readReconciliationConflict({runtime},task)?.skipped === true;
+}
 export function recordUnavailableConflictNotification(application,taskId) {
   const runtime=application?.runtime,binding=readReconciliationConflict(application,runtime?.getTask(taskId));if(!binding)return;
   const value={version:1,taskId,conflictId:binding.conflictId,state:'notification_skipped',reason:'fixed_contact_email_unavailable'};

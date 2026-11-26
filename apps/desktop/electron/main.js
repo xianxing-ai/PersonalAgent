@@ -541,6 +541,7 @@ let developerDeploymentFailure='';
 let toolPresenceHost,windowsControlHost,windowsControlClosing,computerControlLaya;
 let computerControlLease;
 let computerControlConfig,browserControlHost,openCliBrowserHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
+let computerPreparation,computerPreparationFailure;
 let browserControlClosed=false;
 let computerLaunch;
 const computerTasks=new Set();
@@ -1205,14 +1206,42 @@ function computerControlSnapshot(surface){
   const recoveryOwned=!surface||recoveryTaskId&&conversationToolAccess?.resolveConversation(recoveryTaskId)===conversations?.activeConversationId(surface);
   const input=computerControlLease?.snapshot()??{state:'unavailable',busy:false,writeBlocked:true};
   if(current.state==='blocked'||browserControlHost?.snapshot().state==='blocked'||openCliBrowserHost?.snapshot().state==='blocked')Object.assign(input,{state:'blocked',writeBlocked:true});
-  return {...publicStatus,...(owned&&active?{activeTaskId:active}:{}),...(recoveryOwned&&recoveryTaskId?{recoveryTaskId}:{}),waitingConfirmation:owned&&current.waitingConfirmation===true,
+  return {...publicStatus,preferenceRevision:preference?.revision,
+    observationPreference:preference?.observationExportConfigured?preference.allowObservationExport:current.observationExportAllowed,
+    ...(computerPreparationFailure?{failure:computerPreparationFailure,reason:computerPreparationFailure.message}:{}),
+    ...(owned&&active?{activeTaskId:active}:{}),...(recoveryOwned&&recoveryTaskId?{recoveryTaskId}:{}),waitingConfirmation:owned&&current.waitingConfirmation===true,
     ...(owned&&current.waitingConfirmation&&reviewAction?{reviewAction}:{}),
     input,browser:{...(browserControlHost?.snapshot()??{state:'unavailable',available:false}),connected:openCliBrowserHost?.snapshot()},vision:computerVisionHost?.snapshot()??computerVisionConfig?.snapshot(),
     ...(computerPreparing?{state:'preparing',reason:'正在准备电脑组件；可以立即停止。'}:{})};
 }
 
+function prepareComputerControl(scope) {
+  if (computerPreparation) return computerPreparation;
+  if (process.platform !== 'win32' || !computerControlConfig?.snapshot().enabled || !windowsControlHost) return;
+  const owned = new AbortController();
+  const context = {signal:scope?AbortSignal.any([owned.signal,scope.signal]):owned.signal,
+    deadline:new Date(Math.min(Date.now()+120000,scope?Date.parse(scope.deadline):Infinity)).toISOString()};
+  computerPreparing = owned;
+  computerPreparationFailure = undefined;
+  computerPreparation = Promise.resolve().then(async () => {
+    const component = {electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath};
+    if (!process.env.PA_WINDOWS_CONTROL_PYTHON && !existsSync(nativeDesktopExecutable(component))) {
+      await prepareNativeDesktopComponent({...component,...context});
+    }
+    if (!context.signal.aborted && computerControlConfig.snapshot().enabled) await windowsControlHost.start(context);
+  }).catch(error => {
+    if (!context.signal.aborted) computerPreparationFailure = computerControlFailure(error,'component_start');
+  }).finally(() => {
+    computerPreparing = undefined;
+    computerPreparation = undefined;
+    publish();
+  });
+  return computerPreparation;
+}
+
 async function stopComputerControl(){
   computerPreparing?.abort();
+  await computerPreparation;
   if(computerLaunch){computerLaunch.stopped=true;conversationDelivery.interruptPending(computerLaunch.conversationId);}
   const activeTasks=[...new Set([...computerTasks,...(windowsControlHost?.activeTasks?.()??[]),...(browserControlHost?.activeTasks?.()??[]),...(openCliBrowserHost?.activeTasks?.()??[])])]
     .filter(taskId=>{try{return !terminalTaskStates.has(runtimeApplication.runtime.getTask(taskId).state);}catch{return false;}});
@@ -2983,9 +3012,7 @@ async function initializeRuntime() {
           providerOptions:compatibilityPython?{}:{executable:nativeDesktopExecutable({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath}),
             artifactDirectory:path.join(app.getPath('userData'),'computer-artifacts'),selectControl:input=>computerControlLaya.select(input)}});
         windowsControlHost.configure({enabled:computerPreference.enabled,allowObservationExport:computerPreference.allowObservationExport||process.env.PA_WINDOWS_CONTROL_EXPORT==='1'});
-        if(process.platform==='win32'&&computerPreference.enabled){
-          await windowsControlHost.start({deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
-        }
+        await prepareComputerControl();
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
           downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
           allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
@@ -3768,6 +3795,16 @@ async function initializeRuntime() {
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
         frontDeskUserTurns: true,
+        prepareDesktopWorker:async scope=>{
+          if (!computerControlConfig?.snapshot().enabled) throw new ProtocolError('UNAUTHORIZED','请在安全与权限中允许工人操作本机');
+          if (!windowsControlHost?.snapshot().providerAvailable) await prepareComputerControl(scope);
+          if (scope.signal.aborted) throw new ProtocolError('CANCELLED','电脑任务已取消');
+          if (Date.now()>=Date.parse(scope.deadline)) throw new ProtocolError('TIMEOUT','准备电脑组件时任务已到期');
+          const status=computerControlSnapshot();
+          if (!status.enabled) throw new ProtocolError('UNAUTHORIZED','工人操作本机的权限已关闭');
+          if (status.input.writeBlocked) throw new ProtocolError('RESULT_UNKNOWN','上次电脑操作的结果需要在原任务中核实');
+          if (!status.providerAvailable) throw new ProtocolError('UNSUPPORTED_CAPABILITY',status.reason||'Windows 电脑组件未就绪');
+        },
         getToolsForSubtask:(subtask,worker,tools)=>f28Workflow?.getToolsForSubtask(subtask,worker,tools)??tools,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
@@ -4965,46 +5002,50 @@ async function action(event, name, payload) {
     publish();return result;
   }
   if (name === 'notepad.start' || name === 'notepad.cancel') {
-    if ((sender !== admin && sender !== workspace) || !notepadHost || notepadClosing) throw Error('请从电脑操控设置操作记事本');
+    if ((sender !== admin && sender !== workspace) || !notepadHost || notepadClosing) throw Error('原记事本操作不可用');
     return name === 'notepad.start' ? notepadHost.start(payload) : notepadHost.cancel();
   }
   if(name==='computer.vision.configure'){
-    if(sender!==admin||!computerVisionConfig)throw new ProtocolError('UNAUTHORIZED','请从电脑操作设置管理可选视觉模型');
+    if(sender!==admin||!computerVisionConfig)throw new ProtocolError('UNAUTHORIZED','请从 AI 模型设置管理视觉模型');
     computerVisionConfig.configure(payload);publish();return {computerControl:computerControlSnapshot()};
   }
   if(name.startsWith('computer.control.')){
     if(![admin,panel,workspace].includes(sender)||!computerControlConfig||!windowsControlHost||!runtimeApplication)
-      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请从电脑操控设置或当前对话使用已连接的Runtime');
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','本机电脑组件尚未连接 Runtime');
     if(!['computer.control.stop','computer.control.confirm'].includes(name)&&sender!==admin)
-      throw new ProtocolError('UNAUTHORIZED','请从电脑操控设置管理组件');
+      throw new ProtocolError('UNAUTHORIZED','请从安全与权限管理本机权限');
     if(name==='computer.control.stop'){
       if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','停止不接受额外参数');
       return stopComputerControl();
     }
     if(name==='computer.control.configure'){
       const previous=computerControlConfig.snapshot();
+      let preserveObservationPreference=false;
+      if(payload && Object.hasOwn(payload,'expectedRevision')){
+        const keys=Object.keys(payload).filter(key=>key!=='expectedRevision');
+        if(keys.length!==1||!['enabled','allowObservationExport'].includes(keys[0])||typeof payload[keys[0]]!=='boolean')
+          throw new ProtocolError('INVALID_ARGUMENT','请选择一项本机权限');
+        if(payload.expectedRevision!==previous.revision)throw new ProtocolError('REVISION_CONFLICT','本机权限已变化，请按当前设置重试');
+        preserveObservationPreference=keys[0]==='enabled';
+        payload={enabled:previous.enabled,allowObservationExport:previous.allowObservationExport,[keys[0]]:payload[keys[0]]};
+      }
       if(payload?.allowObservationExport===true&&!previous.allowObservationExport&&!authorizationQuestionHost.automaticallyApproves()){
         const allowed=await confirmApplicationAuthorization('computer.observation.configure',payload,{scope:{purpose:'target-window-observation'},
           summary:'允许当前任务模型接收本次选定窗口的界面文字；截图默认只保存在本机。',isCurrent:()=>computerControlConfig.snapshot().revision===previous.revision});
         if(!allowed)throw new ProtocolError('UNAUTHORIZED','电脑观察出口尚未允许');
       }
       if(computerControlConfig.snapshot().revision!==previous.revision)throw new ProtocolError('REVISION_CONFLICT','等待授权期间电脑设置已变化，请查看当前设置');
-      computerControlConfig.configure(payload);windowsControlHost.configure(payload);
-      if(!payload.enabled||previous.allowObservationExport&&!payload.allowObservationExport)await stopComputerControl();
+      const revokedObservation=windowsControlHost.snapshot().observationExportAllowed&&!preserveObservationPreference&&!payload.allowObservationExport;
+      computerControlConfig.configure(payload,{preserveObservationPreference});windowsControlHost.configure(payload);
+      if(!payload.enabled||revokedObservation)await stopComputerControl();
+      if(payload.enabled&&!windowsControlHost.snapshot().providerAvailable)await prepareComputerControl();
       publish();return {computerControl:computerControlSnapshot()};
     }
     if(name==='computer.control.prepare'){
       if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','组件准备不接受额外参数');
-      if(computerPreparing)throw new ProtocolError('REVISION_CONFLICT','电脑组件正在准备');
       if(!computerControlConfig.snapshot().enabled)throw new ProtocolError('UNAUTHORIZED','请先启用电脑控制');
-      const owned=new AbortController();computerPreparing=owned;publish();
-      try{
-        const context={signal:owned.signal,deadline:new Date(Date.now()+120000).toISOString()};
-        if(!process.env.PA_WINDOWS_CONTROL_PYTHON)await prepareNativeDesktopComponent({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath,...context});
-        await windowsControlHost.start(context);openCliBrowserHost?.start();
-        if(openCliBrowserHost)await openCliBrowserHost.probeExtension({signal:owned.signal}).catch(()=>{});
-        return {computerControl:computerControlSnapshot()};
-      }finally{if(computerPreparing===owned)computerPreparing=undefined;publish();}
+      await prepareComputerControl();
+      return {computerControl:computerControlSnapshot()};
     }
     if(name==='computer.control.probeConnectedBrowser'){
       if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','扩展检测不接受额外参数');
@@ -6683,7 +6724,7 @@ async function chooseNativePublicSkillSource(input) {
   if (publicSkillSources.has(key)) return readNativePublicSkillSource({...input,sourceRef:'public-reference'});
   const workspaceBinding=codingWorkspace?.readWorkspaceBinding();
   if (!workspaceBinding || input.signal.aborted || Date.now() >= Date.parse(input.deadline)) return undefined;
-  openAdmin('computer');const originAdmin=admin,originApplication=runtimeApplication;
+  openAdmin('workspace');const originAdmin=admin,originApplication=runtimeApplication;
   const selection=await dialog.showOpenDialog(originAdmin,{title:'选择本任务的公开参考资料',defaultPath:workspaceBinding.rootPath,
     properties:['openFile'],filters:[{name:'公开文本资料',extensions:['md','txt']}]});
   const current=()=>admin === originAdmin && !originAdmin.isDestroyed() && runtimeApplication === originApplication
@@ -7190,6 +7231,7 @@ app.whenReady().then(async () => {
     }
     if(windowsControlHost&&!windowsControlClosed){
       event.preventDefault();
+      computerPreparing?.abort();
       windowsControlClosing??=windowsControlHost.close().then(()=>{windowsControlClosed=true;app.quit();})
         .catch(()=>{windowsControlClosing=undefined;reportQuitFailure('电脑控制进程停止尚未确认');});
       return;

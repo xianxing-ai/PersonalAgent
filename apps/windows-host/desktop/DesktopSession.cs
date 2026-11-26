@@ -113,15 +113,14 @@ internal sealed class DesktopSession(InputController inputs)
         var text = p.TryGetProperty("text", out _) ? Text(p, "text") : null;
         if (text is { Length: 0 }) throw new Refusal("INVALID_ARGUMENT");
         var currentEpoch = Interlocked.Read(ref epoch);
+        var generation = inputs.Generation;
         var initialForeground = Native.GetForegroundWindow();
-        var existing = new HashSet<nint>();
-        if (!Native.EnumWindows((window, _) => { existing.Add(window); return true; }, 0))
-            throw new Refusal("EXTERNAL_FAILURE");
+        var existing = TopLevelWindows();
 
         void GuardLifecycle()
         {
             context.Check();
-            if (Interlocked.Read(ref epoch) != currentEpoch)
+            if (Interlocked.Read(ref epoch) != currentEpoch || generation != inputs.Generation)
                 throw new Refusal("USER_TAKEOVER", context.Dispatched);
         }
 
@@ -130,83 +129,105 @@ internal sealed class DesktopSession(InputController inputs)
         using var launched = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
         context.Dispatched = true;
         var readyBy = Min(context.Deadline, DateTime.UtcNow.AddSeconds(8));
-        nint activationRequested = 0;
+        nint requestedFrom = 0, activationRequested = 0;
         while (DateTime.UtcNow < readyBy)
         {
             GuardLifecycle();
             var window = FreshNotepadWindow(existing);
+            var foreground = Native.GetForegroundWindow();
+            // Packaged Notepad may reuse an existing HWND or restore a nonempty document.
+            // Such a window may create a new document, but is never a text destination.
+            if (window == 0 && requestedFrom == 0 && existing.Contains(foreground)
+                && IsTrustedNotepadWindow(foreground)) window = foreground;
             if (window != 0)
             {
                 var facts = Native.ReadWindow(window, false);
-                var check = NotepadAction.CheckSingleTabTarget(window, facts.Pid, new DateTime(facts.StartTicks, DateTimeKind.Utc));
-                if (check.Success)
+                if (foreground != window && foreground != initialForeground && foreground != requestedFrom)
+                    throw new Refusal("USER_TAKEOVER", true);
+                if (foreground != window && activationRequested != window)
                 {
-                    var root = AutomationElement.FromHandle(window);
-                    if (root.Current.ProcessId != facts.Pid
-                        || !NotepadAction.TryGetOnlyEditableTextControl(root, out var editControl, out var editor, out _))
-                    {
-                        context.Token.WaitHandle.WaitOne(75);
-                        continue;
-                    }
-                    if (editor!.Current.Value.Length != 0)
-                        throw new Refusal("RESULT_UNKNOWN", true);
                     GuardLifecycle();
-                    var foreground = Native.GetForegroundWindow();
-                    if (foreground != window && foreground != initialForeground)
-                        throw new Refusal("USER_TAKEOVER", true);
-                    if (foreground != window && activationRequested != window)
+                    activationRequested = window;
+                    Native.SetForegroundWindow(window);
+                }
+                if (Native.GetForegroundWindow() == window)
+                {
+                    void GuardWindow()
                     {
-                        activationRequested = window;
-                        Native.SetForegroundWindow(window);
-                    }
-                    if (Native.GetForegroundWindow() == window)
-                    {
-                        if (text is not null)
-                        {
-                            var generation = inputs.Generation;
-                            void CheckWindow()
-                            {
-                                GuardLifecycle();
-                                if (inputs.Generation != generation || Native.GetForegroundWindow() != window
-                                    || Native.GetWindowThreadProcessId(window, out var owner) == 0 || owner != facts.Pid)
-                                    throw new Refusal("TARGET_STALE", true);
-                            }
-                            CheckWindow();
-                            editControl!.SetFocus();
-                            var focusBy = Min(context.Deadline, DateTime.UtcNow.AddMilliseconds(500));
-                            while (!editControl.Current.HasKeyboardFocus && DateTime.UtcNow < focusBy)
-                            {
-                                CheckWindow();
-                                context.Token.WaitHandle.WaitOne(25);
-                            }
-                            void CheckEditor()
-                            {
-                                CheckWindow();
-                                if (!editControl.Current.HasKeyboardFocus) throw new Refusal("TARGET_STALE", true);
-                            }
-                            CheckEditor();
-                            if (editor.Current.Value.Length != 0) throw new Refusal("TARGET_STALE", true);
-                            inputs.TypeText(text, context, CheckEditor);
-                            var readBy = Min(context.Deadline, DateTime.UtcNow.AddSeconds(1));
-                            do
-                            {
-                                CheckEditor();
-                                var result = editor.Current.Value;
-                                if (result == text)
-                                    return new { verification = new { state = "verified", kind = "value" } };
-                                context.Token.WaitHandle.WaitOne(30);
-                            } while (DateTime.UtcNow < readBy);
-                            throw new Refusal("RESULT_UNKNOWN", true);
-                        }
-                        var snapshot = Capture(window, context);
                         GuardLifecycle();
-                        return new { snapshot, verification = new { state = "verified", kind = "app_launched" } };
+                        if (!Native.Same(facts, Native.ReadWindow(window, true)) || !IsTrustedNotepadWindow(window))
+                            throw new Refusal("TARGET_STALE", true);
+                    }
+                    var root = AutomationElement.FromHandle(window);
+                    bool fresh = !existing.Contains(window);
+                    var single = fresh && NotepadAction.CheckSingleTabTarget(window, facts.Pid,
+                        new DateTime(facts.StartTicks, DateTimeKind.Utc)).Success;
+                    if (single && NotepadAction.TryGetOnlyEditableTextControl(root, out var control, out var value, out _)
+                        && value!.Current.Value.Length == 0)
+                    {
+                        GuardWindow();
+                        if (text is null)
+                            return new { snapshot = Capture(window, context), verification = new { state = "verified", kind = "app_launched" } };
+                        // Bind the write and readback to the very same empty UIA editor. No global typing or retry.
+                        if (!NotepadAction.TryGetOnlyEditableTextControl(root, out var current, out var editor, out _)
+                            || !control!.Equals(current) || current!.Current.IsPassword || editor!.Current.Value.Length != 0)
+                            throw new Refusal("TARGET_STALE", true);
+                        GuardWindow();
+                        editor.SetValue(text);
+                        var readBy = Min(context.Deadline, DateTime.UtcNow.AddSeconds(2));
+                        do
+                        {
+                            GuardWindow();
+                            if (NotepadAction.TryGetOnlyEditableTextControl(root, out var read, out var readValue, out _)
+                                && control.Equals(read) && readValue!.Current.Value.ReplaceLineEndings("\n") == text.ReplaceLineEndings("\n"))
+                                return new { verification = new { state = "verified", kind = "value" } };
+                            context.Token.WaitHandle.WaitOne(40);
+                        } while (DateTime.UtcNow < readBy);
+                        throw new Refusal("RESULT_UNKNOWN", true);
+                    }
+                    if (requestedFrom == 0 && root.Current.ProcessId == facts.Pid
+                        && root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tab)) is not null)
+                    {
+                        GuardWindow();
+                        existing = TopLevelWindows();
+                        RequestNewWindow(facts);
                     }
                 }
             }
             context.Token.WaitHandle.WaitOne(75);
         }
         throw new Refusal("RESULT_UNKNOWN", true);
+
+        void RequestNewWindow(WindowFacts source)
+        {
+            requestedFrom = source.Hwnd;
+            inputs.Chord([0x11, 0x10, 0x4E], context, () =>
+            {
+                GuardLifecycle();
+                if (!Native.Same(source, Native.ReadWindow(source.Hwnd, true)) || !IsTrustedNotepadWindow(source.Hwnd))
+                    throw new Refusal("TARGET_STALE", true);
+            });
+        }
+    }
+
+    private static HashSet<nint> TopLevelWindows()
+    {
+        var windows = new HashSet<nint>();
+        if (!Native.EnumWindows((window, _) => { windows.Add(window); return true; }, 0))
+            throw new Refusal("EXTERNAL_FAILURE");
+        return windows;
+    }
+
+    private static bool IsTrustedNotepadWindow(nint window)
+    {
+        if (window == 0 || !Native.IsWindowVisible(window) || Native.GetWindow(window, 4) != 0
+            || Native.GetWindowThreadProcessId(window, out var pid) == 0) return false;
+        try
+        {
+            using var process = Process.GetProcessById((int)pid);
+            return NotepadAction.IsTrustedNotepadProcess(process);
+        }
+        catch (ArgumentException) { return false; }
     }
 
     private static nint FreshNotepadWindow(IReadOnlySet<nint> existing)

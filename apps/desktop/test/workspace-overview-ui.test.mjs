@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {resolve, extname, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-test('workspace sends extension detection to computer settings and displays feedback next to the button', {
+test('workspace opens browser connections while VPS controls remain available', {
   skip: process.env.PA_WORKSPACE_VIEW_UI_TEST !== '1',
 }, async t => {
   const {chromium} = await import('playwright');
@@ -32,12 +32,10 @@ test('workspace sends extension detection to computer settings and displays feed
     </script>`});
   });
   await page.goto('http://workspace.test/');
-  await page.getByRole('button', {name:'电脑设置与扩展检测'}).click();
-  const feedback = page.locator('[data-settings-status]');
-  assert.equal(await feedback.isVisible(), true);
-  assert.match(await feedback.textContent(), /检测现有浏览器扩展/);
+  await page.getByRole('button', {name:'浏览器连接'}).click();
+  assert.equal(await page.locator('summary').filter({hasText:'VPS 电脑'}).count(), 1);
   assert.deepEqual(await page.evaluate(() => window.calls.filter(item => item.name !== 'runner.hosts.list')),
-    [{name:'admin.open',payload:{page:'computer'}}]);
+    [{name:'admin.open',payload:{page:'connections'}}]);
 });
 
 // Browser plugin not available. Actual workspace view in installed Chromium;

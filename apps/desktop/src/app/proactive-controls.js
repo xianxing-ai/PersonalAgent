@@ -249,7 +249,7 @@ export function mountProactiveControls(container, invoke, {settings = false} = {
       const button = row.querySelector('button');
       const allowed = snapshot?.enabled && snapshot?.cloudAnalysis && snapshot?.status === 'monitoring' && item.kind === 'system_pressure';
       button.disabled = !allowed || Boolean(item.analysisTaskId) || pending.has(item.id);
-      button.title = item.analysisTaskId ? '分析任务已受理，请查看任务状态' : item.kind !== 'system_pressure' ? '当前云端授权仅覆盖 CPU / 内存采样；此建议尚无已授权投影' : !snapshot?.cloudAnalysis ? '请在设置 → 电脑操控中开启云端分析' : !allowed ? '请先开启监控并完成必要授权' : '仅提交分析；实际执行仍需 Policy 校验';
+      button.title = item.analysisTaskId ? '分析任务已受理，请查看任务状态' : item.kind !== 'system_pressure' ? '当前云端授权仅覆盖 CPU / 内存采样；此建议尚无已授权投影' : !snapshot?.cloudAnalysis ? '请在设置 → 通知中开启云端分析' : !allowed ? '请先开启监控并完成必要授权' : '仅提交分析；实际执行仍需 Policy 校验';
     }
     if (reviewsList) {
       // Capture the native state before replacing nodes; periodic snapshots must not close a reader's disclosure.

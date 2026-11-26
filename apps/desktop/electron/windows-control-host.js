@@ -1,8 +1,10 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {computerControlFailure} from './computer-control-errors.js';
+import {skippedNotepadAttempt} from './reconciliation-conflict.js';
 
 const REQUEST_TOOL = 'computer.request_access';
+const LAUNCH_TOOL = 'computer.desktop.launch_app';
 const PRESENCE_MISS = 'windows-desktop-presence-miss:v1';
 const REQUEST_SCOPE = 'computer:desktop:request';
 const VERSION = '1.0.0';
@@ -118,6 +120,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
       ||!controlName(run.toolName)||run.toolName==='computer.desktop.suggest_control'||run.toolVersion!==VERSION||run.policyDecision!=='allow'||run.executionStarted!==true
       ||!SHA.test(run.inputDigest)
       ||!(run.state==='unknown'||run.state==='started'&&(includeStarted||task.state==='waiting_reconciliation')))return;
+    if (skippedNotepadAttempt(application.runtime,run)) return;
     return {taskId:task.taskId,runId:run.evidenceId,inputDigest:run.inputDigest};
   }
   function readRecovery(reference,includeStarted) {
@@ -238,7 +241,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
     const launching=identity.toolName==='computer.desktop.launch_app';
     const providedBinding=launching?identity.app:identity.targetRef;
     const inputBinding=launching?execution?.arguments?.app:execution?.arguments?.targetRef??execution?.arguments?.windowRef;
-    if(!application || !RUN.test(identity.taskId) || !RUN.test(identity.runId)
+    if(!enabled || closed || !application || !RUN.test(identity.taskId) || !RUN.test(identity.runId)
       || !controlName(identity.toolName) || identity.toolVersion!==VERSION
       || !SHA.test(identity.argumentsDigest) || !SHA.test(identity.observationDigest)
       || typeof identity.authorizationRef!=='string' || !identity.authorizationRef
@@ -312,9 +315,19 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
     bind(value){
       if(application && application!==value)fail('REVISION_CONFLICT','电脑控制已经绑定Runtime');application=value;
       recovery=scanRecovery(false,true);
+      if(recovery)lastAttempt=recovery;
       if(recovery){provider?.block();publish({state:'blocked',available:false,reason:'原电脑操作结果未知；请先在原任务核实，本次不会重新执行。'});}
     },
     async start(context){
+      const prior = recovery ?? lastAttempt;
+      if (prior && provider?.health().state==='blocked' && provider.releaseStoppedInput && !closed && enabled) {
+        const record=application.runtime.readToolExecutions(prior.taskId).find(item=>item.evidenceId===prior.runId);
+        if(record?.inputDigest===prior.inputDigest && skippedNotepadAttempt(application.runtime,record) && !scanRecovery(true,true)) {
+          await provider.releaseStoppedInput();
+          recovery=undefined;
+          publish({state:'stopped',available:false,failure:undefined});
+        }
+      }
       if(!provider || closed || !enabled || state.state==='blocked' || (!fullAccess()&&typeof registerConfirmation!=='function' && typeof presenceHost?.requestPresence!=='function'))return state;
       try{
         await provider.start(context);
@@ -349,17 +362,25 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
       available:async context=>!closed&&enabled&&state.available&&provider?.health().state==='ready'
         && provider?.supportsTool?.(tool.descriptor.name)!==false
         && !context.signal?.aborted && now()<Date.parse(context.deadline)
-        && (tool.descriptor.name===REQUEST_TOOL || observationExportAllowed())}));},
+        && (tool.descriptor.name===REQUEST_TOOL || tool.descriptor.name===LAUNCH_TOOL || observationExportAllowed())}));},
     // Composition captures these ports once. Keep every original provider policy
     // registered and recheck current settings inside its callbacks.
     get competitionToolExports(){return [requestTool,...(provider?.tools??[])].map(tool=>({
-      toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:'windows-desktop-observed-v1',
-      accepts:({taskId,signal})=>!closed&&!signal?.aborted&&state.available
-        && (tool.descriptor.name===REQUEST_TOOL||observationExportAllowed()&&(!requiresToolPresence(tool.descriptor.name)||hasPresence(taskId))),
+      toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:tool.descriptor.name===LAUNCH_TOOL?'windows-desktop-launch-receipt-v1':'windows-desktop-observed-v1',
+      accepts:({taskId,signal})=>enabled&&!closed&&!signal?.aborted&&state.available
+        && (tool.descriptor.name===REQUEST_TOOL || tool.descriptor.name===LAUNCH_TOOL
+          || observationExportAllowed()&&(!requiresToolPresence(tool.descriptor.name)||hasPresence(taskId))),
       project:({taskId,result,signal})=>{
-        if(closed||signal.aborted||!state.available||(tool.descriptor.name!==REQUEST_TOOL
-          &&(!observationExportAllowed()||requiresToolPresence(tool.descriptor.name)&&!hasPresence(taskId))))fail('UNAUTHORIZED','本机观察结果出口许可已过期');
+        if(!enabled||closed||signal.aborted||!state.available)fail('UNAUTHORIZED','本机电脑操作已停用');
         validateToolValue(tool.descriptor.outputSchema,result);
+        if(tool.descriptor.name===LAUNCH_TOOL){
+          const kind=result.verification?.kind;
+          if(result.source!=='windows-native'||result.state!=='verified'||result.verification?.state!=='verified'
+            || !['app_launched','value'].includes(kind))fail('RESULT_UNKNOWN','原记事本操作没有可核实的回执');
+          return {source:'windows-native',state:'verified',goalVerified:true,verification:{state:'verified',kind}};
+        }
+        if(tool.descriptor.name!==REQUEST_TOOL&&(!observationExportAllowed()
+          ||requiresToolPresence(tool.descriptor.name)&&!hasPresence(taskId)))fail('UNAUTHORIZED','本机观察结果出口许可已过期');
         return structuredClone(result);
       }}));},
     preparePresence,refreshPolicyPresence,prepareToolPresence,requiresToolPresence,hasPresence,
@@ -387,7 +408,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
         ...(providerAvailable&&fullAccess()&&!waitingConfirmation?{
           reason:'当前完全访问允许电脑访问；工具仍校验目标、原任务与期限。'}:{}),
         ...(providerAvailable&&!exportAllowed?{state:'observation_export_disabled',unavailableReason:'observation_export_not_authorized',
-          reason:'电脑组件已连接；允许当前任务的模型接收目标窗口观察后，才能执行电脑操作。'}:{}),
+          reason:'电脑组件已连接。读取其他窗口内容需允许窗口观察。'}:{}),
         ...(health.state==='blocked'?{state:'blocked',unavailableReason:'original_result_unknown',reason:'原电脑操作结果未知；请先在原任务核实，不会重新执行。'}:{}),
         presenceTasks:[...leases].filter(([taskId])=>hasPresence(taskId)).map(([taskId,expiry])=>({taskId,expiresAt:new Date(expiry).toISOString(),source:leaseSources.get(taskId)}))};
     },

@@ -1,3 +1,11 @@
+/** Routing hint only. The worker receives the complete original request, including its limits. */
+export function isDirectNotepadRequest(goal:string):boolean {
+  const request = goal.trim().replace(/^\[(?:编码助手|任务执行)\]\s*/u, '');
+  const command = request.replace(/^(?:(?:请帮我|请你?|帮我|现在|重新尝试|再试一次|再次|在本机|派(?:一个|一名)?工人去)\s*)+/u, '');
+  return /^(?:打开|启动|新建)\s*(?:(?:一个|系统|我的|新的|空白)\s*)*(?:记事本|notepad)(?=$|[\s，,。.!！、]|应用|现在|并|然后|写入|输入)/iu.test(command)
+    || /^(?:please\s+)?(?:open|launch|start)\s+(?:(?:a|new|blank|windows)\s+)*notepad\b/iu.test(request);
+}
+
 /** Public, bounded diagnostics only. Registration/readiness never grants execution authority. */
 export function capabilityContext(input: {
   profile:string;
@@ -25,7 +33,7 @@ export function capabilityContext(input: {
   // Literal host-owned semantics, never copied from a tool schema description or
   // external result. Presence success and per-tool authorization are separate.
   const computerAccess=input.profile==='huawei_ict_agentarts'
-    &&input.registered.some(item=>item.name==='computer.request_access'&&item.version==='1.0.0')?{
+    &&(ready.has(JSON.stringify(['computer.request_access','1.0.0']))||candidates.has(JSON.stringify(['computer.request_access','1.0.0'])))?{
       toolName:'computer.request_access',toolVersion:'1.0.0',
       successfulStates:['policy_allowed','presence_confirmed'],
       authorizationGrantedFalseMeans:'This access step succeeded but does not grant permission to later tools; Runtime and Policy authorize each later tool separately.',

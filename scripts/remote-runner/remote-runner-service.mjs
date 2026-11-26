@@ -232,7 +232,7 @@ function validateSafeArgv(command, policy) {
   if (!policy.allowedExecutables.includes(executable)) {
     return {error: `executable "${executable}" is not in allowedExecutables`};
   }
-  if (policy.allowedCommands !== undefined && !policy.allowedCommands.some(entry =>
+  if (!Array.isArray(policy.allowedCommands) || !policy.allowedCommands.some(entry =>
     Array.isArray(entry) && entry.length === command.length && entry.every((arg, index) => arg === command[index]))) {
     return {error: 'command arguments are not in allowedCommands'};
   }

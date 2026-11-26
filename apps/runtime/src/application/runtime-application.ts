@@ -25,7 +25,7 @@ import type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability}
 import {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured} from './configured-workflow-worker.js';
 import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability,RuntimeConfiguredWorkflowBindingScope,
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
-import {capabilityContext} from './capability-context.js';
+import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -486,6 +486,7 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   delegateUserTasks?: true;
   /** Ordinary panel turns stay on the front desk: light tools such as weather run there, heavy work is still dispatched. */
   frontDeskUserTurns?: true;
+  prepareDesktopWorker?: (scope:{deadline:string;signal:AbortSignal})=>Promise<void>;
   /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
   proactiveWorkflows?: true;
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
@@ -636,6 +637,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly coordination: CoordinationPort | undefined;
   private readonly delegateUserTasks: boolean;
   private readonly frontDeskUserTurns: boolean;
+  private readonly prepareDesktopWorker: RuntimeApplicationOptions['prepareDesktopWorker'];
   private contextSummaryCaches=new WeakMap<RuntimeContextCompactionOptions,Map<string,ContextCompactionCache>>();
   private readonly coordinationBinding: string;
   private readonly assertCoordinationBinding?: () => void;
@@ -723,6 +725,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Front-desk turns require Competition user delegation to remain available for heavy work');
     }
     this.frontDeskUserTurns = options.frontDeskUserTurns === true;
+    this.prepareDesktopWorker = options.prepareDesktopWorker;
     if(options.onHarnessEventProgress!==undefined) {
       if(typeof options.onHarnessEventProgress!=='function')throw new ProtocolError('INVALID_ARGUMENT','Invalid harness event progress listener');
       this.onHarnessEventProgress=options.onHarnessEventProgress;
@@ -3574,6 +3577,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(descriptors.some(tool=>tool.name===SUBAGENT_DISPATCH_TOOL_NAME)
       || !isDeepStrictEqual(worker.loadCheckpoint('subtask-tools-binding'),descriptors)) {
       throw new ProtocolError('UNAUTHORIZED','Default child tool scope changed');
+    }
+    if (this.prepareDesktopWorker && isDirectNotepadRequest(child.goal)
+      && descriptors.some(tool=>tool.name==='computer.desktop.launch_app')) {
+      await this.prepareDesktopWorker({deadline:worker.deadline,signal:worker.signal});
     }
     if(binding.subtaskId==='user-work')this.harnessExperienceRecipes(worker.taskId,worker,true);
     const catalog=this.competitionToolCatalog?.restrict(tools);
@@ -6496,7 +6503,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if (preference?.modelId) this.runtime.saveCheckpoint(taskId,'task-model-preference',{
         modelId:preference.modelId,...(preference.configurationRef?{configurationRef:preference.configurationRef}:{})});
       const hostOwned=/^(host-tool:|desktop-proactive|desktop-mail|desktop-skills|desktop-subtask|desktop-assistant|desktop-subagent|desktop-coding|desktop-notification)/.test(conversationId);
-      if(this.frontDeskUserTurns&&!hostOwned&&!manualCompaction
+      // These direct desktop commands can enter the existing user-worker dispatch path immediately.
+      // The worker still plans with AgentArts and calls the published, policy-checked device tool.
+      if(this.frontDeskUserTurns&&!isDirectNotepadRequest(goal)&&!hostOwned&&!manualCompaction
         &&this.runtime.loadCheckpoint(taskId,'assistant-turn')===undefined
         &&this.runtime.loadCheckpoint(taskId,'subtask-parent')===undefined
         &&!readUserTaskDelegation(this.runtime,taskId)) {
@@ -6506,7 +6515,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           assistantId:item.assistantId,displayName:item.displayName,role:item.role,status:item.status,
         }))});
         // Host-owned hint: users speak naturally; do not ask for tool names or IDs.
-        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
+        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。电脑操作由工人执行。收到实际桌面操作请求时，用当前目录派工或交给已有工人，保留用户原指令和限制。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
       }
       if(this.delegateUserTasks&&!manualCompaction&&!this.frontDeskTurn(taskId)) {
         const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
