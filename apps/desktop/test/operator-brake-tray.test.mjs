@@ -112,9 +112,9 @@ test('native tray brake controller synchronizes menu/panel, deduplicates concurr
 
   const initial = trayController.refresh();
   assert.equal(initial.label, '暂停全部');
-  assert.equal(initial.tooltip, 'PersonalAgent');
+  assert.equal(initial.tooltip, 'Synstar');
   assert.equal(lastLabel, '暂停全部');
-  assert.equal(lastTooltip, 'PersonalAgent');
+  assert.equal(lastTooltip, 'Synstar');
 
   let readRun;
   let writeRun;
@@ -176,7 +176,7 @@ test('native tray brake controller synchronizes menu/panel, deduplicates concurr
     assert.equal(engaged1.paused, true);
     assert.equal(engaged2.paused, true);
     assert.equal(lastLabel, '恢复运行');
-    assert.equal(lastTooltip, 'PersonalAgent · 已暂停');
+    assert.equal(lastTooltip, 'Synstar · 已暂停');
     assert.equal(publishedSnapshots.at(-1).paused, true);
 
     assert.throws(() => runtime.submitTask({goal: 'blocked', conversationId: 'desktop-panel', idempotencyKey: 'tray-blocked'}),
@@ -196,7 +196,7 @@ test('native tray brake controller synchronizes menu/panel, deduplicates concurr
     const released = await trayController.toggle();
     assert.equal(released.paused, false);
     assert.equal(lastLabel, '暂停全部');
-    assert.equal(lastTooltip, 'PersonalAgent');
+    assert.equal(lastTooltip, 'Synstar');
     assert.equal(publishedSnapshots.at(-1).paused, false);
     assert.deepEqual(continued, [readTask.taskId]);
     assert.equal(runtime.getTask(readTask.taskId).state, 'succeeded');
@@ -223,7 +223,7 @@ test('native tray brake controller synchronizes menu/panel, deduplicates concurr
     const attached = restartedBrake.attach();
     assert.equal(attached.paused, true);
     assert.equal(operatorBrakeTrayLabel(attached), '恢复运行');
-    assert.equal(operatorBrakeTrayTooltip(attached), 'PersonalAgent · 已暂停');
+    assert.equal(operatorBrakeTrayTooltip(attached), 'Synstar · 已暂停');
     assert.deepEqual(restarted.dispatchDueSchedules('desktop-panel'), []);
   } finally {
     restarted.close();

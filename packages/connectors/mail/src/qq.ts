@@ -144,14 +144,22 @@ export class QQMailProvider implements MailProvider {
       if (input.cursor !== undefined && input.cursor.uidValidity !== uidValidity) {
         throw new ProtocolError('CURSOR_EXPIRED', `Folder ${folder} uidValidity changed; restart sync from scratch`);
       }
-      const lastUid = input.cursor?.lastUid ?? 0;
-      const uids = await client.search({uid: `${lastUid + 1}:*`}, {uid: true});
+      const newest = input.order === 'newest';
+      const lastUid = input.cursor?.lastUid;
+      const range = newest && lastUid !== undefined ? `1:${Math.max(1, lastUid - 1)}` : `${(lastUid ?? 0) + 1}:*`;
+      const sinceMs = input.since ? Date.parse(input.since) : Number.NaN;
+      // Dashboard samples use the message Date header. Exclude only dated
+      // messages before the window and leave exact UTC filtering to the host.
+      const criteria = Number.isFinite(sinceMs)
+        ? {uid: range, not: {sentBefore: new Date(sinceMs - 24 * 3_600_000)}}
+        : {uid: range};
+      const uids = await client.search(criteria, {uid: true});
       if(input.signal?.aborted)throw new ProtocolError('CANCELLED','Mail fetch cancelled');
       if(!Array.isArray(uids))throw new ProtocolError('EXTERNAL_FAILURE','Mail UID search did not return a confirmed result');
       const available = uids
         .map(uid => Number(uid))
-        .filter(uid => uid > lastUid)
-        .sort((left, right) => left - right);
+        .filter(uid => uid > 0 && (lastUid === undefined || (newest ? uid < lastUid : uid > lastUid)))
+        .sort((left, right) => newest ? right - left : left - right);
       const fresh = available.slice(0, input.limit);
       const messages: MailMessage[] = [];
       if (fresh.length > 0) {
@@ -165,11 +173,11 @@ export class QQMailProvider implements MailProvider {
       const received=new Set(messages.map(message=>message.uid));
       if(messages.length!==fresh.length||received.size!==fresh.length||fresh.some(uid=>!received.has(uid)))
         throw new ProtocolError('EXTERNAL_FAILURE','Mail UID fetch did not return the complete requested page');
-      const consumed = messages.map(entry => entry.uid).reduce((max, uid) => Math.max(max, uid), lastUid);
+      const consumed = fresh.at(-1) ?? lastUid ?? 0;
       return {
-        messages: messages.sort((a, b) => a.uid - b.uid),
+        messages: messages.sort((a, b) => newest ? b.uid - a.uid : a.uid - b.uid),
         uidValidity,
-        nextCursor: {uidValidity, lastUid: consumed},
+        nextCursor: {uidValidity, lastUid: consumed, ...(newest ? {order: 'newest' as const} : {})},
         hasMore: available.length > fresh.length,
       };
     } catch (error) {

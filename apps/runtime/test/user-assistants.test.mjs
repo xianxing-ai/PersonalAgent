@@ -53,6 +53,23 @@ test('a user assistant keeps its own chat across restart and can be renamed or d
   again.close();
 });
 
+test('a stored worker awaiting reconciliation stays paused when the assistant roster is read', () => {
+  const app=createRuntimeApplication({path:':memory:',text:{mode:'fake'}});
+  try {
+    const assistant=app.listAssistants().find(item=>item.assistantId==='coder');
+    const child=app.runtime.submitTask({conversationId:'roster-test',goal:'Synthetic work',idempotencyKey:'roster-reconciliation'});
+    app.runtime.saveCheckpoint(child.taskId,'subtask-parent',{role:assistant.role});
+    app.runtime.transitionTask(child.taskId,'planning');
+    app.runtime.transitionTask(child.taskId,'running');
+    app.runtime.transitionTask(child.taskId,'waiting_reconciliation',{error:{code:'RESULT_UNKNOWN',message:'Synthetic receipt pending',retryable:false}});
+    app.runtime.updateAssistant(assistant.assistantId,{status:'working',activeTaskId:child.taskId});
+    const projected=app.listAssistants().find(item=>item.assistantId===assistant.assistantId);
+    assert.equal(projected.status,'idle');
+    assert.equal(projected.activeTaskId,undefined);
+    assert.equal(app.runtime.getTask(child.taskId).state,'waiting_reconciliation');
+  } finally {app.close();}
+});
+
 test('a running user assistant accepts an interruption and still waits for tool approval', async t => {
   const root = await directory(t);
   let release;

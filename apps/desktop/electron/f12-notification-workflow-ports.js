@@ -147,7 +147,7 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
       readRound(scope,input);
       if(round.reason==='original_round_requires_readback_or_is_terminal')fail('RESULT_UNKNOWN','F12 original notification round requires independent readback');
       if(round.state==='suppressed'&&!round.counted&&!round.attempts[channel])return {state:'suppressed',evidenceRefs:[]};
-      await notificationHost.deliverRound({roundId:saved.roundId,channel,title:'PersonalAgent 通知',
+      await notificationHost.deliverRound({roundId:saved.roundId,channel,title:'Synstar 通知',
         body:saved.entries.length===1?'来源 '+saved.entries[0].source+' 有一条更新，请查看通知列表。'
           :'有 '+saved.entries.length+' 条更新，请查看通知列表。',source:saved.entries.length===1?saved.entries[0].source:'notifications',
         ...(channel==='voice'?{authority:{context,assertCurrent:()=>{delivery(scope,input);}}}: {})});

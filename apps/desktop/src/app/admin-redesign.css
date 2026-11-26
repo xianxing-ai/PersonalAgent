@@ -1,5 +1,5 @@
 /* ============================================================================
-   PersonalAgent · Obsidian Frosted Acrylic Settings Studio
+   Synstar · Obsidian Frosted Acrylic Settings Studio
    100% scoped under `.admin` (Top Command Bar + 5-Category Acrylic Dock +
    Full-Width Frosted Bento Canvas). Preserves Dark Obsidian Acrylic as the
    signature surface while remaining clean in Light, Reduced Transparency,
@@ -146,9 +146,11 @@
 
 .admin .admin-bar .brand {
   padding: 0;
-  font-size: 13.5px;
-  font-weight: 680;
-  letter-spacing: -0.02em;
+  font-family: var(--font-brand);
+  font-style: italic;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: 0.035em;
   color: var(--adm-text);
   white-space: nowrap;
 }
@@ -560,10 +562,11 @@
 
 .admin #page-title {
   margin: 0;
-  font-size: 27px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.18;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.24;
   color: var(--adm-text);
 }
 
@@ -614,8 +617,10 @@
 
 .admin .settings-heading h2 {
   margin: 0;
-  font-size: 14.5px;
-  font-weight: 640;
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--adm-text-2);
 }
 

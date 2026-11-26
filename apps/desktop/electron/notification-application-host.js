@@ -73,7 +73,7 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
     if(!isDeepStrictEqual([...(args.itemIds??[args.itemId])].sort(),[...round.itemIds].sort()))throw Error('原语音通知选择已改变');
     const feed=service.notificationFeed({limit:100}).items,entries=round.itemIds.map(id=>feed.find(item=>item.id===id));
     const fixedBody=entries.length===1?'来源 '+entries[0]?.source+' 有一条更新，请查看通知列表。':'有 '+entries.length+' 条更新，请查看通知列表。';
-    if(entries.some(item=>!item||item.validity!=='active'||!item.unread)||title!=='PersonalAgent 通知'||body!==fixedBody)
+    if(entries.some(item=>!item||item.validity!=='active'||!item.unread)||title!=='Synstar 通知'||body!==fixedBody)
       throw Error('语音通知必须使用原选择的固定提示文本');
     const original=application.runtime.loadCheckpoint(scope.taskId,voiceKey(roundId));
     if(original&&!isDeepStrictEqual(original.binding,binding))throw Error('原语音通知内容已被替换');

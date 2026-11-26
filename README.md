@@ -1,8 +1,8 @@
-# PersonalAgent
+# Synstar
 
 **面向 Windows 的常驻型个人认知智能体系统（Resident Cognitive Agent System for Windows）**
 
-PersonalAgent 是一款构建于 Windows 桌面环境的持续型个人智能体助理与认知工作台。系统以非侵入式**动态悬浮球（Dynamic Orb）**与**多窗口指挥中心**为交互入口，深度融合**版本化个人世界状态（Versioned Personal World State）**、**端云协同混合编排（Cloud-Edge Hybrid Orchestration）**、**多源生态连接器**与**零信任本地受控执行引擎**，将自然语言意图、跨源事件流与个人长期目标转化为可感知、可审计、可恢复的受控行动。
+**Synstar**（中文名：**衔星**）是一款构建于 Windows 桌面环境的持续型个人智能体助理与认知工作台。系统以非侵入式**动态悬浮球（Dynamic Orb）**与**多窗口指挥中心**为交互入口，深度融合**版本化个人世界状态（Versioned Personal World State）**、**端云协同混合编排（Cloud-Edge Hybrid Orchestration）**、**多源生态连接器**与**零信任本地受控执行引擎**，将自然语言意图、跨源事件流与个人长期目标转化为可感知、可审计、可恢复的受控行动。
 
 <!-- current-design-alignment-20261015 -->
 

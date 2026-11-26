@@ -91,7 +91,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       const token=options.appToken??(transport==='wss'?environment.PA_AGENTARTS_APP_TOKEN:undefined);
       if(typeof token!=='string'||! /^[\x21-\x7e]{32,4096}$/.test(token))throw Error('AgentArts 应用入站凭据不可用');
       return deriveOwnedWorkflowKeys({transportToken:token}).receiptSecret;
-    },fetchImpl:(url,init)=>{
+    },fetchImpl:(url,init,taskId)=>{
       // Compare the original URL too: URL normalization must not accept a different path or query.
       const input=url instanceof URL?url.href:url;
       // An explicitly pinned graph URL may name exactly the same host-selected version.
@@ -115,7 +115,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       const send=()=>{
         if (typeof onCloudRun !== 'function') return fetchImpl(target.href,finalInit);
         const started = Date.now();
-        const finish = ok => { try { onCloudRun({durationMs: Math.max(1, Date.now()-started), ok: ok === true}); } catch { /* Usage recording cannot change the cloud response. */ } };
+        const finish = ok => { try { onCloudRun({durationMs: Math.max(1, Date.now()-started), ok: ok === true, ...(taskId?{taskId}:{})}); } catch { /* Usage recording cannot change the cloud response. */ } };
         return Promise.resolve().then(()=>fetchImpl(target.href,finalInit))
           .then(response => { finish(response.ok); return response; }, error => { finish(false); throw error; });
       };

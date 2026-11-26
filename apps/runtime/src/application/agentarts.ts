@@ -72,7 +72,7 @@ export interface AgentArtsRuntimeApplicationOptions
   realtimeSocket?: RealtimeSocketConstructor;
   onTransportState?: (state: AgentArtsTransportState) => void;
   /** Optional host-only WSS cloud-run accounting hook; fires only when a frame was sent over WSS. */
-  onWebSocketCloudRun?: (info: {durationMs: number; ok: boolean; taskId: string}) => void;
+  onWebSocketCloudRun?: (info: {durationMs: number; ok: boolean; taskId: string; requestId: string; origin: 'user'|'autonomous'}) => void;
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
@@ -173,7 +173,7 @@ export function createAgentArtsRuntimeApplication(
     throw new ProtocolError('INVALID_ARGUMENT','New task continuations require the guarded Competition tool catalog');
   }
   let application: RuntimeApplication;
-  const wssStarted = new Map<string, number>();
+  const wssStarted = new Map<string, {at: number; requestId: string}>();
   const wssRunKey = (request: CoordinationRequest): string => `${request.taskId}\0${request.revision}`;
   const preparePayload:AgentArtsPayloadPreparer=configuredPayloadPreparer??(async()=>{
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local cloud-payload classification is unavailable');
@@ -213,7 +213,7 @@ export function createAgentArtsRuntimeApplication(
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
         onDispatch: (request, receipt) => {
           if (onWebSocketCloudRun !== undefined && receipt.serverInstanceId !== undefined) {
-            wssStarted.set(wssRunKey(request), Date.now());
+            wssStarted.set(wssRunKey(request), {at: Date.now(), requestId: receipt.requestId});
           }
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
           recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt,request);
@@ -280,7 +280,8 @@ export function createAgentArtsRuntimeApplication(
         if (started === undefined) return;
         wssStarted.delete(key);
         try {
-          onWebSocketCloudRun({durationMs: Math.max(1, Date.now() - started), ok, taskId: request.taskId});
+          onWebSocketCloudRun({durationMs: Math.max(1, Date.now() - started.at), ok, taskId: request.taskId,
+            requestId: started.requestId, origin: application.readTaskUsageOrigin(request.taskId)});
         } catch {
           /* Usage accounting never alters the cloud invocation outcome. */
         }

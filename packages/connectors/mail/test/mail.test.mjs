@@ -18,12 +18,12 @@ import {ProtocolError, validateContract} from '@personal-agent/contracts';
 const NOW = Date.parse('2026-09-07T02:00:00.000Z');
 const ACCOUNT = 'qq-me';
 
-function syntheticQQ({searchResult,fetchUids=[],abortSearch}={}){
+function syntheticQQ({searchResult,fetchUids=[],abortSearch,expectedSearch={uid:'11:*'}}={}){
   let released=0,fetches=0,searches=0;
   const provider=new QQMailProvider({user:'synthetic@qq.com',authCode:'SyntheticOnly'});
   provider.connect=async()=>({mailbox:{uidValidity:123,exists:5000},
     async getMailboxLock(){return{release(){released++;}};},
-    async search(query,options){searches++;assert.deepEqual(query,{uid:'11:*'});assert.deepEqual(options,{uid:true});abortSearch?.();return searchResult;},
+    async search(query,options){searches++;assert.deepEqual(query,expectedSearch);assert.deepEqual(options,{uid:true});abortSearch?.();return searchResult;},
     async *fetch(uids,query,options){fetches++;assert.deepEqual(uids,[11,12]);assert.equal(options.uid,true);
       for(const uid of fetchUids)yield{uid,envelope:{subject:'Synthetic public header'},flags:new Set()};}});
   return {provider,input:{folder:'INBOX',cursor:{uidValidity:123,lastUid:10},limit:2},
@@ -34,6 +34,14 @@ test('QQ failed UID search never becomes a completed empty page',async()=>{
   const f=syntheticQQ({searchResult:false});
   await assert.rejects(f.provider.fetchPage(ACCOUNT,f.input),{code:'EXTERNAL_FAILURE',message:'Mail UID search did not return a confirmed result'});
   assert.equal(f.input.cursor.lastUid,10);assert.deepEqual(f.stats(),{released:1,fetches:0,searches:1});
+});
+
+test('dashboard mail window uses the message date together with the UID cursor',async()=>{
+  const since='2026-11-25T13:00:00.000Z';
+  const f=syntheticQQ({searchResult:[],expectedSearch:{uid:'11:*',not:{sentBefore:new Date('2026-11-24T13:00:00.000Z')}}});
+  const page=await new MailService(f.provider,{now:()=>NOW}).fetchInbox(ACCOUNT,{...f.input,since});
+  assert.equal(page.hasMore,false);
+  assert.equal(f.stats().searches,1);
 });
 test('QQ missing or incomplete UID fetch fails without committing a cursor',async()=>{
   for(const fetchUids of [[],[11],[11,11],[11,13]]){
@@ -464,4 +472,41 @@ test('复合键无歧义：a:b+c 与 a+b:c 在旧拼接下同键，结构化编�
   const replay = await service.send('a:b', {to: 'x@y.z', subject: 's1', text: 't1', idempotencyKey: 'c'});
   assert.deepEqual(first, replay);
   assert.equal(providerSends, 2, '重放不新增 provider 调用');
+});
+
+test('order=newest 返回最新收到的 limit 封邮件（从新到旧排列）', async () => {
+  const provider = new FakeMailProvider({
+    inbox: [1, 2, 3, 4, 5].map(uid => ({
+      uid,
+      folder: 'INBOX',
+      from: `u${uid}@example.com`,
+      to: 'me@example.com',
+      subject: `subj-${uid}`,
+      sentAt: `2026-11-2${uid}T00:00:00.000Z`,
+      seen: false,
+    })),
+  }, {pageSize: 2});
+  const service = new MailService(provider, {now: () => NOW});
+  const page = await service.fetchInbox(ACCOUNT, {limit: 3, order: 'newest'});
+  assert.deepEqual(page.items.map(item => item.externalId), ['INBOX:5', 'INBOX:4', 'INBOX:3']);
+  assert.equal(page.hasMore, true);
+  const cursor = decodeMailCursor(page.nextCursor);
+  const next = await service.fetchInbox(ACCOUNT, {limit: 3, order: 'newest', cursor});
+  assert.deepEqual(next.items.map(item => item.externalId), ['INBOX:2', 'INBOX:1']);
+  assert.equal(next.hasMore, false);
+  await assert.rejects(service.fetchInbox(ACCOUNT, {cursor}), {code: 'INVALID_ARGUMENT'});
+});
+
+test('QQ newest cursor reads strictly lower UIDs when IMAP fetches out of order', async () => {
+  const provider=new QQMailProvider({user:'synthetic@qq.com',authCode:'SyntheticOnly'});
+  const ranges=[];
+  provider.connect=async()=>({mailbox:{uidValidity:123},getMailboxLock:async()=>({release(){}}),
+    async search(criteria){ranges.push(criteria.uid);return [3,1,2,5,4];},
+    async *fetch(uids){for(const uid of [...uids].reverse())yield {uid,envelope:{},flags:new Set()};}});
+  const service=new MailService(provider,{now:()=>NOW});
+  const first=await service.fetchInbox(ACCOUNT,{order:'newest',limit:3});
+  const next=await service.fetchInbox(ACCOUNT,{order:'newest',limit:3,cursor:decodeMailCursor(first.nextCursor)});
+  assert.deepEqual(ranges,['1:*','1:2']);
+  assert.deepEqual([...first.items,...next.items].map(item=>item.externalId),['INBOX:5','INBOX:4','INBOX:3','INBOX:2','INBOX:1']);
+  assert.equal(next.hasMore,false);
 });
