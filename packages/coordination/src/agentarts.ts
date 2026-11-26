@@ -112,6 +112,13 @@ export class AgentArtsHttpResponseError extends ProtocolError {
   }
 }
 
+/** A concrete HTTP response reached the adapter. Never classify transport, authorization or unknown delivery as a response. */
+type ResponseFailure={stage:'http_response'|'response_body'|'response_schema'|'application_schema';httpStatus:number;schemaCategory?:AgentArtsSchemaCategory};
+const responseFailures=new WeakMap<object,ResponseFailure>();
+export function readAgentArtsResponseFailure(error:unknown):Readonly<ResponseFailure>|undefined {
+  return error&&typeof error==='object'?responseFailures.get(error):undefined;
+}
+
 /** Fixed facts for the existing Runtime error outlet. Never formats arbitrary error messages. */
 export function formatAgentArtsFailureDetail(error: unknown): string | undefined {
   try {
@@ -1689,6 +1696,10 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     } catch (error) {
       if (fallbackStarted && fallbackReceipt !== undefined && !currentAbortError(combined)
         && !(error instanceof AgentArtsResultUnknownError)) error = new AgentArtsResultUnknownError(fallbackReceipt);
+      if(error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE'&&!(error instanceof AgentArtsResultUnknownError)
+        &&httpStatus!==undefined&&(stage==='http_response'||stage==='response_body'||stage==='response_schema'||stage==='application_schema')){
+        responseFailures.set(error,Object.freeze({stage,httpStatus,...(schemaCategory?{schemaCategory}:{})}));
+      }
       if (this.onDiagnostic !== undefined) {
         const upgradeFailure = error instanceof AgentArtsWebSocketUpgradeError ? error : undefined;
         const diagnosticHttpStatus = upgradeFailure === undefined ? httpStatus : upgradeFailure.httpStatus;

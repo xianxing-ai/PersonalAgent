@@ -27,7 +27,7 @@ import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapabilit
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
 import {bindNotepadWorker,NOTEPAD_INTENT,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
-import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete,requestedPlayback,requestedBrowserLinkNavigation} from './browser-worker.js';
+import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete,requestedPlayback,requestedBrowserLinkNavigation,browserReadExcerpt} from './browser-worker.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -64,7 +64,7 @@ import type {WorkerContext,WorkerResult,SubmitTaskInput} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import type {QwenRealtimeModelGateway} from '@personal-agent/models';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError,parseCoordinationContinuation} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError,readAgentArtsResponseFailure,parseCoordinationContinuation} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationResult, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import {ASSISTANT_MODEL_UNAVAILABLE, optionalAssistantModelId} from '../assistant-roster.js';
@@ -3225,6 +3225,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private holdCompetitionExport(taskId:string,error?:unknown):void {
+    const responseFailure=readAgentArtsResponseFailure(error);
+    if(responseFailure&&!this.runtime.loadCheckpoint(taskId,'competition-cloud-inflight')&&!this.runtime.loadCheckpoint(taskId,'competition-cloud-unknown')
+      &&!this.isHistoryWithheld(taskId)&&browserReadExcerpt(this.runtime,taskId)){
+      // The adapter received a definite response and every device operation was a confirmed read.
+      // Preserve the actual response failure; the authorized source can be read by the initiating chat.
+      this.runtime.saveCheckpoint(taskId,'browser-summary-response-failure:v1',responseFailure);
+      return;
+    }
     // The adapter's typed never-sent proof is required in addition to local effect
     // readback. Missing inflight alone cannot establish this (plain HTTPS may send).
     if(error instanceof AgentArtsBeforeInvokeError&&this.runtime.canFailTrackedCoordinationWithoutEffects(taskId))return;
@@ -6504,18 +6512,34 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Device-only result projection. The parent transcript and its cloud context keep no copy. */
-  readDeviceWorkerReply(parentTaskId:string,childTaskId:string):{kind:'browser'|'withheld'}|{kind:'notepad';text:string}|undefined {
+  readDeviceWorkerReply(parentTaskId:string,childTaskId:string):{kind:'browser'|'withheld'}|{kind:'notepad'|'browser-excerpt';text:string}|undefined {
     const notepad=this.runtime.loadCheckpoint(childTaskId,NOTEPAD_INTENT)!==undefined;
     const browser=this.runtime.loadCheckpoint(childTaskId,BROWSER_WORKER)!==undefined;
     if(!notepad&&!browser)return;
     const withheld={kind:'withheld' as const};
     if(this.isHistoryWithheld(parentTaskId)||this.isHistoryWithheld(childTaskId))return withheld;
     const parent=this.runtime.getTask(parentTaskId);
-    if(parent.state!=='succeeded')return withheld;
     const child=this.runtime.findTaskByIdempotencyKey('subagent-dispatch-'+parentTaskId+'-user-work');
-    if(child?.taskId!==childTaskId||child.state!=='succeeded')return withheld;
+    if(child?.taskId!==childTaskId)return withheld;
     try {
       if(readCanonicalUserWorkParent(this.runtime,child.taskId)!==parentTaskId)return withheld;
+      if(browser&&['failed','waiting_reconciliation'].includes(parent.state)&&['failed','waiting_reconciliation'].includes(child.state)){
+        const diagnostic=this.runtime.loadCheckpoint(childTaskId,'competition-coordination-failure') as {phase?:string;kind?:string;code?:string}|undefined;
+        const sent=this.runtime.loadCheckpoint(childTaskId,'competition-cloud-request-identity') as {requests?:{revision?:number;recordedAt?:string}[]}|undefined;
+        const latestFinish=Math.max(...this.runtime.readToolExecutions(childTaskId).map(run=>Date.parse(run.finishedAt??'')));
+        // Old deployments used a generic hold even after the second cloud send. A preflight refusal is not a sent response.
+        const historical=child.state==='waiting_reconciliation'&&this.runtime.loadCheckpoint(childTaskId,'competition-export-withheld')!==undefined
+          &&diagnostic?.phase==='continuation'&&diagnostic.kind==='protocol_error'&&diagnostic.code==='EXTERNAL_FAILURE'
+          &&new Set(sent?.requests?.map(request=>request.revision)).size>1
+          &&sent?.requests?.some(request=>Date.parse(request.recordedAt??'')>=latestFinish)===true;
+        if(!this.runtime.loadCheckpoint(childTaskId,'competition-cloud-unknown')&&!this.runtime.loadCheckpoint(childTaskId,'competition-cloud-inflight')
+          &&!this.runtime.loadCheckpoint(childTaskId,'browser-export-denial:v1')
+          &&(historical||this.runtime.loadCheckpoint(childTaskId,'browser-summary-response-failure:v1')!==undefined)){
+          const text=browserReadExcerpt(this.runtime,childTaskId);
+          if(text)return {kind:'browser-excerpt',text};
+        }
+      }
+      if(parent.state!=='succeeded'||child.state!=='succeeded')return withheld;
       if(notepad) {
         const verified=assertNotepadWorkerComplete(this.runtime,child.taskId);
         return verified?{kind:'notepad',text:verified==='value'?'已打开记事本，已写入并核对文字。':'已打开记事本。'}:withheld;

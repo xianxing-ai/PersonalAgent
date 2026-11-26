@@ -1,6 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
-import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminalError, bindAgentArtsActivity, formatAgentArtsFailureDetail, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
+import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminalError, bindAgentArtsActivity, formatAgentArtsFailureDetail, readAgentArtsResponseFailure, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
   type CoordinationResult, type CoordinationToolProposalResult, type AgentArtsUnknownReceipt} from '@personal-agent/coordination';
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
@@ -37,7 +37,8 @@ export function coordinationFailureDiagnostic(error: unknown, continuation: bool
     // A hostile error object must not replace the original sanitized failure.
     kind = 'unknown_error'; code = 'EXTERNAL_FAILURE'; remoteCode = undefined;
   }
-  return {version: '1.0', phase: continuation ? 'continuation' : 'initial', kind, code,
+  const response=readAgentArtsResponseFailure(error);
+  return {version: '1.0', phase: continuation ? 'continuation' : 'initial', kind, code,...(response?{response}:{}),
     ...(remoteCode === undefined ? {} : {remoteCode})};
 }
 
@@ -363,6 +364,8 @@ async function exchange(
             coordinationFailureDiagnostic(error, continuation !== undefined));
           const detail = formatAgentArtsFailureDetail(error);
           const suffix = detail === undefined ? '' : ` [${detail}]`;
+          if(readAgentArtsResponseFailure(error)&&runtime.loadCheckpoint(taskId,'browser-summary-response-failure:v1')!==undefined)
+            throw new ProtocolError('EXTERNAL_FAILURE','网页已读取，云端未能完成总结。'+suffix);
           if(error instanceof AgentArtsTerminalError) {
             const inflight=runtime.loadCheckpoint(taskId,'competition-cloud-inflight') as AgentArtsUnknownReceipt|undefined;
             const received=runtime.loadCheckpoint(taskId,'competition-cloud-received') as AgentArtsUnknownReceipt|undefined;

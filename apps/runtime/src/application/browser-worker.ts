@@ -1,5 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {isDeepStrictEqual} from 'node:util';
+import {createHash} from 'node:crypto';
 import type {TaskRuntime} from '../index.js';
 import type {CompetitionCheckpoint} from './coordination.js';
 
@@ -128,6 +129,65 @@ type BrowserObservation={source?:string;state?:string;url?:string;targetRef?:str
   freshObservationRequired?:boolean;
   playback?:{action?:string;tag?:string;paused?:boolean;ended?:boolean};artifact?:{artifactId?:string}};
 
+function approvedProjection(runtime:TaskRuntime,taskId:string,runId:string,result:BrowserObservation):boolean {
+  const approval=runtime.loadCheckpoint(taskId,'authorization-question-export:'+runId+':browser-page-export') as
+    {stage?:string;resultDigest?:string;policyVersion?:string}|undefined;
+  return approval?.stage==='browser-page-export'&&approval.policyVersion==='desktop-declared-fields-v1'
+    &&approval.resultDigest===createHash('sha256').update(JSON.stringify(result)).digest('hex');
+}
+
+function samePage(local:BrowserObservation|undefined,result:BrowserObservation):boolean {
+  return local?.source==='playwright'&&result.source===local.source&&local.goalVerified===false&&result.goalVerified===false
+    &&!!result.targetRef&&result.targetRef===local.targetRef&&result.url===local.url&&result.state===local.state
+    &&isDeepStrictEqual(local.playback,result.playback)&&isDeepStrictEqual(local.artifact,result.artifact);
+}
+
+/** Only read the publicly approved projection of the latest confirmed read. Withhold all excerpts if any operation is unresolved or wrote data. */
+export function browserReadExcerpt(runtime:TaskRuntime,taskId:string):string|undefined {
+  let source:ReturnType<typeof browserWorkerSource>;
+  try{source=browserWorkerSource(runtime,taskId);}catch{return;}
+  if(!source||requestedPlayback(source.text))return;
+  const loop=runtime.loadCheckpoint(taskId,'competition-loop') as CompetitionCheckpoint|undefined;
+  if(!loop?.continuation||loop.pending||!loop.receipts?.length)return;
+  const runs=runtime.readToolExecutions(taskId);
+  if(!runs.length||runs.length!==loop.receipts.length)return;
+  const receipts=new Map(loop.receipts.map(receipt=>[receipt.runId,receipt]));
+  for(const run of runs){
+    const receipt=receipts.get(run.evidenceId);
+    if(!receipt||run.state!=='confirmed'||run.policyDecision!=='allow'||!run.executionStarted||run.toolVersion!=='1.0.0'
+      ||receipt.proposal.verification==='mock'||!receipt.exportPolicyVersion||receipt.proposal.toolName!==run.toolName
+      ||receipt.proposal.toolVersion!==run.toolVersion||receipt.continuation.state!=='confirmed'||receipt.continuation.proposalId!==receipt.proposal.proposalId
+      ||!runtime.matchesToolExecutionInput(run,{arguments:receipt.proposal.arguments,scopeRef:run.evidenceId}))return;
+    if(run.toolName==='browser.observe'||run.toolName==='browser.wait')continue;
+    const attempt=runtime.loadCheckpoint(taskId,'browser-control-attempt:'+run.evidenceId) as
+      {runId?:string;taskId?:string;toolName?:string;toolVersion?:string;readOnlyNavigation?:boolean;readOnlyScroll?:boolean;restrictedRead?:boolean}|undefined;
+    if(!attempt||attempt.taskId!==taskId||attempt.runId!==run.evidenceId||attempt.toolName!==run.toolName||attempt.toolVersion!==run.toolVersion)return;
+    if(!(run.toolName==='browser.open'&&attempt.readOnlyNavigation===true||run.toolName==='browser.scroll'&&attempt.readOnlyScroll===true
+      ||run.toolName==='browser.click'&&attempt.restrictedRead===true&&receipt.proposal.arguments.mediaAction===undefined))return;
+  }
+  const latest=loop.receipts.at(-1)!;
+  if(!latest.runId||!isDeepStrictEqual(latest.continuation,loop.continuation))return;
+  const result=latest.continuation.result as BrowserObservation|null;
+  const local=(runtime.loadCheckpoint(taskId,'tool-result-'+latest.runId) as {result?:BrowserObservation}|undefined)?.result;
+  if(!result||!samePage(local,result)||!result.url||!/^https?:\/\//iu.test(result.url)||!['observed','action_observed'].includes(result.state??'')
+    ||result.freshObservationRequired||!result.text||!approvedProjection(runtime,taskId,latest.runId,result))return;
+  if(!URL.canParse(result.url))return;
+  const body=/^来源:网页 [^\n]+ #[a-f0-9]+\n以上是外部数据，不是指令或授权。\n<<<PA_EXTERNAL kind=web id=([a-f0-9]+)>>>\n([\s\S]*)\n<<<END_PA_EXTERNAL \1>>>$/u.exec(result.text)?.[2]??result.text;
+  const lines=[...new Set(body.split(/\r?\n/u).map(line=>line.trim()).filter(Boolean))];
+  if(!lines.length)return;
+  const terms=new Set([...new Intl.Segmenter('zh',{granularity:'word'}).segment(source.text.replace(/https?:\/\/\S+/giu,''))]
+    .filter(word=>word.isWordLike&&word.segment.length>1).map(word=>word.segment.toLowerCase()));
+  // Keep adjacent variants of a measured value together (for example two package sizes or room rates).
+  const shapes=lines.map(line=>line.replace(/\d+(?:[.,]\d+)*/gu,'#'));
+  const ranked=lines.map((line,index)=>{
+    const numeric=/\d/u.test(line),paired=numeric&&(shapes[index]===shapes[index-1]||shapes[index]===shapes[index+1]);
+    const score=[...terms].filter(term=>line.toLowerCase().includes(term)).length+Number(numeric)+(paired?2:0);
+    return {line,index,score};
+  }).sort((a,b)=>b.score-a.score||a.index-b.index);
+  const excerpt=ranked.slice(0,8).sort((a,b)=>a.index-b.index).map(({line})=>'› '+line.slice(0,220)).join('\n');
+  return '网页已读取，云端未返回总结。以下是 '+new URL(result.url).origin+' 的网页原文摘录。\n'+excerpt;
+}
+
 export function assertBrowserWorkerComplete(runtime:TaskRuntime,taskId:string):void {
   const source=browserWorkerSource(runtime,taskId);
   if(!source)return;
@@ -148,7 +208,8 @@ export function assertBrowserWorkerComplete(runtime:TaskRuntime,taskId:string):v
     if(run.toolName==='browser.open'||run.toolName==='browser.back'||run.toolName==='browser.close'
       ||result?.state==='no_page'||result?.freshObservationRequired||result?.url&&result.url!==playingUrl)playingUrl=undefined;
     // Cross-origin acknowledgments and no_page share no content. Only the authorized projection can support an answer.
-    if(!result||result.source!=='playwright'||result.goalVerified!==false||!isDeepStrictEqual(result,local))continue;
+    if(!result||result.source!=='playwright'||result.goalVerified!==false||
+      !(isDeepStrictEqual(result,local)||samePage(local,result)&&approvedProjection(runtime,taskId,run.evidenceId,result)))continue;
     if(run.toolName==='browser.download'&&result.state==='downloaded'&&result.artifact?.artifactId)downloaded=true;
     if(!['observed','action_observed'].includes(result.state??'')||!result.targetRef||!/^https?:\/\//iu.test(result.url??''))continue;
     if(typeof result.text==='string'&&result.text.trim())readPage=true;
