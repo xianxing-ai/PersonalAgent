@@ -31,7 +31,7 @@ export function failureRepairModel(tasks) {
     replayNote: '这次查看只重放决策，没有重新执行。',
     buttons,
     errorMessage: typeof task.error?.message === 'string' ? task.error.message : '',
-    hasDiagnostic: Boolean(task.hasCommandDiagnostic || task.error?.message),
+    hasDiagnostic: Boolean(task.hasCommandDiagnostic),
   };
 }
 

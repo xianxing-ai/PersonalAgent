@@ -536,7 +536,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     delegatedTracker.observe(timeline,childrenByParent,mainChatReplies);
     const deliveries=delegatedTracker.list();
     const signature=JSON.stringify([data.tasks.map(task=>[task.taskId,task.createdAt,task.userMessage,task.state,task.resultSummary,task.resultMetadata,
-      task.error,task.bodyWithheld,task.outputTruncated,task.conflictOnly,task.backgroundDelegation,task.reconciliationStatus,task.revision,
+      task.error,task.hasCommandDiagnostic,task.bodyWithheld,task.outputTruncated,task.conflictOnly,task.backgroundDelegation,task.reconciliationStatus,task.revision,
       task.steps?.map(s=>[s.stepId,s.label,s.state])]),
       data.subagentTasks?.map(child=>[child.taskId,child.parentTaskId,child.state,child.finalReply,child.steps?.map(s=>[s.stepId,s.label,s.state])]),
       data.messages,deliveries.map(d=>[d.taskId,d.state,d.reply])]);
@@ -553,7 +553,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
         const live=liveTurns.get(task.taskId);
         const traceHtml=traceBlockHtml(task,live,children,escape);
         const replies=mainChatReplies(task,children,live?.answer);
-        const failure=task.bodyWithheld||task.outputTruncated?undefined:task.error?.message;
+        const failure=task.hasCommandDiagnostic&&!task.bodyWithheld&&!task.outputTruncated?task.error?.message:undefined;
         const streaming=!isTerminal(task)&&!task.bodyWithheld&&!task.outputTruncated&&!browserExcerptReply(task,children);
         const streamAttr=streaming?` data-streaming-reply="${escape(task.taskId)}"`:'';
         const streamedChild=children.length?live?.answer:'';
