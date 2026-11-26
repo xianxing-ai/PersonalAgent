@@ -15,10 +15,14 @@ const protectedCheckpoints=['subtask-parent','assistant-external-fence','private
   'private-derived-output','knowledge-recheck-result','harness-event-origin','scheduled-text-origin:v1','desktop-proactive-source-v1'];
 type Intent={sourceTaskId?:string;localDay?:string};
 
-function directBrowserRequest(text:string):boolean {
-  const command=text.trim().replace(/^(?:测试\s*[:：]\s*)?/u,'')
+function browserCommand(text:string):string {
+  return text.trim().replace(/^(?:测试\s*[:：]\s*)?/u,'')
     .replace(/^(?:(?:请你?|麻烦你?|帮我|给我|替我|现在|再|尝试|试着|能否帮我|可不可以帮我|我想(?:要)?|我需要)\s*)+/u,'')
     .replace(/^(?:请)?(?:派|让|叫|安排|请)(?:一[个名位]|个)?(?:工人|助手)(?:帮我|来|去)?\s*/u,'');
+}
+
+function directBrowserRequest(text:string):boolean {
+  const command=browserCommand(text);
   if(!command||externalText.test(command))return false;
   if(/^(?:点(?:击|开|一下)?|打开|进入|访问)\s*(?:[「“"][^」”"\n]{1,180}[」”"]|[^，。！？\n]{1,40}链接)\s*(?:来|去|以便)?(?:查看|浏览|阅读)[^，。！？\n]{0,30}(?:网页|页面|详情页)(?:[，。！\s]|$)/u.test(command))return true;
   if(/^(?:(?:告诉我|读出|说说|解释一下|总结一下|能不能告诉我|可以告诉我)\s*)?(?:当前|这个|该)(?:网页|页面)(?:上|里|中)?(?:的)?(?:标题|正文|主题|要点|主要内容|讲的|说的|写的|讲了|说了|写了)(?:是(?:什么|啥)|什么|啥|有(?:哪些|什么))?[吗呢？?。！!\s]*$/u.test(command))return true;
@@ -111,6 +115,23 @@ export function browserWorkerSource(runtime:TaskRuntime,taskId:string):{text:str
 
 export const BROWSER_ACTIONS=['browser.open','browser.observe','browser.click','browser.type','browser.press','browser.scroll',
   'browser.select','browser.back','browser.wait','browser.download','browser.screenshot','browser.close','browser.prepare'];
+
+/** Only a URL named directly by the human may start a fresh document over an unbound workbench page. */
+export function explicitlyRequestedBrowserUrl(text:string,target:unknown):boolean {
+  if(typeof target!=='string'||externalText.test(text))return false;
+  const command=browserCommand(text);
+  const urls=[...command.matchAll(/https?:\/\/[^\s<>"`「」“”，。；！、]+/giu)];
+  if(urls.length!==1)return false;
+  const match=urls[0]!;
+  const before=command.slice(0,match.index).trim();
+  const after=command.slice(match.index!+match[0].length);
+  if(!/^(?:(?:用|使用|通过)(?:内置|受控)?浏览器\s*)?(?:打开|访问|前往|进入|浏览|播放|观看|打开并播放)\s*(?:(?:这[个段条]|下[面列]的?|指定的?)?\s*(?:网页|网站|网址|页面|链接|视频|音频|音乐))?[：:\s]*$/u.test(before))return false;
+  if(/(?:别|勿|不要|禁止|无需|取消|避免|不许|不能|不必)[^，。；！？\n]{0,12}(?:打开|浏览|访问|前往|进入|播放|观看)|[？?]|(?:可以|行|对|是)吗|什么意思|用作示例|只是举例/u.test(after))return false;
+  try{
+    const url=new URL(match[0]);
+    return !url.username&&!url.password&&url.href===new URL(target).href;
+  }catch{return false;}
+}
 
 // The mode is derived only from the original human request, never from page text or the cloud proposal.
 export function requestedPlayback(text:string):boolean {

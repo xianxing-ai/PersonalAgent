@@ -27,7 +27,7 @@ import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapabilit
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
 import {bindNotepadWorker,NOTEPAD_INTENT,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
-import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete,requestedPlayback,requestedBrowserLinkNavigation,browserReadExcerpt} from './browser-worker.js';
+import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete,explicitlyRequestedBrowserUrl,requestedPlayback,requestedBrowserLinkNavigation,browserReadExcerpt} from './browser-worker.js';
 import {browserPreparationIntent,preparationMatches,requestedChoices,type PreparationControl} from './browser-preparation.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
@@ -6501,6 +6501,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** Trusted Desktop can attach a current page only to a human browser request. */
   browserConversationIntent(conversationId:string,text:string):boolean {
     return this.profile==='huawei_ict_agentarts'&&this.delegateUserTasks&&browserIntent(this.runtime,conversationId,text)!==undefined;
+  }
+
+  browserWorkerExplicitlyOpens(taskId:string,url:unknown):boolean {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks)return false;
+    const parent=(this.runtime.loadCheckpoint(taskId,BROWSER_WORKER) as {parentTaskId?:string}|undefined)?.parentTaskId;
+    if(!parent||readCanonicalUserWorkParent(this.runtime,taskId)!==parent)return false;
+    const source=browserWorkerSource(this.runtime,taskId);
+    return !!source&&!source.isFollowUp&&explicitlyRequestedBrowserUrl(source.text,url);
   }
 
   /** The host may further restrict one concrete click only for the original human's browser worker. */
