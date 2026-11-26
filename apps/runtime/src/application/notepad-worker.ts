@@ -65,7 +65,7 @@ export function assertNotepadChildrenComplete(runtime:TaskRuntime,parentTaskId:s
 }
 
 /** Cloud prose and a confirmed dispatch are insufficient; inspect the original native tool receipt. */
-export function assertNotepadWorkerComplete(runtime:TaskRuntime,taskId:string):void {
+export function assertNotepadWorkerComplete(runtime:TaskRuntime,taskId:string):'window'|'value'|undefined {
   const intent=runtime.loadCheckpoint(taskId,NOTEPAD_INTENT) as NotepadIntent|undefined;
   if(!intent)return;
   const runs=runtime.readToolExecutions(taskId).filter(run=>run.toolName===NOTEPAD_TOOL&&run.toolVersion==='1.0.0'
@@ -80,7 +80,7 @@ export function assertNotepadWorkerComplete(runtime:TaskRuntime,taskId:string):v
     const result=(runtime.loadCheckpoint(taskId,'tool-result-'+run.evidenceId) as
       {result?:{source?:string;state?:string;goalVerified?:boolean;verification?:{state?:string;kind?:string}}}|undefined)?.result;
     if(result?.source==='windows-native'&&result.state==='verified'&&result.goalVerified===true&&result.verification?.state==='verified'
-      &&result.verification.kind===(typeof args.text==='string'?'value':'app_launched'))return;
+      &&result.verification.kind===(typeof args.text==='string'?'value':'app_launched'))return intent.requireValue?'value':'window';
   }
   const uncertain=runs.some(run=>run.state==='started'||run.state==='unknown');
   throw new ProtocolError(uncertain?'RESULT_UNKNOWN':'EXTERNAL_FAILURE',

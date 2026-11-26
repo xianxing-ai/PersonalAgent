@@ -993,11 +993,11 @@ function compactSubagentTasks(children,visibleParents,surface){
     const task=safeDesktopTask(runtime.getTask(child.taskId));
     const {goal,resultSummary,error,latestMessageTaskId,...identity}=child;
     const parent=visibleParents.get(child.parentTaskId);
-    const browserWorker=runtime.loadCheckpoint(task.taskId,'browser-worker-scope:v1')!==undefined;
     const canReply=surface&&localChildReplyAllowed(parent,task);
-    const replyForBrowserTask=Boolean(canReply&&browserWorker&&runtimeApplication.readBrowserResultTaskId(parent.taskId)===task.taskId);
-    const finalReply=canReply&&task.state==='succeeded'&&(!browserWorker||replyForBrowserTask)?resultText(task.resultSummary,taskResultMetadata(task)):'';
-    const replyFields=finalReply?{finalReply,...(replyForBrowserTask?{replyForBrowserTask:true}:{})}:{};
+    const deviceReply=canReply&&task.state==='succeeded'?runtimeApplication.readDeviceWorkerReply(parent.taskId,task.taskId):undefined;
+    const finalReply=deviceReply?.kind==='notepad'?deviceReply.text:canReply&&task.state==='succeeded'&&deviceReply?.kind!=='withheld'
+      ?resultText(task.resultSummary,taskResultMetadata(task)):'';
+    const replyFields=finalReply?{finalReply,...(deviceReply?{replyForDeviceTask:true}:{})}:{};
     if(surface==='panel')return {parentTaskId:child.parentTaskId,taskId:child.taskId,state:task.state,...(child.role?{role:child.role}:{}),...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),...replyFields};
     let preview=finalReply||(canReply&&task.state==='failed'?'执行异常':'');
     if(canReply&&latestMessageTaskId){
@@ -5347,13 +5347,14 @@ async function action(event, name, payload) {
     const runtime=runtimeApplication.runtime;
     const turns=new Map(thread.turns.map(turn=>[turn.taskId,turn]));
     for(const worker of thread.workers) {
-      if(runtime.loadCheckpoint(worker.taskId,'browser-worker-scope:v1')===undefined)continue;
+      const deviceReply=runtimeApplication.readDeviceWorkerReply(worker.parentTaskId,worker.taskId);
+      if(!deviceReply)continue;
       delete worker.resultSummary;
       const turn=turns.get(worker.parentTaskId);
-      if(!turn||runtimeApplication.readBrowserResultTaskId(turn.taskId)!==worker.taskId)continue;
+      if(!turn||deviceReply.kind==='withheld')continue;
       const parent=safeDesktopTask(runtime.getTask(turn.taskId)),child=safeDesktopTask(runtime.getTask(worker.taskId));
       if(parent.conversationId!==thread.assistant.conversationId||!localChildReplyAllowed(parent,child))continue;
-      const answer=resultText(child.resultSummary,taskResultMetadata(child));
+      const answer=deviceReply.kind==='notepad'?deviceReply.text:resultText(child.resultSummary,taskResultMetadata(child));
       if(answer){turn.replyText=answer;worker.resultSummary=answer.slice(0,280);}
     }
     publish();

@@ -26,8 +26,8 @@ import {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfi
 import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability,RuntimeConfiguredWorkflowBindingScope,
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
-import {bindNotepadWorker,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
-import {BROWSER_TURN,BROWSER_WORKER,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete} from './browser-worker.js';
+import {bindNotepadWorker,NOTEPAD_INTENT,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
+import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete} from './browser-worker.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -1580,9 +1580,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             toolVersion: tool.version,
           });
           const unknown = unresolved.some(child => child.state === 'waiting_reconciliation');
+          const exportHeld=unresolved.every(child=>child.state==='waiting_reconciliation'&&child.error?.code==='UNAUTHORIZED'
+            &&child.error.message===BROWSER_EXPORT_WITHHELD);
           this.runtime.transitionTask(invocation.taskId, unknown ? 'waiting_reconciliation' : 'waiting_approval',
-            {resultSummary: summary.summary});
-          return {state: unknown ? 'unknown' : 'pending', evidenceRefs: result.evidenceRefs};
+            exportHeld?{resultSummary:BROWSER_EXPORT_WITHHELD,error:{code:'UNAUTHORIZED',message:BROWSER_EXPORT_WITHHELD,retryable:false}}
+              :{resultSummary: summary.summary});
+          return {state: unknown&&!exportHeld ? 'unknown' : 'pending', evidenceRefs: result.evidenceRefs};
         }
         return {...result, result: summary,
           evidenceRefs: [...new Set([...result.evidenceRefs, ...children.flatMap(child => child.evidenceRefs)])]};
@@ -5906,8 +5909,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       &&this.confirmedSubagentWait(parent.taskId,false)) {
       // State projection only: the original dispatch is confirmed but its child is
       // unresolved. Do not resume either loop or describe this as another approval.
-      this.runtime.transitionTask(parent.taskId,'waiting_reconciliation',{error:{code:'RESULT_UNKNOWN',
-        message:'Original child execution requires reconciliation',retryable:false}});
+      const exportHeld=child.error?.code==='UNAUTHORIZED'&&child.error.message===BROWSER_EXPORT_WITHHELD
+        &&readCanonicalUserWorkParent(this.runtime,child.taskId)===parent.taskId;
+      this.runtime.transitionTask(parent.taskId,'waiting_reconciliation',exportHeld
+        ?{error:{code:'UNAUTHORIZED',message:BROWSER_EXPORT_WITHHELD,retryable:false},resultSummary:BROWSER_EXPORT_WITHHELD}
+        :{error:{code:'RESULT_UNKNOWN',message:'Original child execution requires reconciliation',retryable:false}});
       return;
     }
     if(this.confirmedSubagentWait(binding.parentTaskId)) {
@@ -6478,18 +6484,27 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Device-only result projection. The parent transcript and its cloud context keep no copy. */
-  readBrowserResultTaskId(parentTaskId:string):string|undefined {
-    if(this.runtime.loadCheckpoint(parentTaskId,BROWSER_TURN)===undefined||this.isHistoryWithheld(parentTaskId))return;
+  readDeviceWorkerReply(parentTaskId:string,childTaskId:string):{kind:'browser'|'withheld'}|{kind:'notepad';text:string}|undefined {
+    const notepad=this.runtime.loadCheckpoint(childTaskId,NOTEPAD_INTENT)!==undefined;
+    const browser=this.runtime.loadCheckpoint(childTaskId,BROWSER_WORKER)!==undefined;
+    if(!notepad&&!browser)return;
+    const withheld={kind:'withheld' as const};
+    if(this.isHistoryWithheld(parentTaskId)||this.isHistoryWithheld(childTaskId))return withheld;
     const parent=this.runtime.getTask(parentTaskId);
-    if(parent.state!=='succeeded')return;
+    if(parent.state!=='succeeded')return withheld;
     const child=this.runtime.findTaskByIdempotencyKey('subagent-dispatch-'+parentTaskId+'-user-work');
-    if(!child?.resultSummary||child.state!=='succeeded'||this.isHistoryWithheld(child.taskId))return;
+    if(child?.taskId!==childTaskId||child.state!=='succeeded')return withheld;
     try {
-      if(readCanonicalUserWorkParent(this.runtime,child.taskId)!==parentTaskId
-        ||this.runtime.loadCheckpoint(child.taskId,BROWSER_WORKER)===undefined||!browserWorkerSource(this.runtime,child.taskId))return;
+      if(readCanonicalUserWorkParent(this.runtime,child.taskId)!==parentTaskId)return withheld;
+      if(notepad) {
+        const verified=assertNotepadWorkerComplete(this.runtime,child.taskId);
+        return verified?{kind:'notepad',text:verified==='value'?'已打开记事本，已写入并核对文字。':'已打开记事本。'}:withheld;
+      }
+      if(!child.resultSummary||this.runtime.loadCheckpoint(parentTaskId,BROWSER_TURN)===undefined
+        ||!browserWorkerSource(this.runtime,child.taskId))return withheld;
       assertBrowserWorkerComplete(this.runtime,child.taskId);
-      return child.taskId;
-    }catch{return;}
+      return {kind:'browser'};
+    }catch{return withheld;}
   }
 
   private bindUserTaskDelegation(taskId:string,goal:string,deadline:string,maxSteps:number,depth:number):void {

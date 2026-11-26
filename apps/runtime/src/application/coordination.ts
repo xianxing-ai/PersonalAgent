@@ -8,6 +8,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import {TOOL_DISCOVERY_NAME} from './tool-discovery.js';
+import {BROWSER_ACTIONS,BROWSER_EXPORT_WITHHELD} from './browser-worker.js';
 import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
 
@@ -226,11 +227,11 @@ export type PrepareCompetitionToolExport=(input:{phase:'preflight'|'projection';
   proposal:CoordinationToolProposalResult;deadline:string;signal:AbortSignal})=>Promise<void>;
 
 /** Keep the original confirmed read resumable when fresh export permission is denied. */
-function withholdConfirmedExport(runtime:TaskRuntime,taskId:string):void {
+function withholdConfirmedExport(runtime:TaskRuntime,taskId:string,message='Confirmed local result export withheld; revalidate the original receipt'):void {
   if(runtime.getTask(taskId).state!=='running')return;
   runtime.saveCheckpoint(taskId,'competition-export-withheld',{withheld:true});
   runtime.transitionTask(taskId,'waiting_reconciliation',{error:{code:'UNAUTHORIZED',
-    message:'Confirmed local result export withheld; revalidate the original receipt',retryable:false}});
+    message,retryable:false}});
 }
 
 function summary(text: string, verification: 'mock' | 'unverified'): string {
@@ -711,17 +712,25 @@ export async function runCoordinationWorker(
       let exportedResult: unknown = toolResult.result ?? null;
       if (result.verification !== 'mock' && !workerResult) {
         if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'Competition result export cancelled');
+        let exportStage:'permission'|'projection'|'validation'='permission';
         try {
           await options.prepareCompetitionToolExport?.({phase:'projection',taskId,runId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});
+          exportStage='projection';
           exportedResult = await projectResult(exportBinding!, {taskId, proposalId: result.proposalId,
             result: structuredClone(exportedResult), signal: context.signal});
           // Use the existing strict JSON validator: getters, cycles, unsupported
           // values and oversized projections must never reach the cloud adapter.
+          exportStage='validation';
           const projected = parseCoordinationContinuation({proposalId: result.proposalId,
             state: 'confirmed', result: exportedResult});
           exportedResult = projected.result;
         } catch {
-          withholdConfirmedExport(runtime,taskId);
+          const confirmed=BROWSER_ACTIONS.includes(result.toolName)&&runtime.readToolExecutions(taskId).some(record=>
+            record.evidenceId===runId&&record.toolName===result.toolName&&record.toolVersion===result.toolVersion
+            &&record.policyDecision==='allow'&&record.executionStarted&&record.state==='confirmed'
+            &&runtime.matchesToolExecutionInput(record,{arguments:result.arguments,scopeRef:runId}));
+          if(confirmed)context.saveCheckpoint('browser-export-denial:v1',{runId,toolName:result.toolName,stage:exportStage});
+          withholdConfirmedExport(runtime,taskId,confirmed?BROWSER_EXPORT_WITHHELD:undefined);
           throw new ProtocolError('UNAUTHORIZED', 'Competition result export denied');
         }
         if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'Competition result export cancelled');

@@ -30,8 +30,8 @@ export function mainChatReplies(task, children = [], streamed = '') {
   if (task.bodyWithheld) return [];
   const ownAnswer = resultText(task.resultSummary, task.resultMetadata);
   if (task.outputTruncated) return children.length ? [] : ownAnswer ? [ownAnswer] : [];
-  const browserAnswer=children.find(child=>child.replyForBrowserTask===true&&child.state==='succeeded'&&child.finalReply);
-  if(task.state==='succeeded'&&browserAnswer)return [browserAnswer.finalReply];
+  const deviceReply=children.find(child=>child.replyForDeviceTask===true&&child.state==='succeeded'&&child.finalReply);
+  if(task.state==='succeeded'&&deviceReply)return [deviceReply.finalReply];
   if (ownAnswer || streamed) return [ownAnswer || streamed];
   const replies = children
     .filter(child => child.state === 'succeeded' && child.finalReply)

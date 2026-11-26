@@ -3,6 +3,7 @@ import type {TaskRuntime} from '../index.js';
 
 export const BROWSER_TURN='browser-user-task:v1';
 export const BROWSER_WORKER='browser-worker-scope:v1';
+export const BROWSER_EXPORT_WITHHELD='浏览器操作已执行，结果已保存在本机。网页结果未获准发送给模型，任务尚未完成。';
 const externalText=/"treatment"\s*:\s*"untrusted_data"|\[EXTERNAL\b|BEGIN EXTERNAL/iu;
 const internalConversation=/^(?:host-tool:|proactive-source:|desktop-(?:proactive|mail|skills|subtask|subagent|coding|notification))/u;
 const protectedCheckpoints=['subtask-parent','assistant-external-fence','private-copy-erasure','private-memory:consumption:v1',
