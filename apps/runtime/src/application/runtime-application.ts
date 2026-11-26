@@ -6543,7 +6543,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const assistants=this.runtime.listAssistants();
     return assistants.map(assistant=>{
       const child=this.latestAssistantChild(assistant.role);
-      if(!child||['succeeded','failed','cancelled'].includes(child.state))return assistant;
+      if(child?.state==='waiting_reconciliation'&&assistant.activeTaskId===child.taskId) {
+        const {activeTaskId: _pausedTask, ...rest}=assistant;
+        return {...rest,status:'idle' as const};
+      }
+      if(!child||['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))return assistant;
       return {...assistant,status:child.state==='waiting_approval'?'waiting_approval' as const:'working' as const,activeTaskId:child.taskId};
     });
   }
