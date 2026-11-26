@@ -76,7 +76,7 @@ test('browser connections expose independent readiness and probe the existing ex
   controls.render(status({browser:{available:true,connected:{guide:'请启用 OpenCLI 扩展'}}}));
   assert.match(root.querySelector('[data-managed]').textContent,/已就绪/);
   assert.match(root.querySelector('[data-connected]').textContent,/OpenCLI/);
-  await root.querySelector('button').onclick();
+  await root.querySelector('[data-probe-extension]').onclick();
   assert.match(root.querySelector('[data-connected]').textContent,/已连通/);
   assert.deepEqual(calls,[{name:'computer.control.probeConnectedBrowser',payload:{}}]);
   controls.dispose();

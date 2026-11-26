@@ -77,20 +77,34 @@ export function mountComputerControls(root, invoke) {
 export function mountBrowserConnections(root, invoke) {
   const section = root.ownerDocument.createElement('section');
   section.className = 'sheet';
-  section.innerHTML = '<h2>浏览器连接</h2><p data-managed></p><p data-connected role="status"></p><button type="button" class="btn">检测现有浏览器扩展</button>';
+  section.innerHTML = `<h2>浏览器连接</h2>
+    <p data-managed role="status"></p><button type="button" class="btn" data-open-browser>打开内置浏览器</button>
+    <p data-connected role="status"></p><button type="button" class="btn" data-probe-extension>检测现有浏览器扩展</button>`;
   root.append(section);
-  const probe = section.querySelector('button');
+  const open = section.querySelector('[data-open-browser]');
+  const probe = section.querySelector('[data-probe-extension]');
   const managed = section.querySelector('[data-managed]');
   const connected = section.querySelector('[data-connected]');
-  let state, pending = false, closed = false, error = '', revision = 0;
+  let state, pending = false, closed = false, error = '', openError = '', revision = 0;
   function paint() {
     const browser = state?.browser;
-    managed.textContent = '内置受控浏览器 · ' + (browser?.available ? '已就绪' : safeReason(browser?.reason, '尚未就绪'));
+    managed.textContent = openError || '内置受控浏览器 · ' + (browser?.available ? '已就绪' : safeReason(browser?.reason, '尚未就绪'));
     const link = browser?.connected;
     connected.textContent = error || (link?.extension?.connected || link?.extension?.available || link?.available
       ? '现有浏览器扩展已连通' : safeReason(link?.guide || link?.extension?.guide || link?.reason, '等待检测现有浏览器扩展'));
     probe.disabled = !state?.enabled || pending;
   }
+  open.onclick = async () => {
+    if (closed || open.disabled) return;
+    open.disabled = true;
+    openError = '';
+    paint();
+    try { await invoke('browser.workspace.open'); }
+    catch (cause) { openError = safeReason(cause?.message, '内置浏览器打开失败'); }
+    finally {
+      if (!closed) { open.disabled = false; paint(); }
+    }
+  };
   probe.onclick = async () => {
     if (probe.disabled || closed) return;
     const before = revision;
@@ -108,5 +122,5 @@ export function mountBrowserConnections(root, invoke) {
     }
   };
   return {render(value){if (!closed) {state = value; revision++; paint();}},
-    show(visible){section.hidden = !visible;}, dispose(){closed = true; probe.onclick = null;}};
+    show(visible){section.hidden = !visible;}, dispose(){closed = true; open.onclick = null; probe.onclick = null;}};
 }

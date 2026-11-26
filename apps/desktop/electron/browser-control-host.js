@@ -10,6 +10,7 @@ import {ProtocolError, ToolNotStartedError, validateToolValue} from '@personal-a
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {computerControlFailure} from './computer-control-errors.js';
 import {computerControlRecoveryTaskStates,isComputerControlWrite} from './computer-control-lease.js';
+import {createBrowserWorkspacePage,validateWorkspaceCommand} from './browser-workspace-page.js';
 
 const VERSION='1.0.0',SCOPE='browser:control',TTL=30_000,MAX_CONTROLS=100,MAX_TEXT=12_000,MAX_IMAGE=5_242_880;
 const object=(properties={},required=[])=>({type:'object',properties,required,additionalProperties:false});
@@ -190,6 +191,8 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
   const testOrigins=testOnlyAllowedOrigins.map(value=>new URL(value).origin);
   let application,context,page,egress,closed=false,blocked=false,busy=false,releaseFailed=false,activeOperation,state='stopped',generation=0;
   let session=new AbortController(),networkError,lastFailure,downloadSession,expectedDownload;
+  let workspaceOwned=false,pendingHandoff,handoffTask,waitingWorkers=0;
+  let localRead,workspaceVisibility=0;
   const targets=new Map(),artifacts=new Map(),exportScopes=new Map();
   const profile=path.join(userDataPath,'controlled-browser-profile'),artifactRoot=path.join(userDataPath,'controlled-browser-artifacts');
   const snapshot=()=>({state:closed?'disposed':blocked?'blocked':state,available:!closed&&!blocked&&state!=='unavailable',busy,
@@ -203,6 +206,23 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     if(blocked)fail('RESULT_UNKNOWN','原浏览器动作结果未知；先核实原任务，不会自动重放');
   }
   const networkOptions={dnsLookup,testOnlyAllowedOrigins:testOrigins,allowFakeIpProxy:Boolean(allowFakeIpProxy)};
+  const workspacePage=createBrowserWorkspacePage({checkUrl:url=>assertPublicBrowserUrl(url,networkOptions),readDocument,findControl:control,fail,now});
+  function allowLocalRead(url){
+    return !!localRead&&localRead.page===page&&localRead.expires>now()&&workspaceOwned&&!pendingHandoff&&!handoffTask
+      &&localRead.origin===url.origin&&new URL(page.url()).origin===url.origin&&!closed&&!blocked;
+  }
+  function releaseWorkspaceView(){
+    ++workspaceVisibility;localRead=undefined;pendingHandoff=undefined;workspacePage.invalidate();
+  }
+  function belongsToHandoff(taskId){
+    const seen=new Set();
+    while(handoffTask&&typeof taskId==='string'&&!seen.has(taskId)&&seen.size<32){
+      if(taskId===handoffTask)return true;
+      seen.add(taskId);
+      taskId=application.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId;
+    }
+    return false;
+  }
   function original(scope,args,toolName) {
     active(scope);
     if(!application?.runtime||!scope.authorizationRef||!scope.scopes?.includes(SCOPE)||!scope.runId
@@ -333,14 +353,19 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
       path.join(process.env['ProgramFiles(x86)']??'C:/Program Files (x86)','Google/Chrome/Application/chrome.exe'),
       ...(process.env.LOCALAPPDATA?[path.join(process.env.LOCALAPPDATA,'Google/Chrome/Application/chrome.exe')]:[])].some(file=>existsSync(file));
     const channel=!injectedPlaywright&&!existsSync(lib.chromium.executablePath())?(edgeAvailable?'msedge':chromeAvailable?'chrome':undefined):undefined;
-    egress=await createBrowserEgressProxy({...networkOptions,authorize:url=>{if(!activeOperation)return false;active(activeOperation.scope);
+    egress=await createBrowserEgressProxy({...networkOptions,authorize:url=>{
+      if(!activeOperation||activeOperation.passive)return allowLocalRead(url);
+      if(activeOperation.workspace&&activeOperation.visibility!==workspaceVisibility)return false;
+      active(activeOperation.scope);
       return !activeOperation.downloadOrigin||url.origin===activeOperation.downloadOrigin;},onResponseBytes:(url,size)=>{
       const pending=expectedDownload;if(!pending)return;
       active(pending.scope);pending.trafficBytes+=size;
       if(url.origin!==pending.origin||pending.trafficBytes>maxDownloadBytes){rejectDownload('INVALID_ARGUMENT','下载流量超过受控来源或大小上限');fail('INVALID_ARGUMENT','下载流量超过受控上限');}
     }});
     let launched;
-    try{launched=await lib.chromium.launchPersistentContext(profile,{...(channel?{channel}:{}),headless:false,acceptDownloads:false,serviceWorkers:'block',
+    const inWorkbench=activeOperation?.workspace===true;
+    const launchChannel=channel??(inWorkbench?'chromium':undefined);
+    try{launched=await lib.chromium.launchPersistentContext(profile,{...(launchChannel?{channel:launchChannel}:{}),headless:inWorkbench,acceptDownloads:false,serviceWorkers:'block',
       proxy:{server:egress.server,username:egress.username,password:egress.password,bypass:'<-loopback>'},
       viewport:{width:1280,height:800},permissions:[],args:['--disable-background-networking','--disable-component-update',
         '--disable-extensions','--disable-sync','--dns-prefetch-disable','--disable-quic','--proxy-bypass-list=<-loopback>',
@@ -359,12 +384,23 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
       try{mainNavigation=request.isNavigationRequest()&&request.frame()===page?.mainFrame();}catch{}
       try {
         const url=await assertPublicBrowserUrl(request.url(),networkOptions);
-        if(!operation)fail('UNAUTHORIZED');active(operation.scope);
+        if(!operation||operation.passive){
+          if(mainNavigation||!allowLocalRead(url)||!['GET','HEAD'].includes(request.method())
+            ||request.frame().page()!==page||activeOperation!==operation)fail('UNAUTHORIZED');
+          await route.continue();return;
+        }
+        active(operation.scope);
         if(operation.downloadOrigin&&url.origin!==operation.downloadOrigin)fail('UNAUTHORIZED','下载不允许扩大到其他来源');
-        if(mainNavigation)await permit(operation.scope,operation.args,operation.toolName,url.origin);
+        if(operation.workspace){
+          const write=!['GET','HEAD'].includes(request.method());
+          if(operation.visibility!==workspaceVisibility||((mainNavigation||write)&&!operation.origins.has(url.origin))
+            ||(write&&new URL(request.frame().url()).origin!==url.origin))
+            fail('UNAUTHORIZED','此工作台操作没有指定这个网页来源');
+        }else if(mainNavigation)await permit(operation.scope,operation.args,operation.toolName,url.origin);
+        if(activeOperation!==operation)fail('CANCELLED','网页操作已结束');
         active(operation.scope);await route.continue();
       }catch(error){
-        if(mainNavigation||Boolean(operation?.downloadOrigin)||(error instanceof ProtocolError&&error.code==='UNAUTHORIZED'))
+        if(activeOperation===operation&&(!operation?.workspace||mainNavigation)&&(mainNavigation||Boolean(operation?.downloadOrigin)||(error instanceof ProtocolError&&error.code==='UNAUTHORIZED')))
           networkError=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
         await route.abort('blockedbyclient').catch(()=>{});
       }
@@ -378,10 +414,15 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     context.on('page',extra=>{if(extra!==page)void extra.close().catch(()=>{});});
     const launchedEgress=egress;
     context.on('close',()=>{if(context===launched){context=undefined;page=undefined;targets.clear();
+      releaseWorkspaceView();workspaceOwned=false;handoffTask=undefined;
       if(egress===launchedEgress)egress=undefined;void launchedEgress.close().catch(()=>{});
       if(state!=='disposed')state=blocked?'blocked':'stopped';publish();}});
     page.on('download',download=>{if(!expectedDownload?.armed)void download.cancel().catch(()=>{});});
     page.on('dialog',dialog=>void dialog.dismiss().catch(()=>{}));
+    const ownedPage=page;
+    page.on('framenavigated',frame=>{
+      if(page===ownedPage&&frame===ownedPage.mainFrame())workspacePage.invalidate();
+    });
     active(scope);state='ready';lastFailure=undefined;publish();
     }catch(error){await disposeContext().catch(()=>{});throw error;}
   }
@@ -390,24 +431,40 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     const url=await assertPublicBrowserUrl(page.url(),networkOptions);
     await permit(scope,args,toolName,url.origin);return url;
   }
-  async function observe(scope,args,toolName,action=false) {
-    const url=await currentPage(scope,args,toolName),attribute='data-pa-'+randomUUID().replaceAll('-','');
-    const data=await page.evaluate(({attribute,limit,textLimit})=>{
+  async function readDocument(ownedPage,attribute,localView=false) {
+    return ownedPage.evaluate(({attribute,limit,textLimit,localView})=>{
       const visible=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';};
       const safe=el=>!['password','file','hidden'].includes((el.getAttribute('type')??'').toLowerCase());
-      const all=[...document.querySelectorAll('a[href],button,input,textarea,select,[role="button"],[role="link"],[role="textbox"],[contenteditable="true"]')].filter(el=>visible(el)&&safe(el));
+      const previous=localView?new Set(document.querySelectorAll('['+attribute+']')):undefined;
+      const all=[...document.querySelectorAll('a[href],button,input,textarea,select,[role="button"],[role="link"],[role="textbox"],[contenteditable="true"]')].filter(el=>{
+        if(!visible(el)||!safe(el))return false;
+        if(!localView)return true;
+        const box=el.getBoundingClientRect();
+        return box.right>0&&box.bottom>0&&box.left<innerWidth&&box.top<innerHeight;
+      });
       const controls=all.slice(0,limit).map((el,index)=>{
-        const ref='r'+(index+1);el.setAttribute(attribute,ref);
+        const ref='r'+(index+1);
+        previous?.delete(el);
+        if(el.getAttribute(attribute)!==ref)el.setAttribute(attribute,ref);
         const type=el.tagName.toLowerCase(),role=el.getAttribute('role')??(type==='a'?'link':type==='select'?'combobox':type==='button'?'button':['input','textarea'].includes(type)?'textbox':type);
         const name=(el.getAttribute('aria-label')??el.labels?.[0]?.innerText??el.getAttribute('placeholder')??el.innerText??'').trim().slice(0,200);
+        const box=localView?el.getBoundingClientRect():undefined;
         return {ref,role,name,tag:type,inputType:el.getAttribute('type')??'',disabled:Boolean(el.disabled),
+          ...(box?{bounds:{x:box.x,y:box.y,width:box.width,height:box.height},focused:document.activeElement===el,
+            editable:el.isContentEditable,...(type==='select'?{multiple:el.multiple}:{})}:{}),
           ...(type==='a'?{downloadUrl:el.href}:{}),
-          ...(type==='select'?{options:[...el.options].slice(0,40).map(o=>({value:o.value.slice(0,200),label:o.label.slice(0,200)}))}:{}),
-          ...(['input','textarea'].includes(type)?{value:String(el.value??'').slice(0,500)}:{})};
+          ...(type==='select'?{options:[...el.options].slice(0,40).map(o=>({value:o.value.slice(0,200),label:o.label.slice(0,200),
+            ...(localView?{selected:o.selected,disabled:o.disabled||!!o.closest('optgroup[disabled]')}:{})}))}:{}),
+          ...(!localView&&['input','textarea'].includes(type)?{value:String(el.value??'').slice(0,500)}:{})};
       });
-      const text=(document.body?.innerText??'').slice(0,textLimit);
-      return {title:document.title.slice(0,300),text,controls,truncated:all.length>limit||(document.body?.innerText??'').length>textLimit};
-    },{attribute,limit:MAX_CONTROLS,textLimit:MAX_TEXT});
+      previous?.forEach(el=>el.removeAttribute(attribute));
+      const body=localView?'':document.body?.innerText??'';
+      return {title:document.title.slice(0,300),text:body.slice(0,textLimit),controls,truncated:all.length>limit||body.length>textLimit};
+    },{attribute,limit:MAX_CONTROLS,textLimit:MAX_TEXT,localView});
+  }
+  async function observe(scope,args,toolName,action=false) {
+    const url=await currentPage(scope,args,toolName),attribute='data-pa-'+randomUUID().replaceAll('-','');
+    const data=await readDocument(page,attribute);
     active(scope);await currentPage(scope,args,toolName);
     for(const [id,entry]of targets)if(entry.expiresAt<=now()||entry.taskId===scope.taskId)targets.delete(id);
     if(targets.size>=64)fail('REVISION_CONFLICT','浏览器观察容量已满');
@@ -453,6 +510,7 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     await attempts?.record?.(identity,{...scope,arguments:structuredClone(args)});active(scope);
   }
   async function disposeContext(abort=true) {
+    releaseWorkspaceView();workspaceOwned=false;handoffTask=undefined;
     ++generation;targets.clear();if(abort)session.abort();
     rejectDownload('CANCELLED','原下载任务已停止');const previousDriver=downloadSession;downloadSession=undefined;
     const proxy=egress;egress=undefined;await proxy?.close();
@@ -468,11 +526,24 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
     const toolName='browser.'+name;let dispatched=false,recorded=false,owned=false,downloadPending,failureStage=read?'read':'preflight';
     scope={...scope,signal:AbortSignal.any([scope.signal,session.signal])};
     try {
-      original(scope,args,toolName);if(busy)fail('REVISION_CONFLICT','另一个浏览器动作正在执行');
+      original(scope,args,toolName);
+      if(activeOperation?.workspace&&activeOperation.passive){
+        // A workbench refresh is read-only. Let it release the page rather than
+        // failing a freshly authorized worker step because its snapshot overlapped.
+        const finished=activeOperation.finished;
+        waitingWorkers++;
+        try{await bounded(scope,()=>finished);}finally{waitingWorkers--;}
+        original(scope,args,toolName);
+      }
+      if(busy)fail('REVISION_CONFLICT','另一个浏览器动作正在执行');
+      if(workspaceOwned&&page&&!belongsToHandoff(scope.taskId))
+        fail('UNAUTHORIZED','此网页由工作台使用，请先在工作台将页面交给这个工人或关闭页面');
+      if(!read)workspacePage.invalidate();
       busy=true;owned=true;activeOperation={scope,args,toolName};networkError=undefined;publish();
       return await bounded(scope,async()=>{
         if(name==='open') {
           const url=await assertPublicBrowserUrl(args.url,networkOptions);await permit(scope,args,toolName,url.origin);
+          if(!page){workspaceOwned=false;handoffTask=undefined;}
           failureStage='start';await launch(scope);failureStage='preflight';
           await recordAttempt(scope,args,toolName,()=>{recorded=true;});dispatched=true;
           await page.goto(url.href,{waitUntil:'domcontentloaded',timeout:Math.max(1,Date.parse(scope.deadline)-now())});
@@ -580,6 +651,70 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
       }
       activeOperation=undefined;busy=false;publish();}}
   }
+  function workspaceState(){
+    return {...workspacePage.state(page),state:snapshot().state,connected:!!page&&!page.isClosed(),busy};
+  }
+  // The trusted local workbench is the caller. Its observations stay off the
+  // model export path; worker tools above always require their original Runtime bindings.
+  async function workspace(action,args,request){
+    validateWorkspaceCommand(action,args);
+    if(action==='state')return workspaceState();
+    if(busy||waitingWorkers)fail('REVISION_CONFLICT','浏览器正在处理另一项操作，请稍后再试');
+    const owned=new AbortController();
+    const scope={deadline:request.deadline,signal:AbortSignal.any([request.signal,session.signal,owned.signal])};
+    active(scope);
+    if(!page&&action==='preview')return workspaceState();
+    const passive=['preview','handoff'].includes(action);
+    const visibility=workspaceVisibility;
+    let release;
+    const finished=new Promise(resolve=>{release=resolve;});
+    const operation={scope,workspace:true,passive,visibility,origins:new Set(),finished};
+    const check=()=>{active(scope);if(activeOperation!==operation||workspaceVisibility!==visibility)fail('CANCELLED','工作台请求已结束');};
+    const timeout=()=>Math.max(1,Date.parse(scope.deadline)-now());
+    const timer=setTimeout(()=>owned.abort(),timeout());
+    const interrupt=()=>{if(!passive&&context&&activeOperation===operation)void context.close().catch(()=>{});};
+    scope.signal.addEventListener('abort',interrupt,{once:true});
+    busy=true;activeOperation=operation;networkError=undefined;
+    if(!passive){targets.clear();++generation;localRead=undefined;pendingHandoff=undefined;handoffTask=undefined;workspaceOwned=true;publish();}
+    try{
+      if(action==='close'){await disposeContext(false);return {...workspaceState(),busy:false};}
+      if(action==='open'){await assertPublicBrowserUrl(args.url,networkOptions);check();await launch(scope);}
+      check();
+      if(!page||page.isClosed())fail('UNSUPPORTED_CAPABILITY','请先打开公共网页');
+      const ownedPage=page;
+      if(action!=='preview'){
+        const handoff=await workspacePage.operate(ownedPage,action,args,operation,check,timeout);
+        check();if(action==='handoff'){
+          workspaceOwned=true;handoffTask=undefined;localRead=undefined;targets.clear();++generation;
+          pendingHandoff={viewId:args.viewId,page:ownedPage,url:ownedPage.url(),expires:now()+30_000};
+          return handoff;
+        }
+      }
+      if(networkError)fail(networkError,'网页请求已被来源策略拦截，请检查目标网址');
+      const preview=await workspacePage.preview(ownedPage,check,timeout);
+      if(workspaceOwned&&!handoffTask&&!pendingHandoff&&preview.url)
+        localRead={page:ownedPage,origin:new URL(preview.url).origin,expires:now()+30_000};
+      check();return {...workspaceState(),...preview,busy:false};
+    }catch(error){
+      const failure=safeFailure(error,'workspace');
+      if(trustedErrors.has(error))throw error;
+      if(networkError)throw browserError(networkError,'网页请求已被来源策略拦截，请检查目标网址');
+      if(scope.signal.aborted)throw browserError('CANCELLED','当前浏览器操作已停止');
+      // A driver error may echo the typed text, a selector, a URL query or a profile path.
+      const detail=browserReasons[failure.code]??'浏览器未完成这次操作，请刷新预览查看当前页面';
+      throw browserError(failure.code,detail);
+    }finally{
+      clearTimeout(timer);scope.signal.removeEventListener('abort',interrupt);
+      owned.abort();activeOperation=undefined;busy=false;release();if(!passive)publish();
+    }
+  }
+  function bindWorkspaceHandoff(viewId,taskId){
+    if(!pendingHandoff||pendingHandoff.viewId!==viewId||pendingHandoff.page!==page
+      ||pendingHandoff.expires<=now()||pendingHandoff.url!==page?.url()||workspacePage.state(page).viewId!==viewId
+      ||typeof taskId!=='string'||!application?.runtime.getTask(taskId)||closed||blocked)
+      fail('REVISION_CONFLICT','派工期间网页已变化，请重新打开当前预览');
+    workspaceOwned=true;handoffTask=taskId;pendingHandoff=undefined;return true;
+  }
   const tools=specs.map(([name,inputSchema,read,description])=>({descriptor:{name:'browser.'+name,version:VERSION,
     inputSchema:{...inputSchema,description},outputSchema:resultSchema,sideEffect:read?'read':'external_write',
     requiredScopes:[SCOPE],requiresPresence:false,idempotencySupport:false,recoverySupport:false},
@@ -618,8 +753,8 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
         beforeSequence=batch.nextBeforeSequence;
       }while(beforeSequence!==undefined);publish();
     },
-    snapshot,
-    activeTasks:()=>activeOperation?[activeOperation.scope.taskId]:[],
+    snapshot,workspace,bindWorkspaceHandoff,releaseWorkspaceView,
+    activeTasks:()=>activeOperation?.scope.taskId?[activeOperation.scope.taskId]:[],
     async start(scope) {await launch(scope);return snapshot();},
     async stop() {session.abort();await disposeContext();return snapshot();},
     async close() {closed=true;session.abort();await disposeContext();state='disposed';publish();},

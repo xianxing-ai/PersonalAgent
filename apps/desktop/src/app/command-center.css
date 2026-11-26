@@ -31,6 +31,21 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .cc-search svg {width:13px;height:13px}.cc-search kbd {margin-left:auto;font:9px var(--font-ui);color:var(--cc-dim)}
 .command-center .cc-theme-toggle {width:28px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--cc-muted);font-size:19px;-webkit-app-region:no-drag}
 .command-center .cc-theme-toggle:hover {background:var(--cc-hover);color:var(--cc-text)}
+.command-center .cc-browser-open {display:grid;place-items:center;flex:none;width:30px;height:28px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--cc-muted)}
+.command-center .cc-browser-open svg {width:17px;height:17px}
+.command-center .cc-browser-open:hover,.command-center .cc-browser-open[aria-expanded="true"] {background:var(--cc-hover);color:var(--cc-text);border-color:var(--cc-line)}
+.command-center .cc-browser-open:focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
+.command-center.cc-browser-visible {--browser-pane-width:clamp(350px,37vw,760px)}
+.command-center .cc-browser-sidebar {position:fixed;z-index:42;inset:46px 0 0 auto;width:var(--browser-pane-width);max-width:100%;min-height:0;overflow:hidden;border-left:1px solid var(--cc-line);background:var(--cc-solid);color:var(--cc-text)}
+@media(min-width:1050px) {
+  .command-center.cc-browser-visible .workspace-main {margin-right:var(--browser-pane-width)}
+  .command-center.cc-browser-visible .cc-context {display:none}
+  .command-center.cc-browser-visible .workspace-chat {padding-right:0}
+}
+@media(max-width:1049px) {
+  .command-center.cc-browser-visible {--browser-pane-width:min(520px,100vw)}
+  .command-center .cc-browser-sidebar {box-shadow:-8px 0 30px rgba(0,0,0,.16)}
+}
 .command-center .workspace-main {grid-column:2;grid-row:2;display:flex;flex-direction:column;min-height:0;min-width:0;gap:12px;padding:14px 22px 18px;background:transparent;border:0;border-radius:0;overflow:hidden}
 .command-center .cc-rail {grid-column:1;grid-row:1/-1;display:flex;flex-direction:column;min-height:0;min-width:0;padding:10px 11px 12px;border-right:1px solid var(--cc-line);background:var(--cc-rail);overflow:hidden}
 .cc-brand {padding:0 9px;margin:0 0 24px;display:flex;align-items:center;gap:6px;min-height:27px;-webkit-app-region:drag}

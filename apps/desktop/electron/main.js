@@ -541,6 +541,7 @@ let developerDeploymentFailure='';
 let toolPresenceHost,windowsControlHost,windowsControlClosing,computerControlLaya;
 let computerControlLease;
 let computerControlConfig,browserControlHost,openCliBrowserHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
+let browserDelegationPending = false;
 let computerPreparation,computerPreparationFailure;
 let browserControlClosed=false;
 let computerLaunch;
@@ -1884,6 +1885,11 @@ async function openWorkspace() {
   bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
   const window=workspace;
+  const releaseBrowserView=()=>browserControlHost?.releaseWorkspaceView?.();
+  window.on('hide',releaseBrowserView);
+  window.on('minimize',releaseBrowserView);
+  window.on('closed',releaseBrowserView);
+  window.webContents.on('render-process-gone',releaseBrowserView);
   const clearWatch=()=>{if(workspace===window){workspaceChildActivity=undefined;workspaceChildWatch=undefined;}};
   window.webContents.on('did-start-navigation',(_event,_url,_inPlace,mainFrame)=>{if(mainFrame)clearWatch();});
   window.webContents.on('render-process-gone',clearWatch);
@@ -3076,7 +3082,10 @@ async function initializeRuntime() {
           authorizePresence:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
             return windowsControlHost.hasPresence(scope.taskId);
-          },onUpdate:publish});
+          },onUpdate:()=>{
+            publish();
+            if(workspace&&!workspace.isDestroyed())workspace.webContents.send('desktop:browser-workspace-change');
+          }});
         openCliBrowserHost=createOpenCliBrowserHost({
           allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           readTask:taskId=>{try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}},
@@ -4877,6 +4886,48 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
+  if (name === 'browser.workspace.open') {
+    if ((sender !== admin && sender !== workspace) || payload != null)
+      throw new ProtocolError('UNAUTHORIZED','请从工作台或连接设置打开内置浏览器');
+    await openWorkspace();
+    const contents=workspace.webContents;
+    const open=()=>{if(!contents.isDestroyed())contents.send('desktop:browser-workspace-open');};
+    if(contents.isLoadingMainFrame()||!contents.getURL())contents.once('did-finish-load',open);
+    else open();
+    return {opened:true};
+  }
+  if (name === 'browser.workspace.action') {
+    if(sender!==workspace || !browserControlHost || !competitionMode)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请在已连接运行时的工作台使用内置浏览器');
+    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>!['action','payload'].includes(key)))
+      throw new ProtocolError('INVALID_ARGUMENT','浏览器请求格式无效');
+    const operation=payload.action, args=payload.payload??{};
+    if(!args||typeof args!=='object'||Array.isArray(args))throw new ProtocolError('INVALID_ARGUMENT','浏览器参数无效');
+    const scope={signal:AbortSignal.timeout(30_000),deadline:new Date(Date.now()+30_000).toISOString()};
+    if(operation==='release'){browserControlHost.releaseWorkspaceView();return {released:true};}
+    if(!sender.isVisible()||sender.isMinimized())throw new ProtocolError('UNAUTHORIZED','请先展开工作台');
+    if(operation==='delegate') {
+      if(browserDelegationPending)throw new ProtocolError('REVISION_CONFLICT','正在提交当前浏览器任务');
+      if(Object.keys(args).some(key=>!['goal','viewId','url'].includes(key))||typeof args.goal!=='string'
+        ||!args.goal.trim()||args.goal.length>4096||typeof args.viewId!=='string'||args.viewId.length>128)
+        throw new ProtocolError('INVALID_ARGUMENT','请在已打开的页面上填写工人任务');
+      browserDelegationPending=true;
+      try {
+        const conversationId=conversations.activeConversationId('workspace');
+        const {url}=await browserControlHost.workspace('handoff',{viewId:args.viewId},scope);
+        const text=`请派一名工人使用内置受控浏览器完成以下任务。当前页面地址为 ${url}。\n用户的任务：\n${args.goal.trim()}`;
+        const accepted=await action(event,'task.submit',{text,conversationId,delivery:'send'});
+        if(!accepted?.taskId||accepted.interrupted)throw new ProtocolError('CANCELLED','浏览器任务提交已被中断');
+        let bound=false;
+        try { bound=browserControlHost.bindWorkspaceHandoff(args.viewId,accepted.taskId)===true; }
+        catch { /* The accepted task remains visible even if the original page was closed. */ }
+        return {accepted:true,taskId:accepted.taskId,bound};
+      } finally { browserDelegationPending=false; }
+    }
+    if(!['state','preview','open','back','forward','reload','close','click','type','select','press','scroll'].includes(operation))
+      throw new ProtocolError('INVALID_ARGUMENT','未知的浏览器操作');
+    return browserControlHost.workspace(operation,args,scope);
+  }
   if (name === 'operator.brake') {
     if (sender !== panel && sender !== workspace) throw Error('请从桌面切换总暂停');
     if (typeof operatorBrake === 'undefined') throw Error('总暂停尚未装配');

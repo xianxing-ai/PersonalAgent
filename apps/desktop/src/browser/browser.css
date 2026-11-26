@@ -1,0 +1,82 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.shell {
+  margin: 0; width: 100%; height: 100%; min-width: 0; min-height: 0;
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; background: var(--bg);
+  color: var(--fg); font: 14px/1.5 var(--font-ui); -webkit-font-smoothing: antialiased;
+}
+header { grid-row: 1; background: var(--surface); border-bottom: 1px solid var(--border-strong); }
+.mast, nav, footer, .actions, .aside-head, .dialog-head, .dialog-actions, #error { display: flex; align-items: center; }
+.mast { gap: 11px; padding: 10px 18px 0; }
+h1, h2, p { margin: 0; }
+h1 { font: 600 14px/1.5 var(--font-ui); }
+h2 { font-size: 18px; }
+.last { margin-left: auto; }
+nav { gap: 6px; padding: 8px 16px 12px; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 12px; background: var(--surface-2); cursor: pointer; }
+button:hover:enabled { background: var(--surface-3); }
+button:disabled { opacity: .42; cursor: default; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, #canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.icon, .quiet { background: transparent; border-color: transparent; }
+button.icon { width: 32px; height: 32px; padding: 0; font: 21px/1 "Segoe UI Symbol", sans-serif; }
+.quiet { color: var(--muted); font-size: 12px; white-space: nowrap; padding: 4px 8px; }
+.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 650; white-space: nowrap; }
+.primary:hover:enabled { background: var(--accent-hover); }
+#location { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0 5px; padding: 0 4px 0 11px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-2); }
+#location:focus-within { border-color: var(--accent); }
+.url-mark { color: var(--faint); font-size: 17px; }
+#address { min-width: 0; flex: 1; border: 0; background: transparent; padding: 7px 0; outline: none; }
+.go { font-size: 12px; border: 0; padding: 3px 8px; color: var(--fg-2); }
+#error { grid-row: 2; gap: 8px; justify-content: space-between; padding: 6px 16px; background: var(--surface-2); color: var(--warn); border-bottom: 1px solid var(--border-strong); overflow-wrap: anywhere; }
+main { grid-row: 3; display: flex; min-height: 0; min-width: 0; }
+#canvas { position: relative; flex: 1; overflow: auto; min-width: 0; background: var(--bg); overscroll-behavior: contain; }
+#empty { display: grid; place-items: center; align-content: center; gap: 7px; min-height: 100%; text-align: center; padding: 30px; }
+.empty-symbol { color: var(--accent); font: 54px/1 var(--font-brand); }
+#empty h2 { font: 500 30px/1.4 var(--font-display); }
+#empty p { color: var(--muted); }
+#viewport { height: auto; display: block; margin: 0 auto; }
+#canvas:not(.natural) #viewport { width: 100%; }
+#capture { pointer-events: none; }
+#hotspots rect { cursor: pointer; fill: transparent; }
+#hotspots rect:hover, #hotspots rect:focus-visible { fill: rgba(35, 133, 210, .1); stroke: #2087d9; stroke-width: 2; vector-effect: non-scaling-stroke; outline: none; }
+#controls-pane { width: clamp(195px, 25%, 320px); overflow: auto; border-left: 1px solid var(--border-strong); background: var(--surface); }
+.aside-head { position: sticky; top: 0; background: var(--surface); justify-content: space-between; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.aside-head h2 { font-size: 14px; }
+#controls-list { padding: 6px; }
+#controls-list button { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 10px; overflow-wrap: anywhere; }
+#controls-list button:hover:enabled { background: var(--surface-3); }
+#controls-list p, .role { font-size: 12px; color: var(--muted); }
+#controls-list p { padding: 8px; }
+.role { display: block; }
+footer { grid-row: 4; min-height: 38px; gap: 8px; padding: 3px 12px; border-top: 1px solid var(--border-strong); background: var(--surface); }
+#signal { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--faint); }
+#signal[data-tone="ready"] { background: var(--success); }
+#signal[data-tone="busy"] { background: var(--warn); }
+#status { color: var(--muted); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.actions { margin-left: auto; gap: 3px; }
+footer .icon { width: 26px; height: 26px; font-size: 16px; }
+dialog { width: min(440px, 90vw); color: var(--fg); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 22px; box-shadow: var(--shadow-3); }
+dialog::backdrop { background: rgba(0, 0, 0, .55); }
+.dialog-head { justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+dialog label { display: block; font-size: 13px; color: var(--fg-2); margin: 10px 0 6px; overflow-wrap: anywhere; }
+dialog textarea, dialog select { width: 100%; min-height: 36px; padding: 9px; border: 1px solid var(--border-strong); background: var(--bg-2); border-radius: 8px; }
+dialog textarea { resize: vertical; }
+dialog p { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+#worker-page { font-family: var(--font-num); font-size: 12px; max-height: 4.5em; overflow: auto; }
+.dialog-status:not(:empty) { color: var(--warn); margin-top: 6px; }
+.dialog-actions { justify-content: flex-end; gap: 6px; margin-top: 16px; }
+:host { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
+:host([hidden]) { display: none; }
+.browser-mark { color: var(--accent); font: 20px/1 var(--font-brand); }
+@container (max-width: 550px) {
+  .mast { padding-inline: 10px; } nav { gap: 0; padding: 6px 7px 9px; }
+  nav .icon { width: 26px; height: 28px; font-size: 18px; }
+  #location { margin-inline: 2px 5px; padding-left: 6px; gap: 4px; }
+  #delegate { padding: 6px 8px; font-size: 12px; }
+  .url-mark { display: none; } .go { padding-inline: 5px; }
+  footer { flex-wrap: wrap; gap: 3px; padding: 5px 8px; }
+  #status { max-width: 100%; } .actions { margin-left: auto; }
+  #controls-pane { width: min(47%, 190px); }
+  .actions .quiet { padding: 3px 4px; }
+}
