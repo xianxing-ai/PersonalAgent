@@ -1,9 +1,10 @@
 /** Routing hint only. The worker receives the complete original request, including its limits. */
 export function isDirectNotepadRequest(goal:string):boolean {
-  const request = goal.trim().replace(/^\[(?:编码助手|任务执行)\]\s*/u, '');
-  const command = request.replace(/^(?:(?:请帮我|请你?|帮我|现在|重新尝试|再试一次|再次|在本机|派(?:一个|一名)?工人去)\s*)+/u, '');
-  return /^(?:打开|启动|新建)\s*(?:(?:一个|系统|我的|新的|空白)\s*)*(?:记事本|notepad)(?=$|[\s，,。.!！、]|应用|现在|并|然后|写入|输入)/iu.test(command)
-    || /^(?:please\s+)?(?:open|launch|start)\s+(?:(?:a|new|blank|windows)\s+)*notepad\b/iu.test(request);
+  const request = goal.trim().replace(/^\[(?:编码助手|任务执行)\]\s*/u, '')
+    .replace(/^(?:测试|实机测试|实机验收|test)\s*[:：]\s*/iu, '');
+  const command = request.replace(/^(?:(?:请帮我|请你?|帮我|现在|重新尝试|再试一次|再次|在本机(?:桌面)?(?:上)?|派(?:一个|一名)?工人(?:去|来)?)\s*)+/u, '');
+  return /^(?:打开|启动|新建)\s*(?:(?:一个|系统|我的|新的|空白|Windows)\s*)*(?:记事本|notepad)(?=$|[\s，,。.!！、(（]|应用|现在|并|然后|写入|输入)/iu.test(command)
+    || /^(?:please\s+)?(?:open|launch|start)\s+(?:(?:a|new|blank|windows)\s+)*notepad\b/iu.test(command);
 }
 
 /** Public, bounded diagnostics only. Registration/readiness never grants execution authority. */

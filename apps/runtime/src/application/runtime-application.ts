@@ -26,6 +26,7 @@ import {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfi
 import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability,RuntimeConfiguredWorkflowBindingScope,
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
+import {bindNotepadWorker,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -3578,9 +3579,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       || !isDeepStrictEqual(worker.loadCheckpoint('subtask-tools-binding'),descriptors)) {
       throw new ProtocolError('UNAUTHORIZED','Default child tool scope changed');
     }
-    if (this.prepareDesktopWorker && isDirectNotepadRequest(child.goal)
-      && descriptors.some(tool=>tool.name==='computer.desktop.launch_app')) {
-      await this.prepareDesktopWorker({deadline:worker.deadline,signal:worker.signal});
+    if (bindNotepadWorker(this.runtime,worker.taskId,parent.taskId,subtask.subtaskId,subtask.goal)) {
+      if (!descriptors.some(tool=>tool.name===NOTEPAD_TOOL&&tool.version==='1.0.0'))
+        throw new ProtocolError('UNSUPPORTED_CAPABILITY','此工人未获分配记事本操作工具');
+      await this.prepareDesktopWorker?.({deadline:worker.deadline,signal:worker.signal});
     }
     if(binding.subtaskId==='user-work')this.harnessExperienceRecipes(worker.taskId,worker,true);
     const catalog=this.competitionToolCatalog?.restrict(tools);
@@ -3611,6 +3613,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }}:originalPort;
     return runCoordinationWorker(this.runtime,port,tools,worker.taskId,child.goal,worker,
       {retainPriorToolResults:this.usesGoalContinuation(worker.taskId),allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        assertCompletion:()=>assertNotepadWorkerComplete(this.runtime,worker.taskId),
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }

@@ -8,7 +8,7 @@ import {MAX_AVAILABLE_TOOLS, MAX_AVAILABLE_TOOLS_JSON_BYTES} from '@personal-age
 import type {TaskRuntime} from '../index.js';
 import type {CompetitionToolExport} from './coordination.js';
 import {TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION} from './tool-discovery.js';
-import {isDirectNotepadRequest} from './capability-context.js';
+import {NOTEPAD_INTENT,NOTEPAD_TOOL} from './notepad-worker.js';
 
 const CHECKPOINT = 'competition-tool-catalog';
 const DISCOVERY_POOL = 'competition-tool-discovery-pool:v1';
@@ -317,6 +317,10 @@ export class RuntimeCompetitionToolCatalog {
       selected.push({...descriptor,inputSchema:safeSchema(descriptor.inputSchema,0,new Set(worker.publicEnumPaths))});
     }
     const originalEntries=structuredClone(selected);
+    const requiresNotepad=this.runtime.loadCheckpoint(input.taskId,NOTEPAD_INTENT)!==undefined;
+    const launch=requiresNotepad?originalEntries.find(item=>item.name===NOTEPAD_TOOL&&item.version==='1.0.0'):undefined;
+    if(requiresNotepad&&!launch)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','本次工人任务的记事本原生工具未就绪');
     if (Buffer.byteLength(JSON.stringify(selected), 'utf8') > MAX_AVAILABLE_TOOLS_JSON_BYTES) {
       for (const item of selected) item.inputSchema = withoutParameterDescriptions(item.inputSchema);
     }
@@ -325,9 +329,9 @@ export class RuntimeCompetitionToolCatalog {
       if(!this.discoveryEnabled||!discovery||!fitsCatalog([discovery]))
         throw new ProtocolError('INVALID_ARGUMENT','Competition tool catalog structure exceeds its limit');
       selected.splice(0,selected.length,discovery);
-      if (isDirectNotepadRequest(this.runtime.getTask(input.taskId).goal ?? '')) {
-        const launch = originalEntries.find(item=>item.name==='computer.desktop.launch_app');
-        if (launch && fitsCatalog([discovery,launch])) selected.push(launch);
+      if(launch) {
+        if(!fitsCatalog([discovery,launch]))throw new ProtocolError('INVALID_ARGUMENT','记事本工具描述超过目录容量');
+        selected.push(launch);
       }
     }
     this.assertCurrent({...input, revision});
@@ -402,16 +406,21 @@ export class RuntimeCompetitionToolCatalog {
     const discovery=pool.entries.find(entry=>entry.name===TOOL_DISCOVERY_NAME&&entry.version===TOOL_DISCOVERY_VERSION)!;
     if(!await this.entryCurrent(discovery,view,lookup))throw new ProtocolError('UNAUTHORIZED','Original discovery tool became unavailable');
     let entries:CompetitionAvailableTool[]=[discovery];
+    const launch=this.runtime.loadCheckpoint(input.taskId,NOTEPAD_INTENT)!==undefined
+      ?pool.entries.find(entry=>entry.name===NOTEPAD_TOOL&&entry.version==='1.0.0'):undefined;
+    if(launch&&await this.entryCurrent(launch,view,lookup))entries.push(launch);
+    const requiredCount=entries.length;
     const matches:{name:string;version:string;state:'selected'|'unavailable'|'schema_too_large'}[]=[];
     let next=offset;
     for(;next<candidates.length&&matches.length<MAX_AVAILABLE_TOOLS-1;next++) {
       const entry=candidates[next]!;
+      if(entry===launch&&requiredCount===2){matches.push({name:entry.name,version:entry.version,state:'selected'});continue;}
       if(!await this.entryCurrent(entry,view,lookup)){matches.push({name:entry.name,version:entry.version,state:'unavailable'});continue;}
       const proposed=[...entries,entry];
       const compact=proposed.map(item=>({...item,inputSchema:withoutParameterDescriptions(item.inputSchema)}));
       if(fitsCatalog(proposed))entries=proposed;
       else if(fitsCatalog(compact))entries=compact;
-      else if(entries.length===1){matches.push({name:entry.name,version:entry.version,state:'schema_too_large'});continue;}
+      else if(entries.length===requiredCount){matches.push({name:entry.name,version:entry.version,state:'schema_too_large'});continue;}
       else break;
       matches.push({name:entry.name,version:entry.version,state:'selected'});
     }
