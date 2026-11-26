@@ -32,7 +32,7 @@ async function historyOf(page) {
   }finally{await driver.detach().catch(()=>{});}
 }
 // Holds one locally displayed observation; it can never be used as a worker targetRef.
-export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,fail,now}) {
+export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,beforeMediaPlay,fail,now}) {
   let view,revision=0;
   const attribute='data-pa-local-'+randomUUID().replaceAll('-','');
   function state(page) {
@@ -121,10 +121,13 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,fa
       if(type.href&&await locator.getAttribute('target')==='_blank'){
         check();requireView(page,args.viewId);await page.goto(type.href,options());
       }else if(['video','audio'].includes(type.tag)){
-        await locator.evaluate(async element=>{
+        const play=await locator.evaluate(element=>element instanceof HTMLMediaElement&&element.paused);
+        if(play&&beforeMediaPlay)await beforeMediaPlay(page,check);
+        check();requireView(page,args.viewId);
+        await locator.evaluate(async(element,play)=>{
           if(!(element instanceof HTMLMediaElement))throw Error('Media unavailable');
-          if(element.paused)await element.play();else element.pause();
-        });
+          if(play)await element.play();else element.pause();
+        },play);
       }else await locator.click(row);
     }else if(action==='type'){
       if(!['input','textarea'].includes(type.tag)&&!type.editable||type.tag==='input'&&!['','text','search','email','url','tel','number','date','datetime-local','time','month','week'].includes(type.type))

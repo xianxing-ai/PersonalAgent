@@ -61,6 +61,8 @@ function safeFailure(error,stage) {
     const message=Object.getOwnPropertyDescriptor(error,'message');
     if(typeof message?.value==='string'&&/Executable doesn't exist|Please run the following command to download new browsers/.test(message.value))
       return {...failure,code:'UNSUPPORTED_CAPABILITY',message:'未找到可启动的浏览器，请准备浏览器组件或安装 Edge'};
+    if(typeof message?.value==='string'&&/No usable sandbox|Chromium sandboxing failed|Running as root without --no-sandbox/i.test(message.value))
+      return {...failure,code:'UNSUPPORTED_CAPABILITY',message:'当前环境无法启动带沙箱的 Chromium 浏览器，请检查本机浏览器和系统沙箱配置'};
   }catch{}
   return failure;
 }
@@ -299,7 +301,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     if(blocked)fail('RESULT_UNKNOWN','原浏览器动作结果未知；先核实原任务，不会自动重放');
   }
   const networkOptions={dnsLookup,testOnlyAllowedOrigins:testOrigins,allowFakeIpProxy:Boolean(allowFakeIpProxy)};
-  const workspacePage=createBrowserWorkspacePage({checkUrl:url=>assertPublicBrowserUrl(url,networkOptions),readDocument,findControl:control,fail,now});
+  const startMinimized=process.platform==='win32'&&!injectedPlaywright;
+  const workspacePage=createBrowserWorkspacePage({checkUrl:url=>assertPublicBrowserUrl(url,networkOptions),readDocument,findControl:control,
+    beforeMediaPlay:startMinimized?presentWorkspacePage:undefined,fail,now});
   const chatPages=new WeakMap();
   function captureChatPage(conversationId){
     if(!conversationId||!page||page.isClosed()||pageConversation!==conversationId||!pageOrigin||closed||blocked||busy&&!activeOperation?.passive)return;
@@ -531,6 +535,24 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       throw browserError(lastFailure.code,lastFailure.message);
     }
   }
+  async function revealPage(ownedPage,check){
+    const driver=await ownedPage.context().newCDPSession(ownedPage);
+    try{
+      const {windowId,bounds}=await driver.send('Browser.getWindowForTarget');
+      check();
+      if(bounds.windowState==='minimized')await driver.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'normal'}});
+      check();await ownedPage.bringToFront();check();
+    }finally{await driver.detach().catch(()=>{});}
+  }
+  async function presentWorkspacePage(ownedPage,check){
+    const url=await assertPublicBrowserUrl(ownedPage.url(),networkOptions);
+    const samePage=()=>{
+      check();
+      if(ownedPage!==page||ownedPage.url()!==url.href)fail('REVISION_CONFLICT','网页已变化，请重新打开');
+    };
+    samePage();await revealPage(ownedPage,samePage);
+    samePage();presented={page:ownedPage,origin:url.origin};
+  }
   async function launchDriver(scope) {
     active(scope);if(context&&page&&!page.isClosed())return;
     if(context)await disposeContext(false);
@@ -554,9 +576,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(url.origin!==pending.origin||pending.trafficBytes>maxDownloadBytes){rejectDownload('INVALID_ARGUMENT','下载流量超过受控来源或大小上限');fail('INVALID_ARGUMENT','下载流量超过受控上限');}
     }});
     let launched;
-    try{launched=await lib.chromium.launchPersistentContext(profile,{...(channel?{channel}:{}),headless:false,acceptDownloads:false,serviceWorkers:'block',
+    try{launched=await lib.chromium.launchPersistentContext(profile,{...(channel?{channel}:{}),headless:false,chromiumSandbox:true,acceptDownloads:false,serviceWorkers:'block',
       proxy:{server:egress.server,username:egress.username,password:egress.password,bypass:'<-loopback>'},
-      viewport:{width:1280,height:800},permissions:[],args:['--disable-background-networking','--disable-component-update',
+      viewport:{width:1280,height:800},permissions:[],args:[...(startMinimized?['--start-minimized']:[]),'--disable-background-networking','--disable-component-update',
         '--disable-extensions','--disable-sync','--dns-prefetch-disable','--disable-quic','--proxy-bypass-list=<-loopback>',
         '--force-webrtc-ip-handling-policy=disable_non_proxied_udp']});
       active(scope);
@@ -614,6 +636,15 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     await context.routeWebSocket('**/*',socket=>socket.close());
     const pages=context.pages();page=pages[0]??await context.newPage();
     for(const extra of pages.slice(1))await extra.close();
+    if(startMinimized){
+      // Some branded Chromium builds initially ignore the startup hint.
+      // Presentation is best effort; the mandatory sandbox is set at launch.
+      const driver=await context.newCDPSession(page);
+      try{
+        const {windowId,bounds}=await driver.send('Browser.getWindowForTarget');
+        if(bounds.windowState!=='minimized')await driver.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'minimized'}});
+      }catch{}finally{await driver.detach().catch(()=>{});}
+    }
     if(authorizationQuestions)await guardRedirects(page);
     context.on('page',extra=>{if(extra!==page)void extra.close().catch(()=>{});});
     const launchedEgress=egress;
@@ -843,6 +874,10 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           const timeout=Math.max(1,Date.parse(scope.deadline)-now());
           if(name==='click'){
             if(args.mediaAction){
+              if(args.mediaAction==='play'&&startMinimized)await revealPage(seen.page,()=>{
+                active(scope);
+                if(page!==seen.page||page.url()!==seen.url||generation!==seen.generation)fail('REVISION_CONFLICT','原媒体页面已变化');
+              });
               const source=await selected.locator.evaluate(async(element,action)=>{
                 if(!(element instanceof HTMLMediaElement))throw Error('Media unavailable');
                 if(action==='play')await element.play();else element.pause();
@@ -928,16 +963,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(!page||page.isClosed())fail('UNSUPPORTED_CAPABILITY','请先打开公共网页');
       const ownedPage=page;
       if(action==='present'){
-        const url=await assertPublicBrowserUrl(ownedPage.url(),networkOptions);
-        check();if(ownedPage!==page||ownedPage.url()!==url.href)fail('REVISION_CONFLICT','网页已变化，请重新打开');
-        const driver=await ownedPage.context().newCDPSession(ownedPage);
-        try{
-          const {windowId,bounds}=await driver.send('Browser.getWindowForTarget');
-          if(bounds.windowState==='minimized')await driver.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'normal'}});
-          check();await ownedPage.bringToFront();check();
-          if(ownedPage.url()!==url.href)fail('REVISION_CONFLICT','网页已变化，请重新打开');
-          presented={page:ownedPage,origin:url.origin};
-        }finally{await driver.detach().catch(()=>{});}
+        await presentWorkspacePage(ownedPage,check);
         return {...workspaceState(),busy:false};
       }
       if(action!=='preview'){
