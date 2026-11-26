@@ -75,9 +75,9 @@ export function createComputerControlLease({getRuntime,readInSeparateBrowser,now
           &&['started','unknown'].includes(record.state)&&!readOnlyNavigation(source,record)&&!skippedNotepadAttempt(source,record)
           &&!independentOfNavigation(source,record,next)))return true;
       }
-      const next=page.nextBeforeSequence;
-      if(next!==undefined&&(!Number.isSafeInteger(next)||next<0||(beforeSequence!==undefined&&next>=beforeSequence)))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录分页无效');
-      beforeSequence=next;
+      const cursor=page.nextBeforeSequence;
+      if(cursor!==undefined&&(!Number.isSafeInteger(cursor)||cursor<0||(beforeSequence!==undefined&&cursor>=beforeSequence)))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录分页无效');
+      beforeSequence=cursor;
     }while(beforeSequence!==undefined);
     return false;
   }
