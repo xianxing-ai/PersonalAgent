@@ -1,3 +1,4 @@
+import {updateAssistantPicker} from './assistant-picker.js';
 import {stateNames,isTerminal} from '../conversation/state.js';
 import {mountInlineSubagents} from './inline-subagents.js';
 import {mountHeroStarfield} from './hero-starfield.js';
@@ -26,7 +27,10 @@ function avatarShape(taskId){
   return ['squircle','circle','soft'][Math.floor(avatarHash(taskId)/5)%3];
 }
 function leadAvatarSvg(){
-  return '<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="14" cy="14" r="9.2" stroke="currentColor" stroke-width="1.2" opacity=".28"/><ellipse cx="14" cy="14" rx="11.6" ry="4.4" transform="rotate(-26 14 14)" stroke="currentColor" stroke-width="1.35" opacity=".82"/><ellipse cx="14" cy="14" rx="10.8" ry="3.8" transform="rotate(34 14 14)" stroke="currentColor" stroke-width="1.1" opacity=".36"/><circle cx="14" cy="14" r="3.6" fill="currentColor"/><circle cx="22.8" cy="10.2" r="1.35" fill="currentColor" opacity=".85"/></svg>';
+  return `<svg viewBox="0 0 32 32" aria-hidden="true" fill="currentColor">
+    <path opacity=".48" d="M13 5h11a4 4 0 0 1 4 4v11l-4-3h-3v-3a5 5 0 0 0-5-5H9a4 4 0 0 1 4-4Z"/>
+    <path fill-rule="evenodd" d="M8 11h10a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4h-6l-6.1 4v-4.5A4 4 0 0 1 3.8 20v-5A4.2 4.2 0 0 1 8 11Zm1.3 4.3a.9.9 0 0 0 0 1.8h7.2a.9.9 0 0 0 0-1.8Zm0 3.7a.9.9 0 0 0 0 1.8h3.6a.9.9 0 0 0 0-1.8Z"/>
+  </svg>`;
 }
 const agentGlyphPaths=[
   '<circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.5" opacity=".7"/><circle cx="10" cy="10" r="2.1" fill="currentColor"/>',
@@ -77,23 +81,24 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   stage.prepend(welcome);
   const side=document.createElement('aside');side.className='cc-context';side.setAttribute('aria-label','协作与活动');side.innerHTML=`<section class="cc-team"><header><h2>${centerIcon('team')}智能体协作</h2><span data-cc-team-count>暂无工人</span></header><div class="cc-team-lead"><span class="cc-agent-avatar">${centerIcon('home')}</span><div><strong>主对话</strong><p>日程、订阅和天气都在这里处理</p></div><span class="cc-state" data-cc-coordinator>待机</span></div><div class="cc-children"></div><div class="cc-team-hint"><span class="cc-constellation">✧</span><strong>工人负责重活</strong><p>主对话自己处理日程、订阅和天气。真正派工之后，工人会显示在这里。助手是另一类，用来聊天，不在这列。</p></div><div class="cc-child-actions"></div></section><section class="cc-activity"><header><h2>${centerIcon('history')}最近活动</h2><button type="button" data-cc-records>全部记录 ${centerIcon('arrow')}</button></header><div class="cc-activity-list"></div></section><div class="cc-trust"><span>◇</span><p>每一次行动，都由你掌控。<br><small>涉及外部操作时，沿用原有授权流程。</small></p></div>`;
   layout.append(side);
-  const lead=side.querySelector('.cc-team-lead'),leadButton=document.createElement('button');leadButton.type='button';leadButton.className='cc-team-lead';leadButton.setAttribute('aria-label','切换到主对话');  leadButton.innerHTML=`<span class="cc-thread-symbol cc-avatar cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span><span class="cc-lead-copy"><strong>主对话</strong><small>日程 · 订阅 · 天气</small></span><span class="cc-state" data-cc-coordinator>待机</span>`;lead.replaceWith(leadButton);
+  const leadButton = document.createElement('button');
+  leadButton.type = 'button';
+  leadButton.className = 'cc-team-lead';
+  leadButton.setAttribute('aria-label', '切换到主对话');
+  leadButton.innerHTML = `<span class="cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span>
+    <span class="cc-lead-copy"><span class="cc-lead-heading"><strong>主对话</strong><span class="cc-state" data-cc-coordinator>待机</span></span><small>日程 · 订阅 · 天气</small></span>`;
+  side.querySelector('.cc-team-lead').replaceWith(leadButton);
   side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>主对话只处理日程、订阅和天气。邮件、知识库和其他连接器交给助手自己的工人。工人可插话复用，不必一句话一个。</p>';side.querySelector('.cc-trust').hidden=true;
   const team=side.querySelector('.cc-team');team.querySelector('h2').textContent='工人';team.prepend(leadButton);rail.querySelector('.cc-thread-scroll').append(team);
   const internal=document.createElement('section');internal.className='cc-internal-chat';internal.setAttribute('aria-label','内部群聊');
-  internal.innerHTML=`<header><h2>内部群聊</h2><span>主对话 ↔ 助手</span></header><div class="cc-internal-list" data-internal-list></div><form class="cc-internal-compose" data-internal-compose><label>交给助手<select name="assistantId" required></select></label><textarea name="text" maxlength="2000" required placeholder="在后台交付工作，例如：处理邮件并回贴结论"></textarea><button type="submit">交付</button><p class="cc-internal-status" role="status"></p></form>`;
+  internal.innerHTML=`<header><h2>内部群聊</h2><span>主对话 ↔ 助手</span></header><div class="cc-internal-list" data-internal-list></div><form class="cc-internal-compose" data-internal-compose><label>交给助手<select class="cc-assistant-picker" name="assistantId" required><button type="button"><selectedcontent></selectedcontent></button></select></label><textarea name="text" maxlength="2000" required placeholder="在后台交付工作，例如：处理邮件并回贴结论"></textarea><button type="submit">交付</button><p class="cc-internal-status" role="status"></p></form>`;
   side.querySelector('.cc-activity')?.before(internal);
   const internalList=internal.querySelector('[data-internal-list]');
   const internalForm=internal.querySelector('[data-internal-compose]');
   const internalStatus=internal.querySelector('.cc-internal-status');
   const paintInternalChat=(data)=>{
     const assistants=Array.isArray(data?.assistants)?data.assistants:[];
-    const select=internalForm.elements.namedItem('assistantId');
-    const current=select.value;
-    select.innerHTML=assistants.length
-      ? assistants.map(item=>`<option value="${escape(item.assistantId)}">${escape(item.displayName||item.assistantId)}</option>`).join('')
-      : '<option value="">暂无助手</option>';
-    if(assistants.some(item=>item.assistantId===current))select.value=current;
+    updateAssistantPicker(internalForm.elements.namedItem('assistantId'), assistants);
     const messages=Array.isArray(data?.internalChat?.messages)?data.internalChat.messages:[];
     internalList.innerHTML=messages.length
       ? messages.map(item=>{
