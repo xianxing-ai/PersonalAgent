@@ -24,6 +24,7 @@ files:
   - "!**/.cache*"
 
 asar: true
+afterPack: ./scripts/package-controlled-chromium.mjs
 asarUnpack:
   - electron/f20-typescript-check.cjs
   - node_modules/typescript/lib/**/*

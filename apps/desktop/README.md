@@ -1,5 +1,7 @@
 # Synstar Desktop
 
+受控浏览器使用随 Synstar 提供的专用 Chromium。在开发工作树首次运行或 Playwright 版本更新后，从仓库根运行 `npm run browser:prepare --workspace=@personal-agent/desktop`。命令使用仓库锁定的 Playwright CLI，将完整浏览器及配套组件安装到该工作树的 `apps/desktop/.cache/controlled-chromium`。随后正常启动 Desktop。Windows x64 打包命令 `npm run package:win --workspace=@personal-agent/desktop` 也会先准备内核，安装包将其放在应用的 `resources/controlled-chromium` 中。用户打开网页时只校验并启动这个本地版本。
+
 F20 固定校验使用现有工作文件夹设置。选定工作区、可信 Node 和 PowerShell 后，在「F20 固定校验」选择 TypeScript 契约、实现及对应文档。运行时使用已固定的 AgentArts 版本与已就绪的本机 Laya。在普通主对话中请求「用 F20 验证案例 f20-case」，按原授权卡批准本次来源和隔离检查。TypeScript 检查使用隔离副本和应用随附的固定编译器。成功需要独立核对原文件、候选样例及校验回执，结果只交回对话。
 
 2026-11-07 MOD-19 打包与安装脚手架（review）：

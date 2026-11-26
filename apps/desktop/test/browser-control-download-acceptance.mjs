@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdir,writeFile,readFile,readdir} from 'node:fs/promises';
-import {existsSync} from 'node:fs';
+import {locateControlledChromium} from '../electron/controlled-chromium.js';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {gzipSync} from 'node:zlib';
@@ -42,12 +42,12 @@ const runtime={listTasks:()=>({items:[]}),getTask:()=>({state:'running'}),
   loadCheckpoint:(_task,key)=>key==='application-deadline'?deadline:undefined,
   matchesToolExecutionInput:(record,input)=>record.digest===toolArgumentsDigest(input.arguments)&&record.authorizationRef===input.scopeRef,
   saveCheckpointOnce(taskId,key,value){const id=taskId+':'+key;if(checkpoints.has(id))return false;checkpoints.set(id,value);return true;}};
-const browserChannel=existsSync(playwright.chromium.executablePath())?'bundled-chromium':'msedge';
+const browserChannel='bundled-chromium',executablePath=locateControlledChromium();
 let visibleBrowser;
 const driver={chromium:{launchPersistentContext:(profile,options)=>{
   assert.equal(options.headless,true);
   visibleBrowser=options.headless===false;
-  return playwright.chromium.launchPersistentContext(profile,{...options,...(browserChannel==='msedge'?{channel:'msedge'}:{})});
+  return playwright.chromium.launchPersistentContext(profile,{...options,executablePath});
 }}};
 let taskId='synthetic-download-acceptance',host=createBrowserControlHost({userDataPath:directory,downloadDirectory,maxDownloadBytes:4096,playwright:driver,
   testOnlyAllowedOrigins:[origin],authorizePresence:async request=>request.origin===undefined||request.origin===origin});host.bind({runtime});
