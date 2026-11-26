@@ -2747,6 +2747,7 @@ function initializeAuthorizationHosts(runtimeModule){
       item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
         ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
       )&&request.toolName!=='workspace.node_check'?'workspace-write':selected.ref,
+    describeBrowserClick:source=>browserControlHost?.describeClickForApproval(source),
     describeExecution:(request,profile)=>nativeExecutionHost?.describeExecution(request,profile)
       ??{required:false,available:false,backend:'unavailable',enforced:false,reason:'本次为应用内工具；外部进程隔离未就绪'}});
   authorizationIntentHost?.close();

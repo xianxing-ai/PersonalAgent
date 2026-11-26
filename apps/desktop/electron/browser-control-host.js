@@ -52,6 +52,29 @@ const projectionSchema={...resultSchema,properties:{...resultSchema.properties,
     downloadable:flag,paused:flag,ended:flag,value:webText(500),options:{type:'array',maxItems:40,items:object({label:webText(200),value:webText(200)},['label','value'])}})},
   artifact:object({artifactId:short,name:{type:'string',maxLength:300},mimeType:short,byteLength:{type:'integer'},sha256:short,imageDeliveredToModel:flag})}};
 const PAGE_EXPORT='browser-page-export';
+function approvalAddress(raw){
+  if(typeof raw!=='string')return;
+  try{
+    const url=new URL(raw);
+    if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return;
+    // Queries, fragments, opaque identifiers and account/action URLs can carry
+    // private state. Only show human-readable public path segments on this card.
+    const route=decodeURIComponent(url.pathname);
+    const publicPath=route.length<=160&&/^[\p{L}\p{N}._~/-]*$/u.test(route)&&!/[a-z0-9]{24,}/iu.test(route)
+      &&!/(?:^|\/)(?:account|auth|checkout|confirm|invite|login|oauth|order|password|payment|reset|session|token)(?:s|[-_.][^/]*)?(?:\/|$)/iu.test(route)
+      &&redactEgressPersonalText(route)===route&&!detectSecretsInText(route);
+    return url.host+(publicPath?route:'');
+  }catch{return;}
+}
+function approvalLabel(value){
+  if(typeof value!=='string'||!value||detectSecretsInText(value))return '';
+  const label=redactEgressPersonalText(value)
+    .replace(/https?:\/\/[^\s“”<>]+/giu,url=>approvalAddress(url)??'网址')
+    .replace(/\?[\w.%~-]+=[^\s“”<>]*/gu,'')
+    .replace(/[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/gu,' ')
+    .replace(/[“”]/gu,'"').replace(/\s+/gu,' ').trim();
+  return label.length>72?label.slice(0,71)+'…':label;
+}
 function publicPageProjection(result){
   if(result.url){
     let address;
@@ -288,6 +311,12 @@ export function createBrowserControlHost(options={}) {
         return host.restrictClickToRead(scope,args,key);
       }catch{return false;}
     },
+    describeClickForApproval(source){
+      if(closed||source?.toolName!=='browser.click'||source.toolVersion!==VERSION||source.signal?.aborted)return;
+      const host=sessions.get(owner(source.taskId));
+      if(!host||source.argumentsDigest!==toolArgumentsDigest(source.arguments))return;
+      return host.describeClickForApproval(source);
+    },
     competitionToolAvailability:template.competitionToolAvailability.map((item,i)=>({...item,available:scope=>{
       const key=owner(scope.taskId);return !closed&&!!key&&(sessions.get(key)??template).competitionToolAvailability[i].available(scope);
     }})),
@@ -350,6 +379,30 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   let localRead,workspaceVisibility=0,previewSuspended=false;
   const targets=new Map(),artifacts=new Map(),exportScopes=new Map(),exportRequests=new Map();
   const restrictedReads=new Map();
+  function describeClickForApproval(source){
+    const args=source.arguments,view=targets.get(args.targetRef),field=view?.controls.find(item=>item.ref===args.ref);
+    const pinned=restrictedReads.get(exportKey(source.taskId,source.runId));
+    const exact=pinned?.targetRef===args.targetRef&&pinned.digest===source.argumentsDigest&&pinned.expires===Date.parse(source.deadline);
+    if(!field||view.taskId!==source.taskId||view.epoch!==documentEpoch||view.generation!==generation||
+      !page||page.isClosed()||page!==view.page||page.url()!==view.url||Date.parse(source.deadline)<=now()||
+      view.expiresAt<=now()&&!exact)return;
+    const types={a:'链接',video:'视频',audio:'音频',button:field.submitsForm?'提交按钮':'按钮',
+      select:'下拉框',textarea:'文本框',input:field.submitsForm?'提交按钮':'输入控件'};
+    const type=Object.hasOwn(types,field.tag)?types[field.tag]:'网页控件';
+    const label=approvalLabel(field.displayLabel||field.name),target=label?`${type}“${label}”`:`未命名${type}（${field.ref}）`;
+    const origin=approvalAddress(new URL(view.url).origin);
+    if(exact&&pinned.kind==='link'){
+      const address=approvalAddress(field.downloadUrl);
+      return {summary:`打开${target}${address?'，前往 '+address:''}。`,
+        detail:`本机将直接读取原链接（GET）。\n来源网站：${origin}\n目的地：${address??'已隐藏'}`};
+    }
+    if(['video','audio'].includes(field.tag)&&['play','pause'].includes(args.mediaAction)){
+      const action=args.mediaAction==='play'?'播放':'暂停';
+      return {summary:action+target+'。',detail:`在 ${origin} ${action}刚观察到的${target}。`};
+    }
+    return {summary:`在 ${origin} 点击${target}。`,
+      detail:field.submitsForm?'该控件属于网页表单，点击可能向网站提交表单。':'网页将处理此次点击，可能导航、提交数据或执行页面操作。'};
+  }
   function forgetTarget(id){
     const view=targets.get(id);
     targets.delete(id);void view?.nodes?.dispose().catch(()=>{});
@@ -858,13 +911,15 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         if(el.getAttribute(attribute)!==ref)el.setAttribute(attribute,ref);
         const type=el.tagName.toLowerCase(),role=el.getAttribute('role')??(type==='a'?'link':type==='select'?'combobox':type==='button'?'button':['input','textarea'].includes(type)?'textbox':type);
         const name=(el.getAttribute('aria-label')??el.labels?.[0]?.innerText??el.getAttribute('placeholder')??el.innerText??'').trim().slice(0,200);
+        const displayLabel=(['a','button'].includes(type)?el.innerText:type==='input'&&['button','submit','reset'].includes(el.type)?el.value:'')?.trim().slice(0,200);
         const box=localView?el.getBoundingClientRect():undefined;
         const media=type==='video'||type==='audio';
         const source=media?(el.currentSrc||el.src||el.querySelector('source[src]')?.src||''):'';
-        return {ref,role,name,tag:type,inputType:el.getAttribute('type')??'',disabled:Boolean(el.disabled),
+        return {ref,role,name,displayLabel,tag:type,inputType:el.getAttribute('type')??'',disabled:Boolean(el.disabled),
           ...(box?{bounds:{x:box.x,y:box.y,width:box.width,height:box.height},focused:document.activeElement===el,
             editable:el.isContentEditable,...(type==='select'?{multiple:el.multiple}:{})}:{}),
           ...(type==='a'?{downloadUrl:el.href,downloadAttribute:el.hasAttribute('download')}:{}),
+          ...(['input','button'].includes(type)?{submitsForm:!!el.form&&['submit','image'].includes(el.type)}:{}),
           ...(media?{paused:el.paused===true,ended:el.ended===true,
             mediaSource:source.length<=4096&&/^(?:https?:|blob:)/iu.test(source)?source:''}:{}),
           ...(type==='select'?{options:[...el.options].slice(0,40).map(o=>({value:o.value.slice(0,200),label:o.label.slice(0,200),
@@ -931,7 +986,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       const safeUrl=new URL(url);safeUrl.search='';safeUrl.hash='';
       return {source:'playwright',state:action?'action_observed':'observed',targetRef:id,observedAt:new Date(now()).toISOString(),
         expiresAt:new Date(expiresAt).toISOString(),url:safeUrl.href,...data,
-        controls:data.controls.map(({downloadUrl,downloadAttribute,mediaSource,...control})=>({...control,...(downloadUrl?{downloadable:/^https?:/.test(downloadUrl)}:{})})),goalVerified:false};
+        controls:data.controls.map(({downloadUrl,downloadAttribute,mediaSource,submitsForm,displayLabel,...control})=>({...control,...(downloadUrl?{downloadable:/^https?:/.test(downloadUrl)}:{})})),goalVerified:false};
     }catch(error){
       active(scope);
       if(repeatRead&&activeOperation?.readOnlyNavigation&&epoch!==documentEpoch)return observe(scope,args,toolName,action,false);
@@ -958,8 +1013,10 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     if(await locator.count()!==1)fail('REVISION_CONFLICT','原控件已经变化');
     const type=await locator.evaluate(el=>({tag:el.tagName.toLowerCase(),type:(el.getAttribute('type')??'').toLowerCase(),
       name:(el.getAttribute('aria-label')??el.labels?.[0]?.innerText??el.getAttribute('placeholder')??el.innerText??'').trim().slice(0,200),
+      displayLabel:(['A','BUTTON'].includes(el.tagName)?el.innerText:el.tagName==='INPUT'&&['button','submit','reset'].includes(el.type)?el.value:'')?.trim().slice(0,200),
       editable:el.isContentEditable,disabled:Boolean(el.disabled),href:el.tagName==='A'?el.href:undefined}));
     if(['password','file','hidden'].includes(type.type)||type.disabled||type.tag!==expected.tag||type.name!==expected.name
+      ||expected.displayLabel!==undefined&&type.displayLabel!==expected.displayLabel
       ||type.type!==expected.inputType.toLowerCase())fail('UNAUTHORIZED','受保护或变化的控件不可操作');
     return {locator,type};
   }
@@ -1380,7 +1437,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(needsRecovery??!unfinishedBrowserWrites(value.runtime).next().done){blocked=true;state='blocked';}
       publish();
     },
-    snapshot,workspace,bindWorkspaceHandoff,suspendWorkspaceView,releaseWorkspaceView,captureChatPage,bindChatTask,restrictClickToRead,
+    snapshot,workspace,bindWorkspaceHandoff,suspendWorkspaceView,releaseWorkspaceView,captureChatPage,bindChatTask,restrictClickToRead,describeClickForApproval,
     activeTasks:()=>activeOperation?.scope.taskId?[activeOperation.scope.taskId]:[],
     async start(scope) {await launch(scope);return snapshot();},
     async stop() {session.abort();await disposeContext();return snapshot();},

@@ -52,7 +52,7 @@ function boundedProjection(schema,value,depth=0) {
 
 /** Trusted Main adapter. Never receives a profile, task binding or requirement from Renderer. */
 export function createDesktopAuthorizationQuestionHost({createQuestions,getApplication,namespace,resolveConversation,
-  available,onUpdate=()=>{},profiles,defaultProfileRef,resolveProfile,describeExecution,canAutoApprove,now=Date.now}) {
+  available,onUpdate=()=>{},profiles,defaultProfileRef,resolveProfile,describeExecution,describeBrowserClick,canAutoApprove,now=Date.now}) {
   const preparations=new Map(),operations=new Map(),owners=new Map(),batchDerivations=new Map(),projections=new Map();let application,questions,closed=false;
   function stateStore(){
     const current=getApplication();if(closed||!current?.runtime)denied();
@@ -191,13 +191,20 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     const forceAsk=Boolean(secrets)||prepared?.forceAsk===true;
     let contentConfirmation;
     if(!forceAsk&&!autoFullContent)contentConfirmation=operationContentConfirmation(source);
+    // The main host describes the actual observed element. The model proposal
+    // supplies only references and the original exact parameters remain visible.
+    const click=!secrets&&source.toolName==='browser.click'?describeBrowserClick?.(source):undefined;
+    if(click&&contentConfirmation){
+      const text=click.detail+'\n\n'+contentConfirmation.text;
+      contentConfirmation={text,digest:digest(text)};
+    }
     const extraRequirements=prepared?.requirements??[];
     const hasReusableExtra=extraRequirements.some(item=>item.requirementId!=='tool'&&item.ruleBindingDigest);
     const hasNonReusableExtra=extraRequirements.some(item=>item.requirementId!=='tool'&&!item.ruleBindingDigest);
     const canBindRule=!contentConfirmation&&!hasNonReusableExtra&&(Boolean(secrets)||hasReusableExtra||source.sideEffect!=='external_write');
     const summary=secrets
       ?`检测到疑似凭据信息（${secrets.categories.join('、')}）：${source.toolName==='computer.desktop.launch_app'||source.toolName.startsWith('browser.')?'此次设备操作包含敏感内容':operationSummary(source)}（确认后可加入白名单）`
-      :operationSummary(source);
+      :click?.summary??operationSummary(source);
     const tool={requirementId:'tool',kind:'tool',scopes:[...source.scopes],bindingDigest:digest({taskId:source.taskId,runId:source.runId,
       toolName:source.toolName,toolVersion:source.toolVersion,argumentsDigest:source.argumentsDigest,deadline:source.deadline}),
       ...(canBindRule
