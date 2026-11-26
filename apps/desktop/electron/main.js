@@ -4959,13 +4959,13 @@ async function action(event, name, payload) {
       throw new ProtocolError('INVALID_ARGUMENT','请选择当前助手');
     if(operation==='release'){releaseBrowserPane(sender,payload.paneId);return {released:true};}
     if(!sender.isVisible()||sender.isMinimized())throw new ProtocolError('UNAUTHORIZED','请先展开工作台');
-    if(!['state','preview','media','open','back','forward','reload','close','click','type','select','press','scroll'].includes(operation))
+    if(!['state','preview','frame','media','open','back','forward','reload','close','click','type','select','press','scroll'].includes(operation))
       throw new ProtocolError('INVALID_ARGUMENT','未知的浏览器操作');
     // The pane ID identifies a mounted view only. Runtime/Main chooses the owning
     // conversation and remembers it so a delayed release cannot target its successor.
     const conversationId=assistantId?runtimeApplication.runtime.getAssistant(assistantId).conversationId:conversations.activeConversationId('workspace');
     const previous=browserPanes.get(sender);
-    if(operation==='media'&&previous?.id!==payload.paneId)
+    if((operation==='media'||operation==='frame')&&previous?.id!==payload.paneId)
       throw new ProtocolError('REVISION_CONFLICT','请先展开当前对话的浏览器');
     if(previous?.id===payload.paneId&&previous.conversationId!==conversationId)
       throw new ProtocolError('REVISION_CONFLICT','工作台对话已切换，请使用当前对话的浏览器');
