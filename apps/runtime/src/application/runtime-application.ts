@@ -27,6 +27,7 @@ import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapabilit
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
 import {bindNotepadWorker,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
+import {BROWSER_TURN,BROWSER_WORKER,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete} from './browser-worker.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -118,7 +119,7 @@ import {MailReadSessions, MAIL_READ_SESSION_CHECKPOINT, MAIL_READ_TOOL, MAIL_REA
 import type {StartMailReadSessionRequest, MailReadSession} from './mail-read-session.js';
 import {createRuntimeSubagentDispatchTool, resumeRuntimeSubagentTask, readRuntimeSubagentSummary,
   SUBAGENT_DISPATCH_TOOL_NAME, readRuntimeSubagentBinding, readRuntimeSubagentSibling,readRuntimeAsyncSubagentScope} from './subagent-host.js';
-import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,assertUserTaskDelegationComplete,
+import {USER_TASK_DELEGATION, readUserTaskDelegation, readCanonicalUserWorkParent, assertUserTaskDelegationInvocation,assertUserTaskDelegationComplete,
   userTaskDelegationPort} from './user-task-delegation.js';
 import {SUBAGENT_CONVERSATION_MESSAGE,assertConversationScope,readSubagentConversationOrigin,
   readSubagentConversationMessage,listSubagentConversationMessages,subagentConversationMessageKey,
@@ -3004,7 +3005,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       try {
         this.assertContextHooksAvailable(request.taskId);
         const strategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT?experienceText:'';
-        const goal=this.appendPromptPreferences(request.taskId, request.goal, request.goal+strategy);
+        const goal=this.appendPromptPreferences(request.taskId, request.goal, browserWorkerGoal(this.runtime,request.taskId,request.goal+strategy));
         const withStrategy=this.fitContinuationRequest(goal===request.goal?request:Object.freeze({...request,goal}));
         if(!strategy)this.experienceSendPolicies.delete(request.taskId);
         this.assertInputActive(withStrategy);
@@ -3022,7 +3023,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       deadline:request.deadline,signal:request.signal};
     const preparedSource=manualCompaction?request.goal:await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
     const privateDerived=preparedSource!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
-    let prepared=preparedSource;
+    let prepared=teacherScope?preparedSource:browserWorkerGoal(this.runtime,task.taskId,preparedSource);
     this.assertInputActive(request);
     if(!privateDerived&&experienceText&&prepared.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT)prepared+=experienceText;
     else this.experienceSendPolicies.delete(request.taskId);
@@ -3579,6 +3580,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       || !isDeepStrictEqual(worker.loadCheckpoint('subtask-tools-binding'),descriptors)) {
       throw new ProtocolError('UNAUTHORIZED','Default child tool scope changed');
     }
+    if(delegation&&subtask.subtaskId==='user-work')bindBrowserWorker(this.runtime,worker.taskId,parent.taskId);
     if (bindNotepadWorker(this.runtime,worker.taskId,parent.taskId,subtask.subtaskId,subtask.goal)) {
       if (!descriptors.some(tool=>tool.name===NOTEPAD_TOOL&&tool.version==='1.0.0'))
         throw new ProtocolError('UNSUPPORTED_CAPABILITY','此工人未获分配记事本操作工具');
@@ -3613,7 +3615,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }}:originalPort;
     return runCoordinationWorker(this.runtime,port,tools,worker.taskId,child.goal,worker,
       {retainPriorToolResults:this.usesGoalContinuation(worker.taskId),allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
-        assertCompletion:()=>assertNotepadWorkerComplete(this.runtime,worker.taskId),
+        assertCompletion:()=>{assertNotepadWorkerComplete(this.runtime,worker.taskId);assertBrowserWorkerComplete(this.runtime,worker.taskId);},
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }
@@ -5298,6 +5300,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.assertCompetitionTaskConfiguration(request.taskId);
     this.assertInputActive(request);
     this.assertContextHooksAvailable(request.taskId);
+    browserWorkerSource(this.runtime,request.taskId);
     if(this.coordinationInput||teacherScope) {
       const effective=this.ephemeralSends.get(leaseKey);
       if(!effective || effective.goal!==request.goal || effective.revision!==request.revision
@@ -5387,14 +5390,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private taskCompetitionCatalog(taskId:string):RuntimeCompetitionToolCatalog|undefined {
-    if(this.frontDeskTurn(taskId)) {
+    if(this.frontDeskTurn(taskId)||readUserTaskDelegation(this.runtime,taskId)) {
       const tools=this.taskTools(taskId);return tools?this.competitionToolCatalog?.restrict(tools):undefined;
     }
     if(this.runtime.loadCheckpoint(taskId,'assistant-turn')!==undefined) {
       return this.assistantCatalog(taskId);
-    }
-    if(readUserTaskDelegation(this.runtime,taskId)) {
-      const tools=this.taskTools(taskId);return tools?this.competitionToolCatalog?.restrict(tools):undefined;
     }
     if(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')===undefined)return this.competitionToolCatalog;
     const descriptors=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
@@ -6472,6 +6472,33 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.dispatchAcceptedTextTask(taskId,goal,conversationId,request.deadline);
   }
 
+  /** Trusted Desktop can attach a current page only to a human browser request. */
+  browserConversationIntent(conversationId:string,text:string):boolean {
+    return this.profile==='huawei_ict_agentarts'&&this.delegateUserTasks&&browserIntent(this.runtime,conversationId,text)!==undefined;
+  }
+
+  /** Device-only result projection. The parent transcript and its cloud context keep no copy. */
+  readBrowserResultTaskId(parentTaskId:string):string|undefined {
+    if(this.runtime.loadCheckpoint(parentTaskId,BROWSER_TURN)===undefined||this.isHistoryWithheld(parentTaskId))return;
+    const parent=this.runtime.getTask(parentTaskId);
+    if(parent.state!=='succeeded')return;
+    const child=this.runtime.findTaskByIdempotencyKey('subagent-dispatch-'+parentTaskId+'-user-work');
+    if(!child?.resultSummary||child.state!=='succeeded'||this.isHistoryWithheld(child.taskId))return;
+    try {
+      if(readCanonicalUserWorkParent(this.runtime,child.taskId)!==parentTaskId
+        ||this.runtime.loadCheckpoint(child.taskId,BROWSER_WORKER)===undefined||!browserWorkerSource(this.runtime,child.taskId))return;
+      assertBrowserWorkerComplete(this.runtime,child.taskId);
+      return child.taskId;
+    }catch{return;}
+  }
+
+  private bindUserTaskDelegation(taskId:string,goal:string,deadline:string,maxSteps:number,depth:number):void {
+    const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
+    this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline,maxSteps,
+      subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:depth,
+        ...(selected?{model:selected.modelId,...(selected.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{})}:{})}});
+  }
+
   private dispatchAcceptedTextTask(taskId:string,goalInput:string,conversationId:string,deadline:string):void {
     let goal=goalInput;
     if(this.activeTextTasks.has(taskId))return;
@@ -6508,7 +6535,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const hostOwned=/^(host-tool:|desktop-proactive|desktop-mail|desktop-skills|desktop-subtask|desktop-assistant|desktop-subagent|desktop-coding|desktop-notification)/.test(conversationId);
       // These direct desktop commands can enter the existing user-worker dispatch path immediately.
       // The worker still plans with AgentArts and calls the published, policy-checked device tool.
-      if(this.frontDeskUserTurns&&!isDirectNotepadRequest(goal)&&!hostOwned&&!manualCompaction
+      const browserTurn=this.delegateUserTasks&&!hostOwned&&!manualCompaction&&bindBrowserTurn(this.runtime,taskId);
+      if(this.frontDeskUserTurns&&!browserTurn&&!isDirectNotepadRequest(goal)&&!hostOwned&&!manualCompaction
         &&this.runtime.loadCheckpoint(taskId,'assistant-turn')===undefined
         &&this.runtime.loadCheckpoint(taskId,'subtask-parent')===undefined
         &&!readUserTaskDelegation(this.runtime,taskId)) {
@@ -6521,10 +6549,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         goal=`${goal}\n\n【主对话值班】当前助手：${roster}。电脑操作由工人执行。收到实际桌面操作请求时，用当前目录派工或交给已有工人，保留用户原指令和限制。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
       }
       if(this.delegateUserTasks&&!manualCompaction&&!this.frontDeskTurn(taskId)) {
-        const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
-        this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline,maxSteps,
-          subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:config.depth,
-            ...(selected?{model:selected.modelId,...(selected.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{})}:{})}});
+        this.bindUserTaskDelegation(taskId,goal,deadline,maxSteps,config.depth);
       }
       const catalog=manualCompaction?undefined:this.taskCompetitionCatalog(taskId);
       const execution = Promise.resolve().then(() => manualCompaction?this.runtime.runTask(taskId,async context=>{
@@ -6693,8 +6718,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const assistant=this.runtime.listAssistants().find(item=>item.assistantId===input.assistantId);
     if(!assistant)throw new ProtocolError('NOT_FOUND','找不到这个助手');
     const source = input.source ?? 'user';
+    const browserTurn=source==='user'&&this.browserConversationIntent(assistant.conversationId,input.text);
     const activeId=assistant.activeTaskId??this.latestAssistantChild(assistant.role)?.taskId;
-    if(activeId) {
+    // A new browser request needs its own immutable page and worker binding.
+    if(activeId&&!browserTurn) {
       try {
         const active=this.runtime.getTask(activeId);
         if(!['succeeded','failed','cancelled','waiting_reconciliation','cancelling'].includes(active.state)) {
@@ -6773,8 +6800,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
         }
         const summary=(task.resultSummary??task.error?.message??'').slice(0,280);
-        this.runtime.updateAssistant(assistantId,{status:task.state==='waiting_approval'?'waiting_approval':'idle',
-          activeTaskId:terminal?null:taskId,...(terminal?{unreadDelta:1,lastSummary:summary||task.state}:{})});
+        const ownsStatus=this.runtime.getAssistant(assistantId).activeTaskId===taskId;
+        this.runtime.updateAssistant(assistantId,{...(ownsStatus?{status:task.state==='waiting_approval'?'waiting_approval':'idle',
+          activeTaskId:terminal?null:taskId}:{}),...(terminal?{unreadDelta:1,lastSummary:summary||task.state}:{})});
         this.runtime.flushActivity(taskId);
         const parent=this.runtime.loadCheckpoint(taskId,'assistant-parent') as {parentTaskId?:string}|undefined;
         if(terminal&&parent?.parentTaskId) {
@@ -6787,9 +6815,20 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId,'application-profile',this.profile);
       this.runtime.saveCheckpoint(taskId,'application-deadline',deadline);
       this.runtime.saveCheckpoint(taskId,'competition-max-steps',this.competitionMaxSteps);
-      const assistantCatalog=this.assistantCatalog(taskId);
-      const execution=this.runtime.runTask(taskId,worker=>runCoordinationWorker(this.runtime,this.coordination,this.assistantTools(taskId),taskId,goal,worker,
+      const browserTurn=this.delegateUserTasks&&bindBrowserTurn(this.runtime,taskId);
+      if(browserTurn) {
+        this.runtime.saveCheckpoint(taskId,'application-goal',goal);
+        this.runtime.saveCheckpoint(taskId,'competition-configuration-binding',this.coordinationBinding);
+        this.runtime.saveCheckpoint(taskId,'task-thinking',{...this.thinkingConfig,maxSteps:this.competitionMaxSteps});
+        if(this.enableNewTaskToolContinuations&&!this.retainPriorToolResults)this.pinGoalContinuation(taskId,goal,deadline);
+        this.seedExecutionCapacity(taskId,this.competitionMaxSteps,deadline);
+        this.bindUserTaskDelegation(taskId,goal,deadline,this.competitionMaxSteps,this.thinkingConfig.depth);
+      }
+      const assistantCatalog=this.taskCompetitionCatalog(taskId);
+      const workerTools=browserTurn?this.taskTools(taskId):this.assistantTools(taskId);
+      const execution=this.runtime.runTask(taskId,worker=>runCoordinationWorker(this.runtime,this.taskCoordination(taskId),workerTools,taskId,goal,worker,
         {allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+          ...(browserTurn?{assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId)}:{}),
           ...(assistantCatalog?{toolCatalog:assistantCatalog}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})}),

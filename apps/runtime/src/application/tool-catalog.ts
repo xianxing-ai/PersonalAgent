@@ -9,6 +9,7 @@ import type {TaskRuntime} from '../index.js';
 import type {CompetitionToolExport} from './coordination.js';
 import {TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION} from './tool-discovery.js';
 import {NOTEPAD_INTENT,NOTEPAD_TOOL} from './notepad-worker.js';
+import {BROWSER_WORKER,BROWSER_ACTIONS} from './browser-worker.js';
 
 const CHECKPOINT = 'competition-tool-catalog';
 const DISCOVERY_POOL = 'competition-tool-discovery-pool:v1';
@@ -317,10 +318,7 @@ export class RuntimeCompetitionToolCatalog {
       selected.push({...descriptor,inputSchema:safeSchema(descriptor.inputSchema,0,new Set(worker.publicEnumPaths))});
     }
     const originalEntries=structuredClone(selected);
-    const requiresNotepad=this.runtime.loadCheckpoint(input.taskId,NOTEPAD_INTENT)!==undefined;
-    const launch=requiresNotepad?originalEntries.find(item=>item.name===NOTEPAD_TOOL&&item.version==='1.0.0'):undefined;
-    if(requiresNotepad&&!launch)
-      throw new ProtocolError('UNSUPPORTED_CAPABILITY','本次工人任务的记事本原生工具未就绪');
+    const pinned=this.pinnedWorkerEntries(input.taskId,originalEntries);
     if (Buffer.byteLength(JSON.stringify(selected), 'utf8') > MAX_AVAILABLE_TOOLS_JSON_BYTES) {
       for (const item of selected) item.inputSchema = withoutParameterDescriptions(item.inputSchema);
     }
@@ -329,9 +327,9 @@ export class RuntimeCompetitionToolCatalog {
       if(!this.discoveryEnabled||!discovery||!fitsCatalog([discovery]))
         throw new ProtocolError('INVALID_ARGUMENT','Competition tool catalog structure exceeds its limit');
       selected.splice(0,selected.length,discovery);
-      if(launch) {
-        if(!fitsCatalog([discovery,launch]))throw new ProtocolError('INVALID_ARGUMENT','记事本工具描述超过目录容量');
-        selected.push(launch);
+      for(const entry of pinned) {
+        if(!fitsCatalog([...selected,entry]))throw new ProtocolError('INVALID_ARGUMENT','本次工人任务所需工具的描述超过目录容量');
+        selected.push(entry);
       }
     }
     this.assertCurrent({...input, revision});
@@ -343,6 +341,20 @@ export class RuntimeCompetitionToolCatalog {
     }
     this.runtime.saveCheckpoint(input.taskId, CHECKPOINT, {revision, deadline: input.deadline, entries: selected});
     return structuredClone(selected);
+  }
+
+  /** Select only tools from the actual, ready and exportable worker pool. */
+  private pinnedWorkerEntries(taskId:string,pool:readonly CompetitionAvailableTool[]):CompetitionAvailableTool[] {
+    if(this.runtime.loadCheckpoint(taskId,NOTEPAD_INTENT)!==undefined) {
+      const launch=pool.find(entry=>entry.name===NOTEPAD_TOOL&&entry.version==='1.0.0');
+      if(!launch)throw new ProtocolError('UNSUPPORTED_CAPABILITY','本次工人任务的记事本原生工具未就绪');
+      return [launch];
+    }
+    if(this.runtime.loadCheckpoint(taskId,BROWSER_WORKER)===undefined)return [];
+    const ready=BROWSER_ACTIONS.slice(0,6).flatMap(name=>pool.filter(entry=>entry.name===name&&entry.version==='1.0.0'));
+    if(!ready.some(entry=>entry.name==='browser.open'||entry.name==='browser.observe'))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','本次工人任务尚无可打开或读取网页的受控浏览器工具');
+    return ready;
   }
 
   private discoveryPool(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal}):DiscoveryPool {
@@ -406,15 +418,15 @@ export class RuntimeCompetitionToolCatalog {
     const discovery=pool.entries.find(entry=>entry.name===TOOL_DISCOVERY_NAME&&entry.version===TOOL_DISCOVERY_VERSION)!;
     if(!await this.entryCurrent(discovery,view,lookup))throw new ProtocolError('UNAUTHORIZED','Original discovery tool became unavailable');
     let entries:CompetitionAvailableTool[]=[discovery];
-    const launch=this.runtime.loadCheckpoint(input.taskId,NOTEPAD_INTENT)!==undefined
-      ?pool.entries.find(entry=>entry.name===NOTEPAD_TOOL&&entry.version==='1.0.0'):undefined;
-    if(launch&&await this.entryCurrent(launch,view,lookup))entries.push(launch);
+    for(const entry of this.pinnedWorkerEntries(input.taskId,pool.entries))
+      if(await this.entryCurrent(entry,view,lookup))entries.push(entry);
+    const pinned=new Set(entries);
     const requiredCount=entries.length;
     const matches:{name:string;version:string;state:'selected'|'unavailable'|'schema_too_large'}[]=[];
     let next=offset;
     for(;next<candidates.length&&matches.length<MAX_AVAILABLE_TOOLS-1;next++) {
       const entry=candidates[next]!;
-      if(entry===launch&&requiredCount===2){matches.push({name:entry.name,version:entry.version,state:'selected'});continue;}
+      if(pinned.has(entry)){matches.push({name:entry.name,version:entry.version,state:'selected'});continue;}
       if(!await this.entryCurrent(entry,view,lookup)){matches.push({name:entry.name,version:entry.version,state:'unavailable'});continue;}
       const proposed=[...entries,entry];
       const compact=proposed.map(item=>({...item,inputSchema:withoutParameterDescriptions(item.inputSchema)}));

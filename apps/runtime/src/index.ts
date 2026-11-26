@@ -745,6 +745,16 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return this.selectTaskPage(input);
   }
 
+  /** Includes incomplete turns so a newer cancellation or change of subject is never skipped. */
+  previousConversationTaskId(conversationId:string,beforeTaskId?:string):string|undefined {
+    const id=requireText(conversationId,'conversationId');
+    const cutoff=beforeTaskId===undefined?this.snapshotSequence()+1:
+      (this.db.prepare("SELECT sequence FROM task_events WHERE type='task.created' AND task_id=?").get(beforeTaskId) as {sequence:number}|undefined)?.sequence;
+    if(cutoff===undefined)return undefined;
+    return (this.db.prepare("SELECT t.task_id FROM tasks t JOIN task_events e ON e.task_id=t.task_id AND e.type='task.created' WHERE t.conversation_id=? AND e.sequence<? ORDER BY e.sequence DESC LIMIT 1")
+      .get(id,cutoff) as {task_id:string}|undefined)?.task_id;
+  }
+
   /** Latest task that stored this checkpoint field. Callers still have to check the binding. */
   findLatestCheckpointValue(checkpointKey: string, jsonField: string, value: string): string | undefined {
     if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,40}$/.test(jsonField)) throw new RuntimeError('INVALID_ARGUMENT', 'checkpoint field is invalid');

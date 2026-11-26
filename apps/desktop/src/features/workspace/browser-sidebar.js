@@ -35,30 +35,49 @@ export function mountWorkspaceBrowserSidebar(shell, bar, invoke, report) {
     const destination = focusBeforeOpen?.isConnected && focusBeforeOpen !== document.body ? focusBeforeOpen : toggle;
     destination.focus({preventScroll: true});
   }
-  const api = {
-    call: (action, payload) => invoke('browser.workspace.action', payload === undefined ? {action} : {action, payload}),
-    onState(listener) {
-      changes.add(listener);
-      return () => changes.delete(listener);
-    },
-    dismiss,
-  };
-  async function show() {
-    if (disposed || !container.hidden) return;
+  async function mountVisiblePane() {
     const current = ++presentation;
-    focusBeforeOpen = document.activeElement;
-    visibility(true);
     try {
-      loading ??= import('../../browser/browser.js').then(({mountBrowserPane}) => {
-        if (!disposed) pane = mountBrowserPane(container, api);
-      });
-      await loading;
-      if (!disposed && current === presentation) pane?.onShow?.();
+      loading ??= import('../../browser/browser.js');
+      const {mountBrowserPane} = await loading;
+      if (disposed || container.hidden || current !== presentation) return;
+      if (!pane) {
+        const assistantId = shell.dataset.browserAssistantId || undefined;
+        const host = document.createElement('div');
+        container.replaceChildren(host);
+        pane = mountBrowserPane(host, {
+          call(action, payload) {
+            return invoke('browser.workspace.action', {
+              action, ...(payload === undefined ? {} : {payload}), ...(assistantId ? {assistantId} : {}),
+            });
+          },
+          onState(listener) {
+            changes.add(listener);
+            return () => changes.delete(listener);
+          },
+          dismiss,
+        });
+      }
+      pane.onShow();
     } catch (error) {
       loading = undefined;
       if (!disposed && current === presentation) { dismiss(); report(error); }
     }
   }
+  function show() {
+    if (disposed || !container.hidden) return;
+    focusBeforeOpen = document.activeElement;
+    visibility(true);
+    return mountVisiblePane();
+  }
+  function changeThread() {
+    presentation++;
+    pane?.dispose();
+    pane = undefined;
+    container.replaceChildren();
+    if (!disposed && !container.hidden) void mountVisiblePane();
+  }
+  shell.addEventListener('browser-thread-changed', changeThread);
   toggle.onclick = () => { if (container.hidden) void show(); else dismiss(); };
   const onKey = event => {
     if (event.key === 'Escape' && !event.defaultPrevented && !container.hidden
@@ -76,6 +95,7 @@ export function mountWorkspaceBrowserSidebar(shell, bar, invoke, report) {
     disposed = true;
     offOpen?.(); offChange?.(); changes.clear();
     pane?.dispose?.();
+    shell.removeEventListener('browser-thread-changed', changeThread);
     window.removeEventListener('keydown', onKey);
   }, {once: true});
 }

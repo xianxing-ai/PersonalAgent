@@ -541,7 +541,13 @@ let developerDeploymentFailure='';
 let toolPresenceHost,windowsControlHost,windowsControlClosing,computerControlLaya;
 let computerControlLease;
 let computerControlConfig,browserControlHost,openCliBrowserHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
-let browserDelegationPending = false;
+// Capture only a real human browser request in its own conversation. Model,
+// peer and background messages do not acquire the user's open page.
+function browserChatSubmission(conversationId,text) {
+  if(!browserControlHost||!runtimeApplication?.browserConversationIntent(conversationId,text))return;
+  const page=browserControlHost.captureChatPage(conversationId);
+  return taskId=>browserControlHost.bindChatTask(conversationId,taskId,page);
+}
 let computerPreparation,computerPreparationFailure;
 let browserControlClosed=false;
 let computerLaunch;
@@ -954,6 +960,11 @@ function cachedChildToolActivity(runtime, task, childApprovals) {
   if (childToolActivityCache.size > 64) childToolActivityCache.delete(childToolActivityCache.keys().next().value);
   return activity;
 }
+function localChildReplyAllowed(parent,child){
+  return parent&&child&&!parent.bodyWithheld&&!parent.outputTruncated&&!conversationDelivery.stopped(parent)
+    &&!child.bodyWithheld&&!child.outputTruncated&&!conversationDelivery.stopped(child)
+    &&child.conversationId==='desktop-subtask:'+parent.taskId;
+}
 function compactSubagentTasks(children,visibleParents,surface){
   const runtime=runtimeApplication?.runtime;
   const recent=surface==='panel'?[]:children.slice(0,8);
@@ -975,11 +986,12 @@ function compactSubagentTasks(children,visibleParents,surface){
     const task=safeDesktopTask(runtime.getTask(child.taskId));
     const {goal,resultSummary,error,latestMessageTaskId,...identity}=child;
     const parent=visibleParents.get(child.parentTaskId);
-    const canReply=surface&&parent&&!parent.bodyWithheld&&!parent.outputTruncated&&!conversationDelivery.stopped(parent)
-      &&!task.bodyWithheld&&!task.outputTruncated&&!conversationDelivery.stopped(task)
-      &&task.conversationId===`desktop-subtask:${parent.taskId}`;
-    const finalReply=canReply&&task.state==='succeeded'?resultText(task.resultSummary,taskResultMetadata(task)):'';
-    if(surface==='panel')return {parentTaskId:child.parentTaskId,taskId:child.taskId,state:task.state,...(child.role?{role:child.role}:{}),...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),...(finalReply?{finalReply}:{})};
+    const browserWorker=runtime.loadCheckpoint(task.taskId,'browser-worker-scope:v1')!==undefined;
+    const canReply=surface&&localChildReplyAllowed(parent,task);
+    const replyForBrowserTask=Boolean(canReply&&browserWorker&&runtimeApplication.readBrowserResultTaskId(parent.taskId)===task.taskId);
+    const finalReply=canReply&&task.state==='succeeded'&&(!browserWorker||replyForBrowserTask)?resultText(task.resultSummary,taskResultMetadata(task)):'';
+    const replyFields=finalReply?{finalReply,...(replyForBrowserTask?{replyForBrowserTask:true}:{})}:{};
+    if(surface==='panel')return {parentTaskId:child.parentTaskId,taskId:child.taskId,state:task.state,...(child.role?{role:child.role}:{}),...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),...replyFields};
     let preview=finalReply||(canReply&&task.state==='failed'?'执行异常':'');
     if(canReply&&latestMessageTaskId){
       const latest=safeDesktopTask(runtime.getTask(latestMessageTaskId));
@@ -990,7 +1002,7 @@ function compactSubagentTasks(children,visibleParents,surface){
       }
     }
     return {...identity,...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),
-      ...(finalReply?{finalReply}:{}),...(preview?{preview:preview.slice(0,140)}:{}),
+      ...replyFields,...(preview?{preview:preview.slice(0,140)}:{}),
       ...(index<recent.length&&!task.bodyWithheld?{toolActivity:cachedChildToolActivity(runtime,task,byChild.get(task.taskId))}:{})};
   });
 }
@@ -3078,11 +3090,10 @@ async function initializeRuntime() {
           downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
           allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
-          isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
-          authorizePresence:async scope=>{
-            if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
-            return windowsControlHost.hasPresence(scope.taskId);
-          },onUpdate:()=>{
+          authorizationQuestions:authorizationQuestionPort,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+          confirmSource:({from,to,scope,toolName,isCurrent})=>confirmApplicationAuthorization('browser.source',
+            {from,to,toolName},{scope:{taskId:scope.taskId,runId:scope.runId,from,to},deadline:scope.deadline,signal:scope.signal,isCurrent,
+              summary:`允许本次浏览器操作从 ${from} 转到 ${to} 吗？`}),onUpdate:()=>{
             publish();
             if(workspace&&!workspace.isDestroyed())workspace.webContents.send('desktop:browser-workspace-change');
           }});
@@ -4103,6 +4114,7 @@ async function initializeRuntime() {
           if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
           if(phase==='preflight'&&(windowsControlHost?.requiresToolPresence(proposal?.toolName)||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
           await computerVisionHost?.prepareExport(scope);
+          await browserControlHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
           await feedsHost?.prepareExport?.(scope);
           const ghTools=typeof githubConversationTools!=='undefined'?githubConversationTools:undefined;
@@ -4899,32 +4911,18 @@ async function action(event, name, payload) {
   if (name === 'browser.workspace.action') {
     if(sender!==workspace || !browserControlHost || !competitionMode)
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','请在已连接运行时的工作台使用内置浏览器');
-    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>!['action','payload'].includes(key)))
+    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>!['action','payload','assistantId'].includes(key)))
       throw new ProtocolError('INVALID_ARGUMENT','浏览器请求格式无效');
     const operation=payload.action, args=payload.payload??{};
     if(!args||typeof args!=='object'||Array.isArray(args))throw new ProtocolError('INVALID_ARGUMENT','浏览器参数无效');
-    const scope={signal:AbortSignal.timeout(30_000),deadline:new Date(Date.now()+30_000).toISOString()};
-    if(operation==='release'){browserControlHost.releaseWorkspaceView();return {released:true};}
+    const assistantId=payload.assistantId;
+    if(assistantId!==undefined&&(typeof assistantId!=='string'||!assistantId.trim()||assistantId.length>128))
+      throw new ProtocolError('INVALID_ARGUMENT','请选择当前助手');
+    const conversationId=assistantId?runtimeApplication.runtime.getAssistant(assistantId).conversationId:conversations.activeConversationId('workspace');
+    const scope={conversationId,signal:AbortSignal.timeout(30_000),deadline:new Date(Date.now()+30_000).toISOString()};
+    if(operation==='release'){browserControlHost.releaseWorkspaceView(conversationId);return {released:true};}
     if(!sender.isVisible()||sender.isMinimized())throw new ProtocolError('UNAUTHORIZED','请先展开工作台');
-    if(operation==='delegate') {
-      if(browserDelegationPending)throw new ProtocolError('REVISION_CONFLICT','正在提交当前浏览器任务');
-      if(Object.keys(args).some(key=>!['goal','viewId','url'].includes(key))||typeof args.goal!=='string'
-        ||!args.goal.trim()||args.goal.length>4096||typeof args.viewId!=='string'||args.viewId.length>128)
-        throw new ProtocolError('INVALID_ARGUMENT','请在已打开的页面上填写工人任务');
-      browserDelegationPending=true;
-      try {
-        const conversationId=conversations.activeConversationId('workspace');
-        const {url}=await browserControlHost.workspace('handoff',{viewId:args.viewId},scope);
-        const text=`请派一名工人使用内置受控浏览器完成以下任务。当前页面地址为 ${url}。\n用户的任务：\n${args.goal.trim()}`;
-        const accepted=await action(event,'task.submit',{text,conversationId,delivery:'send'});
-        if(!accepted?.taskId||accepted.interrupted)throw new ProtocolError('CANCELLED','浏览器任务提交已被中断');
-        let bound=false;
-        try { bound=browserControlHost.bindWorkspaceHandoff(args.viewId,accepted.taskId)===true; }
-        catch { /* The accepted task remains visible even if the original page was closed. */ }
-        return {accepted:true,taskId:accepted.taskId,bound};
-      } finally { browserDelegationPending=false; }
-    }
-    if(!['state','preview','open','back','forward','reload','close','click','type','select','press','scroll'].includes(operation))
+    if(!['state','preview','open','back','forward','reload','close','click','type','select','press','scroll','present'].includes(operation))
       throw new ProtocolError('INVALID_ARGUMENT','未知的浏览器操作');
     return browserControlHost.workspace(operation,args,scope);
   }
@@ -5328,6 +5326,18 @@ async function action(event, name, payload) {
     const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
     if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
     const thread = runtimeApplication.readAssistantThread(assistantId);
+    const runtime=runtimeApplication.runtime;
+    const turns=new Map(thread.turns.map(turn=>[turn.taskId,turn]));
+    for(const worker of thread.workers) {
+      if(runtime.loadCheckpoint(worker.taskId,'browser-worker-scope:v1')===undefined)continue;
+      delete worker.resultSummary;
+      const turn=turns.get(worker.parentTaskId);
+      if(!turn||runtimeApplication.readBrowserResultTaskId(turn.taskId)!==worker.taskId)continue;
+      const parent=safeDesktopTask(runtime.getTask(turn.taskId)),child=safeDesktopTask(runtime.getTask(worker.taskId));
+      if(parent.conversationId!==thread.assistant.conversationId||!localChildReplyAllowed(parent,child))continue;
+      const answer=resultText(child.resultSummary,taskResultMetadata(child));
+      if(answer){turn.replyText=answer;worker.resultSummary=answer.slice(0,280);}
+    }
     publish();
     return thread;
   }
@@ -5338,7 +5348,9 @@ async function action(event, name, payload) {
     const text = requireCleanText(clean.text, '请写下要发给助手的话');
     const requestId = requireCleanText(clean.requestId, '请求标识无效', 128).trim();
     if (assistantId !== clean.assistantId || requestId !== clean.requestId) throw Error('给助手发消息参数无效');
+    const bindBrowser=browserChatSubmission(runtimeApplication.runtime.getAssistant(assistantId).conversationId,text);
     const result = runtimeApplication.submitAssistantMessage({assistantId, text, requestId});
+    bindBrowser?.(result.acceptedTaskId);
     publish();
     return result;
   }
@@ -5447,7 +5459,9 @@ async function action(event, name, payload) {
     const text = requireCleanText(clean.text, '请写下要交付的内容');
     const requestId = requireCleanText(clean.requestId, '请求标识无效', 128).trim();
     if (assistantId !== clean.assistantId || requestId !== clean.requestId) throw Error('内部群聊发送参数无效');
+    const bindBrowser=browserChatSubmission(runtimeApplication.runtime.getAssistant(assistantId).conversationId,text);
     const result = runtimeApplication.submitAssistantMessage({assistantId, text, requestId});
+    bindBrowser?.(result.acceptedTaskId);
     publish();
     return result;
   }
@@ -6596,9 +6610,11 @@ async function action(event, name, payload) {
     const goal = skillRun?prepared.publicGoal:text.trim();
     if(!skillRun)usageBudgetProduct?.noteUserSubmit();
     if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(conversationId, goal);
+    const bindBrowser=skillRun?undefined:browserChatSubmission(conversationId,goal);
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode,contextCompaction:Boolean(harnessContextHost?.runtimeHooks),
       ...(competitionMode?{competitionTimeoutMs:readCompetitionExecutionPolicy().taskTimeoutMs}:{})});
     deliveryRequest.taskId=result.taskId;
+    if(!deliveryRequest.interrupted)bindBrowser?.(result.taskId);
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
     if(!skillRun)recordExplicitUserTurn(result.taskId,conversationId);

@@ -142,6 +142,8 @@ Desktop 提供明确保存的推荐预算；出机确认、原数据与工具 co
 
 ## 2026-10-24 原生电脑、受控浏览器与可选视觉（provisional，已进入主集成树）
 
+2026-11-26 更新。Competition 工作台的地球按钮展开当前聊天的浏览器。主对话和指定助手的用户消息都可以发起网页任务，Runtime 将任务绑定到原对话的工人。各对话使用独立的浏览器资料目录。宿主经现有 Questions 和 ToolGateway 检查操作、新来源及网页观察出机权限。浏览器任务只有取得实际网页观察或下载回执后才能报告执行结果。真实网站的订单、支付和播放状态仍需分别核实。
+
 Competition Desktop 组合新增固定 `personal-agent-desktop/1` 原生 stdio 执行器、16 个 `computer.desktop.*` 工具、原任务 `computer.request_access`、12 个 `browser.*` 工具及可选 `computer.vision.inspect`。默认视觉关闭、来源为 AgentArts 代理，保留自定义兼容接口；注册和配置不授予执行或图片出机权限。Main／Preload／IPC 使用原 Runtime／Policy／Questions／ToolGateway，未新增任务库或 Core wire 操作。
 
 2026-10-27 增量（provisional）：原生 Desktop 可选注册 `computer.desktop.suggest_control@1.0.0`，接受原任务最新 `targetRef` 和简单操作类型，以同一观察中的可用控件向本机 Laya 请求有界建议。仅传任务目标、窗口标题和控件角色／名称／支持的 pattern，不传控件值或坐标；建议不执行输入、不授予权限、不证明目标完成。候选过多、观察截断、选择不确定或本机模型不可用均显式返回复核或不可用；目标、在场、取消和期限在选择前后重新核对。该工具仍经原 Runtime、Policy、ToolGateway 和观察出口规则；实际操作仍须独立授权并读回。此增量尚未取得真实设备和平台完整链路验收，不能据此声称已修复云端模型响应解析失败。

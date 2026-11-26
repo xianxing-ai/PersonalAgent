@@ -6,7 +6,7 @@ const object=(properties={},required=Object.keys(properties))=>({type:'object',p
 const viewId={type:'string',pattern:'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'};
 const ref={type:'string',pattern:'^r[1-9][0-9]{0,2}$'};
 const commands={
-  state:object(),preview:object(),back:object(),forward:object(),reload:object(),close:object(),
+  state:object(),preview:object(),back:object(),forward:object(),reload:object(),close:object(),present:object(),
   open:object({url:{type:'string',minLength:1,maxLength:4096}}),handoff:object({viewId}),
   click:object({viewId,ref}),press:object({viewId,ref,key:{enum:keys}}),
   type:object({viewId,ref,text:{type:'string',maxLength:4096},submit:{type:'boolean'}},['viewId','ref','text']),
@@ -61,6 +61,7 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,fa
         ||typeof item.role!=='string'||item.role.length>80||typeof item.disabled!=='boolean'||!item.bounds
         ||!['x','y','width','height'].every(key=>Number.isFinite(item.bounds[key])))continue;
       fields.push({ref:item.ref,role:item.role,tag:item.tag,name:item.name,disabled:item.disabled,focused:item.focused===true,
+        ...(['video','audio'].includes(item.tag)?{paused:item.paused===true,ended:item.ended===true}:{}),
         inputType:item.inputType,editable:item.editable===true,...(item.tag==='select'?{multiple:item.multiple===true}:{}),
         bounds:{x:item.bounds.x,y:item.bounds.y,width:item.bounds.width,height:item.bounds.height},
         ...(typeof item.downloadUrl==='string'&&item.downloadUrl.length<=4096?{downloadUrl:item.downloadUrl}:{}),
@@ -119,6 +120,11 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,fa
       if(type.tag==='input'&&['file','password'].includes(type.type))fail('UNAUTHORIZED','受保护控件不可操作');
       if(type.href&&await locator.getAttribute('target')==='_blank'){
         check();requireView(page,args.viewId);await page.goto(type.href,options());
+      }else if(['video','audio'].includes(type.tag)){
+        await locator.evaluate(async element=>{
+          if(!(element instanceof HTMLMediaElement))throw Error('Media unavailable');
+          if(element.paused)await element.play();else element.pause();
+        });
       }else await locator.click(row);
     }else if(action==='type'){
       if(!['input','textarea'].includes(type.tag)&&!type.editable||type.tag==='input'&&!['','text','search','email','url','tel','number','date','datetime-local','time','month','week'].includes(type.type))

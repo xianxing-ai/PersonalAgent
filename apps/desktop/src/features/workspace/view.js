@@ -110,8 +110,15 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   window.addEventListener('pagehide',()=>unsubscribeActivity?.(),{once:true});
   stage.append(assistantThread);
   let assistantRequest=0;
+  function browserThread(assistantId,force=false) {
+    const shell=root.querySelector('.workspace');
+    if(!shell?.dataset || (!force&&shell.dataset.browserAssistantId===assistantId))return;
+    if(assistantId)shell.dataset.browserAssistantId=assistantId;else delete shell.dataset.browserAssistantId;
+    shell.dispatchEvent(new Event('browser-thread-changed'));
+  }
   function returnToMain(){
     assistantRequest++;selectedAssistant=undefined;assistantThread.hidden=true;conversation.hidden=false;
+    browserThread(undefined);
     root.querySelector('.workspace-chat').classList.remove('cc-showing-assistant');
     for(const button of assistantRoster.querySelectorAll('[aria-current]'))button.removeAttribute('aria-current');
   }
@@ -124,6 +131,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     await invoke('assistant.read',{assistantId}).catch(()=>{});
     if(request!==assistantRequest)return;
     selectedAssistant=assistantId;
+    browserThread(assistantId);
     root.querySelector('.workspace-chat').classList.add('cc-showing-assistant');
     assistantRoster.querySelector(`[data-assistant-id="${CSS.escape(assistantId)}"]`)?.setAttribute('aria-current','true');
     conversation.hidden=true;assistantThread.hidden=false;
@@ -453,7 +461,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     updateRevision++;
     const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){returnToMain();inspected=null;syncAuxiliaryPanels(false);}
     current=data;current.tasks ||= [];
-    if(sessionChanged)delegatedTracker.reset();
+    if(sessionChanged){delegatedTracker.reset();browserThread(undefined,true);}
     paintAssistants(data);
     for(const task of data.tasks)if(task.bodyWithheld||task.outputTruncated)liveTurns.delete(task.taskId);
     sessionControls.update(data);nativeReasoning.update(data);

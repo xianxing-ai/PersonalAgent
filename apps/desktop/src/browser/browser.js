@@ -16,7 +16,7 @@ const layout = `<div class="shell">
         <input id="address" aria-label="网页地址" placeholder="输入网址" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="4096">
         <button id="go" type="submit" class="go" aria-label="打开输入的网址" title="打开网址">前往</button>
       </form>
-      <button id="delegate" class="primary" disabled>交给工人</button>
+      <button id="present" class="live" title="打开同一受控网页的实时窗口，可以在那里播放视频和声音" disabled>实时窗口 ↗</button>
     </nav>
   </header>
   <div id="error" role="alert" hidden><span id="error-text"></span><button id="clear-error" class="quiet">收起</button></div>
@@ -58,16 +58,6 @@ const layout = `<div class="shell">
       <div class="dialog-actions"><button type="button" data-cancel>取消</button><button id="field-enter" type="submit" hidden>写入并回车</button><button class="primary" id="field-submit">应用到网页</button></div>
     </form>
   </dialog>
-  <dialog id="worker-dialog" aria-labelledby="worker-title">
-    <form id="worker-form">
-      <div class="dialog-head"><h2 id="worker-title">交给工人</h2><button type="button" data-cancel class="icon" aria-label="取消">×</button></div>
-      <p id="worker-page" dir="auto"></p>
-      <label for="goal">要在这个页面完成什么？</label>
-      <textarea id="goal" rows="4" maxlength="2000" placeholder="例如，查找这个页面的报名截止日期" required></textarea>
-      <p class="dialog-status" id="worker-status" role="status"></p>
-      <div class="dialog-actions"><button type="button" data-cancel>取消</button><button class="primary" id="worker-submit">派给工人</button></div>
-    </form>
-  </dialog>
   <dialog id="end-dialog" aria-labelledby="end-title"><form id="end-form">
     <h2 id="end-title">结束当前浏览会话？</h2><p>将关闭当前网页以及工人使用的同一个浏览会话。</p>
     <div class="dialog-actions"><button type="button" data-cancel autofocus>保留会话</button><button id="end-submit" class="primary">结束会话</button></div>
@@ -87,7 +77,6 @@ export function mountBrowserPane(host, bridge) {
   let screen;
   let observedAt = 0;
   let field;
-  let handoff;
   let running = false;
   let refreshing;
   let timer;
@@ -141,9 +130,9 @@ export function mountBrowserPane(host, bridge) {
     $('back').disabled = !connected || !page.canGoBack || running || page.busy;
     $('forward').disabled = !connected || !page.canGoForward || running || page.busy;
     $('reload').disabled = !connected || running || page.busy;
+    $('present').disabled = !connected || !page.url || running || page.busy || blocked;
     $('sync').disabled = !connected || running || page.busy;
     $('end').disabled = !connected || running || page.busy;
-    $('delegate').disabled = !ready;
     $('show-controls').disabled = !screen;
     $('up').disabled = !ready;
     $('down').disabled = !ready;
@@ -280,14 +269,13 @@ export function mountBrowserPane(host, bridge) {
       }
       const value = await bridge.call(action, payload);
       if (disposed) return false;
-      if (action !== 'delegate' && shown && !document.hidden) apply(value);
-      if (action === 'delegate') {
-        if (!value?.taskId && value?.accepted !== true) throw Error('尚未取得派工回执，请在工作台查看任务。');
-        notice = value.bound === false ? '任务已受理；页面已变化，请在工作台查看任务。' : '已派给工人，可在工作台查看进度';
-      }
+      if (shown && !document.hidden) apply(value);
+      if (action === 'present' && value.presenting === true)
+        notice = '实时窗口已打开，可在网页播放器中播放声音和视频。';
       passiveError = false;
       return true;
     } catch (error) {
+      if (disposed) return false;
       const detail = message(error);
       showError(detail);
       if (options.errorTarget) options.errorTarget.textContent = detail;
@@ -356,6 +344,7 @@ export function mountBrowserPane(host, bridge) {
   $('clear-error').addEventListener('click', () => showError(''));
   for (const action of ['back', 'forward', 'reload']) $(action).addEventListener('click', () => { void perform(action); });
   $('sync').addEventListener('click', () => { void sync(false, true); });
+  $('present').addEventListener('click', () => { void perform('present'); });
   $('dismiss').addEventListener('click', () => bridge.dismiss());
   $('up').addEventListener('click', () => { void scrollRemote('up'); });
   $('down').addEventListener('click', () => { void scrollRemote('down'); });
@@ -437,26 +426,6 @@ export function mountBrowserPane(host, bridge) {
     if (await perform(kind, {viewId, ref, ...payload}, {errorTarget: $('field-status')})) $('field-dialog').close();
     $('field-submit').disabled = false;
   });
-  $('delegate').addEventListener('click', () => {
-    if (!screen || !page.url) return;
-    handoff = {url: page.url, viewId: screen.viewId};
-    $('worker-page').textContent = handoff.url;
-    $('worker-status').textContent = '';
-    $('worker-dialog').showModal();
-    $('goal').focus();
-  });
-  $('worker-form').addEventListener('submit', async event => {
-    event.preventDefault();
-    const goal = $('goal').value.trim();
-    if (!goal || !handoff || running) return;
-    $('worker-submit').disabled = true;
-    if (await perform('delegate', {goal, ...handoff}, {errorTarget: $('worker-status')})) {
-      $('worker-dialog').close();
-      $('goal').value = '';
-      scheduleSync();
-    }
-    $('worker-submit').disabled = false;
-  });
   for (const button of root.querySelectorAll('[data-cancel]'))
     button.addEventListener('click', () => { if (!running) button.closest('dialog').close(); });
   for (const dialog of root.querySelectorAll('dialog'))
@@ -516,7 +485,7 @@ export function mountBrowserPane(host, bridge) {
       disposed = true;
       document.removeEventListener('visibilitychange', onVisibility);
       offState?.();
-      root.replaceChildren();
+      host.remove();
     }
   };
 }
