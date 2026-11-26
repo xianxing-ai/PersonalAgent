@@ -38,12 +38,14 @@ test('changing only the selected preference uses the original revision and autho
   assert.equal(ui.observation.disabled,true);
 });
 
-test('a later host publication wins over a delayed preference reply', async () => {
+test('observation changes bind their exact field and a later host publication wins over a delayed reply', async () => {
   let finish;
-  const ui=preferences(()=>new Promise(resolve=>{finish=resolve;}));
+  const calls=[];
+  const ui=preferences((name,payload)=>{calls.push({name,payload});return new Promise(resolve=>{finish=resolve;});});
   ui.controls.render(status());
   ui.observation.checked=true;
   const pending=ui.section.fire('change',ui.observation);
+  assert.deepEqual(calls,[{name:'computer.control.configure',payload:{expectedRevision:1,allowObservationExport:true}}]);
   assert.equal(ui.observation.disabled,true);
   ui.controls.render(status({preferenceRevision:3,enabled:false}));
   finish({computerControl:status({preferenceRevision:2,observationPreference:true})});

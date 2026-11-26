@@ -19,6 +19,12 @@ export function readComputerControlDiagnostic(value, action) {
   return {code:value.code,stage:value.stage,message:safeReason(value.message,'电脑操作失败')};
 }
 
+function formatFailure(cause) {
+  const code = typeof cause?.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(cause.code) ? cause.code : 'EXTERNAL_FAILURE';
+  const stage = typeof cause?.stage === 'string' && /^[a-zA-Z0-9_.-]{1,64}$/.test(cause.stage) ? cause.stage : 'computer.control.configure';
+  return `[${code} · ${stage}] ${safeReason(cause?.message, '保存设置失败')}`;
+}
+
 export function mountComputerControls(root, invoke) {
   const document = root.ownerDocument;
   const section = document.createElement('section');
@@ -40,13 +46,16 @@ export function mountComputerControls(root, invoke) {
     observation.checked = state?.observationPreference === true;
     enabled.disabled = !ready || pending;
     observation.disabled = !ready || !enabled.checked || pending;
-    status.textContent = error || (enabled.checked && state?.failure ? state.reason : '');
+    section.setAttribute('aria-busy',String(pending));
+    const failure = enabled.checked && state?.failure;
+    status.textContent = error || (failure ? formatFailure(failure) : '');
     status.hidden = !status.textContent;
   }
   async function change(event) {
     const field = event.target;
     if ((field !== enabled && field !== observation) || field.disabled || pending) return;
-    const payload = {expectedRevision:state.preferenceRevision, [field.name]:field.checked};
+    const key = field === enabled ? 'enabled' : 'allowObservationExport';
+    const payload = {expectedRevision:state.preferenceRevision, [key]:field.checked};
     pending = true;
     error = '';
     render(state);
@@ -55,7 +64,7 @@ export function mountComputerControls(root, invoke) {
       if (closed) return;
       if (result?.computerControl?.preferenceRevision >= state.preferenceRevision) state = result.computerControl;
     } catch (cause) {
-      if (!closed) error = safeReason(cause?.message,'设置未保存，请重新打开安全与权限。');
+      if (!closed) error = formatFailure(cause);
     } finally {
       pending = false;
       render(state);

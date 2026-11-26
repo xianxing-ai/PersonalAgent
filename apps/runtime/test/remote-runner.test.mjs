@@ -234,6 +234,15 @@ test('vps-ops enforces fail-closed policy, allowlisted argv/desktop actions, sec
   assert.match(blockedBin.error, /not in allowedExecutables/);
   assert.equal(spawned.length, 0);
 
+  for (const payload of [{action:'exec'}, {action:'desktop',desktopAction:'exec'}]) {
+    const disabled = await handleRunnerJob(state, mkMsg('disabled-'+payload.action, {...payload,command:['node','-v']}), {
+      token, vpsControlPolicy:{...policy,allowExec:false},
+      spawnImpl:async args=>{spawned.push(args);return {code:0,stdout:''};},
+    });
+    assert.equal(disabled.state,'failed');
+    assert.equal(disabled.needsConfig,true);
+    assert.equal(spawned.length,0);
+  }
   const okExec = await handleRunnerJob(state, mkMsg('ex-node', {action: 'exec', command: ['node', '-v']}), {
     token,
     vpsControlPolicy: policy,
