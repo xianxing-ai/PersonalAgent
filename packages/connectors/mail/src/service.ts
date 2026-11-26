@@ -41,7 +41,7 @@ export class MailService {
     private readonly options: MailServiceOptions,
   ) {}
 
-  async fetchInbox(accountRef: string, options: {folder?: string; cursor?: MailCursor; limit?: number; signal?: AbortSignal}): Promise<InboxPage> {
+  async fetchInbox(accountRef: string, options: {folder?: string; cursor?: MailCursor; limit?: number; since?: string; signal?: AbortSignal}): Promise<InboxPage> {
     if (options.signal?.aborted) throw new ProtocolError('CANCELLED', 'Mail fetch cancelled');
     const limit = options.limit ?? 20;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new ProtocolError('INVALID_ARGUMENT', 'limit must be 1..100');
@@ -51,9 +51,10 @@ export class MailService {
     let uidValidity = options.cursor?.uidValidity ?? 0;
     let providerHasMore = true;
     for (let round = 0; round < 10 && providerHasMore && collected.length < limit; round += 1) {
-      const args: {folder?: string; cursor?: MailCursor; limit: number; signal?: AbortSignal} = {limit};
+      const args: {folder?: string; cursor?: MailCursor; limit: number; since?: string; signal?: AbortSignal} = {limit};
       if (options.signal !== undefined) args.signal = options.signal;
       if (options.folder !== undefined) args.folder = options.folder;
+      if (options.since !== undefined) args.since = options.since;
       if (cursor !== undefined) args.cursor = cursor;
       const page = await this.provider.fetchPage(accountRef, args);
       if (options.signal?.aborted) throw new ProtocolError('CANCELLED', 'Mail fetch cancelled');

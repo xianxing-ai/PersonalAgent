@@ -570,6 +570,7 @@ let dailyBriefingHost;
 let approvalFocus;
 let todoFailure = '';
 let personalDashboardHost;
+let personalDashboardFailure = '';
 let todoClosing;
 let todoClosed = false;
 let notepadHost;
@@ -1165,7 +1166,7 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
-    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'}}),
+    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:personalDashboardFailure || '个人数据看板将在 Runtime 连接后开始汇总'}}),
     dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
@@ -4233,7 +4234,11 @@ async function initializeRuntime() {
           },
         });
         await personalDashboardHost.start();
-      } catch { personalDashboardHost = undefined; }
+        personalDashboardFailure = '';
+      } catch {
+        personalDashboardHost = undefined;
+        personalDashboardFailure = '个人数据看板初始化失败，请检查本机安全存储与 Runtime 状态。';
+      }
     }
     if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
     if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
