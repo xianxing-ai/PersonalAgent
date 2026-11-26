@@ -10,6 +10,7 @@ import {ProtocolError, ToolNotStartedError, validateToolValue} from '@personal-a
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {computerControlFailure} from './computer-control-errors.js';
 import {detectSecretsInText} from './authorization-operation-policy.js';
+import {redactEgressPersonalText} from './egress-host.js';
 import {computerControlRecoveryTaskStates,isComputerControlWrite,isReadOnlyBrowserReceipt} from './computer-control-lease.js';
 import {createBrowserWorkspacePage,validateWorkspaceCommand} from './browser-workspace-page.js';
 
@@ -51,6 +52,29 @@ const projectionSchema={...resultSchema,properties:{...resultSchema.properties,
     downloadable:flag,paused:flag,ended:flag,value:webText(500),options:{type:'array',maxItems:40,items:object({label:webText(200),value:webText(200)},['label','value'])}})},
   artifact:object({artifactId:short,name:{type:'string',maxLength:300},mimeType:short,byteLength:{type:'integer'},sha256:short,imageDeliveredToModel:flag})}};
 const PAGE_EXPORT='browser-page-export';
+function publicPageProjection(result){
+  if(result.url){
+    let address;
+    try{address=decodeURIComponent(result.url);}catch{address=result.url;}
+    if(redactEgressPersonalText(address)!==address)fail('UNAUTHORIZED','当前网页地址含有敏感标识，无法按当前许可发送');
+  }
+  // Keep the local confirmed observation intact. The approved projection has
+  // its own exact digest; only human-readable fields are transformed.
+  const projected=structuredClone(result);
+  for(const key of ['title','text'])if(typeof projected[key]==='string')projected[key]=redactEgressPersonalText(projected[key]);
+  if(typeof projected.artifact?.name==='string')projected.artifact.name=redactEgressPersonalText(projected.artifact.name);
+  for(const field of projected.controls??[]){
+    for(const key of ['name','role','inputType','value'])if(typeof field[key]==='string')field[key]=redactEgressPersonalText(field[key]);
+    // An option with a private underlying value cannot be sent back to the
+    // host for selection. Preserve the other options' exact original values.
+    if(field.options){
+      const allowed=field.options.filter(option=>option.value===redactEgressPersonalText(option.value));
+      if(allowed.length!==field.options.length)projected.truncated=true;
+      field.options=allowed.map(option=>({...option,label:redactEgressPersonalText(option.label)}));
+    }
+  }
+  return projected;
+}
 const trustedErrors=new WeakSet();
 const browserError=(code,message)=>{const error=new ProtocolError(code,message);trustedErrors.add(error);return error;};
 const fail=(code,message='受控浏览器当前不可执行此操作')=>{throw browserError(code,message);};
@@ -1278,7 +1302,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       const result=await execute(name,args,scope,read);if(lastFailure){lastFailure=undefined;publish();}
       const request=exportRequests.get(exportKey(scope.taskId,scope.runId));
       const id=authorizationQuestions?exportKey(scope.taskId,request?.proposalId):scope.taskId;
-      exportScopes.set(id,{scope,args:structuredClone(args),toolName:'browser.'+name,approvedOrigin:request?.source,
+      exportScopes.set(id,{scope,args:structuredClone(args),toolName:'browser.'+name,approvedOrigin:request?.source,allowPersonalText:request?.allowPersonalText===true,
         emptyObservation:!!request&&name==='observe'&&result.state==='no_page',
         origin:result.url?new URL(result.url).origin:result.state==='downloaded'?new URL(page.url()).origin:undefined,resultDigest:sha(JSON.stringify(result)),generation,
         expiresAt:Math.min(now()+TTL,Date.parse(scope.deadline))});
@@ -1299,19 +1323,21 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         for(const [key,item] of exportScopes)if(Date.parse(item.scope.deadline)<=now())exportScopes.delete(key);
         const key=exportKey(scope.taskId,scope.runId),prior=exportRequests.get(key);
         const statusOnly=scope.proposal.toolName==='browser.observe'&&noDocument();
+        const allowPersonalText=full();
         if(statusOnly)source=undefined;
-        if(prior&&(prior.source!==source||prior.statusOnly!==statusOnly||prior.proposalId!==scope.proposal.proposalId))fail('REVISION_CONFLICT','原网页观察来源已变化');
+        if(prior&&(prior.source!==source||prior.statusOnly!==statusOnly||prior.allowPersonalText!==allowPersonalText||prior.proposalId!==scope.proposal.proposalId))
+          fail('REVISION_CONFLICT','原网页观察来源或数据许可已变化');
         if(!statusOnly)authorizationQuestions.prepareExport(scope,{requirementId:PAGE_EXPORT,scopes:['model:export'],
-          projectionSchema,bindingDigest:sha(JSON.stringify([scope.taskId,scope.runId,scope.proposal.toolName,toolArgumentsDigest(args),source])),
-          summary:`向本任务所选模型发送${source?' '+source+' 的':'当前浏览器的'}网页标题、可见文字、普通表单字段和控件观察。跳转到新来源只返回状态，下载或截图只发送产物元数据。`});
-        exportRequests.set(key,{proposalId:scope.proposal.proposalId,source,statusOnly,deadline:Date.parse(scope.deadline)});
+          projectionSchema,bindingDigest:sha(JSON.stringify([scope.taskId,scope.runId,scope.proposal.toolName,toolArgumentsDigest(args),source,allowPersonalText])),
+          summary:`向本任务所选模型发送${source?' '+source+' 的':'当前浏览器的'}网页标题、可见文字、普通表单字段和控件观察。${allowPersonalText?'':'将隐藏识别出的邮箱、手机号和证件号。'}跳转到新来源只返回状态，下载或截图只发送产物元数据。`});
+        exportRequests.set(key,{proposalId:scope.proposal.proposalId,source,statusOnly,allowPersonalText,deadline:Date.parse(scope.deadline)});
       }else if(!exportScopes.get(exportKey(scope.taskId,scope.proposal.proposalId))?.emptyObservation)
         authorizationQuestions.currentRequirement(scope,PAGE_EXPORT);
     },
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,publicDescription:tool.descriptor.inputSchema.description,
       publicEnumPaths:['/key','/direction','/mediaAction'],available:scope=>!closed&&!blocked&&!scope.signal?.aborted&&now()<Date.parse(scope.deadline)
         &&(state!=='unavailable'||['browser.open','browser.close'].includes(tool.descriptor.name))})),
-    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:'controlled-browser-dom-v4',
+    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:'controlled-browser-dom-v5',
       accepts({taskId,proposalId,signal,phase,projection}) {
         if(closed||signal?.aborted)return false;
         if(phase==='preflight')return true;
@@ -1343,6 +1369,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           if(saved.origin&&saved.origin!==saved.approvedOrigin)
             result={source:'playwright',state:result.state,freshObservationRequired:true,goalVerified:false};
           if(detectSecretsInText(JSON.stringify(result)))fail('UNAUTHORIZED','网页观察含有凭据信息，未发送到模型');
+          if(!saved.allowPersonalText||!full())result=publicPageProjection(result);
           authorizationQuestions.authorizeExport({...saved.scope,signal},result,PAGE_EXPORT);
           saved.projectionDigest=sha(JSON.stringify(result));
         }

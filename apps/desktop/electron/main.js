@@ -3108,6 +3108,7 @@ async function initializeRuntime() {
         await prepareComputerControl();
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
           downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
+          isFullAccess:()=>readDesktopEgressPolicy().mode==='full-access',
           allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
           authorizationQuestions:authorizationQuestionPort,resolveConversation:resolveDesktopToolConversation,
