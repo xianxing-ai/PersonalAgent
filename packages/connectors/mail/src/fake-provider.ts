@@ -73,7 +73,9 @@ export class FakeMailProvider implements MailProvider {
     }
     const newest = input.order === 'newest';
     const lastUid = input.cursor?.lastUid;
+    const sinceMs = input.since ? Date.parse(input.since) : Number.NaN;
     const fresh = pool.filter(message => lastUid === undefined || (newest ? message.uid < lastUid : message.uid > lastUid))
+      .filter(message => !Number.isFinite(sinceMs) || message.sentAt === null || Date.parse(message.sentAt) >= sinceMs)
       .sort((left, right) => newest ? right.uid - left.uid : left.uid - right.uid);
     const size = Math.min(this.pageSize, input.limit);
     const page = fresh.slice(0, size);

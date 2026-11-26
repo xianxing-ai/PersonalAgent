@@ -35,6 +35,7 @@ export interface MailFetchInput {
   folder?: string;
   cursor?: MailCursor;
   limit: number;
+  since?: string;
   order?: 'oldest' | 'newest';
   signal?: AbortSignal;
 }
