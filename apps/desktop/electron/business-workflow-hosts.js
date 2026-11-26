@@ -1,6 +1,8 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {createRuntimeAtomicStatePort} from '@personal-agent/runtime';
-import {CalDavProvider, register as registerCalendar} from '@personal-agent/calendar';
+import {register as registerCalendar} from '@personal-agent/calendar';
+import {MailService, QQMailProvider} from '@personal-agent/mail';
+import {isSupportedCalendarBinding, resolveCalendarProvider} from './calendar-provider-factory.js';
 import {createTodoRegisteredWriteHostPort,
   createReminderClockRevisionHostPort,
   createCalendarFreshnessCheckHostPort,
@@ -103,7 +105,9 @@ export function createDesktopBusinessWorkflowHosts({
   getNotificationHost = () => undefined,
   getDeveloperDeployment = () => undefined,
   getGithubPort = () => undefined,
-  createCalendarProvider = options => new CalDavProvider(options),
+  createCalendarProvider,
+  createWindowsCalendarProvider,
+  createMailProvider = options => new QQMailProvider(options),
   now = Date.now,
 } = {}) {
   const todoIdempotencyStore = createRuntimeTodoIdempotencyStore(() => getApplication()?.runtime);
@@ -127,7 +131,7 @@ export function createDesktopBusinessWorkflowHosts({
   async function invokeCalendarOperation(operation, input, context, scopeKind = 'read') {
     const calendarConfig = getCalendarConfig?.();
     const binding = calendarConfig?.binding?.();
-    if (!binding || binding.providerKind !== 'caldav') {
+    if (!isSupportedCalendarBinding(binding)) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', '日历配置未绑定');
     }
     const calendarScope = {
@@ -140,11 +144,11 @@ export function createDesktopBusinessWorkflowHosts({
       throw new ProtocolError('UNAUTHORIZED', '日历本会话许可未授予或已撤销');
     }
     const authorization = await calendarConfig.readAuthorization(binding);
-    const provider = createCalendarProvider({
-      calendarUrl: binding.calendarUrl,
-      calendarName: binding.calendarName,
+    const provider = resolveCalendarProvider({
+      binding,
       authorization,
-      allowLoopbackHttp: true,
+      createCalendarProvider,
+      createWindowsCalendarProvider,
       now,
     });
     const tools = new Map();
@@ -171,7 +175,7 @@ export function createDesktopBusinessWorkflowHosts({
   function currentCalendarAccountRef() {
     const calendarConfig = getCalendarConfig?.();
     const binding = calendarConfig?.binding?.();
-    if (!binding || binding.providerKind !== 'caldav') return undefined;
+    if (!isSupportedCalendarBinding(binding)) return undefined;
     if (!calendarConfig.isSessionAllowed?.(binding.revision, {kind: 'calendar', requirementId: 'calendar-local-read'})) {
       return undefined;
     }

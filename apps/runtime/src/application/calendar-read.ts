@@ -1,8 +1,8 @@
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
-import {CalDavProvider, CalendarService} from '@personal-agent/calendar';
-import type {CalDavFetchLike} from '@personal-agent/calendar';
+import {CalDavProvider, CalendarService, WindowsSystemCalendarProvider} from '@personal-agent/calendar';
+import type {CalDavFetchLike, WindowsCalendarTransport} from '@personal-agent/calendar';
 
 export const CALENDAR_EVENT_READ_TOOL = 'calendar.read_event';
 export const CALENDAR_EVENT_READ_VERSION = '0.1.0-alpha.1';
@@ -11,13 +11,15 @@ export const CALENDAR_EVENT_READ_VERSION = '0.1.0-alpha.1';
 export interface CalendarReadBinding {
   readonly configurationId: string;
   readonly accountRef: string;
-  readonly calendarUrl: string;
+  readonly providerKind?: 'caldav' | 'windows-system';
+  readonly calendarUrl?: string;
   readonly calendarName?: string;
 }
 export interface CalendarEventReadOptions {
   readonly getBinding: () => CalendarReadBinding | undefined;
   readonly readAuthorization: (binding: CalendarReadBinding) => string | Promise<string>;
   readonly fetchImpl?: CalDavFetchLike;
+  readonly windowsTransport?: WindowsCalendarTransport;
   readonly now?: () => number;
 }
 
@@ -82,15 +84,30 @@ export function createCalendarEventReadTool(options: CalendarEventReadOptions): 
         if (typeof authorization !== 'string' || !authorization || /[\r\n]/.test(authorization)) {
           throw new ProtocolError('UNAUTHORIZED', 'Calendar credentials are unavailable');
         }
-        const provider = new CalDavProvider({calendarUrl: binding.calendarUrl, authorization,
-          // allowLoopbackHttp 与 provider/桌面 collectionUrl 语义对齐：否决非回环明文，仅回环 HTTP 放行。
-          allowLoopbackHttp: /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/u.test(binding.calendarUrl),
-          ...(binding.calendarName === undefined ? {} : {calendarName: binding.calendarName}),
-          requestTimeoutMs: Math.max(1, Math.min(120_000, Date.parse(context.deadline) - now())),
-          fetchImpl: (url, init) => {
-            stopped();
-            return request(url, {...init, signal: AbortSignal.any([init.signal, signal])});
-          }});
+        const requestTimeoutMs = Math.max(1, Math.min(120_000, Date.parse(context.deadline) - now()));
+        const provider = binding.providerKind === 'windows-system'
+          ? new WindowsSystemCalendarProvider({
+              ...(binding.calendarName === undefined ? {} : {calendarName: binding.calendarName}),
+              requestTimeoutMs,
+              now,
+              ...(options.windowsTransport === undefined ? {} : {transport: options.windowsTransport}),
+            })
+          : (() => {
+              if (typeof binding.calendarUrl !== 'string' || !binding.calendarUrl) {
+                throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'CalDAV calendarUrl is missing');
+              }
+              return new CalDavProvider({
+                calendarUrl: binding.calendarUrl, authorization,
+                // allowLoopbackHttp 与 provider/桌面 collectionUrl 语义对齐：否决非回环明文，仅回环 HTTP 放行。
+                allowLoopbackHttp: /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/u.test(binding.calendarUrl),
+                ...(binding.calendarName === undefined ? {} : {calendarName: binding.calendarName}),
+                requestTimeoutMs,
+                fetchImpl: (url, init) => {
+                  stopped();
+                  return request(url, {...init, signal: AbortSignal.any([init.signal, signal])});
+                },
+              });
+            })();
         const item = await bounded(new CalendarService(provider, {now}).getEventItem(binding.accountRef, externalId));
         stopped();
         return item;

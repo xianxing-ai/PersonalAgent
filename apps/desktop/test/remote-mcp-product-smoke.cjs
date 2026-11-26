@@ -7,6 +7,9 @@ async function waitFor(read,reason){const deadline=Date.now()+15000;
   while(Date.now()<deadline){const value=await read();if(value)return value;await new Promise(resolve=>setTimeout(resolve,25));}
   throw Error('Timed out: '+reason);}
 async function snapshot(page){const response=await page.evaluate(()=>window.desktop.invoke('snapshot'));assert.equal(response.ok,true,response.error);return response.value;}
+async function readMcp(page,action,payload){const response=await page.evaluate(({action,payload})=>window.remoteMcp.invoke(action,payload),{action,payload});assert.equal(response.ok,true,response.error);return response.value;}
+async function waitTask(page,taskId,state){return waitFor(async()=>{const task=await readMcp(page,'task',{taskId});return task.state===state&&task;},'Remote MCP task '+state);}
+async function newPending(page,previous){return waitFor(async()=>{const state=await readMcp(page,'state');return state.tasks.find(task=>task.state==='waiting_approval'&&!previous.includes(task.taskId))?.taskId;},'New pending MCP task');}
 (async()=>{
   const {fixture,descriptor,directory}=await import('../../../packages/mcp/test/remote-http-fixture.mjs');
   const {remoteMcpDirectoryDigest}=await import('@personal-agent/mcp');
@@ -47,6 +50,17 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
       },definitionFile);
       let admin;for(let i=0;i<200;i++){admin=app.windows().find(page=>page.url().includes('mode=admin'));if(admin)break;await new Promise(r=>setTimeout(r,50));}
       assert.ok(admin,'actual Competition admin is reachable without cloud credentials');
+      if(runtimeReady){
+        const sandbox=await admin.evaluate(async()=>{
+          const current=await window.desktop.invoke('authorization.sandbox.read');
+          if(!current.ok||current.value.selected.label===current.value.profiles.find(profile=>profile.ref==='default-read-only')?.label)return current;
+          return window.desktop.invoke('authorization.sandbox.select',{profileRef:'default-read-only',
+            expectedRevision:current.value.selected.revision});
+        });
+        assert.equal(sandbox.ok,true,sandbox.error);
+        assert.equal(sandbox.value.selected.label,sandbox.value.profiles.find(profile=>profile.ref==='default-read-only')?.label,
+          'approval smoke requires the explicit ask profile');
+      }
       await admin.locator('#remote-mcp-manage').click();let page;
       for(let i=0;i<100;i++){page=app.windows().find(page=>page.url().includes('/remote-mcp/index.html'));if(page)break;await new Promise(r=>setTimeout(r,50));}
       assert.ok(page);await page.waitForSelector('#status',{state:'attached'});
@@ -112,22 +126,21 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
       const runtime=await admin.evaluate(async()=>{const response=await window.desktop.invoke('snapshot'),value=response.value??response;return {connection:value.connection,error:value.connectionError};});
       throw new Error('MCP Runtime unavailable: '+JSON.stringify(runtime),{cause:error});
     }
-    await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('waiting_approval'));const first=await page.locator('#task-id').inputValue();
+    const first=await newPending(page,[]);
     assert.equal(f.calls().length,0);
     await page.locator('#review-question').click();
-    assert.match(await page.locator('#task-result').textContent(),/waiting_approval/);assert.equal(f.calls().length,0,'opening the card cannot grant a call');
+    await waitTask(page,first,'waiting_approval');assert.equal(f.calls().length,0,'opening the card cannot grant a call');
     await choose('allow_once',{taskId:first});
-    await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('succeeded'));assert.equal(f.calls().length,1);
-    assert.equal(await page.locator('#task-result img').count(),0);assert.equal(await page.evaluate(()=>window.injected===true),false);
-    const result=await page.locator('#task-result').textContent();assert.equal(result.includes(token),false);assert.match(result,/evidenceRefs/);
+    const result=JSON.stringify(await waitTask(page,first,'succeeded'));assert.equal(f.calls().length,1);
+    assert.equal(await page.locator('#tasks img').count(),0);assert.equal(await page.evaluate(()=>window.injected===true),false);
+    assert.equal(result.includes(token),false);assert.match(result,/evidenceRefs/);
     assert.doesNotMatch(result,/synthetic result|<img|"key"/,'management history must not expose raw arguments or results');
     await page.locator('#disconnect').click();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('默认断开'));
     assert.equal(await page.locator('#submit').isDisabled(),true);assert.equal(f.calls().length,1);
     await connect();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));
-    await page.locator('#submit').click();await page.waitForFunction(id=>document.getElementById('task-id').value!==id,first);
-    await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('waiting_approval'));
-    const denied=await page.locator('#task-id').inputValue();await page.locator('#review-question').click();await choose('deny',{taskId:denied});
-    await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('cancelled'));assert.equal(f.calls().length,1);
+    await page.locator('#submit').click();const denied=await newPending(page,[first]);
+    await page.locator('#review-question').click();await choose('deny',{taskId:denied});
+    await waitTask(page,denied,'cancelled');assert.equal(f.calls().length,1);
     const deniedDatabase=new DatabaseSync(path.join(userData,'runtime.sqlite'),{readOnly:true});let deniedRecord;
     try{
       assert.equal(deniedDatabase.prepare('SELECT state FROM tasks WHERE task_id=?').get(denied).state,'cancelled');
@@ -135,27 +148,30 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
       assert.equal(records.length,1);assert.equal(records[0].executionStarted,false);assert.equal(records[0].policyDecision,'deny');
       deniedRecord={taskId:denied,state:'cancelled',executionStarted:false,errorCode:records[0].errorCode};
     }finally{deniedDatabase.close();}
-    await page.locator('#submit').click();await page.waitForFunction(id=>document.getElementById('task-id').value!==id,first);
-    await page.waitForFunction(id=>document.getElementById('task-id').value!==id,denied);
-    await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('waiting_approval'));const pending=await page.locator('#task-id').inputValue();
+    await page.locator('#submit').click();const pending=await newPending(page,[first,denied]);
     const originalPanel=app.windows().find(candidate=>candidate.url().includes('mode=panel'));
     const pendingQuestion=await waitFor(async()=>(await snapshot(originalPanel)).authorizationQuestions.find(item=>item.taskId===pending&&item.state==='pending'),'pending question before controlled restart');
     const pendingExpiresAt=pendingQuestion.expiresAt;
-    await page.screenshot({path:path.join(folder,'management.png'),fullPage:true});await close({allowPendingTermination:true});
+    await page.screenshot({path:path.join(folder,'management.png'),fullPage:true});await close();
     const baseline=f.requests.length;instance=await open();({app,page}=instance);assert.equal(f.requests.length,baseline);
-    await page.locator('#task-id').fill(first);await page.locator('#read-task').click();await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('succeeded'));assert.equal(f.calls().length,1);
+    await waitTask(page,first,'succeeded');assert.equal(f.calls().length,1);
     await connect();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));
-    await page.locator('#task-id').fill(pending);await page.locator('#read-task').click();await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('failed'));
+    const stopped=await waitTask(page,pending,'cancelled');
+    assert.ok(stopped.approval?.state!=='pending','the original approval must no longer be pending');
     assert.ok(Date.parse(pendingExpiresAt)>Date.now(),'the old session must be rejected before its original approval expires');
     assert.equal(await page.locator('#review-question').isDisabled(),true);assert.equal(f.calls().length,1,'old session question cannot call MCP');
     const resumedDatabase=new DatabaseSync(path.join(userData,'runtime.sqlite'),{readOnly:true});let pendingRestart;
     try{
       const original=resumedDatabase.prepare('SELECT state,error_json FROM tasks WHERE task_id=?').get(pending);
-      assert.equal(original.state,'failed');assert.equal(JSON.parse(original.error_json).code,'REVISION_CONFLICT');
+      assert.equal(original.state,'cancelled');
+      const persistedApproval=JSON.parse(resumedDatabase.prepare('SELECT value_json FROM tool_approvals WHERE approval_id=?')
+        .get(pendingQuestion.sourceApprovalId).value_json);
+      assert.equal(persistedApproval.taskId,pending);
+      assert.equal(persistedApproval.state,'denied');
       const records=resumedDatabase.prepare('SELECT record_json FROM tool_execution_records WHERE task_id=?').all(pending).map(row=>JSON.parse(row.record_json));
-      assert.equal(records.length,1);assert.equal(records[0].executionStarted,false);assert.equal(records[0].errorCode,'REVISION_CONFLICT');
-      pendingRestart={taskId:pending,beforeState:'waiting_approval',afterState:original.state,errorCode:'REVISION_CONFLICT',
-        executionStarted:false,originalExpiresAt:pendingExpiresAt,cleanupMethod:attempts[1].cleanup.method};
+      assert.ok(records.every(record=>record.executionStarted===false));
+      pendingRestart={taskId:pending,beforeState:'waiting_approval',afterState:original.state,
+        executionStarted:false,oldApprovalState:persistedApproval.state,originalExpiresAt:pendingExpiresAt,cleanupMethod:attempts[1].cleanup.method};
     }finally{resumedDatabase.close();}
     await revoke();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('未配置'));
     assert.equal(fs.existsSync(path.join(userData,'remote-mcp-config.json')),false);assert.equal(await page.locator('#submit').isDisabled(),true);
@@ -177,13 +193,12 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
       for(const [id,service] of [['a',f],['b',second]]){
         await page.locator('#server').selectOption(id);await page.waitForFunction(id=>document.getElementById('server').value===id,id);
         const beforeCalls=service.calls().length;await connect();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));
-        await page.locator('#arguments').fill(JSON.stringify({key:'public'}));const prior=await page.locator('#task-id').inputValue();
-        await page.locator('#submit').click();await page.waitForFunction(id=>document.getElementById('task-id').value!==id,prior);
-        await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('waiting_approval'));
-        const taskId=await page.locator('#task-id').inputValue();assert.equal(service.calls().length,beforeCalls);
+        await page.locator('#arguments').fill(JSON.stringify({key:'public'}));
+        await page.locator('#submit').click();
+        const taskId=await newPending(page,[]);assert.equal(service.calls().length,beforeCalls);
         await page.locator('#review-question').click();await choose('allow_once',{taskId});
-        await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('succeeded'));
-        assert.equal(service.calls().length,beforeCalls+1);assert.doesNotMatch(await page.locator('#task-result').textContent(),/synthetic result|"key"/);
+        const result=await waitTask(page,taskId,'succeeded');
+        assert.equal(service.calls().length,beforeCalls+1);assert.doesNotMatch(JSON.stringify(result),/synthetic result|"key"/);
         multiServices.push({id,toolCalls:1});
       }
       await page.locator('#server').selectOption('a');await page.waitForFunction(()=>document.getElementById('server').value==='a');

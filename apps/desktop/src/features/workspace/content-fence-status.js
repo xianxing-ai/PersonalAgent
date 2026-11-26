@@ -9,6 +9,8 @@ export function renderContentFence(node, snapshot) {
     return;
   }
   node.hidden = false;
-  const origin = sources.slice(-3).map(source => `${source.label ?? source.kind} ${source.ref ?? ''}`.trim()).join('、');
+  const origin = [...new Set(
+    sources.map(source => `${source.label ?? source.kind} ${source.ref ?? ''}`.trim()).filter(Boolean),
+  )].slice(-3).join('、');
   node.textContent = blocked ? blocked : `外部内容已围栏${origin ? ` · ${origin}` : ''}`;
 }
