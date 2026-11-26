@@ -28,7 +28,8 @@ test('child summary filtering reports actual reader failures instead of silently
 test('sidebar groups every child by actual state without truncating or converting failed work to success',()=>{
   const children=Array.from({length:11},(_,i)=>({taskId:String(i),state:i<7?'running':['succeeded','failed','cancelled','waiting_reconciliation'][i-7]}));
   const before=structuredClone(children),groups=childThreadGroups(children);
-  assert.deepEqual(groups.map(group=>group.label),['进行中','已结束']);
+  assert.deepEqual(groups.map(group=>group.label),['进行中','待核实或已结束']);
+  assert.equal(childThreadGroups([{state:'succeeded'}])[1].label,'已结束');
   assert.deepEqual(groups.map(group=>group.children.length),[7,4]);
   assert.deepEqual(groups[1].children.map(child=>child.state),['succeeded','failed','cancelled','waiting_reconciliation']);
   assert.deepEqual(children,before);
