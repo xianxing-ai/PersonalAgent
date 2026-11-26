@@ -28,6 +28,7 @@ import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapabilit
 import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
 import {bindNotepadWorker,NOTEPAD_INTENT,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
 import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete,requestedPlayback,requestedBrowserLinkNavigation,browserReadExcerpt} from './browser-worker.js';
+import {browserPreparationIntent,preparationMatches,requestedChoices,type PreparationControl} from './browser-preparation.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -6509,6 +6510,32 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!marker?.parentTaskId||readCanonicalUserWorkParent(this.runtime,taskId)!==marker.parentTaskId)return false;
     const source=browserWorkerSource(this.runtime,taskId);
     return !!source&&(kind==='play'?requestedPlayback(source.text):kind==='link'&&requestedBrowserLinkNavigation(source.text,this.runtime,taskId,input));
+  }
+
+  /** Human's stop point for a staged task. The host still binds the exact operation and obtains #715 consent. */
+  browserPreparationStage(taskId:string) {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks)return;
+    const parent=(this.runtime.loadCheckpoint(taskId,BROWSER_WORKER) as {parentTaskId?:string}|undefined)?.parentTaskId;
+    if(!parent||readCanonicalUserWorkParent(this.runtime,taskId)!==parent)return;
+    const source=browserWorkerSource(this.runtime,taskId);
+    return source&&browserPreparationIntent(source.text,source.localDay)?.stage;
+  }
+
+  requestedBrowserPreparation(taskId:string,runId:string,args:Record<string,unknown>,control:PreparationControl):boolean {
+    if(!this.browserPreparationStage(taskId))return false;
+    const source=browserWorkerSource(this.runtime,taskId)!;
+    const intent=browserPreparationIntent(source.text,source.localDay)!;
+    if(!preparationMatches(intent,source.text,args.action,args.value,control))return false;
+    if(args.action==='add_to_cart'&&this.runtime.readToolExecutions(taskId).some(run=>{
+      if(run.evidenceId===runId||run.toolName!=='browser.prepare'||!run.executionStarted||run.policyDecision!=='allow')return false;
+      const prior=this.runtime.loadCheckpoint(taskId,'browser-prepare-intent:'+run.evidenceId) as {field?:string}|undefined;
+      return prior?.field==='cart';
+    }))return false;
+    const key='browser-prepare-intent:'+runId;
+    const proof={taskId,runId,digest:toolArgumentsDigest(args),field:control.field,stage:intent.stage,
+      ...(control.field==='variant'?{requestedChoices:requestedChoices(intent,control.variantChoices)}:{}),
+      ...(control.field==='cart'?{variantId:control.variantId,quantity:intent.quantity}:{})};
+    return this.runtime.saveCheckpointOnce(taskId,key,proof)||isDeepStrictEqual(this.runtime.loadCheckpoint(taskId,key),proof);
   }
 
   /** Device-only result projection. The parent transcript and its cloud context keep no copy. */

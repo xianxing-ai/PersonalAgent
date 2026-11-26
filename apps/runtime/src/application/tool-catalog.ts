@@ -9,7 +9,8 @@ import type {TaskRuntime} from '../index.js';
 import type {CompetitionToolExport} from './coordination.js';
 import {TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION} from './tool-discovery.js';
 import {NOTEPAD_INTENT,NOTEPAD_TOOL} from './notepad-worker.js';
-import {BROWSER_WORKER,BROWSER_ACTIONS} from './browser-worker.js';
+import {BROWSER_WORKER,BROWSER_ACTIONS,browserWorkerSource} from './browser-worker.js';
+import {browserPreparationIntent} from './browser-preparation.js';
 
 const CHECKPOINT = 'competition-tool-catalog';
 const DISCOVERY_POOL = 'competition-tool-discovery-pool:v1';
@@ -351,7 +352,10 @@ export class RuntimeCompetitionToolCatalog {
       return [launch];
     }
     if(this.runtime.loadCheckpoint(taskId,BROWSER_WORKER)===undefined)return [];
-    const ready=BROWSER_ACTIONS.slice(0,6).flatMap(name=>pool.filter(entry=>entry.name===name&&entry.version==='1.0.0'));
+    const source=browserWorkerSource(this.runtime,taskId);
+    const names=BROWSER_ACTIONS.slice(0,6);
+    if(source&&browserPreparationIntent(source.text,source.localDay))names.push('browser.prepare');
+    const ready=names.flatMap(name=>pool.filter(entry=>entry.name===name&&entry.version==='1.0.0'));
     if(!ready.some(entry=>entry.name==='browser.open'||entry.name==='browser.observe'))
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','本次工人任务尚无可打开或读取网页的受控浏览器工具');
     return ready;

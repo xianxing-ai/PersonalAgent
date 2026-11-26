@@ -8,7 +8,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import {TOOL_DISCOVERY_NAME} from './tool-discovery.js';
-import {BROWSER_ACTIONS,BROWSER_EXPORT_WITHHELD,BROWSER_WORKER} from './browser-worker.js';
+import {BROWSER_ACTIONS,BROWSER_EXPORT_WITHHELD,BROWSER_WORKER,verifiedBrowserAnswer} from './browser-worker.js';
 import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
 
@@ -613,8 +613,9 @@ export async function runCoordinationWorker(
         }
         if(completion!==undefined){void Promise.resolve(completion).catch(()=>undefined);
           throw new ProtocolError('INVALID_ARGUMENT','Competition completion check must be synchronous');}
-        if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: result.text, label: '回答'});
-        return {resultSummary: summary(result.text, result.verification), evidenceRefs};
+        const answer=browserWorker?verifiedBrowserAnswer(runtime,taskId,result.text):result.text;
+        if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: answer, label: '回答'});
+        return {resultSummary: summary(answer, result.verification), evidenceRefs};
       }
       if (result.kind === 'repair_candidate') {
         if (browserWorker||options.repairCandidateVersion !== '1.0') {

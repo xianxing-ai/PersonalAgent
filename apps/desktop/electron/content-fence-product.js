@@ -14,7 +14,7 @@ import {
  * Competition startup checks the fence before ToolGateway consumes Policy grants,
  * and fences external tool results without tainting tasks on local read-only tools.
  */
-export function createContentFenceProduct({readGoal,restrictBrowserRead} = {}) {
+export function createContentFenceProduct({readGoal,restrictBrowserRead,restrictBrowserPreparation,browserPreparationStage} = {}) {
   const sources = [];
   const seen = new Map();
   let blocked = null;
@@ -24,6 +24,10 @@ export function createContentFenceProduct({readGoal,restrictBrowserRead} = {}) {
   };
   const beforeAuthorize = scope => {
     const {taskId,toolName,toolVersion,sideEffect}=scope;
+    if(toolName==='browser.prepare'){
+      if(toolVersion==='1.0.0'&&restrictBrowserPreparation?.(scope)===true)return;
+      throw new ProtocolError('SCOPE_DENIED','此控件与原用户指定的商品、住宿条件或操作步骤不一致。');
+    }
     const effect = guardedEffectForTool(toolName ?? '', sideEffect);
     if (!effect || !taskId || seen.get(taskId)?.external !== true) return;
     // The Playwright host pins the original run, document and control, and enforces a GET-only navigation
@@ -36,6 +40,8 @@ export function createContentFenceProduct({readGoal,restrictBrowserRead} = {}) {
         throw new ProtocolError('SCOPE_DENIED',reason);
       }
     }
+    if(['browser.click','browser.type','browser.press','browser.select','browser.download'].includes(toolName)&&browserPreparationStage?.(taskId))
+      throw new ProtocolError('SCOPE_DENIED','本次只允许在受限网页控件上执行用户指定的查询或准备步骤。');
     const decision = externalEffectDecision({effect, userGoal: goalFor(taskId), sawExternal: true});
     if (decision.allowed) return;
     blocked = {effect, reason: decision.reason, at: new Date().toISOString()};

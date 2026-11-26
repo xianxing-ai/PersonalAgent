@@ -3838,6 +3838,11 @@ async function initializeRuntime() {
         const kind=args.mediaAction==='play'?'play':args.mediaAction===undefined?'link':undefined;
         return !!kind&&runtimeApplication.requestedBrowserRead(scope.taskId,kind,args)
           &&browserControlHost?.restrictChatBrowserRead(scope,args)===true;
+      },browserPreparationStage:taskId=>runtimeApplication.browserPreparationStage(taskId),
+      restrictBrowserPreparation:scope=>{
+        const args=scope.arguments,control=browserControlHost?.describeChatPreparation(scope,args);
+        return !!control&&runtimeApplication.requestedBrowserPreparation(scope.taskId,scope.runId,args,control)
+          &&browserControlHost.restrictChatPreparation(scope,args)===true;
       }});
       conversationTools=contentFence.wrapTools(conversationTools);
       conversationTools=permissionAudit.observeTools(conversationTools);
