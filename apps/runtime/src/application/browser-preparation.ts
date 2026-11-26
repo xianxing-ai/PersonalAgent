@@ -1,13 +1,13 @@
 export type PreparationAction='select_option'|'set_date'|'check_availability'|'add_to_cart';
 type Field='arrival'|'departure'|'guests'|'rooms'|'variant'|'availability'|'cart';
-type Stay={arrival?:string;departure?:string;guests?:number;rooms?:number};
+export type Stay={arrival?:string;departure?:string;guests?:number;rooms?:number};
 export type PreparationControl={field:Field;label:string;choiceLabel?:string;value?:string;productName?:string;productUrl?:string;
   userBoundProduct?:boolean;variantChoices?:string[];selectedChoices?:string[];quantity?:number;variantId?:string;beforeQuantity?:number;afterQuantity?:number;stay?:Stay};
 export type PreparationIntent={stage:'cart'|'variant'|'stay'|'availability';request:string;stay:Stay;quantity:number;ambiguous:boolean};
 
 const cartAction=/(?:加(?:入|到|进)?|添加到?|放入|放到|放进)(?:我的|这个|该)?购物[车袋]|加购|\badd\b.{0,80}\bto (?:my |the )?(?:shopping )?(?:cart|bag)\b/iu;
 const variantAction=/(?:选中?|选择|选用|设为|换成|切换到)[^，。；！？\n]{0,40}(?:规格|颜色|尺码|型号|容量|件装|色|码|GB|TB)|(?:规格|颜色|尺码|型号|容量)\s*(?:选(?:择)?|设为|换成)|\b(?:select|choose) (?:the )?(?:size|color|variant)\b/iu;
-const available=/(?:查(?:一下|看|询)?|看看?|找|检查)[^，。；！？\n]{0,50}(?:空房|可订|有(?:没有|无)?房|房价|可预订|还剩.*房)|(?:有没有|有无|还有)(?:空房|房间|可订客房)|\b(?:check|search) (?:room )?availability\b/iu;
+const available=/(?:查(?:一下|看|询)?|看看?|找|检查|告诉我|确认|获取)[^，。；！？\n]{0,50}(?:空房|可订|可用房|有(?:没有|无)?房|房价|可预订|还剩.*房)|(?:有没有|有无|还有|是否有)(?:空房|房间|可订客房)|\b(?:check|search) (?:room )?availability\b/iu;
 const numberWords:Record<string,string>={'零':'0','一':'1','二':'2','两':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9'};
 function normalize(text:string):string {
   return text.normalize('NFKC').toLowerCase().replace(/([一二两三四五六七八九]?)十([一二三四五六七八九]?)/gu,
