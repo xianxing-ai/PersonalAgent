@@ -17,7 +17,8 @@ export function isAutonomousRuntimeTask(runtime, taskId) {
     } catch {
       return false;
     }
-    return runtime.loadCheckpoint(id, 'desktop-proactive-workflow-v1') != null
+    return runtime.loadCheckpoint(id, 'scheduled-text-origin:v1')?.origin === 'autonomous'
+      || runtime.loadCheckpoint(id, 'desktop-proactive-workflow-v1') != null
       || runtime.loadCheckpoint(id, PROACTIVE_SOURCE_TASK_CHECKPOINT) != null;
   };
   if (isDirectAutonomous(taskId)) return true;

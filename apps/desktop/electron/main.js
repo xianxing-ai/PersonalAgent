@@ -192,7 +192,7 @@ import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsM
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createNativeEgressHost} from './egress-dialog-host.js';
 import {extractGitSha40} from './egress-host.js';
-import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks, PROACTIVE_SOURCE_TASK_CHECKPOINT} from './usage-budget-product.js';
+import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
@@ -4583,17 +4583,8 @@ async function initializeRuntime() {
     submitTask: async input => {
       const conversationId = typeof input.conversationId === 'string' && input.conversationId.trim()
         ? input.conversationId.trim() : `proactive-source:${desktopHost.userNamespace}`;
-      const submit = async () => {
-        const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
-        try {
-          runtimeApplication?.runtime?.saveCheckpoint?.(result.taskId, PROACTIVE_SOURCE_TASK_CHECKPOINT, {
-            version: 1,
-            source: 'proactive-source',
-            conversationId,
-          });
-        } catch { /* Autonomous conversationId prefix already enforces budget gating. */ }
-        return {taskId: result.taskId, state: result.state ?? 'created'};
-      };
+      const deadline = new Date(Date.now() + readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
+      const submit = () => runtimeApplication.submitScheduledTextTask({...input, conversationId}, deadline);
       return usageBudgetProduct ? usageBudgetProduct.withOrigin('autonomous', submit) : submit();
     },
     namespace: desktopHost.userNamespace,

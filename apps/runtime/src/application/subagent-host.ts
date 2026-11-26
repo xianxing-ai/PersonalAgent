@@ -89,6 +89,7 @@ export interface ConfiguredSubagentModelOptions {
   contextLimitTokens?: number;
   requestTokenBudget?: VisibleRequestTokenBudget;
   requestFormat?: OpenAICompatibleRequestFormat;
+  onTokenUsage?: ConstructorParameters<typeof ModelGateway>[3];
   /** Trusted optional PNG vision declaration for the auxiliary OpenAI-compatible endpoint. */
   vision?: boolean;
 }
@@ -118,7 +119,7 @@ export function createConfiguredSubagentModelGateway(
   }
   const Provider = config.provider === 'pangu' ? PanguModelProvider : OpenAICompatibleModelProvider;
   const provider = new StructuredToolProvider(new Provider(config));
-  return new ModelGateway(decorateProvider ? decorateProvider(provider) : provider);
+  return new ModelGateway(decorateProvider ? decorateProvider(provider) : provider, undefined, undefined, config.onTokenUsage);
 }
 
 export interface SubagentHostOptions {

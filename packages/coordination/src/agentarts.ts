@@ -180,7 +180,7 @@ export interface AgentArtsResponse {
 }
 
 /** Minimal fetch seam; the default implementation is the host's global fetch. */
-export type AgentArtsFetch = (url: string, init: AgentArtsFetchInit) => Promise<AgentArtsResponse>;
+export type AgentArtsFetch = (url: string, init: AgentArtsFetchInit, taskId?: string) => Promise<AgentArtsResponse>;
 
 type AbortCause = 'cancelled' | 'deadline';
 
@@ -1576,7 +1576,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         if (receipt === undefined) this.identityObserver?.(createAgentArtsUnknownReceipt(init), sendRequest);
         // The final synchronous guard and fetch share one uninterrupted stack.
         if (receipt !== undefined) { fallbackReceipt = receipt; fallbackStarted = true; }
-        const response = this.fetchImpl(url, init);
+        const response = this.fetchImpl(url, init, request.taskId);
         if (fallback) this.websocket!.reportFallback(sessionId, requestId, this.websocketDeploymentVersion);
         return response;
       };
