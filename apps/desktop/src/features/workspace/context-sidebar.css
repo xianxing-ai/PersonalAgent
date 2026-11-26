@@ -1,3 +1,5 @@
+@import url('./assistant-picker.css');
+
 .command-center .cc-context {
   gap: 15px;
   padding-bottom: 12px;
