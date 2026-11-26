@@ -66,13 +66,17 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   const shell=root.querySelector('.workspace'),bar=root.querySelector('.workspace-titlebar'),main=root.querySelector('.workspace-main'),layout=root.querySelector('.workspace-layout');
   shell.classList.add('command-center');
   const rail=document.createElement('aside');rail.className='cc-rail';rail.setAttribute('aria-label','主导航');
-  rail.innerHTML=`<div class="cc-brand"><span class="cc-brand-orb" aria-hidden="true"></span><strong>Synstar</strong><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div><nav>${[['home','工作台'],['tasks','任务记录'],['memory','知识与记忆']].map(([id,label])=>`<button type="button" data-cc-nav="${id}" ${id==='home'?'aria-current="page"':''} title="${label}">${centerIcon(id)}<span>${label}</span></button>`).join('')}<button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置与偏好</span></button></nav>`;
+  const pages = [['home', '工作台', '工作台'], ['tasks', '任务', '任务记录'], ['memory', '知识', '知识与记忆']];
+  rail.innerHTML=`<div class="cc-brand"><span class="cc-brand-orb" aria-hidden="true"></span><strong>Synstar</strong><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div>
+    <nav aria-label="工作台导航">
+      ${pages.map(([id, label, name]) => `<button type="button" data-cc-nav="${id}" aria-label="${name}" title="${name}">${centerIcon(id)}<span>${label}</span></button>`).join('')}
+      <button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置</span></button>
+    </nav>`;
   shell.prepend(rail);
-  for(const button of rail.querySelectorAll('button')){const label=button.querySelector('span')?.textContent;if(label){button.setAttribute('aria-label',label);button.title=label;}}
   bar.querySelector('.workspace-app-title').textContent='工作台';
   const search=rail.querySelector('.cc-history-toggle');
   const themeButton=document.createElement('button');themeButton.type='button';themeButton.className='cc-theme-toggle';themeButton.setAttribute('aria-label','切换黑白主题');themeButton.title='切换黑白主题';themeButton.textContent='◐';themeButton.onclick=async()=>{const {saveTheme}=await import('../../ui/preferences.js');saveTheme(document.documentElement.dataset.theme==='light'?'dark':'light');};bar.querySelector('.window-controls').before(themeButton);
-  const railToggle=document.createElement('button');railToggle.type='button';railToggle.className='cc-sidebar-toggle';railToggle.setAttribute('aria-label','显示或隐藏侧栏');railToggle.setAttribute('aria-expanded','false');railToggle.innerHTML=centerIcon('tasks');bar.prepend(railToggle);railToggle.onclick=()=>{const open=shell.classList.toggle('cc-sidebar-open');railToggle.setAttribute('aria-expanded',String(open));};
+  const railToggle=document.createElement('button');railToggle.type='button';railToggle.className='cc-sidebar-toggle';railToggle.setAttribute('aria-label','显示或隐藏侧栏');railToggle.setAttribute('aria-expanded','false');railToggle.innerHTML=centerIcon('tasks');bar.prepend(railToggle);
   const cardToggle=document.createElement('button');cardToggle.type='button';cardToggle.className='cc-connectors-toggle';cardToggle.setAttribute('aria-label','显示或隐藏连接器卡片');cardToggle.setAttribute('aria-expanded','false');cardToggle.innerHTML=centerIcon('link');themeButton.before(cardToggle);
   const syncAppearance=async()=>{try{const {themePreference}=await import('../../ui/preferences.js');await invoke('workspace.appearance',{theme:themePreference()});}catch(error){report(error);}};
   window.addEventListener('preferences-changed',syncAppearance);window.addEventListener('unload',()=>window.removeEventListener('preferences-changed',syncAppearance),{once:true});syncAppearance();
@@ -141,9 +145,27 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   mountContextSidebar(side,hero,board,invoke);
   mountHeroStarfield(hero);
   const allCapabilities=document.createElement('button');allCapabilities.type='button';allCapabilities.className='cc-capabilities';allCapabilities.textContent='全部能力';allCapabilities.title='查看 Runtime 当前公布的工具和连接状态';allCapabilities.onclick=()=>invoke('admin.open',{page:'capabilities'}).catch(report);board.querySelector('header').append(allCapabilities);
-  cardToggle.onclick=()=>{const open=side.classList.toggle('cc-mobile-open');cardToggle.setAttribute('aria-expanded',String(open));};
+  function setRailOpen(open) {
+    shell.classList.toggle('cc-sidebar-open', open);
+    railToggle.setAttribute('aria-expanded', String(open));
+  }
+  function setCardsOpen(open) {
+    side.classList.toggle('cc-mobile-open', open);
+    cardToggle.setAttribute('aria-expanded', String(open));
+  }
+  railToggle.onclick = () => {
+    const opening = !shell.classList.contains('cc-sidebar-open');
+    setCardsOpen(false);
+    setRailOpen(opening);
+    if (opening) rail.querySelector('[aria-current="page"]')?.focus();
+  };
+  cardToggle.onclick = () => {
+    const opening = !side.classList.contains('cc-mobile-open');
+    setRailOpen(false);
+    setCardsOpen(opening);
+  };
   const inline=mountInlineSubagents(chat,invoke,report,binding=>{starterDraft.reset();onThreadChange?.();leadButton.setAttribute('aria-pressed',String(!binding));for(const button of team.querySelectorAll('[data-child-task]'))button.setAttribute('aria-pressed',String(Boolean(binding&&button.dataset.childTask===binding.taskId&&button.dataset.parentTask===binding.parentTaskId)));});
-  const closeSidebar=()=>{shell.classList.remove('cc-sidebar-open');railToggle.setAttribute('aria-expanded','false');};
+  const closeSidebar = () => setRailOpen(false);
   leadButton.setAttribute('aria-pressed','true');leadButton.onclick=()=>{showHome();inline.main();closeSidebar();};
   const originalChildren=root.querySelector('.subagent-conversations');if(originalChildren)team.querySelector('.cc-child-actions').append(originalChildren);
   const history=document.createElement('aside');history.className='cc-history';history.id='cc-history';history.hidden=true;history.setAttribute('aria-label','历史会话');history.innerHTML=`<header><h2>对话历史</h2><button type="button" aria-label="关闭历史会话">${centerIcon('close')}</button></header>`;history.append(sessionRoot);layout.append(history);
@@ -180,10 +202,25 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   history.querySelector('header button').onclick = dismissHistory;
   const openAdmin=page=>invoke('admin.open',{page}).catch(report);
   const local=document.createElement('section');local.className='cc-local';local.hidden=true;local.setAttribute('aria-label','工作台内容');
-  local.innerHTML='<header><h2 data-cc-local-title></h2><button type="button" data-cc-local-back>返回对话</button></header><div data-cc-local-body></div>';
+  local.innerHTML='<header><h2 data-cc-local-title tabindex="-1"></h2><button type="button" data-cc-local-back>返回对话</button></header><div data-cc-local-body></div>';
   main.append(local);
   let localView='home',lastData={};
-  const showHome=()=>{localView='home';local.hidden=true;hero.hidden=false;layout.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav==='home'?'page':'false');};
+  const pageButtons = rail.querySelectorAll('[data-cc-nav]');
+  function setPage(page) {
+    localView = page;
+    const home = page === 'home';
+    local.hidden = home;
+    hero.hidden = !home;
+    layout.hidden = !home;
+    cardToggle.hidden = !home;
+    if (!home) setCardsOpen(false);
+    for (const button of pageButtons) {
+      if (button.dataset.ccNav === page) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    }
+  }
+  const showHome = () => setPage('home');
+  showHome();
   const paintLocal=data=>{
     const body=local.querySelector('[data-cc-local-body]');
     local.querySelector('[data-cc-local-title]').textContent=localView==='memory'?'知识与记忆':'任务记录';
@@ -202,7 +239,14 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
     if(status){status.textContent=statusText;return;}
     body.innerHTML=`<div class="cc-local-actions"><button type="button" data-cc-admin-page="memory">私人记忆与知识源设置</button><button type="button" data-cc-watch-check>查看知识关注</button><button type="button" data-cc-cognition-check>查看认知提议与回执</button></div><p data-cc-memory-status>${escape(statusText)}</p><form class="cc-local-search"><label>查找笔记<input name="query" type="search" maxlength="200" placeholder="输入要找的内容"></label><button type="submit">查找</button></form><div data-cc-memory-result></div><div data-cc-watch-result></div><div data-cc-cognition-result></div>`;
   };
-  const showLocal=key=>{setHistoryOpen(false);localView=key;hero.hidden=true;layout.hidden=true;local.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav===key?'page':'false');paintLocal(lastData);closeSidebar();};
+  const showLocal = key => {
+    const fromDrawer = shell.classList.contains('cc-sidebar-open') || side.classList.contains('cc-mobile-open');
+    setHistoryOpen(false);
+    setPage(key);
+    paintLocal(lastData);
+    closeSidebar();
+    if (fromDrawer) local.querySelector('[data-cc-local-title]').focus();
+  };
   local.querySelector('[data-cc-local-back]').onclick=()=>{showHome();input.focus();};
   let catalogReq=0,watchReq=0,cognitionReq=0;
   const loadCognition=async(button,feedback='')=>{
@@ -291,7 +335,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   });
   rail.querySelector('.cc-new-chat').onclick=()=>{showHome();inline.main();closeSidebar();sessionRoot.querySelector('[data-session-new]').click();input.focus();};
   rail.querySelector('.cc-settings').onclick=()=>openAdmin('settings');side.querySelector('[data-cc-records]').onclick=()=>showLocal('tasks');
-  rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{setHistoryOpen(false);showHome();inline.main();input.focus();}};
+  rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{setHistoryOpen(false);showHome();inline.main();closeSidebar();input.focus();}};
   const form=root.querySelector('.workspace-composer'),actions=form.querySelector('.workspace-composer-actions');
   input.placeholder='跟主对话说，例如查天气、看今天的日程、看订阅';actions.prepend(preferences);
   const compact=document.createElement('button');compact.className='cc-compact';
@@ -322,7 +366,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
     const button=event.target.closest('[data-child-task]');if(button)openChild({taskId:button.dataset.childTask,parentTaskId:button.dataset.parentTask});
   };
   side.querySelector('.cc-activity-list').onclick=event=>{const button=event.target.closest('[data-activity-task]');if(button){const turn=[...root.querySelectorAll('[data-turn]')].find(turn=>turn.dataset.turn===button.dataset.activityTask);turn?.querySelector('[data-view],[data-delegated-child]')?.click();}};
-  const onKey=event=>{if(event.key!=='Escape')return;if(!history.hidden){dismissHistory();}else if(shell.classList.contains('cc-sidebar-open')){closeSidebar();railToggle.focus();}else if(side.classList.contains('cc-mobile-open')){side.classList.remove('cc-mobile-open');cardToggle.setAttribute('aria-expanded','false');cardToggle.focus();}};document.addEventListener('keydown',onKey);window.addEventListener('unload',()=>document.removeEventListener('keydown',onKey),{once:true});
+  const onKey=event=>{if(event.key!=='Escape')return;if(!history.hidden){dismissHistory();}else if(shell.classList.contains('cc-sidebar-open')){closeSidebar();railToggle.focus();}else if(side.classList.contains('cc-mobile-open')){setCardsOpen(false);cardToggle.focus();}};document.addEventListener('keydown',onKey);window.addEventListener('unload',()=>document.removeEventListener('keydown',onKey),{once:true});
   return {openChild,main(){showHome();inline.main();closeSidebar();},update(data){
     lastData=data;paintInternalChat(data);
     recent.update(data.conversationState?.recentSessions);
