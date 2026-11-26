@@ -23,6 +23,7 @@ import {mountWorkspaceComposer} from '../conversation/workspace-composer.js';
 import {applyOperatorBrake} from '../conversation/operator-brake-view.js';
 import {mountCommandCenter} from './command-center.js';
 import {mountWorkspaceApprovals} from './workspace-approvals.js';
+import {mountAuthorizationQuestionCards} from '../conversation/authorization-question-card.js';
 import {mountWorkspaceRuntimeControls} from './runtime-controls.js';
 
 const paths={settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',connectors:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zm11 3h7m-3-3v7',close:'m6 6 12 12M6 18 18 6',maximize:'M5 5h14v14H5z',minimize:'M5 12h14',copy:'M8 8h12v12H8zM16 8V4H4v12h4',view:'M3 5h18v14H3zM9 5v14'};
@@ -87,6 +88,17 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=errorDisplayText(error);};
   const assistantRoster=document.createElement('section');
   const assistantThread=document.createElement('section');assistantThread.className='assistant-thread';assistantThread.hidden=true;
+  const assistantQuestionsNode=document.createElement('div');
+  const assistantQuestions=mountAuthorizationQuestionCards(assistantQuestionsNode,{invoke,onPending:({element})=>{
+    requestAnimationFrame(()=>{if(element?.isConnected)element.scrollIntoView({block:'nearest'});});
+  }});
+  window.addEventListener('pagehide',()=>assistantQuestions.dispose(),{once:true});
+  let assistantProgressSignature='';
+  function updateAssistantQuestions(projection) {
+    const conversationId=assistantThread.dataset.conversationId;
+    const matches=selectedAssistant&&conversationId&&projection?.conversationId===conversationId;
+    assistantQuestions.update(matches?projection.questions:[],{conversationId});
+  }
   const unsubscribeActivity=window.desktop?.onTaskActivity?.(event=>{
     if(!event||typeof event.taskId!=='string')return;
     if(event.kind==='reasoning_summary')event={...event,kind:'reasoning'};
@@ -117,12 +129,19 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     shell.dispatchEvent(new Event('browser-thread-changed'));
   }
   function returnToMain(){
+    if(selectedAssistant)void invoke('assistant.view',{assistantId:null}).catch(report);
     assistantRequest++;selectedAssistant=undefined;assistantThread.hidden=true;conversation.hidden=false;
+    delete assistantThread.dataset.conversationId;assistantProgressSignature='';updateAssistantQuestions();
     browserThread(undefined);
     root.querySelector('.workspace-chat').classList.remove('cc-showing-assistant');
     for(const button of assistantRoster.querySelectorAll('[aria-current]'))button.removeAttribute('aria-current');
   }
   assistantThread.addEventListener?.('toggle',()=>syncContainerAnswerDisclosures(assistantThread,liveTurns),true);
+  function renderAssistantTurns(thread) {
+    const records=[...(thread.dispatched?[thread.dispatched]:[]),...(thread.turns??[])];
+    return records.map(turn=>'<article class="assistant-turn">'+formatAssistantUserMessage(turn.userText||turn.goal||'',escape)
+      +answerCardHtml({...turn,resultSummary:turn.replyText},liveTurns.get(turn.taskId)??publicLiveTranscript(turn.transcript),escape)+'</article>').join('');
+  }
   const showAssistant=async assistantId=>{
     center.main();
     const request=++assistantRequest;
@@ -131,6 +150,9 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     await invoke('assistant.read',{assistantId}).catch(()=>{});
     if(request!==assistantRequest)return;
     selectedAssistant=assistantId;
+    assistantThread.dataset.conversationId=thread.assistant.conversationId;
+    await invoke('assistant.view',{assistantId});
+    if(request!==assistantRequest)return;
     browserThread(assistantId);
     root.querySelector('.workspace-chat').classList.add('cc-showing-assistant');
     assistantRoster.querySelector(`[data-assistant-id="${CSS.escape(assistantId)}"]`)?.setAttribute('aria-current','true');
@@ -138,8 +160,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     for(const item of [...(thread.turns??[]),...(thread.dispatched?[thread.dispatched]:[])]){
       if(item?.taskId&&item.transcript&&!liveTurns.has(item.taskId))liveTurns.set(item.taskId,publicLiveTranscript(item.transcript));
     }
-    const liveWorkers=await invoke('workers.list',{assistantId}).catch(()=>({workers:thread.workers??[]}));
-    const workerItems=liveWorkers.workers??thread.workers??[];
+    const workerItems=thread.workers??[];
     const activeWorkerCount=workerItems.filter(w=>!['succeeded','failed','cancelled'].includes(w.state)).length;
     const workers=workerItems.map(worker=>{
       const roleTitle=WORKER_ROLE_LABELS[worker.role]||worker.role||'工人';
@@ -148,18 +169,18 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       const summary=stripProfileMetadata(worker.resultSummary||'')||'听从当前助手调度执行';
       return `<li class="assistant-worker-card" data-worker-state="${escape(kind)}" data-worker-task="${escape(worker.taskId||'')}" data-worker-role="${escape(worker.role||'')}"><div class="assistant-worker-top"><strong>${escape(roleTitle)}</strong><span class="assistant-worker-badge" data-kind="${escape(kind)}">${escape(stateTitle)}</span>${!['succeeded','failed','cancelled'].includes(worker.state)?`<button type="button" class="assistant-worker-btn" data-worker-instruct>插话</button>`:''}</div><p class="assistant-worker-summary">${escape(summary)}</p></li>`;
     }).join('');
-    const turns=(thread.turns??[]).map(turn=>`<article class="assistant-turn">${formatAssistantUserMessage(turn.userText||turn.goal||'',escape)}${answerCardHtml({...turn,resultSummary:turn.replyText}, liveTurns.get(turn.taskId)??publicLiveTranscript(turn.transcript), escape)}</article>`).join('');
-    const dispatched=thread.dispatched?`<article class="assistant-turn">${formatAssistantUserMessage(thread.dispatched.goal||'',escape)}${answerCardHtml({...thread.dispatched,resultSummary:thread.dispatched.replyText}, liveTurns.get(thread.dispatched.taskId)??publicLiveTranscript(thread.dispatched.transcript), escape)}</article>`:'';
+    const turns=renderAssistantTurns(thread);
     const assistantStatus=thread.assistant.status||'idle';
     const avatarSpec=assistantVisualSpec(thread.assistant);
     const workerSummaryText=workerItems.length?`${workerItems.length} 名工人${activeWorkerCount?` · ${activeWorkerCount} 运行中`:''}`:'暂无工人';
     const workersOpen=activeWorkerCount>0||(workerItems.length>0&&workerItems.length<=3)?' open':'';
-    const turnsHtml=(dispatched||turns)
-      ?`${dispatched}${turns}`
+    const turnsHtml=turns
+      ?turns
       :`<div class="assistant-empty"><strong>开始和「${escape(thread.assistant.displayName)}」对话</strong><p>你可以直接在这里发消息，它会自动复用或新建自己的工人来干活。</p></div>`;
     assistantThread.innerHTML=`<header class="assistant-thread-head"><div class="assistant-thread-identity"><span class="assistant-thread-avatar" data-status="${escape(assistantStatus)}" data-tone="${avatarSpec.tone}" aria-hidden="true">${avatarSpec.svg}</span><div class="assistant-thread-meta"><div class="assistant-thread-title-row"><strong>${escape(thread.assistant.displayName)}</strong><span class="assistant-status-pill" data-status="${escape(assistantStatus)}">${escape(assistantStatusLabel(assistantStatus))}</span></div><span class="assistant-thread-desc">${escape(thread.assistant.instructions||'只和你、主对话交流，重活交给自己的工人')}</span></div></div><div class="assistant-thread-actions">${assistantThreadActionsHtml(thread.assistant)}<button type="button" class="assistant-action-btn is-stop" data-assistant-stop ${thread.assistant.activeTaskId?'':'disabled'}>停止</button><button type="button" class="assistant-action-btn is-back" data-assistant-back>返回主对话</button></div></header><details class="assistant-workers"${workersOpen}><summary class="assistant-workers-head"><h3>这个助手的工人</h3><span class="assistant-workers-count">${escape(workerSummaryText)}</span><span class="trace-chevron" aria-hidden="true"></span></summary><div class="assistant-workers-body"><p class="assistant-workers-hint">可插话复用已有工人；没有合适工人时助手会自动用 subagent.dispatch 新建。</p>${workers?`<ul class="assistant-worker-list">${workers}</ul>`:'<p class="assistant-workers-empty">还没有派过工人。直接给这个助手下达任务，它会按需创建并管理工人。</p>'}</div></details><div class="assistant-thread-turns">${turnsHtml}</div><form class="assistant-compose" data-assistant-compose><textarea rows="2" aria-label="给这个助手发消息" placeholder="和「${escape(thread.assistant.displayName)}」说话…（Enter 发送，Shift+Enter 换行）"></textarea><button type="submit" class="assistant-send-btn" aria-label="发送" title="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button></form>`;
     const turnsBox=assistantThread.querySelector('.assistant-thread-turns');
-    if(turnsBox)turnsBox.scrollTop=turnsBox.scrollHeight;
+    if(turnsBox){turnsBox.append(assistantQuestionsNode);turnsBox.scrollTop=turnsBox.scrollHeight;}
+    updateAssistantQuestions(current.assistantAuthorization);
     for(const button of assistantThread.querySelectorAll('[data-worker-instruct]')){
       button.onclick=async()=>{
         const row=button.closest('li');
@@ -463,6 +484,25 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     current=data;current.tasks ||= [];
     if(sessionChanged){delegatedTracker.reset();browserThread(undefined,true);}
     paintAssistants(data);
+    updateAssistantQuestions(data.assistantAuthorization);
+    if(selectedAssistant&&!assistantThread.hidden) {
+      const owner=data.assistants?.find(item=>item.assistantId===selectedAssistant);
+      const progress=JSON.stringify([selectedAssistant,owner?.status,owner?.activeTaskId,owner?.unreadCount,owner?.lastSummary]);
+      if(progress!==assistantProgressSignature){
+        assistantProgressSignature=progress;
+        const generation=assistantRequest;
+        void invoke('assistant.thread',{assistantId:selectedAssistant}).then(thread=>{
+          if(generation!==assistantRequest||progress!==assistantProgressSignature)return;
+          const box=assistantThread.querySelector('.assistant-thread-turns'),html=renderAssistantTurns(thread);
+          if(!box||!html)return;
+          const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<32;
+          const body=document.createElement('div');body.innerHTML=html;
+          for(const node of [...box.children])if(node!==assistantQuestionsNode)node.remove();
+          box.prepend(...body.children);
+          if(atBottom)box.scrollTop=box.scrollHeight;
+        }).catch(report);
+      }
+    }
     for(const task of data.tasks)if(task.bodyWithheld||task.outputTruncated)liveTurns.delete(task.taskId);
     sessionControls.update(data);nativeReasoning.update(data);
     orb.setVariant?.(typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix'));

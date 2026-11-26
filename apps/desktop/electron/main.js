@@ -304,6 +304,7 @@ function releaseBrowserPane(window,paneId){
 }
 let workspaceChildActivity;
 let workspaceChildWatch;
+let workspaceAssistantConversation;
 let taskActivitySequence=0;
 const subagentWindows=new Map();
 // Each child conversation owns a renderer process. Keeping every one alive across turns is what
@@ -1020,7 +1021,13 @@ function conversationProjection(surface) {
   const activeConversationId=surface?conversations?.activeConversationId(surface):undefined;
   const pendingApprovalIds=new Set();
   if(surface)for(const approval of approvals.values())if(approval.state==='pending')pendingApprovalIds.add(approval.approvalId);
-  const rawQuestions=authorizationQuestionHost?.snapshot(activeConversationId)??[];
+  const rawQuestions=surface==='workspace'&&workspaceAssistantConversation?[]:authorizationQuestionHost?.snapshot(activeConversationId)??[];
+  const assistantAuthorization=surface==='workspace'&&workspaceAssistantConversation
+    ?{conversationId:workspaceAssistantConversation,questions:(authorizationQuestionHost?.snapshot(workspaceAssistantConversation)??[])
+      .filter(item=>item.state==='pending').map(question=>{
+        const review=authorizationIntentHost?.readEgressReview(question.taskId);
+        return review?.conversationId===workspaceAssistantConversation?{...question,egressReview:review.payload}:question;
+      })}:null;
   const authorizationQuestions=(surface?rawQuestions.filter(question=>question.state==='pending'
     ||(typeof question.sourceApprovalId==='string'&&pendingApprovalIds.has(question.sourceApprovalId))):rawQuestions).map(question=>{
     if(!activeConversationId||question.state!=='pending')return question;
@@ -1071,6 +1078,7 @@ function conversationProjection(surface) {
     surfaceBusy:foreground.length>0,
     conversation: surface ?? 'all',
     authorizationQuestions,
+    ...(surface==='workspace'?{assistantAuthorization}:{}),
     workflowQuestions:!runtimeClosed&&surface?readBusinessWorkflowQuestions({application:runtimeApplication,
       hosts:[f01Workflow?.questions,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
     authorizationSandbox:sandboxSelected,
@@ -1910,7 +1918,7 @@ async function openWorkspace() {
   window.on('minimize',suspendBrowserView);
   window.on('closed',releaseBrowserView);
   window.webContents.on('render-process-gone',releaseBrowserView);
-  const clearWatch=()=>{if(workspace===window){workspaceChildActivity=undefined;workspaceChildWatch=undefined;}};
+  const clearWatch=()=>{if(workspace===window){workspaceChildActivity=undefined;workspaceChildWatch=undefined;workspaceAssistantConversation=undefined;}};
   window.webContents.on('did-start-navigation',(_event,_url,_inPlace,mainFrame)=>{if(mainFrame)clearWatch();});
   window.webContents.on('render-process-gone',clearWatch);
   window.on('closed',()=>{if(workspace===window){clearWatch();workspace=undefined;}});
@@ -2704,12 +2712,15 @@ async function initializeInstalledSkills() {
   }
 }
 
+function resolveDesktopToolConversation(taskId){
+  return runtimeApplication?.readAssistantToolConversation?.(taskId)??conversationToolAccess?.resolveConversation(taskId);
+}
 function initializeAuthorizationHosts(runtimeModule){
   authorizationQuestionHost?.close();
   authorizationQuestionHost=createDesktopAuthorizationQuestionHost({createQuestions:options=>new runtimeModule.AuthorizationQuestions(options),
     getApplication:()=>runtimeApplication,namespace:desktopHost.userNamespace,
-    resolveConversation:taskId=>authorizationIntentHost?.readEgressReview(taskId)?.conversationId
-      ??conversationToolAccess?.resolveConversation(taskId)
+    resolveConversation:taskId=>authorizationIntentHost?.readQuestionConversation(taskId)
+      ??resolveDesktopToolConversation(taskId)
       ??connectorWatchHost?.resolveUserConversation(taskId)
       ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
@@ -2754,7 +2765,7 @@ function authorizeAgentArtsEgress(scope) {
   if(!owner||!authorizationIntentHost||!conversationToolAccess)return false;
   const binding=resolveEgressReviewConversation({
     taskId:scope.taskId,
-    resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+    resolveConversation:resolveDesktopToolConversation,
     readTask:taskId=>owner.runtime.getTask(taskId),
     readToolConversation:taskId=>owner.readToolConversation(taskId),
     activePanelConversationId:()=>conversations?.activeConversationId('panel'),
@@ -2766,7 +2777,7 @@ function authorizeAgentArtsEgress(scope) {
     summary:`允许本任务向已配置云端地址 ${scope.destination} 发送非敏感对话内容`,
     deadline:scope.deadline,signal:scope.signal,
     isCurrent:()=>owner===runtimeApplication&&isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
-      resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      resolveConversation:resolveDesktopToolConversation,
       readTask:taskId=>owner.runtime.getTask(taskId),
       readToolConversation:taskId=>owner.readToolConversation(taskId),
       activePanelConversationId:()=>conversations?.activeConversationId('panel'),
@@ -2781,7 +2792,7 @@ function authorizeSecretAgentArtsEgress(scope) {
   const binding=scope.taskId!==undefined
     ?resolveEgressReviewConversation({
       taskId:scope.taskId,
-      resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      resolveConversation:resolveDesktopToolConversation,
       readTask:taskId=>owner.runtime.getTask(taskId),
       readToolConversation:taskId=>owner.readToolConversation(taskId),
       activePanelConversationId:()=>panelId,
@@ -2800,7 +2811,7 @@ function authorizeSecretAgentArtsEgress(scope) {
     isCurrent:()=>owner===runtimeApplication&&(binding.directPanel
       ?conversations?.activeConversationId('panel')===binding.conversationId
       :isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
-        resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        resolveConversation:resolveDesktopToolConversation,
         readTask:taskId=>owner.runtime.getTask(taskId),
         readToolConversation:taskId=>owner.readToolConversation(taskId),
         activePanelConversationId:()=>conversations?.activeConversationId('panel'),
@@ -3098,7 +3109,7 @@ async function initializeRuntime() {
           downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
           allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
-          authorizationQuestions:authorizationQuestionPort,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+          authorizationQuestions:authorizationQuestionPort,resolveConversation:resolveDesktopToolConversation,
           confirmSource:({from,to,scope,toolName,isCurrent})=>confirmApplicationAuthorization('browser.source',
             {from,to,toolName},{scope:{taskId:scope.taskId,runId:scope.runId,from,to},deadline:scope.deadline,signal:scope.signal,isCurrent,
               summary:`允许本次浏览器操作从 ${from} 转到 ${to} 吗？`}),onUpdate:()=>{
@@ -5047,7 +5058,8 @@ async function action(event, name, payload) {
   if(name==='authorization.question.respond'){
     if(sender!==panel&&sender!==workspace&&sender!==admin||!authorizationQuestionHost)throw Error('当前对话授权卡不可用');
     const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
-    const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
+    const conversationId=sender===admin?question?.conversationId:sender===workspace&&workspaceAssistantConversation
+      ?workspaceAssistantConversation:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
     const result=authorizationQuestionHost.respond(payload,conversationId);
     if(payload?.decision==='deny'||result?.decision==='deny'||result?.state==='denied'){
@@ -5338,6 +5350,16 @@ async function action(event, name, payload) {
     target.webContents.send('desktop:open-assistant', {assistantId});
     return {opened: true, assistantId};
   }
+  if(name==='assistant.view'){
+    if(sender!==workspace)throw Error('请从工作台切换助手对话');
+    const clean=requirePlainRecord(payload,['assistantId'],'切换助手对话参数无效');
+    const id=clean.assistantId===null?null:requireCleanText(clean.assistantId,'请选择一个助手',128);
+    const conversationId=id===null?undefined:runtimeApplication.runtime.getAssistant(id).conversationId;
+    if(workspaceAssistantConversation!==conversationId){
+      workspaceAssistantConversation=conversationId;publish(['approvals']);
+    }
+    return {conversationId:conversationId??null};
+  }
   if (name === 'assistant.thread') {
     if (sender !== panel && sender !== workspace) throw Error('请从对话里查看助手');
     const clean = requirePlainRecord(payload, ['assistantId'], '读取助手对话参数无效');
@@ -5357,7 +5379,6 @@ async function action(event, name, payload) {
       const answer=deviceReply.kind==='notepad'?deviceReply.text:resultText(child.resultSummary,taskResultMetadata(child));
       if(answer){turn.replyText=answer;worker.resultSummary=answer.slice(0,280);}
     }
-    publish();
     return thread;
   }
   if (name === 'assistant.submit') {

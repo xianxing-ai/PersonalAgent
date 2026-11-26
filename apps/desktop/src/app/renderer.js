@@ -728,9 +728,9 @@ if(bridge&&authorizationThread) {
   render=(data,...options)=>{
     previousRender(data,...options);
     // Missing conversation identity must not widen the view to another conversation's questions.
-    const conversationId=data.conversationState?.activeId;
+    const conversationId=mode==='workspace'&&data.assistantAuthorization?undefined:data.conversationState?.activeId;
     questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
-    workflowQuestions.update(data.workflowQuestions,{conversationId});
+    workflowQuestions.update(conversationId?data.workflowQuestions:[],{conversationId});
     const focus=data.approvalFocus,focusKey=focus?.focusId??(focus?.taskId?`${focus.taskId}:${focus.approvalId??''}`:undefined);
     if(focus?.taskId&&focusKey!==focusedQuestionApproval&&focusApprovalCard(questionRoot,focus.taskId,focus.approvalId)){
       focusedQuestionApproval=focusKey;

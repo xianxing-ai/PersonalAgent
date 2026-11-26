@@ -2135,6 +2135,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return root?this.runtime.getTask(root).conversationId:undefined;
   }
 
+  /** Only a Runtime-created assistant turn and its bound workers own the assistant's approval cards. */
+  readAssistantToolConversation(taskId:string):string|undefined {
+    const root=this.readBoundToolRootTask(taskId,new Set());
+    if(!root)return;
+    const turn=this.runtime.loadCheckpoint(root,'assistant-turn') as {assistantId?:string;source?:string}|undefined;
+    if(!turn?.assistantId||turn.source!=='user'&&turn.source!=='peer')return;
+    const conversationId=this.runtime.getTask(root).conversationId;
+    try{return this.runtime.getAssistant(turn.assistantId).conversationId===conversationId?conversationId:undefined;}
+    catch{return;}
+  }
+
   private readBoundToolRootTask(taskId:string,seen:Set<string>):string|undefined {
     if(seen.size>=32||seen.has(taskId))return undefined;
     seen.add(taskId);
