@@ -11,6 +11,7 @@ using Windows.UI.Composition;
 using Windows.UI.Composition.Desktop;
 
 class PanelBackdrop {
+ const int WS_CHILD=0x40000000, WS_VISIBLE=0x10000000, WS_DISABLED=0x08000000;
  [StructLayout(LayoutKind.Sequential)] struct QueueOptions {public int size,type,apartment;}
  [StructLayout(LayoutKind.Sequential)] struct Rect {public int left,top,right,bottom;}
  [DllImport("CoreMessaging.dll")] static extern int CreateDispatcherQueueController(QueueOptions options,out IntPtr controller);
@@ -37,8 +38,9 @@ class PanelBackdrop {
    if(!IsWindow(parent)||GetWindowThreadProcessId(parent,out actual)==0||actual!=owner)throw new ArgumentException("Invalid window owner");
    SetProcessDpiAwarenessContext(new IntPtr(-4));
    IntPtr queue;Marshal.ThrowExceptionForHR(CreateDispatcherQueueController(new QueueOptions {size=12,type=2,apartment=2},out queue));
-   // NOREDIRECTIONBITMAP | TRANSPARENT | NOACTIVATE; child is below Chromium.
-   child=CreateWindowEx(0x08200020,"Static","PersonalAgent Glass",unchecked((int)0x50000000),0,0,1,1,parent,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
+   // WS_EX_TRANSPARENT affects paint order. Disable the decoration itself so
+   // it cannot receive input even while Chromium is rearranging its children.
+   child=CreateWindowEx(0x08200020,"Static","PersonalAgent Glass",WS_CHILD | WS_VISIBLE | WS_DISABLED,0,0,1,1,parent,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
    if(child==IntPtr.Zero)throw new InvalidOperationException("Backdrop child unavailable");
    int yes=1;Marshal.ThrowExceptionForHR(DwmSetWindowAttribute(parent,17,ref yes,4));
    var compositor=new Compositor();object raw;

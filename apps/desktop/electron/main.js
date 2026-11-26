@@ -292,7 +292,6 @@ const snapshotPublisher = createSnapshotPublisher({project:projectWindowSnapshot
   onError:()=>{runtimeError='桌面状态投影失败；任务记录仍由 Runtime 保留';}});
 let orb;
 let panel;
-let panelPageLoaded = false;
 let draftQuitPreflight;
 let admin;
 let workspace;
@@ -1464,7 +1463,6 @@ function placePanelNearOrb() {
 function openPanel(focus = false) {
   if (!orb || !panel || orb.isDestroyed() || panel.isDestroyed()) return;
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
-  if (panelPageLoaded && !panel.isVisible()) panel.setBackgroundColor('#00000000');
   placePanelNearOrb();
   if (focus) {
     if (panel.isMinimized?.()) panel.restore();
@@ -1472,6 +1470,30 @@ function openPanel(focus = false) {
     panel.focus?.();
   } else panel.showInactive();
   away = 0;
+}
+
+function pollPanelHover() {
+  if (orb.isDestroyed() || dragging === true || away > Date.now()) return;
+  const point = screen.getCursorScreenPoint();
+  const bounds = orb.getBounds();
+  const near = desktopHost.settings.hover && desktopHost.settings.orbPlacement === 'top'
+    && Math.hypot(point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2) <= 90;
+  if (!panel.isVisible()) {
+    if (near) openPanel();
+    return;
+  }
+  const box = panel.getBounds();
+  const inside = point.x >= box.x && point.x < box.x + box.width && point.y >= box.y && point.y < box.y + box.height;
+  // A hover preview becomes an editing surface when the user clicks into it.
+  // Moving the pointer away while typing must not hide the focused window.
+  if (near || inside || pinned || panel.isFocused()) {
+    away = 0;
+  } else if (!away) {
+    away = Date.now();
+  } else if (Date.now() - away > 520) {
+    void hidePanel().catch(reportPanelVoiceFailure);
+    away = 0;
+  }
 }
 
 function stopOrbDrag() {
@@ -6968,13 +6990,6 @@ app.whenReady().then(async () => {
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
     {frame: false, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
   const panelMaterial=bindPanelMaterial(panel, nativeTheme);
-  const clearPanelBackingFlash = () => {
-    if (panelPageLoaded && panel && !panel.isDestroyed()) panel.setBackgroundColor('#00000000');
-  };
-  const onPanelThemeUpdated = () => { queueMicrotask(clearPanelBackingFlash); };
-  nativeTheme.on('updated', onPanelThemeUpdated);
-  panel.once('closed', () => { panelPageLoaded = false; nativeTheme.removeListener('updated', onPanelThemeUpdated); });
-  panel.webContents.on('did-finish-load', () => { panelPageLoaded = true; clearPanelBackingFlash(); });
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice({preserveWake: true}).catch(reportPanelVoiceFailure);});
   panel.webContents.once('did-finish-load', () => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
@@ -7023,19 +7038,7 @@ app.whenReady().then(async () => {
   }
   screen.on('display-removed', reposition);
   screen.on('display-metrics-changed', reposition);
-  poll = setInterval(() => {
-    if (orb.isDestroyed() || dragging === true) return;
-    const point = screen.getCursorScreenPoint();
-    const bounds = orb.getBounds();
-    if (away > Date.now()) return;
-    const near = desktopHost.settings.orbPlacement === 'top'
-      && Math.hypot(point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2) <= 90;
-    const panelVisible = panel.isVisible();
-    const panelBoundsValue = panelVisible ? panel.getBounds() : undefined;
-    const inside = panelVisible && point.x >= panelBoundsValue.x && point.x <= panelBoundsValue.x + panelBoundsValue.width && point.y >= panelBoundsValue.y && point.y <= panelBoundsValue.y + panelBoundsValue.height;
-    if ((near && desktopHost.settings.hover) || inside || pinned) { away = 0; if (near && desktopHost.settings.hover && !panelVisible) openPanel(); }
-    else if (panelVisible) { if (!away) away = Date.now(); else if (Date.now() - away > 520) { void hidePanel().catch(reportPanelVoiceFailure); away = 0; } }
-  }, 80);
+  poll = setInterval(pollPanelHover, 80);
   draftQuitPreflight=createDraftQuitPreflight({windows:()=>[panel,workspace],retry:()=>app.quit(),
     onFailure:error=>{app.isQuitting=false;runtimeError=error.message;publish();}});
   // Long-running sessions grow a renderer past what the user can keep using (#435). A reload is

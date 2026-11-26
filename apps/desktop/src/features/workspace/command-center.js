@@ -4,6 +4,8 @@ import {mountInlineSubagents} from './inline-subagents.js';
 import {mountHeroStarfield} from './hero-starfield.js';
 import {mountContextSidebar} from './context-sidebar.js';
 import {createRecentConversations} from './recent-conversations.js';
+import {bindCompactButton} from '../conversation/compact-command.js';
+import {createStarterDraft} from '../conversation/starter-draft.js';
 
 const paths={home:'m3 10 9-7 9 7v11h-7v-7h-4v7H3z',team:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m8-7a4 4 0 0 1 0 8',tasks:'M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01',memory:'M12 3c5 0 8 2 8 4s-3 4-8 4-8-2-8-4 3-4 8-4m-8 4v10c0 2 3 4 8 4s8-2 8-4V7M4 12c0 2 3 4 8 4s8-2 8-4',link:'m10 13 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',arrow:'m9 5 7 7-7 7',plus:'M12 5v14M5 12h14',search:'M21 21l-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',history:'M3 12a9 9 0 1 0 2-6M3 3v5h5m4-1v5l3 2',close:'m6 6 12 12M6 18 18 6',send:'m4 4 17 8-17 8 4-8-4-8m4 8h13',voice:'M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 6a7 7 0 0 0 14 0m-7 7v4'};
 export const centerIcon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]??paths.team}"/></svg>`;
@@ -60,6 +62,7 @@ export function commandCenterState(data){
 
 /** Layout only: reuse the actual session, model picker, composer and child controls. */
 export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConversation,preferences,input,invoke,report,escape,onThreadChange}){
+  const starterDraft=createStarterDraft(input);
   const shell=root.querySelector('.workspace'),bar=root.querySelector('.workspace-titlebar'),main=root.querySelector('.workspace-main'),layout=root.querySelector('.workspace-layout');
   shell.classList.add('command-center');
   const rail=document.createElement('aside');rail.className='cc-rail';rail.setAttribute('aria-label','主导航');
@@ -134,7 +137,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   mountHeroStarfield(hero);
   const allCapabilities=document.createElement('button');allCapabilities.type='button';allCapabilities.className='cc-capabilities';allCapabilities.textContent='全部能力';allCapabilities.title='查看 Runtime 当前公布的工具和连接状态';allCapabilities.onclick=()=>invoke('admin.open',{page:'capabilities'}).catch(report);board.querySelector('header').append(allCapabilities);
   cardToggle.onclick=()=>{const open=side.classList.toggle('cc-mobile-open');cardToggle.setAttribute('aria-expanded',String(open));};
-  const inline=mountInlineSubagents(chat,invoke,report,binding=>{onThreadChange?.();leadButton.setAttribute('aria-pressed',String(!binding));for(const button of team.querySelectorAll('[data-child-task]'))button.setAttribute('aria-pressed',String(Boolean(binding&&button.dataset.childTask===binding.taskId&&button.dataset.parentTask===binding.parentTaskId)));});
+  const inline=mountInlineSubagents(chat,invoke,report,binding=>{starterDraft.reset();onThreadChange?.();leadButton.setAttribute('aria-pressed',String(!binding));for(const button of team.querySelectorAll('[data-child-task]'))button.setAttribute('aria-pressed',String(Boolean(binding&&button.dataset.childTask===binding.taskId&&button.dataset.parentTask===binding.parentTaskId)));});
   const closeSidebar=()=>{shell.classList.remove('cc-sidebar-open');railToggle.setAttribute('aria-expanded','false');};
   leadButton.setAttribute('aria-pressed','true');leadButton.onclick=()=>{showHome();inline.main();closeSidebar();};
   const originalChildren=root.querySelector('.subagent-conversations');if(originalChildren)team.querySelector('.cc-child-actions').append(originalChildren);
@@ -286,12 +289,13 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{setHistoryOpen(false);showHome();inline.main();input.focus();}};
   const form=root.querySelector('.workspace-composer'),actions=form.querySelector('.workspace-composer-actions');
   input.placeholder='跟主对话说，例如查天气、看今天的日程、看订阅';actions.prepend(preferences);
-  input.title='也可以输入 /压缩 或 /compact，把较早的对话收成摘要。';
-  const compact=document.createElement('button');compact.type='button';compact.className='cc-compact';compact.textContent='压缩';compact.title='把较早的对话收成摘要';compact.setAttribute('aria-label','压缩对话');compact.onclick=()=>{const text=input.value.trim();if(!/^\/(?:压缩|compact)\b/u.test(text))input.value=text?`/压缩 ${text}`:'/压缩 ';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};actions.prepend(compact);
+  const compact=document.createElement('button');compact.className='cc-compact';
+  bindCompactButton(compact,input,root.querySelector('#workspace-error'));
+  actions.prepend(compact);
   const voice=document.createElement('button');voice.type='button';voice.className='cc-voice';voice.setAttribute('aria-label','语音转文字');voice.innerHTML=centerIcon('voice');actions.insertBefore(voice,actions.querySelector('[data-send]'));
   const send=actions.querySelector('[data-send]');send.textContent='↑';send.setAttribute('aria-label','发送任务');
   const starters=document.createElement('div');starters.className='cc-starters';starters.innerHTML=[['查天气','查一下当前天气，直接告诉我气温和是否适合出门。'],['今日日程','看一下今天的日程，直接在主对话里回答。'],['看订阅','看一下当前订阅，直接在主对话里告诉我有什么更新。'],['整理今日计划','结合今天的日程和待办，整理成今日计划。']].map(([label,text],i)=>`<button type="button" data-cc-starter="${escape(text)}"><span>${['◈','⌕','▤','✧'][i]}</span>${label}</button>`).join('');form.after(starters);
-  starters.onclick=event=>{const button=event.target.closest('[data-cc-starter]');if(button){input.value=button.dataset.ccStarter;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();}};
+  starters.onclick=event=>{const button=event.target.closest('[data-cc-starter]');if(button)starterDraft.select(button.dataset.ccStarter);};
   const openChild=binding=>{showHome();inline.select(binding);closeSidebar();};
   let teamSignature='',activitySignature='',mainConversationId;
   const pendingStops=new Set();
@@ -317,7 +321,11 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   return {openChild,main(){showHome();inline.main();closeSidebar();},update(data){
     lastData=data;paintInternalChat(data);
     recent.update(data.conversationState?.recentSessions);
-    if(mainConversationId&&mainConversationId!==data.conversationState?.activeId)inline.main();mainConversationId=data.conversationState?.activeId;
+    if(mainConversationId!==data.conversationState?.activeId){
+      starterDraft.reset();
+      if(mainConversationId)inline.main();
+      mainConversationId=data.conversationState?.activeId;
+    }
     const state=commandCenterState(data),hasMessages=Boolean(state.tasks.length||data.messages?.length);
     welcome.hidden=hasMessages;shell.classList.toggle('cc-has-tasks',hasMessages);
     const runtime=data.runtime?.mode??data.runtime?.state??data.runtime;const fake=runtime==='fake'||data.fakeMode===true||String(data.connection??'').startsWith('Fake Runtime');
