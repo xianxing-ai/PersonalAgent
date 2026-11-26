@@ -4212,9 +4212,9 @@ async function initializeRuntime() {
         });
         await personalDashboardHost.start();
         personalDashboardFailure = '';
-      } catch (error) {
+      } catch {
         personalDashboardHost = undefined;
-        personalDashboardFailure = `个人数据看板初始化失败：${error?.message || '请检查本机安全存储与 Runtime 状态'}`;
+        personalDashboardFailure = '个人数据看板初始化失败，请检查本机安全存储与 Runtime 状态。';
       }
     }
     if (typeof operatorBrake !== 'undefined') operatorBrake.attach();

@@ -147,7 +147,9 @@ export class QQMailProvider implements MailProvider {
       const lastUid = input.cursor?.lastUid ?? 0;
       const sinceMs = input.since ? Date.parse(input.since) : Number.NaN;
       const criteria = Number.isFinite(sinceMs)
-        ? {uid: `${lastUid + 1}:*`, since: new Date(sinceMs - 24 * 3_600_000)}
+        // Dashboard samples use the message Date header. Exclude only dated
+        // messages before the window and leave exact UTC filtering to the host.
+        ? {uid: `${lastUid + 1}:*`, not: {sentBefore: new Date(sinceMs - 24 * 3_600_000)}}
         : {uid: `${lastUid + 1}:*`};
       const uids = await client.search(criteria, {uid: true});
       if(input.signal?.aborted)throw new ProtocolError('CANCELLED','Mail fetch cancelled');
