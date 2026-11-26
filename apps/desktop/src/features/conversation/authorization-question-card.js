@@ -32,21 +32,32 @@ export function authorizationQuestionMarkup(question,{now=Date.now(),busy=false,
   if(!valid(question)||question.state!=='pending')return '';
   const escape=escapeAuthorizationText,active=pending(question,now),expired=question.state==='pending'&&!active;
   const status=expired?'请求已过期':states[question.state];
-  const purpose=question.title||'允许这次操作吗？';
-  const summary=question.description||question.requirements.find(item=>item.requirementId==='tool')?.summary||'完成这项操作。';
-  return `<section class="authorization-question-card" data-question-id="${escape(question.questionId)}"${question.taskId?` data-task-id="${escape(question.taskId)}"`:''}${question.sourceApprovalId?` data-approval-id="${escape(question.sourceApprovalId)}"`:''} role="group" aria-label="操作授权提问">
+  const notepad=question.toolName==='computer.desktop.launch_app';
+  const browser=typeof question.toolName==='string'&&question.toolName.startsWith('browser.');
+  const device=notepad||browser,toolSummary=question.requirements.find(item=>item.requirementId==='tool')?.summary;
+  const purpose=device&&!question.forceAsk?(notepad?'允许工人打开本机记事本吗？':'允许工人执行这次网页操作吗？'):question.title||'允许这次操作吗？';
+  const defaultSummary=notepad?'工人请求在本机打开记事本，操作内容见下方详情。':'工人请求操作本次任务的浏览器页面，操作内容见下方详情。';
+  const summary=device?(toolSummary&&toolSummary!==`执行 ${question.toolName}。`?toolSummary:defaultSummary):question.description||toolSummary||'完成这项操作。';
+  const exports=device?question.requirements.filter(item=>item.kind==='export'):[];
+  const destination=exports.map(item=>item.summary?.replaceAll(question.toolName,notepad?'记事本操作':'网页操作')).filter(Boolean).join(' ');
+  const dataNotice=device?(destination|| (exports.length?'本次还申请将结果发给当前任务的模型。':'本次授权仅涵盖工具操作。')):'';
+  const allow=authorizationQuestionDefaultDecision(question),sends=typeof question.egressReview==='string';
+  const allowLabel=question.forceAsk?'仅本次放行':sends?(allow==='allow_task'?'本任务允许发送':'仅本次发送')
+    :device?(allow==='allow_task'?'本任务允许相同操作':'允许本次操作'):'同意';
+  return `<section class="authorization-question-card${device?' device-question':''}" data-question-id="${escape(question.questionId)}"${question.taskId?` data-task-id="${escape(question.taskId)}"`:''}${question.sourceApprovalId?` data-approval-id="${escape(question.sourceApprovalId)}"`:''} role="group" aria-label="操作授权提问">
     <h3 class="authorization-question-title" tabindex="-1">${escape(purpose)}</h3>
     <p class="authorization-question-summary">${escape(summary)}</p>
+    ${device?`<p class="authorization-question-destination">${escape(dataNotice)}</p>`:''}
     ${question.forceAsk===true?'<p class="authorization-question-hint">已触发高敏凭据拦截，即使在「完全访问」下也须确认；点「加入白名单」后，相同凭据指纹将自动放行，可在设置中随时撤销。</p>':authorizationQuestionDefaultDecision(question)==='allow_task'?'<p class="authorization-question-hint">本任务内相同范围不再询问。</p>':''}
     <details class="authorization-question-details" data-authorization-details ${expanded?'open':''}><summary data-authorization-details-toggle>查看详情</summary>
-      <p>${escape(question.description)}</p><div class="authorization-question-sandbox"><span>应用内权限</span><strong>${escape(question.sandbox?.label||'未提供权限配置')}</strong></div>
+      ${device?`<pre class="authorization-question-egress">${escape(question.description)}</pre>`:`<p>${escape(question.description)}</p>`}<div class="authorization-question-sandbox"><span>应用内权限</span><strong>${escape(question.sandbox?.label||'未提供权限配置')}</strong></div>
       ${nativeMarkup(question.sandbox?.native,escape)}
       ${typeof question.egressReview==='string'?`<pre class="authorization-question-egress">${escape(question.egressReview)}</pre>`:''}
       <ul class="authorization-question-requirements">${question.requirements.map(item=>`<li><strong>${escape(kinds[item.kind])}</strong><span>${escape(item.summary)}</span><small>${escape(describeScopes(item.scopes))}</small></li>`).join('')}</ul>
       <p class="authorization-question-hint">${Number.isFinite(Date.parse(question.expiresAt))?escape(new Date(question.expiresAt).toLocaleString()):'期限不可用'} 前有效</p>
       <p class="authorization-question-hint">${authorizationQuestionDefaultDecision(question)==='allow_task'?'本任务相同范围不再询问。':'仅用于本次操作。'}</p>
     </details>
-    <div class="authorization-question-actions"><button type="button" class="authorization-question-primary" data-authorization-decision="${authorizationQuestionDefaultDecision(question)}" ${!active||busy?'disabled':''}>${question.forceAsk===true?'仅本次放行':typeof question.egressReview==='string'?(authorizationQuestionDefaultDecision(question)==='allow_task'?'本任务允许发送':'仅本次发送'):'同意'}</button>
+    <div class="authorization-question-actions"><button type="button" class="authorization-question-primary" data-authorization-decision="${allow}" ${!active||busy?'disabled':''}>${allowLabel}</button>
       ${question.canAlways===true?`<button type="button" data-authorization-decision="allow_always" ${!active||busy?'disabled':''}>${question.forceAsk===true?'加入白名单':'以后都允许'}</button>`:''}
       <button type="button" data-authorization-decision="deny" ${!active||busy?'disabled':''}>拒绝</button></div>
     <p class="authorization-question-status" role="status" aria-live="polite">${escape(feedback||status)}</p></section>`;

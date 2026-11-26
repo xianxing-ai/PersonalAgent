@@ -124,8 +124,38 @@ export function operationContentConfirmation(source) {
 }
 
 const clean=value=>typeof value==='string'?value.replace(/[\x00-\x1f]/gu,' ').trim().slice(0,160):'';
+const browserVerbs={
+  open:'打开公共网页',observe:'读取当前网页的文字和控件',click:'点击网页控件',download:'将所选链接的文件下载到本机',
+  type:'填写网页输入框',select:'更改网页中的选项',press:'在网页上模拟按键',scroll:'滚动当前网页',
+  back:'返回上一页',wait:'等候网页更新并重新读取',screenshot:'将当前网页截图保存在本机',close:'关闭当前浏览会话',
+};
+function quotedPreview(value) {
+  const text=String(value).replace(/[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,' ');
+  return '“'+text.slice(0,100)+(text.length>100?'…':'')+'”';
+}
+function browserOperationSummary(name,args) {
+  const connected=name.startsWith('browser.connected.');
+  const action=name.slice(connected?'browser.connected.'.length:'browser.'.length);
+  if(!Object.hasOwn(browserVerbs,action))return;
+  const where=connected?'已连接浏览器的任务标签页':'本机内置浏览器';
+  if(action==='open')return `在${where}打开 ${quotedPreview(args.url??'指定网址')}。`;
+  const target=clean(args.ref);
+  const item=target?`（控件 ${target}）`:'';
+  if(action==='type'&&typeof args.text==='string')return `在${where}的输入框${item}${args.clear===false?'追加':'填写'} ${quotedPreview(args.text)}。`;
+  if(action==='select'&&Array.isArray(args.values))return `在${where}的下拉框${item}选择 ${quotedPreview(args.values.join('、'))}。`;
+  if(action==='press')return `在${where}按下 ${quotedPreview(args.key??'指定按键')}。`;
+  if(action==='click'&&['play','pause'].includes(args.mediaAction))return `在${where}${args.mediaAction==='play'?'播放':'暂停'}选中的音视频${item}。`;
+  if(action==='scroll')return `在${where}向${args.direction==='up'?'上':'下'}滚动网页。`;
+  return `${where}将${browserVerbs[action]}${item}。`;
+}
 export function operationSummary(source) {
   const args=source.arguments??{},name=source.toolName;
+  if(name==='computer.desktop.launch_app'&&args.app==='notepad')
+    return typeof args.text==='string'?`在本机打开新的空白记事本，写入 ${quotedPreview(args.text)}，并读回核对。`:'在本机打开一个新的空白记事本窗口。';
+  if(name.startsWith('browser.')){
+    const description=browserOperationSummary(name,args);
+    if(description)return description;
+  }
   if(name==='calendar.events')return '查看本任务需要的日程，并将结果用于本次对话。';
   if(name==='calendar.update'){
     const changes=[clean(args.summary)&&`名称改为“${clean(args.summary)}”`,

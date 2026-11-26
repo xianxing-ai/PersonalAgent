@@ -196,7 +196,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     const hasNonReusableExtra=extraRequirements.some(item=>item.requirementId!=='tool'&&!item.ruleBindingDigest);
     const canBindRule=!contentConfirmation&&!hasNonReusableExtra&&(Boolean(secrets)||hasReusableExtra||source.sideEffect!=='external_write');
     const summary=secrets
-      ?`检测到疑似凭据信息（${secrets.categories.join('、')}）：${operationSummary(source)}（确认后可加入白名单）`
+      ?`检测到疑似凭据信息（${secrets.categories.join('、')}）：${source.toolName==='computer.desktop.launch_app'||source.toolName.startsWith('browser.')?'此次设备操作包含敏感内容':operationSummary(source)}（确认后可加入白名单）`
       :operationSummary(source);
     const tool={requirementId:'tool',kind:'tool',scopes:[...source.scopes],bindingDigest:digest({taskId:source.taskId,runId:source.runId,
       toolName:source.toolName,toolVersion:source.toolVersion,argumentsDigest:source.argumentsDigest,deadline:source.deadline}),
