@@ -128,6 +128,7 @@ internal sealed class DesktopSession(InputController inputs)
         var executable = Path.Combine(Environment.SystemDirectory, "notepad.exe");
         using var launched = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
         context.Dispatched = true;
+        context.NotepadPhase = "window";
         var readyBy = Min(context.Deadline, DateTime.UtcNow.AddSeconds(8));
         nint requestedFrom = 0, activationRequested = 0;
         while (DateTime.UtcNow < readyBy)
@@ -141,24 +142,40 @@ internal sealed class DesktopSession(InputController inputs)
                 && IsTrustedNotepadWindow(foreground)) window = foreground;
             if (window != 0)
             {
-                var facts = Native.ReadWindow(window, false);
-                if (foreground != window && foreground != initialForeground && foreground != requestedFrom)
-                    throw new Refusal("USER_TAKEOVER", true);
+                // A visible frame can precede DWM geometry, activation and its UIA provider.
+                // Poll only observations during startup. No keystroke or text write is retried.
+                WindowFacts facts;
+                try { facts = Native.ReadWindow(window, false); }
+                catch (Refusal refusal) when (refusal.Code == "TARGET_STALE")
+                {
+                    context.Token.WaitHandle.WaitOne(75);
+                    continue;
+                }
                 if (foreground != window && activationRequested != window)
                 {
                     GuardLifecycle();
-                    activationRequested = window;
-                    Native.SetForegroundWindow(window);
+                    if (foreground == initialForeground || foreground == requestedFrom)
+                    {
+                        activationRequested = window;
+                        Native.SetForegroundWindow(window);
+                    }
                 }
                 if (Native.GetForegroundWindow() == window)
                 {
                     void GuardWindow()
                     {
                         GuardLifecycle();
-                        if (!Native.Same(facts, Native.ReadWindow(window, true)) || !IsTrustedNotepadWindow(window))
+                        if (!Native.SameIdentity(facts, Native.ReadWindow(window, true)) || !IsTrustedNotepadWindow(window))
                             throw new Refusal("TARGET_STALE", true);
                     }
-                    var root = AutomationElement.FromHandle(window);
+                    context.NotepadPhase = "editor";
+                    AutomationElement root;
+                    try { root = AutomationElement.FromHandle(window); }
+                    catch (ElementNotAvailableException)
+                    {
+                        context.Token.WaitHandle.WaitOne(75);
+                        continue;
+                    }
                     bool fresh = !existing.Contains(window);
                     var single = fresh && NotepadAction.CheckSingleTabTarget(window, facts.Pid,
                         new DateTime(facts.StartTicks, DateTimeKind.Utc)).Success;
@@ -173,23 +190,31 @@ internal sealed class DesktopSession(InputController inputs)
                             || !control!.Equals(current) || current!.Current.IsPassword || editor!.Current.Value.Length != 0)
                             throw new Refusal("TARGET_STALE", true);
                         GuardWindow();
+                        context.NotepadPhase = "write";
                         editor.SetValue(text);
+                        context.NotepadPhase = "readback";
                         var readBy = Min(context.Deadline, DateTime.UtcNow.AddSeconds(2));
                         do
                         {
                             GuardWindow();
                             if (NotepadAction.TryGetOnlyEditableTextControl(root, out var read, out var readValue, out _)
                                 && control.Equals(read) && readValue!.Current.Value.ReplaceLineEndings("\n") == text.ReplaceLineEndings("\n"))
+                            {
+                                GuardWindow();
                                 return new { verification = new { state = "verified", kind = "value" } };
+                            }
                             context.Token.WaitHandle.WaitOne(40);
                         } while (DateTime.UtcNow < readBy);
                         throw new Refusal("RESULT_UNKNOWN", true);
                     }
                     if (requestedFrom == 0 && root.Current.ProcessId == facts.Pid
+                        && (!fresh || NotepadAction.TryGetOnlyEditableTextControl(root, out _, out var restored, out _)
+                            && restored!.Current.Value.Length > 0)
                         && root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Tab)) is not null)
                     {
                         GuardWindow();
                         existing = TopLevelWindows();
+                        context.NotepadPhase = "new_window";
                         RequestNewWindow(facts);
                     }
                 }
@@ -204,7 +229,7 @@ internal sealed class DesktopSession(InputController inputs)
             inputs.Chord([0x11, 0x10, 0x4E], context, () =>
             {
                 GuardLifecycle();
-                if (!Native.Same(source, Native.ReadWindow(source.Hwnd, true)) || !IsTrustedNotepadWindow(source.Hwnd))
+                if (!Native.SameIdentity(source, Native.ReadWindow(source.Hwnd, true)) || !IsTrustedNotepadWindow(source.Hwnd))
                     throw new Refusal("TARGET_STALE", true);
             });
         }
@@ -220,7 +245,7 @@ internal sealed class DesktopSession(InputController inputs)
 
     private static bool IsTrustedNotepadWindow(nint window)
     {
-        if (window == 0 || !Native.IsWindowVisible(window) || Native.GetWindow(window, 4) != 0
+        if (window == 0 || !Native.IsNotepadFrame(window) || !Native.IsWindowVisible(window) || Native.GetWindow(window, 4) != 0
             || Native.GetWindowThreadProcessId(window, out var pid) == 0) return false;
         try
         {
@@ -239,7 +264,7 @@ internal sealed class DesktopSession(InputController inputs)
             nint result = 0;
             var complete = Native.EnumWindows((window, _) =>
             {
-                if (existing.Contains(window) || !Native.IsWindowVisible(window) || Native.GetWindow(window, 4) != 0
+                if (existing.Contains(window) || !Native.IsWindowVisible(window) || !Native.IsNotepadFrame(window) || Native.GetWindow(window, 4) != 0
                     || Native.GetWindowThreadProcessId(window, out var pid) == 0 || !pids.Contains(pid))
                     return true;
                 if (result != 0) return false;

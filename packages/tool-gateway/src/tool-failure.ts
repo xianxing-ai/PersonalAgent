@@ -47,7 +47,10 @@ export function toolFailure(error: unknown, stage: 'execute' | 'output_validatio
   const status=typeof statusValue==='number'&&Number.isInteger(statusValue)&&statusValue>=400&&statusValue<=599?statusValue:undefined;
   const validation=data.typed&&candidate==='INVALID_ARGUMENT'&&typeof data.message==='string'
     ?/^Tool value violates schema \[keyword=(required|type|enum|const|minimum|maximum|minLength|maxLength|pattern|format|additionalProperties|minItems|maxItems|oneOf|anyOf|schema)(?:; field=([A-Za-z][A-Za-z0-9_]{0,47}))?\]$/.exec(data.message):undefined;
-  const reason = stage === 'output_validation' ? '工具返回数据不符合约定；请检查工具版本和原操作结果'
+  const notepad=write&&stage==='execute'&&data.typed&&code==='RESULT_UNKNOWN'&&typeof data.message==='string'
+    ?/^Notepad operation \[phase=(window|editor|new_window|write|readback); native=(USER_TAKEOVER|TARGET_STALE|TARGET_AMBIGUOUS|UNAUTHORIZED|CANCELLED|TIMEOUT|EXTERNAL_FAILURE|RESULT_UNKNOWN|UNSUPPORTED_CAPABILITY|INVALID_ARGUMENT|PROTOCOL_MISMATCH|RESOURCE_BUSY|REVISION_CONFLICT)\]$/.exec(data.message):null;
+  const reason = notepad ? `记事本操作中断 [notepad=${notepad[1]}; native=${notepad[2]}]`
+    : stage === 'output_validation' ? '工具返回数据不符合约定；请检查工具版本和原操作结果'
     : status===401?'服务认证失败；请在设置中检查凭据'
     : status===403?'服务拒绝访问；请检查账号权限'
     : status===429?'服务请求频率或配额受限；请检查配额与限流设置'

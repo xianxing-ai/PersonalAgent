@@ -31,6 +31,10 @@ const nativeRefusals:Record<string,readonly [PublicErrorCode,string]>={
 /** Internal decoder for application-owned stdio only; never accepts renderer/tool output as dispatch proof. */
 export function nativeDesktopResponseError(value:unknown):ProtocolError {
   const error=object(value)?value:{};
+  if(error.dispatched===true&&typeof error.notepadPhase==='string'&&['window','editor','new_window','write','readback'].includes(error.notepadPhase)){
+    const cause=typeof error.code==='string'&&Object.hasOwn(nativeRefusals,error.code)?error.code:'RESULT_UNKNOWN';
+    return new ProtocolError('RESULT_UNKNOWN',`Notepad operation [phase=${error.notepadPhase}; native=${cause}]`);
+  }
   // Missing/true dispatch, including a contradictory RESULT_UNKNOWN, is never zero-dispatch proof.
   if(error.dispatched!==false||error.code==='RESULT_UNKNOWN')return new ProtocolError('RESULT_UNKNOWN','设备可能已执行操作，请核实原任务');
   const known=typeof error.code==='string'&&Object.hasOwn(nativeRefusals,error.code)?nativeRefusals[error.code]:undefined;

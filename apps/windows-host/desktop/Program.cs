@@ -17,6 +17,7 @@ internal sealed class RequestContext(string id, DateTime deadline, CancellationT
     internal DateTime Deadline { get; } = deadline;
     internal CancellationToken Token { get; } = token;
     internal bool Dispatched { get; set; }
+    internal string? NotepadPhase { get; set; }
     internal void Check()
     {
         if (DateTime.UtcNow >= Deadline) throw new Refusal("TIMEOUT", Dispatched);
@@ -93,9 +94,9 @@ internal static class Program
                     dispatcher!.BeginInvoke(() =>
                     {
                         try { context.Check(); Reply(context.Id, session!.Handle(method, parameters, context)); }
-                        catch (Refusal refusal) { Fail(context.Id, refusal.Code, refusal.Dispatched || context.Dispatched); }
-                        catch (OperationCanceledException) { Fail(context.Id, "CANCELLED", context.Dispatched); }
-                        catch { Fail(context.Id, context.Dispatched ? "RESULT_UNKNOWN" : "EXTERNAL_FAILURE", context.Dispatched); }
+                        catch (Refusal refusal) { Fail(context.Id, refusal.Code, refusal.Dispatched || context.Dispatched, context.NotepadPhase); }
+                        catch (OperationCanceledException) { Fail(context.Id, "CANCELLED", context.Dispatched, context.NotepadPhase); }
+                        catch { Fail(context.Id, context.Dispatched ? "RESULT_UNKNOWN" : "EXTERNAL_FAILURE", context.Dispatched, context.NotepadPhase); }
                         finally { Pending.TryRemove(context.Id, out _); cts.Dispose(); }
                     });
                 }
@@ -130,7 +131,7 @@ internal static class Program
     }
 
     private static void Reply(string id, object result) => Write(new { id, ok = true, result });
-    private static void Fail(string? id, string code, bool dispatched) => Write(new
+    private static void Fail(string? id, string code, bool dispatched, string? notepadPhase = null) => Write(new
     {
         id, ok = false, error = new { code, message = code switch
         {
@@ -141,7 +142,7 @@ internal static class Program
             "RESOURCE_BUSY" => "Desktop request capacity is full.", "REVISION_CONFLICT" => "Desktop request identity was reused.",
             "UNSUPPORTED_CAPABILITY" => "The requested desktop capability is unavailable.",
             _ => "The desktop provider could not complete this request."
-        }, dispatched }
+        }, dispatched, notepadPhase }
     });
     private static void Write(object value)
     {

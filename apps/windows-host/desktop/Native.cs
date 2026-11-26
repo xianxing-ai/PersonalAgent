@@ -41,6 +41,12 @@ internal static class Native
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool IsIconic(nint hwnd);
     [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(nint hwnd, out uint processId);
     [DllImport("user32.dll")] internal static extern nint GetAncestor(nint hwnd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(nint hwnd, StringBuilder name, int length);
+    internal static bool IsNotepadFrame(nint hwnd)
+    {
+        var name = new StringBuilder(32);
+        return GetClassName(hwnd, name, name.Capacity) > 0 && name.ToString().Equals("Notepad", StringComparison.OrdinalIgnoreCase);
+    }
     [DllImport("user32.dll")] internal static extern nint GetWindow(nint hwnd, uint command);
     [DllImport("user32.dll")] internal static extern nint WindowFromPoint(Point point);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool GetWindowRect(nint hwnd, out Rect rectangle);
@@ -133,8 +139,10 @@ internal static class Native
             finally { Marshal.FreeHGlobal(pointer); }
         }
     }
-    internal static bool Same(WindowFacts original, WindowFacts current) => original.Hwnd == current.Hwnd && original.Pid == current.Pid && original.StartTicks == current.StartTicks
-        && original.Session == current.Session && original.Desktop == current.Desktop && original.Bounds == current.Bounds && original.Dpi == current.Dpi;
+    internal static bool SameIdentity(WindowFacts original, WindowFacts current) => original.Hwnd == current.Hwnd && original.Pid == current.Pid
+        && original.StartTicks == current.StartTicks && original.Session == current.Session && original.Desktop == current.Desktop;
+    internal static bool Same(WindowFacts original, WindowFacts current) => SameIdentity(original, current)
+        && original.Bounds == current.Bounds && original.Dpi == current.Dpi;
     internal static void Hit(WindowFacts window, int x, int y)
     {
         if (!window.Bounds.Contains(x, y) || GetAncestor(WindowFromPoint(new Point(x, y)), 2) != window.Hwnd) throw new Refusal("TARGET_STALE");
