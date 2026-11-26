@@ -1,5 +1,5 @@
 appId: com.personalagent.desktop
-productName: PersonalAgent
+productName: Synstar
 
 directories:
   output: release
@@ -24,7 +24,10 @@ files:
   - "!**/.cache*"
 
 asar: true
-asarUnpack: []
+asarUnpack:
+  - electron/f20-typescript-check.cjs
+  - node_modules/typescript/lib/**/*
+  - node_modules/typescript/package.json
 
 win:
   target:
@@ -39,7 +42,7 @@ nsis:
   deleteAppDataOnUninstall: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  shortcutName: PersonalAgent
+  shortcutName: Synstar
   requestedExecutionLevel: asInvoker
 
 # 图标待补，当前使用 electron-builder 默认配置

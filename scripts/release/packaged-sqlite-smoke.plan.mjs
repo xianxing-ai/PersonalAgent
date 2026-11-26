@@ -121,6 +121,7 @@ function findPackagedArtifact(projectRoot, customPath) {
   }
 
   const candidateRelativePaths = [
+    'apps/desktop/dist/win-unpacked/Synstar.exe',
     'apps/desktop/dist/win-unpacked/personal-agent.exe',
     'apps/desktop/dist/win-unpacked/PersonalAgent.exe',
   ];

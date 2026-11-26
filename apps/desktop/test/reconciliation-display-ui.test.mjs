@@ -47,7 +47,7 @@ test('actual panel and workspace show safe execution errors and only honest orig
     assert.equal(await turn.locator('.thinking-line').count(),0);
     assert.equal(await turn.getByRole('button',{name:/已有回执|原编码操作|核实并结束/}).count(),0);
     assert.match(await turn.innerText(),/没有该操作的自动核查入口/);assert.doesNotMatch(await turn.innerText(),/结果待核实|结果未知/);
-    assert.equal(await page.title(),'PersonalAgent');assert.equal(page.url(),url);
+    assert.equal(await page.title(),'Synstar');assert.equal(page.url(),url);
     if(process.env.PA_RECONCILIATION_SCREENSHOT_DIR){await failure.scrollIntoViewIfNeeded();await page.screenshot({path:`${process.env.PA_RECONCILIATION_SCREENSHOT_DIR}/reconciliation-${mode}-synthetic.png`});}
     assert.equal((await page.evaluate(()=>window.calls)).some(call=>call.name==='task.reconcile.finish'),false,'rendering never performs readback or retries');
     for(const [index,label]of [[1,'按已有回执尝试结束'],[2,'核对原编码操作']]){

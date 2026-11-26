@@ -17,9 +17,9 @@ function visit(node){
 visit(ast);assert.ok(declarations&&operation&&sync&&render&&unload);
 function fixture(){
   const attributes=new Map(),requests=[];let onUnload;
-  const button={setAttribute:(k,v)=>attributes.set(k,v),removeAttribute:k=>attributes.delete(k),set title(v){attributes.set('title',v)}};
+  const button={dataset:{},setAttribute:(k,v)=>attributes.set(k,v),removeAttribute:k=>attributes.delete(k),set title(v){attributes.set('title',v)}};
   const orb={state:'idle',variant:'matrix',setVariant(v){this.variant=v},setLevel(){},setState(state){this.state=state},stop(){}};
-  const context=vm.createContext({button,orb,document:{hidden:false},window:{addEventListener:(_e,fn)=>{onUnload=fn}},
+  const context=vm.createContext({button,orb,docked:false,document:{hidden:false},window:{addEventListener:(_e,fn)=>{onUnload=fn}},
     orbVariantPreference:()=>'matrix',orbStateOverride:()=>null,lastOrbData:{},
     invoke:action=>new Promise((resolve,reject)=>requests.push({action,resolve,reject})),orbStatusLabel:data=>data.label,visualOrbState:data=>data.state});
   vm.runInContext(`${declarations}const syncOperationFeedback=${sync};const orbOperation=${operation};${unload}`,context);
@@ -32,12 +32,12 @@ test('operation rejection is caught and remains beside the true state across pas
     const f=fixture(),pending=f.run(action);f.requests[0].reject(Error('Fake failed receipt'));await pending;
     assert.equal(f.attributes.get('title'),'操作失败：Fake failed receipt');
     f.update({label:'正在聆听',state:'listening'});
-    assert.equal(f.attributes.get('aria-label'),'PersonalAgent · 正在聆听 · 操作失败：Fake failed receipt');assert.equal(f.orb.state,'listening');
+    assert.equal(f.attributes.get('aria-label'),'Synstar · 正在聆听 · 操作失败：Fake failed receipt');assert.equal(f.orb.state,'listening');
   }
 });
 test('current explicit open or start success clears its older feedback',async()=>{
   for(const action of ['orb.open','orb.dragStart']){const f=fixture(),old=f.run('orb.open');f.requests[0].reject(Error('old'));await old;
-    const next=f.run(action);f.requests[1].resolve();await next;assert.equal(f.attributes.get('title'),undefined);assert.equal(f.attributes.get('aria-label'),'PersonalAgent · 等待授权');}
+    const next=f.run(action);f.requests[1].resolve();await next;assert.equal(f.attributes.get('title'),undefined);assert.equal(f.attributes.get('aria-label'),'Synstar · 等待授权');}
 });
 test('old operation receipts cannot overwrite a newer gesture feedback',async()=>{
   for(const success of [true,false]){const f=fixture(),old=f.run('orb.dragStart'),next=f.run('orb.open');f.requests[1].reject(Error('new'));await next;
@@ -54,5 +54,5 @@ test('late start success or failure cannot erase a newer release failure',async(
 });
 test('unload ignores late failed and successful operation receipts',async()=>{
   for(const success of [true,false]){const f=fixture(),pending=f.run('orb.open');f.unload();if(success)f.requests[0].resolve();else f.requests[0].reject(Error('late'));await pending;
-    assert.equal(f.attributes.get('title'),undefined);assert.equal(f.attributes.get('aria-label'),'PersonalAgent · 等待授权');}
+    assert.equal(f.attributes.get('title'),undefined);assert.equal(f.attributes.get('aria-label'),'Synstar · 等待授权');}
 });

@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdirSync,mkdtempSync,rmSync} from 'node:fs';
@@ -61,10 +62,10 @@ async function fixture(t) {
       competitionToolAvailability:watches.competitionToolAvailability,competitionToolExports:watches.competitionToolExports,
       // Explicit Fake coordination only proposes the user's selected operation;
       // the original application loop owns approval, execution and continuation.
-      coordination:{execute:async input=>input.continuation
+      coordination:{execute:syntheticCoordinationExecution(async input=>input.continuation
         ?{kind:'text',text:'Synthetic approved connector subscription operation',verification:'unverified'}
         :{kind:'tool_proposal',proposalId:proposedOperation.id,toolName:proposedOperation.tool.name,
-          toolVersion:proposedOperation.tool.version,arguments:proposedOperation.arguments,verification:'unverified'}}});
+          toolVersion:proposedOperation.tool.version,arguments:proposedOperation.arguments,verification:'unverified'})}});
     client=new Client(application,()=>time);await client.connect();notifications.bindApplication(application,client);
     changes=createDesktopConnectorChangeHost({application,namespace,now:()=>time,notifications,
       chooser:{snapshot:()=>({ready:true}),choose:input=>localChooser.choose(input)},

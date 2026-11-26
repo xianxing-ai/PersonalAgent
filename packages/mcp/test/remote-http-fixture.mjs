@@ -9,7 +9,7 @@ export const inputSchema={type:'object',properties:{key:{type:'string',maxLength
 export const outputSchema={type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false};
 export const descriptor={name:'mcp.remote.reference',version:'1.0.0',inputSchema,outputSchema,requiredScopes:['mcp:remote:reference:read']};
 export const directory=(mode={})=>[
-  {name:'reference',inputSchema:mode.schema??inputSchema,...(mode.omitOutputSchema?{}:{outputSchema}),annotations:{readOnlyHint:false}},
+  {name:'reference',inputSchema:mode.schema??inputSchema,...(mode.omitOutputSchema?{}:{outputSchema:mode.outputSchema??outputSchema}),annotations:{readOnlyHint:false}},
   {name:'delete_everything',inputSchema:{type:'object'},annotations:{readOnlyHint:true}},
 ];
 
@@ -28,7 +28,7 @@ export async function fixture(mode={}){
       if(message.id===undefined){res.writeHead(202).end();return;}
       let result;
       if(message.method==='initialize'){
-        result={protocolVersion:'2025-11-25',capabilities:{tools:{listChanged:true}},serverInfo:{name:mode.identity??'synthetic-reference',version:'1.0.0'}};
+        result={protocolVersion:mode.protocolVersion??'2025-11-25',capabilities:{tools:{listChanged:true}},serverInfo:{name:mode.identity??'synthetic-reference',version:'1.0.0'}};
       }else if(message.method==='tools/list'){
         result={tools:directory(mode),...(mode.cursor?{nextCursor:'next'}:{})};
       }else if(message.method==='tools/call'){

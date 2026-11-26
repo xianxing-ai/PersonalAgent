@@ -84,7 +84,7 @@ type RecordState = {
   stopping?: Promise<VoiceStartupSnapshot>;
 };
 
-const GREETING = '你好，PersonalAgent 已启动。';
+const GREETING = '你好，Synstar 已启动。';
 
 /** Only consumes injected ports after explicit enablement. Owns no settings or Runtime tasks. */
 export function createVoiceStartupController({output, listening}: {

@@ -85,3 +85,28 @@ for(const commitBeforeDictation of [false,true])test('archive pending preserves 
   controls.update({conversationState:dispatch('conversation.switch',{expectedConversationId:b,conversationId:a})});
   assert.equal(input.value,expected,'switching away did not overwrite the newer cache with the old readonly input');await controls.flush();assert.equal(new Conversations(file).session(a).draft,expected);
 });
+
+test('workspace composer keeps stop enabled for delegated background subagent tasks without locking chat input',async t=>{
+  const f=dom(t),calls=[];
+  const control=mountWorkspaceComposer(f.root,async(...args)=>calls.push(args),()=>{});
+  control.update({
+    ...data(),
+    tasks:[{taskId:'parent-1',state:'running'}],
+    subagentTasks:[{taskId:'child-1',parentTaskId:'parent-1',state:'running'}],
+  });
+  assert.equal(f.fields['[data-stop]'].disabled,false);
+  control.input.value='继续聊天';
+  control.input.dispatchEvent(new Event('input'));
+  assert.equal(f.fields['[data-send]'].disabled,false);
+  await f.fields['[data-stop]'].onclick();
+  assert.deepEqual(calls,[['task.cancel','parent-1']]);
+});
+
+test('workspace composer stays open as a non-blocking chat window while ordinary tasks run',async t=>{
+  const f=dom(t),calls=[];
+  const control=mountWorkspaceComposer(f.root,async(...args)=>calls.push(args),()=>{});
+  control.update({...data(),tasks:[{taskId:'running-chat',state:'running'}],subagentTasks:[]});
+  control.input.value='顺便问一下天气';
+  control.input.dispatchEvent(new Event('input'));
+  assert.equal(f.fields['[data-send]'].disabled,false);
+});

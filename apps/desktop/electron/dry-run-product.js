@@ -13,6 +13,8 @@ const TARGET_FIELDS = [
   ['target', '目标'],
   ['url', '地址'],
   ['calendarId', '日历'],
+  ['externalId', '事件标识'],
+  ['uid', '事件标识'],
   ['noteId', '笔记'],
   ['todoId', '待办'],
   ['id', '标识'],
@@ -27,7 +29,54 @@ const CONTENT_FIELDS = [
   ['content', '内容'],
   ['message', '内容'],
   ['amount', '金额'],
+  ['startUtc', '开始时间'],
+  ['endUtc', '结束时间'],
+  ['location', '地点'],
 ];
+
+function parseItemTitleFromContentRef(contentRef) {
+  if (typeof contentRef !== 'string') return undefined;
+  const match = /^\[[^\]]+\]\s*([^｜|]+?)(?:｜|\||$)/u.exec(contentRef.trim());
+  return match?.[1]?.trim() || undefined;
+}
+
+function extractResultComparableField(result, field) {
+  if (!result || typeof result !== 'object') return undefined;
+  const item = result.item && typeof result.item === 'object' && !Array.isArray(result.item) ? result.item : undefined;
+  if (item) {
+    if (field === 'uid' || field === 'externalId') {
+      return result[field] ?? result.uid ?? result.externalId ?? item.externalId ?? item.uid ?? item.id;
+    }
+    if (field === 'id' || field === 'todoId' || field === 'noteId') {
+      return result[field] ?? item[field] ?? item.id ?? item.externalId;
+    }
+    if (field === 'summary') {
+      // Connector write receipts store a fixed human-readable effect line in top-level `summary`
+      // while the actual event/item title lives on `item` (or `item.contentRef`).
+      return item.summary ?? item.title ?? parseItemTitleFromContentRef(item.contentRef);
+    }
+    if (field === 'title') {
+      return result.title ?? item.title ?? item.summary ?? parseItemTitleFromContentRef(item.contentRef);
+    }
+    if (field === 'startUtc' || field === 'endUtc') {
+      if (result[field] !== undefined) return result[field];
+      if (item[field] !== undefined) return item[field];
+      if (typeof item.validFor === 'string' && item.validFor.includes('/')) {
+        const [startUtc, endUtc] = item.validFor.split('/');
+        return field === 'startUtc' ? startUtc : endUtc;
+      }
+      return undefined;
+    }
+    return result[field] !== undefined ? result[field] : item[field];
+  }
+  if (field === 'uid' || field === 'externalId') {
+    return result[field] ?? result.uid ?? result.externalId;
+  }
+  if (field === 'summary' && ['created', 'updated', 'cancelled', 'already_absent'].includes(String(result.state ?? '')) && result.uid !== undefined) {
+    return undefined;
+  }
+  return result[field];
+}
 
 function canonicalJson(item) {
   if (item === null || typeof item !== 'object') return String(JSON.stringify(item));
@@ -87,7 +136,7 @@ export function previewToolCall(descriptor, input) {
   const keys = Object.keys(record);
   const label = toolDisplayLabel(descriptor);
   const argumentsDigest = hashToolArguments(input);
-  const calendarEventId = descriptor.name==='calendar.update' ? record.externalId??record.uid : undefined;
+  const calendarEventId = descriptor.name === 'calendar.update' ? record.externalId ?? record.uid : undefined;
   let targetSummary;
   let contentSummary;
   const targetFields = {};
@@ -141,7 +190,7 @@ export function previewToolCall(descriptor, input) {
     effect: descriptor.sideEffect ?? 'write',
     argumentKeys: keys,
     argumentsDigest,
-    ...(typeof calendarEventId==='string'&&calendarEventId ? {calendarEventDigest:hashToolArguments(calendarEventId)} : {}),
+    ...(typeof calendarEventId === 'string' ? {calendarEventDigest: hashToolArguments(calendarEventId)} : {}),
     ...(targetSummary ? {targetSummary} : {}),
     ...(contentSummary ? {contentSummary} : {}),
     targetFields,
@@ -178,20 +227,13 @@ export function verifyToolResult(result, preview) {
   if (result.previewId !== undefined && String(result.previewId) !== String(preview.id)) {
     return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具返回的预览标识与试运行预览不一致'};
   }
-  if(preview.toolName==='calendar.update'){
-    // The registered CalDAV writer checks the requested fields against its own readback.
-    // Its top-level summary is a status message. Bind the returned item to the previewed event.
-    const item = result.item;
-    const mismatch = result.state !== 'updated' ? 'state'
-      : item?.source !== 'calendar' ? 'item.source'
-      : typeof item.externalId !== 'string' || !preview.calendarEventDigest
-        || hashToolArguments(item.externalId) !== preview.calendarEventDigest ? 'item.externalId'
-      : undefined;
-    if (mismatch)
-      return {ok:false,verified:false,targetMatched:false,identityMatched:false,scope:'tool_result',
-        reason:`日历写入回执与试运行预览不一致（字段 ${mismatch}）`};
-    return {ok:true,verified:true,targetMatched:true,identityMatched:false,scope:'tool_result_matched',
-      reason:'已按日历工具读回回执核对原事件'};
+  if (preview.toolName === 'calendar.update') {
+    const field = result.state !== 'updated' ? 'state'
+      : result.item?.source !== 'calendar' ? 'item.source'
+      : typeof result.item.externalId !== 'string' || !result.item.externalId ? 'item.externalId'
+      : hashToolArguments(result.uid ?? result.item.externalId) !== preview.calendarEventDigest ? 'externalId' : undefined;
+    if (field) return {ok:false, verified:false, targetMatched:false, identityMatched:false, mismatchedField:field,
+      scope:'tool_result', reason:`日历写入回执与试运行预览不一致（字段：${field}）`};
   }
   const matchedIdentityFields = [];
   if (result.toolName !== undefined) matchedIdentityFields.push('toolName');
@@ -202,11 +244,19 @@ export function verifyToolResult(result, preview) {
   const targetFields = preview.targetFields && typeof preview.targetFields === 'object' ? preview.targetFields : {};
   const matchedTargetFields = [];
   for (const [field, expected] of Object.entries(comparableFields)) {
-    if (result[field] === undefined) continue;
-    const actual = normalizeComparableValue(result[field]);
+    const rawActual = extractResultComparableField(result, field);
+    if (rawActual === undefined) continue;
+    const actual = normalizeComparableValue(rawActual);
     if (actual !== expected) {
-      return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result',
-        reason: `工具返回的目标或内容与试运行预览不一致（字段 ${field}）`};
+      return {
+        ok: false,
+        verified: false,
+        targetMatched: false,
+        identityMatched: false,
+        mismatchedField: field,
+        scope: 'tool_result',
+        reason: `工具返回的目标或内容与试运行预览不一致（字段：${field}）`,
+      };
     }
     if (field in targetFields) {
       matchedTargetFields.push(field);
@@ -292,15 +342,18 @@ export function createDryRunProduct({onUpdate} = {}) {
       if (!isHighRiskTool(descriptor)) return;
       const key = runKey(taskId, runId);
       const confirmed = key ? confirmedRuns.get(key) : undefined;
-      if(confirmed){
-        if(signal?.aborted)throw new ProtocolError('CANCELLED','试运行已取消，未执行');
-        if(Date.parse(deadline)<=Date.now())throw new ProtocolError('TIMEOUT','试运行已超过期限，未执行');
-        if(confirmed.toolName!==toolName||confirmed.argumentsDigest!==hashToolArguments(input))
-          throw new ProtocolError('UNAUTHORIZED','试运行确认的参数与实际执行不一致');
+      if (confirmed) {
+        if (signal?.aborted || confirmed.signal?.aborted) throw new ProtocolError('CANCELLED', '试运行已取消，未执行');
+        if (confirmed.expiresAt <= Date.now() || Date.parse(deadline) <= Date.now()) {
+          throw new ProtocolError('TIMEOUT', '试运行已超过期限，未执行');
+        }
+        if (confirmed.toolName !== toolName || confirmed.argumentsDigest !== hashToolArguments(input)) {
+          throw new ProtocolError('UNAUTHORIZED', '试运行确认的参数与实际执行不一致');
+        }
         return;
       }
       const preview = await waitForPreview(descriptor, input, {taskId, runId, deadline, signal});
-      if (key) confirmedRuns.set(key, preview);
+      if (key) confirmedRuns.set(key, {...preview, signal, expiresAt: Date.parse(deadline)});
     },
     assertAuthorized({taskId, runId, toolName, sideEffect, arguments: input, argumentsDigest}) {
       if (!isHighRiskTool({name: toolName, sideEffect})) return;

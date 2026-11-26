@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
+import {createF17ConfiguredDriverResolver} from '../dist/application/f17-configured-driver.js';
 import {fixture} from './f16-f17-fixture.mjs';
 
 test('F17 real failing recipe and original version become a persistent stack report through Policy/HostBridge',async t=>{
@@ -75,4 +76,16 @@ test('F17 unknown after report persistence is retained across SQLite restart and
   assert.equal(f.app.runtime.getTask(id).state,'waiting_reconciliation');assert.equal(f.counters.command,1);
   assert.notEqual(f.bridge.readReceipt(f.original,f.proposal)?.state,'confirmed');
   await assert.rejects(f.host.authorizeReceipt({context:f.context(id),result:{}}));
+});
+
+test('F17 resolver consumes only the public binding and rejects another configuration or session',async t=>{
+  const f=await fixture(t,'F17');let bound={sessionId:f.scope.sessionId,deadline:f.scope.deadline,configurationVersion:'fixture-v2'};
+  const resolve=createF17ConfiguredDriverResolver({readConfiguredWorkflowBinding(request){
+    assert.equal(request.workflowId,'F17');assert.equal(request.taskId,f.scope.parentTaskId);
+    return request.sessionId===bound?.sessionId?bound:undefined;
+  }},{configurationVersion:'fixture-v2'});
+  assert.equal(resolve(f.scope),bound);
+  assert.throws(()=>resolve({...f.scope,sessionId:'foreign'}),{code:'UNAUTHORIZED'});
+  bound={...bound,configurationVersion:'replaced'};assert.throws(()=>resolve(f.scope),{code:'UNAUTHORIZED'});
+  bound=undefined;assert.throws(()=>resolve(f.scope),{code:'UNAUTHORIZED'});
 });

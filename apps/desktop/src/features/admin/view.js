@@ -17,6 +17,7 @@ import {mountComputerControls} from '../../app/computer-controls.js';
 import {mountComputerVisionControls} from '../../app/computer-vision-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
+import {mountGitHubControls} from '../../app/github-controls.js';
 import {mountLayaControls} from '../../app/laya-controls.js';
 import {mountWorkspaceControls} from '../../app/workspace-controls.js';
 import {mountAgentArtsControls} from '../../app/agentarts-controls.js';
@@ -34,6 +35,7 @@ import {mountActivityTimeline} from './activity-timeline.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountWikiImportControls} from '../../app/wiki-import-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
+import {mountMailSourceControls} from './mail-source-controls.js';
 import {profilePage, bindProfile} from './profile.js';
 import {approvalPresentation, authorizationHistoryHtml, authorizationListHtml, nextApprovalExpiry} from './approval-status.js';
 import {agentArtsModelPage} from './agentarts-model.js';
@@ -45,20 +47,86 @@ import {mountPageMotion} from '../../ui/page-motion.js';
 import {mountAuthorizationSettings} from '../conversation/authorization-settings-controls.js';
 import {personalDashboardHtml} from './personal-dashboard-page.js';
 import {mountWakeSettings} from './wake-settings.js';
+import {usageDashboardHtml} from './usage-dashboard.js';
 
 export const sections = {
-  dashboard: '数据看板', settings: '常规', activity: '活动', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
+  dashboard: '数据看板', settings: '常规与外观', activity: '活动', import: '导入', profile: '个人与用量', appearance: '外观详情', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: '工作文件夹', workspace: '工作文件夹',
-  tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
+  tasks: '任务监控', authorizations: '安全与权限', models: 'AI 模型', memory: '记忆', archive: '已归档任务', overview: '概览', experiments: '实验性功能',
 };
+
+const sectionSubtitles = {
+  settings: '常用主题、桌面宠物形态、开机启动与应用控制',
+  connections: '接入邮箱、日历与待办；简报与安全能力已自动就绪',
+  authorizations: '选择默认权限模式，查看或撤销已保存规则',
+  usage: '查看本机消耗统计与预算上限设置',
+  appearance: '统一控制悬浮面板、工作台与设置窗口的主题和动效',
+  voice: '启用实时语音或语音唤醒（「你好小派」）',
+  notifications: '配置应用内与系统提醒通道、免打扰与自主风险偏好',
+  briefing: '设置每日简报时间与汇总内容范围',
+  profile: '管理本机个人资料，并在下方总览使用数据与预算上限',
+  memory: '只读检索本机知识库与 Vault，经确认后沉淀私人记忆',
+  shortcuts: '查看桌面输入与全局语音快捷键',
+  pets: '实时切换 8 种悬浮球形态并预览 6 种动态交互状态',
+  models: '选择日常对话与子任务的默认模型',
+  capabilities: '查看 28 图工作流目录、已安装技能与 Runtime 能力目录',
+  computer: '配置本机电脑操控、可选视觉模型与记事本执行边界',
+  workspace: '选择这台电脑上用来读写与核对代码的工作文件夹',
+  experiments: '管理默认启用的只读实验能力与预览选项',
+  dashboard: '按日、周、月周期汇总已授权数据源的个人趋势',
+  tasks: '查看 Runtime 权威任务快照、步骤状态与执行元数据',
+  activity: '回顾近期自动与手动操作时间线',
+};
+
+function parseUsageMetrics(usageBudget) {
+  const line = typeof usageBudget?.usageLine === 'string' ? usageBudget.usageLine : '';
+  const dayMatch = /今日\s+([\d.]+)(?:\/([\d.]+))?\s*元/.exec(line);
+  const monthMatch = /本月\s+([\d.]+)(?:\/([\d.]+))?\s*元/.exec(line);
+  const tokenMatch = /(\d+)\s*token/.exec(line);
+  const cloudMatch = /云端\s+([^；。\n]+)/.exec(line);
+  const dayYuan = dayMatch ? Number(dayMatch[1]) : 0;
+  const monthYuan = monthMatch ? Number(monthMatch[1]) : 0;
+  const dayLimit = usageBudget?.dailyLimitYuan ?? (dayMatch?.[2] ? Number(dayMatch[2]) : null);
+  const monthLimit = usageBudget?.monthlyLimitYuan ?? (monthMatch?.[2] ? Number(monthMatch[2]) : null);
+  const dayTokens = tokenMatch ? Number(tokenMatch[1]) : 0;
+  const cloudText = cloudMatch ? cloudMatch[1].trim() : '0 分钟';
+  const ratio = (used, limit) => (limit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0);
+  const meterLevel = (used, limit) => {
+    if (!limit || limit <= 0) return 'normal';
+    const r = used / limit;
+    return r >= 1 ? 'exceeded' : r >= 0.8 ? 'approach' : 'normal';
+  };
+  return {
+    dayYuan, monthYuan, dayLimit, monthLimit, dayTokens, cloudText,
+    dayPercent: ratio(dayYuan, dayLimit),
+    monthPercent: ratio(monthYuan, monthLimit),
+    dayLevel: meterLevel(dayYuan, dayLimit),
+    monthLevel: meterLevel(monthYuan, monthLimit),
+    actionLabel: usageBudget?.action === 'pause' ? '超限暂停非必要自主任务' : '超限降级至更便宜模型',
+    hasData: Boolean(dayMatch || monthMatch || tokenMatch),
+  };
+}
 
 const primaryPages = ['settings', 'connections', 'authorizations', 'usage'];
 const navGroups = [
-  {label: '偏好', items: ['appearance', 'voice', 'notifications', 'briefing', 'profile', 'memory', 'shortcuts', 'pets']},
-  {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'workspace']},
-  {label: '记录', items: ['dashboard', 'tasks', 'activity']},
+  {id: 'foundation', label: '常用与外观', items: ['profile', 'settings', 'appearance', 'pets', 'shortcuts']},
+  {id: 'core', label: 'AI 与语音', items: ['models', 'voice', 'usage', 'workspace', 'experiments']},
+  {id: 'capabilities', label: '连接与能力', items: ['connections', 'capabilities', 'computer', 'memory']},
+  {id: 'safety', label: '安全与提醒', items: ['authorizations', 'notifications', 'briefing']},
+  {id: 'telemetry', label: '观测与记录', items: ['dashboard', 'tasks', 'activity']},
 ];
+const SIMPLE_PAGES = new Set(['profile', 'settings', 'models', 'voice', 'connections', 'authorizations']);
+const ADMIN_PRO_MODE_KEY = 'pa-admin-pro-mode';
+const readAdminProMode = () => {
+  try { return typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_PRO_MODE_KEY) === 'true'; }
+  catch { return false; }
+};
+const writeAdminProMode = value => {
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(ADMIN_PRO_MODE_KEY, String(Boolean(value))); }
+  catch {}
+};
+const groupForPage = page => navGroups.find(group => group.items.includes(page));
 const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
 const canonicalPage = page => pageAliases[page] ?? page;
 
@@ -69,6 +137,7 @@ const iconPaths = {
   import: '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 19h14"/>', profile: '<circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/>',
   appearance: '<circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3"/>',
+  notifications: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   briefing: '<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3M8 11h8M8 15h8M8 19h5"/>', configuration: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   personalization: '<path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z"/>',
   pets: '<path d="M6 10 4 6m14 4 2-4M7 9c-3 1-4 4-3 7 1 4 4 5 8 5s7-1 8-5c1-3 0-6-3-7"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/><path d="M10 18h4"/>',
@@ -79,6 +148,7 @@ const iconPaths = {
   browser: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>', hooks: '<path d="M8 4v8a4 4 0 1 0 8 0V7"/><path d="m13 7 3-3 3 3"/>',
   connections: '<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4m-6.6 6 6.6 3.4"/>', git: '<circle cx="6" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="6" cy="20" r="2"/><path d="M6 6v12m0-8c4 0 4-2 10-2"/>',
   environment: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 2 2-2 2m5 0h5"/>', worktrees: '<path d="M5 4v14m0-8h8a4 4 0 0 0 4-4V4m-4 14h6"/><circle cx="5" cy="4" r="2"/><circle cx="5" cy="20" r="2"/><circle cx="19" cy="18" r="2"/><circle cx="17" cy="4" r="2"/>',
+  workspace: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>',
   authorizations: '<path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3z"/><path d="m9 12 2 2 4-4"/>', models: '<path d="M8 4h8l4 4v8l-4 4H8l-4-4V8l4-4z"/><circle cx="12" cy="12" r="3"/>',
   memory: '<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>', tasks: '<path d="M9 5h10M9 12h10M9 19h10"/><path d="m4 5 1 1 2-2m-3 8 1 1 2-2m-3 8 1 1 2-2"/>',
   archive: '<path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"/>',
@@ -113,6 +183,7 @@ export function taskTable(data, escape, evidenceStates = new Map(), patchStates 
 
 export function mountAdmin(root, invoke, escape) {
   let section = 'settings';
+  let usageMetric = 'tokens';
   let navigationRevision = -1;
   let modelEditorOpen = false;
   let approvalExpiryTimer;
@@ -129,6 +200,8 @@ export function mountAdmin(root, invoke, escape) {
   const memorySummaries = new Map();
   let savedMemory = {facts: [], status: ''};
   let imageCatalogHtml = '';
+  let imageCatalogLoading = false;
+  const developerFoldOpen = new Map();
   let renderedSection, memoryRenderKey;
   let historyGeneration = 0;
   async function loadHistory(reset = false) {
@@ -163,13 +236,41 @@ export function mountAdmin(root, invoke, escape) {
     approvalExpiryTimer = undefined;
   };
   window.addEventListener('unload', clearApprovalExpiryTimer, {once: true});
-  const navButton = id => `<button data-page="${id}" title="${sections[id]}">${icon(id)}<span>${sections[id]}</span></button>`;
-  root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span>${windowControlsHtml('admin')}</header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航"><section class="nav-group primary-nav">${primaryPages.map(navButton).join('')}</section><details class="advanced-nav"><summary>高级设置</summary>${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(navButton).join('')}</section>`).join('')}</details></nav><footer>私人助理 · Windows<br>设置与状态保存在本机</footer></aside><section class="main"><div class="eyebrow">设置</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
-  const historySlot=document.createElement('div');root.querySelector('#connection').after(historySlot);
+  let proMode = readAdminProMode();
+  const markProMounted = (parent, mountFn, anchor) => {
+    const beforeLast = parent?.lastElementChild;
+    const beforeAnchor = anchor?.previousElementSibling;
+    const instance = mountFn();
+    const target = anchor?.previousElementSibling && anchor.previousElementSibling !== beforeAnchor
+      ? anchor.previousElementSibling
+      : parent?.lastElementChild && parent.lastElementChild !== beforeLast
+        ? parent.lastElementChild
+        : null;
+    if (target?.dataset) target.dataset.proOnly = 'true';
+    return instance;
+  };
+  const navButton = id => `<button data-page="${id}"${SIMPLE_PAGES.has(id) ? '' : ' data-pro-only="true"'} title="${sections[id]}">${icon(id)}<span>${sections[id]}</span></button>`;
+  const brandMark = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 4v2m0 12v2M4 12h2m12 0h2"/></svg>';
+  root.innerHTML = `<div class="admin" data-admin-mode="${proMode ? 'pro' : 'simple'}"><header class="admin-bar"><div class="side-home admin-bar-brand"><span class="side-mark" aria-hidden="true">${brandMark}</span><div class="side-home-copy"><span class="brand">Synstar</span><span class="admin-title">设置</span></div></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><div class="admin-mode-switch" role="group" aria-label="设置视图模式"><button type="button" data-admin-mode-btn="simple" aria-pressed="${!proMode}">简洁</button><button type="button" data-admin-mode-btn="pro" aria-pressed="${proMode}">专业配置</button></div><span class="spacer"></span><div class="banner" id="connection"></div>${windowControlsHtml('admin')}</header><section class="admin-dock side" aria-label="分类导航坞"><nav aria-label="设置导航">${navGroups.map(group => `<section class="nav-group" data-group="${group.id}"${group.items.every(id => !SIMPLE_PAGES.has(id)) ? ' data-pro-group="true"' : ''}><h2>${group.label}</h2><div class="nav-pills">${group.items.map(navButton).join('')}</div></section>`).join('')}</nav></section><section class="main"><header class="admin-hero"><div class="admin-hero-copy"><span class="admin-hero-eyebrow" id="page-category"></span><h1 id="page-title"></h1><p class="admin-hero-sub" id="page-subtitle"></p></div></header><div id="content"></div><div class="adm-mode-callout" id="admin-pro-callout"><span>当前为简洁模式，核心功能已默认自动启用；网关凭据、工作区诊断、上下文参数等精细配置已收纳至专业配置。</span><button type="button" class="btn btn-sm" data-enter-pro-mode>进入专业配置</button></div><p class="error" role="alert" id="error"></p></section></div>`;
+  const adminShell = root.querySelector('.admin');
+  const windowTitle = root.querySelector('.admin-title');
+  const historySlot=document.createElement('div');(root.querySelector('.admin-hero')??root.querySelector('#connection')).after(historySlot);
   const historyControls=mountHistoryControls(historySlot,invoke,error=>{root.querySelector('#error').textContent=errorDisplayText(error);},root.querySelector('.main'));
   window.addEventListener('unload',()=>historyControls.dispose(),{once:true});
   root.querySelector('#content').addEventListener('click', async event => {
-    const button = event.target.closest('#desktop-local-settings');
+    const metricBtn = event.target?.closest?.('[data-ud-metric]');
+    if (metricBtn) {
+      usageMetric = metricBtn.dataset.udMetric === 'cost' ? 'cost' : 'tokens';
+      render(current);
+      return;
+    }
+    const orbBtn = event.target?.closest?.('[data-orb-variant]');
+    if (orbBtn) {
+      saveOrbVariant(orbBtn.dataset.orbVariant);
+      render(current);
+      return;
+    }
+    const button = event.target?.closest?.('#desktop-local-settings');
     if (!button || button.disabled) return;
     button.disabled = true;
     try { await window.desktop.openSettings(); }
@@ -178,13 +279,16 @@ export function mountAdmin(root, invoke, escape) {
   });
   root.querySelector('#content').addEventListener('toggle', event => {
     const details = event.target;
-    if (details.isConnected && details.dataset.taskDetails) taskDetails.set(details.dataset.taskDetails, details.open);
+    if (!details.isConnected) return;
+    if (details.dataset.taskDetails) taskDetails.set(details.dataset.taskDetails, details.open);
+    if (details.dataset.developerFold) developerFoldOpen.set(details.dataset.developerFold, details.open);
   }, true);
-  const remoteMcpButton=document.createElement('button');remoteMcpButton.type='button';remoteMcpButton.id='remote-mcp-manage';remoteMcpButton.className='btn btn-sm';remoteMcpButton.hidden=true;
+  const remoteMcpButton=document.createElement('button');remoteMcpButton.type='button';remoteMcpButton.id='remote-mcp-manage';remoteMcpButton.className='btn btn-sm';remoteMcpButton.hidden=true;remoteMcpButton.dataset.proOnly='true';
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls;
+  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,githubControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls,mailSourceControls;
+  window.addEventListener('unload',()=>mailSourceControls?.dispose(),{once:true});
   let installedSkillsControls,pluginCatalogControls,activityControls,sisControls,notificationControls,riskAutonomyControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
@@ -210,7 +314,7 @@ export function mountAdmin(root, invoke, escape) {
     const rows = data.health.map(item => `<tr><td>${escape(item.id)}</td><td>${badge(escape(healthLabels[item.state] ?? '状态未知'), item.state)}</td><td>${escape(item.reason ?? '—')}</td></tr>`).join('');
     const status = data.capabilityDirectory ?? {state: 'unavailable', reason: '可信宿主尚未报告能力目录状态'};
     const empty = status.state === 'loaded' ? 'Runtime 未报告连接健康项。' : escape(status.reason);
-    return `<div class="connection-intro"><h2>连接与提醒</h2><p>按需连接邮箱、日历和订阅，并管理提醒方式。已保存的配置是否接入，会在各项状态中分别说明。</p><button class="btn btn-sm" data-jump="notifications">提醒设置</button></div><details class="sheet connection-diagnostics"><summary>连接诊断与能力状态</summary><div class="row"><h2>连接健康</h2><span class="spacer"></span><button class="btn btn-sm" data-jump="capabilities">查看能力目录</button></div><p class="muted" role="${status.state === 'error' ? 'alert' : 'status'}">${escape(status.reason)}</p><p class="muted">仅列出 Runtime 能力目录报告的健康项；未公布的外部连接不会出现在这里。</p><div class="table-scroll"><table><thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="empty">${empty}</td></tr>`}</tbody></table></div></details>`;
+    return `<div class="connection-intro"><h2>连接与提醒</h2><p>按需授权邮箱、日历与待办；每日简报和提醒保护已默认就绪。</p><button class="btn btn-sm" data-jump="notifications" data-pro-only="true">提醒与简报策略</button></div><details class="sheet connection-diagnostics" data-pro-only="true"><summary>连接诊断与能力状态</summary><div class="row"><h2>连接健康</h2><span class="spacer"></span><button class="btn btn-sm" data-jump="capabilities">查看能力目录</button></div><p class="muted" role="${status.state === 'error' ? 'alert' : 'status'}">${escape(status.reason)}</p><p class="muted">仅列出 Runtime 能力目录报告的健康项；未公布的外部连接不会出现在这里。</p><div class="table-scroll"><table><thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="empty">${empty}</td></tr>`}</tbody></table></div></details>`;
   }
 
   function modelEditor(data) {
@@ -229,95 +333,13 @@ export function mountAdmin(root, invoke, escape) {
     const status = item.status === 'ready' ? '连接正常' : item.status === 'configured' ? '等待测试' : item.status === 'disabled' ? '已停用' : item.status === 'error' ? '连接失败' : '未配置';
     const modelName = item.provider === 'fake' ? item.label : configured ? item.model : '盘古大模型 2.0';
     const providerLine = item.provider === 'fake' ? '离线联调 · 不调用真实服务' : configured ? `Huawei Cloud · ${item.deployment || item.model}` : '尚未配置 Endpoint 与 API Key';
-    return `<div class="model-page"><div class="page-lead"><div><h2>模型</h2><p>使用自己的 API Key 管理 PersonalAgent 的模型。</p></div><button class="btn btn-primary" id="model-add">＋ ${configured ? '编辑模型' : '添加模型'}</button></div><div class="model-list" aria-label="模型列表"><div class="model-item"><span class="provider-mark" aria-hidden="true">P</span><span class="model-copy"><b>${escape(modelName)}</b><small>${escape(providerLine)}</small></span><span class="model-state">${badge(status, item.status)}</span><button class="model-more" id="model-more" aria-label="编辑模型">•••</button><label class="switch-control" title="${configured ? '启用或停用该模型' : '保存模型后可启用'}"><input id="model-enabled" type="checkbox" ${enabled ? 'checked' : ''} ${configured ? '' : 'disabled'}><span></span></label></div></div>${modelEditorOpen ? modelEditor(data) : '<p class="model-footnote">API Key 仅进入主进程，并由 Windows 安全存储加密；列表不会显示密钥内容。</p>'}</div>`;
+    return `<div class="model-page"><div class="page-lead"><div><h2>模型</h2><p>使用自己的 API Key 管理 Synstar 的模型。</p></div><button class="btn btn-primary" id="model-add">＋ ${configured ? '编辑模型' : '添加模型'}</button></div><div class="model-list" aria-label="模型列表"><div class="model-item"><span class="provider-mark" aria-hidden="true">P</span><span class="model-copy"><b>${escape(modelName)}</b><small>${escape(providerLine)}</small></span><span class="model-state">${badge(status, item.status)}</span><button class="model-more" id="model-more" aria-label="编辑模型">•••</button><label class="switch-control" title="${configured ? '启用或停用该模型' : '保存模型后可启用'}"><input id="model-enabled" type="checkbox" ${enabled ? 'checked' : ''} ${configured ? '' : 'disabled'}><span></span></label></div></div>${modelEditorOpen ? modelEditor(data) : '<p class="model-footnote">API Key 仅进入主进程，并由 Windows 安全存储加密；列表不会显示密钥内容。</p>'}</div>`;
   }
 
   const settingRow = (title, detail, control, extra = '') => `<div class="setting-row ${extra}" data-setting-text="${escape(`${title} ${detail}`.toLowerCase())}"><span><b>${escape(title)}</b><small>${escape(detail)}</small></span><span class="setting-control">${control}</span></div>`;
   const capabilitySummary = (data, key = 'capabilities') => data.capabilityDirectory?.state === 'loaded'
     ? `${data[key]?.length ?? 0} ${key === 'health' ? '项状态' : '项已公布'}`
     : data.capabilityDirectory?.reason ?? '能力目录状态未报告';
-
-  function settingsPane(data, selected = 'general') {
-    const agentArts = data.model?.provider === 'agentarts';
-    const modelStatus = agentArts
-      ? data.model?.configured && data.model?.status !== 'error' ? '由可信主进程配置；任务仍需读回验证' : '不可用'
-      : data.model?.status === 'ready' ? '已测试并连接' : data.model?.configured ? '已配置，等待测试' : '未配置';
-    const panes = {
-      general: ['常规', '管理应用的基础行为与入口',
-        settingRow('桌面与窗口', '调整语言、字体缩放和悬浮球行为，或查看窗口诊断', '<button type="button" class="btn btn-sm" id="desktop-local-settings">桌面偏好</button>') +
-        settingRow('工作文件夹', data.coding?.configured ? `当前：${data.coding.displayName}；${data.coding.reason}` : data.coding?.reason ?? '工作文件夹尚未装配', `<button class="btn btn-sm" data-jump="workspace" ${data.coding?.selectionAvailable===false?'disabled':''}>选择或查看</button>`) +
-        settingRow('外观', '调整应用主题和动态效果', '<button class="btn btn-sm" data-jump="appearance">外观设置</button>') +
-        settingRow('语音设备', '管理语音连接与设备状态', '<button class="btn btn-sm" data-jump="voice">语音设置</button>') +
-        settingRow('模型与 API', agentArts ? '在模型页面管理 AgentArts 运行时和本机加密凭据' : '模型、Endpoint 和密钥在独立页面管理', '<button class="btn btn-sm" data-jump="models">打开模型</button>') +
-        settingRow('登录 Windows 时启动', data.loginItem?.reason??'启动项状态尚未读回',
-          `<label class="switch-control"><input id="login-item-enabled" aria-label="登录 Windows 时启动" type="checkbox" ${data.loginItem?.configured===true?'checked':''} ${data.loginItem?.supported===true?'':'disabled'}><span></span></label><button type="button" class="btn btn-sm" id="login-item-refresh">刷新状态</button>`,data.loginItem?.supported===true?'':'is-unavailable') +
-        settingRow('退出应用', '结束托盘和所有窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
-      appearance: ['外观', '选择清晰舒适的界面主题与动效',
-        settingRow('界面主题', '悬浮面板、工作台和桌面设置使用同一套主题', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
-        settingRow('降低动效', '暂停轨道脉冲并移除界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>') +
-        settingRow('ORB-02', '黑核、白色规则点阵、球体模糊关闭', '<span class="value-pill">当前方案</span> <button type="button" class="btn btn-sm" data-jump="pets">桌面宠物设置</button>')],
-      interaction: ['交互', '悬浮球、面板与输入行为',
-        settingRow('靠近展开', '指针进入 ORB 周围 90px 后展开面板', '<span class="value-pill">90px</span>') +
-        settingRow('对话面板宽度', '桌面固定宽度，窄屏自动收缩', '<span class="value-pill">420px</span>') +
-        settingRow('任务取消', '只显示 Runtime 回读后的最终状态', '<span class="value-pill">严格确认</span>') +
-        settingRow('默认终端', '终端连接器尚未提供选择接口', '<span class="status-note">待接入</span>', 'is-unavailable')],
-      voice: ['语音', '听写、原生实时对话和加密凭据',
-        settingRow('麦克风听写', '本地语音听写仅填草稿；经 AgentArts 的实时听写当前不可用', `<span class="value-pill">${data.voice?.configuration?.configured ? '配置已保存' : '未配置'}</span>`) +
-        settingRow('实时语音', data.live?.reason ?? '在下方配置百炼北京业务空间和 API Key', `<span class="value-pill">${data.live?.active ? '通话中' : data.live?.configured ? '已配置' : '未配置'}</span>`) +
-        settingRow('语音播报', '停止播报与任务取消保持独立', '<span class="value-pill">安全隔离</span>')],
-      notifications: ['通知', '任务状态与需要用户处理的提醒',
-        settingRow('应用内通知', '当前只显示真实 Runtime 状态', '<span class="value-pill">已启用</span>') +
-        settingRow('系统通知', '按当前打扰策略投递，系统 show 回执与用户已读分别核实', `<span class="value-pill">${data.notificationCenter?.available?'宿主已装配，设备待验':'等待 Runtime'}</span>`) +
-        settingRow('授权提醒', '需要授权时在当前对话显示提问卡；安全页管理沙箱与已保存规则', '<button class="btn btn-sm" data-jump="authorizations">查看规则</button>')],
-      privacy: ['隐私与数据', '敏感数据与本地运行边界',
-        (agentArts
-          ? settingRow('AgentArts 凭据', '已保存的密钥不回传界面；在模型页面配置或更换', '<button class="btn btn-sm" data-jump="models">管理配置</button>')
-          : settingRow('API Key', data.model?.persisted ? '由 Windows 安全存储加密' : '尚未持久化到本机安全存储', `<span class="value-pill">${data.model?.persisted ? '已加密' : '未保存'}</span>`)) +
-        settingRow('模型状态', modelStatus, `<button class="btn btn-sm" data-jump="models">${agentArts ? '查看状态' : '管理'}</button>`) +
-        settingRow('任务数据', '本地 Runtime 按公共契约保存；界面不绕过 Runtime', '<span class="value-pill">本地</span>') +
-        settingRow('数据导出与清除', '对应模块尚未接入，避免提供无效操作', '<span class="status-note">待接入</span>', 'is-unavailable')],
-      permissions: ['权限', '所有副作用操作都由 Runtime 校验',
-        settingRow('默认策略', '外部内容不能提升权限，工具声明不构成授权', '<span class="value-pill">拒绝优先</span>') +
-        settingRow('操作授权', '在当前对话的提问卡选择本次、永久规则或拒绝，无需在此预先允许', '<button class="btn btn-sm" data-jump="authorizations">沙箱与规则</button>') +
-        settingRow('能力范围', '查看 Runtime 当前公开的能力与作用域', '<button class="btn btn-sm" data-jump="capabilities">查看能力</button>')],
-      shortcuts: ['快捷键', '当前可用的桌面输入快捷键',
-        settingRow('发送消息', '输入框内提交任务', '<kbd>Enter</kbd>') +
-        settingRow('换行', '在输入框中插入新行', '<kbd>Shift</kbd><span class="key-plus">＋</span><kbd>Enter</kbd>') +
-        settingRow('收起面板', '使用面板右上角关闭按钮', '<span class="value-pill">右上角 ✕</span>') +
-        settingRow('实时语音开启 / 关闭', data.live?.shortcut?.reason || '在语音设置中修改全局快捷键', `<kbd>${escape(data.live?.shortcut?.key ?? 'F8')}</kbd><button class="btn btn-sm" data-jump="voice">语音设置</button>`)],
-      diagnostics: ['诊断与关于', '运行状态、版本边界与应用操作',
-        settingRow('Runtime', data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection, '<button class="btn btn-sm" data-jump="connections">连接状态</button>') +
-        settingRow('能力目录', capabilitySummary(data), '<button class="btn btn-sm" data-jump="capabilities">查看目录</button>') +
-        settingRow('PersonalAgent Desktop', 'MOD-11 / MOD-12 / MOD-13 开发版本', '<span class="value-pill">Windows</span>') +
-        settingRow('退出应用', '结束托盘、ORB 与所有桌面窗口', '<button class="btn btn-danger btn-sm" id="quit">退出</button>')],
-    };
-    const pane = panes[selected] ?? panes.general;
-    return `<section class="settings-content settings-single"><div class="settings-heading"><h2>${pane[0]}</h2><p>${pane[1]}</p></div><div class="settings-list">${pane[2]}</div></section>`;
-  }
-
-  function featurePage(data, id) {
-    const features = {
-      import: ['导入', '从受支持的数据源迁移个人资料、偏好和记忆。', [['数据文件', '导入协议尚未接入', '待接入'], ['ChatGPT 数据', '当前不会读取第三方账户数据', '不可用'], ['导入记录', '完成真实导入后在此显示', '0 项']]],
-      profile: ['个人资料', '管理 PersonalAgent 在本机使用的身份信息。', [['显示名称', '个人资料模块尚未接入', '待设置'], ['头像', '使用本地资源，不会自动上传', '待设置'], ['时区', '跟随 Windows 系统', 'Asia/Shanghai']]],
-      configuration: ['配置', '集中查看模型、Runtime 与能力配置。', [['模型网关', data.model?.reason ?? '状态未知', 'models'], ['Runtime', data.connection, 'connections'], ['已公布能力', capabilitySummary(data), 'capabilities']]],
-      personalization: ['个性化', '管理回答偏好、工作方式和长期习惯。', [['回答风格', '个性化模块尚未接入 Runtime', '待接入'], ['主动建议', '只在有依据且无需额外授权时提出', '受控'], ['长期偏好', '由记忆模块确认后保存', 'memory']]],
-      pets: ['桌面宠物', '管理 ORB-02 与未来可选桌面伙伴。', [['当前伙伴', 'ORB-02 · 黑核与白色规则点阵', '已启用'], ['靠近响应', '进入 90px 范围展开对话', '90px'], ['宠物库', '额外角色资源尚未接入', '待接入']]],
-      usage: ['使用情况和计费', '每日和每月估算上限。', [['当前用量', '由用量设置显示', '待接入']]],
-      analytics: ['分析', '查看任务成功率、耗时和能力调用趋势。', [['任务分析', '分析模块尚未接入真实聚合数据', '待接入'], ['模型延迟', data.model?.latencyMs == null ? '尚无真实连接测试结果' : `${data.model.latencyMs} ms`, 'models'], ['连接健康', capabilitySummary(data, 'health'), 'connections']]],
-      account: ['账户', '管理本地身份与外部服务连接。', [['PersonalAgent 账户', '当前版本使用本地桌面身份', '本地'], ['外部账户', '通过连接器单独授权，不共享密钥', 'connections'], ['订阅', 'PersonalAgent 尚未提供订阅系统', '不可用']]],
-      computer: ['电脑操控', '管理 Windows 桌面操作能力与安全边界。', [['电脑操作', 'Windows Host 模块尚未完成真实接入', '待接入'], ['执行策略', '串行操作，同一资源写入加锁', '受控'], ['授权', '副作用操作必须经过 Runtime 校验', 'authorizations']]],
-      browser: ['浏览器', '管理网页读取、导航与浏览器自动化连接。', [['浏览器后端', '浏览器连接器尚未接入桌面 Runtime', '未连接'], ['站点权限', '按连接器和任务单独授权', 'authorizations'], ['下载', '不会在未授权时创建文件', '受控']]],
-      hooks: ['钩子', '配置任务生命周期中的受控扩展点。', [['任务开始', 'Hook 契约尚未发布', '待接入'], ['工具调用前', '策略网关始终先于外部执行', '固定'], ['任务完成', '只根据 Runtime 最终状态触发', '固定']]],
-      git: ['Git', '管理仓库状态、分支与协作能力。', [['Git 集成', 'Git 连接器尚未接入 Runtime', '未连接'], ['默认分支策略', '不会自行覆盖他人分支或未提交改动', '安全'], ['凭据', '不在前端保存 Git 凭据', '隔离']]],
-      environment: ['环境', '管理任务运行时、终端和环境变量边界。', [['集成终端', 'Shell 选择接口尚未接入', '待接入'], ['环境变量', '不会显示或记录敏感变量值', '受保护'], ['Runtime', data.connection, 'connections']]],
-      worktrees: ['Worktrees', '管理隔离工作树与共享仓库协作。', [['工作树管理', 'Worktree 连接器尚未接入桌面 Runtime', '待接入'], ['冲突保护', '不切换他人正在使用的分支', '启用'], ['项目边界', '依赖当前打开的工作区', '固定']]],
-      archive: ['已归档任务', '查看和恢复已归档的任务记录。', [['归档列表', 'Runtime 尚未公开任务归档接口', '待接入'], ['自动归档', '不会在未授权时自动移动任务', '关闭'], ['保留策略', '等待归档模块定义', '未设置']]],
-      memory: ['记忆', '管理经确认的偏好和工作流记忆。', [['记忆服务', '记忆模块尚未连接桌面 Runtime', '未连接'], ['写入策略', '仅保存已确认的偏好和验证过的工作流', '受控'], ['导出与清除', '等待记忆模块提供真实接口', '待接入']]],
-    };
-    const feature = features[id];
-    if (!feature) return `<div class="sheet"><h2>${sections[id]}</h2><div class="empty">此模块尚未接入真实服务。</div></div>`;
-    return `<section class="feature-page"><div class="settings-heading"><h2>${feature[0]}</h2><p>${escape(feature[1])}</p></div><div class="settings-list">${feature[2].map(([title, detail, target]) => settingRow(title, detail, sections[target] ? `<button class="btn btn-sm" data-jump="${target}">${sections[target]}</button>` : `<span class="${['待接入','不可用','未连接','待设置','未设置'].includes(target) ? 'status-note' : 'value-pill'}">${target}</span>`)).join('')}</div></section>`;
-  }
 
   const ORB_VARIANT_ITEMS = [
     {id: 'particle', code: 'ORB-01', name: '粒子球壳', note: '黑核 + 亮白粒子壳，六状态换剪影'},
@@ -338,6 +360,132 @@ export function mountAdmin(root, invoke, escape) {
     {id: 'waiting', label: '等待确认 · Waiting', detail: '球壳收紧至 0.72 + 外圈静止虚线环'},
     {id: 'error', label: '异常 · Error', detail: '粒子坍缩至黑核视界边缘 + 低频慢闪'},
   ];
+
+  function settingsPane(data, selected = 'general') {
+    const agentArts = data.model?.provider === 'agentarts';
+    const modelStatus = agentArts
+      ? data.model?.configured && data.model?.status !== 'error' ? '由可信主进程配置；任务仍需读回验证' : '不可用'
+      : data.model?.status === 'ready' ? '已测试并连接' : data.model?.configured ? '已配置，等待测试' : '未配置';
+    if (selected === 'general') {
+      const usageMetrics = parseUsageMetrics(data.usageBudget);
+      const runtimeTone = data.connectionError ? 'warn' : /已连接|就绪|ready/i.test(data.connection ?? '') ? 'ready' : 'warn';
+      const modelTone = agentArts
+        ? (data.model?.configured && data.model?.status !== 'error' ? 'ready' : 'off')
+        : (data.model?.status === 'ready' ? 'ready' : data.model?.configured ? 'warn' : 'off');
+      const modelShort = agentArts
+        ? (data.model?.configured ? 'AgentArts' : '待配置')
+        : (data.model?.model || (data.model?.configured ? '已配置' : '未配置'));
+      const workspaceShort = data.coding?.configured ? data.coding.displayName : '未选择';
+      const usageShort = usageMetrics.hasData ? `¥${usageMetrics.dayYuan.toFixed(2)}` : `${data.tasks?.length ?? 0} 条任务`;
+      const usageSub = usageMetrics.hasData
+        ? `本月 ¥${usageMetrics.monthYuan.toFixed(2)} · ${usageMetrics.dayTokens} token`
+        : '查看使用仪表盘与预算上限';
+      const activeOrb = orbVariantPreference();
+      const orbChips = ORB_VARIANT_ITEMS.map(item => {
+        const isSelected = item.id === activeOrb;
+        return `<button type="button" class="adm-orb-chip${isSelected ? ' is-active' : ''}" data-orb-variant="${item.id}" aria-pressed="${isSelected}" title="${escape(item.note)}"><span>${escape(item.name)}</span></button>`;
+      }).join('');
+      const bento = `<div class="adm-bento" data-pro-only="true" aria-label="系统概览">
+        <button type="button" class="adm-tile" data-jump="connections"><span class="adm-tile-head"><span class="adm-tile-label">Runtime 状态</span><span class="adm-tile-dot" data-tone="${runtimeTone}"></span></span><strong class="adm-tile-value">${escape(data.connection || '未连接')}</strong><span class="adm-tile-meta">${escape(data.connectionError || '查看连接健康与能力目录')}</span></button>
+        <button type="button" class="adm-tile" data-jump="models"><span class="adm-tile-head"><span class="adm-tile-label">模型引擎</span><span class="adm-tile-dot" data-tone="${modelTone}"></span></span><strong class="adm-tile-value">${escape(modelShort)}</strong><span class="adm-tile-meta">${escape(modelStatus)}</span></button>
+        <button type="button" class="adm-tile" data-jump="workspace"><span class="adm-tile-head"><span class="adm-tile-label">工作文件夹</span><span class="adm-tile-dot" data-tone="${data.coding?.configured ? 'ready' : 'off'}"></span></span><strong class="adm-tile-value">${escape(workspaceShort)}</strong><span class="adm-tile-meta">${escape(data.coding?.reason ?? '选择代码工作目录')}</span></button>
+        <button type="button" class="adm-tile" data-jump="usage"><span class="adm-tile-head"><span class="adm-tile-label">今日估算用量</span><span class="adm-tile-dot" data-tone="${usageMetrics.dayLevel === 'exceeded' ? 'off' : usageMetrics.dayLevel === 'approach' ? 'warn' : 'ready'}"></span></span><strong class="adm-tile-value">${escape(usageShort)}</strong><span class="adm-tile-meta">${escape(usageSub)}</span></button>
+      </div>`;
+      const appearanceRows =
+        settingRow('界面主题', '悬浮面板、工作台与设置窗口同步切换', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
+        settingRow('降低动效', '减弱悬浮球脉冲与界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>') +
+        `<div class="setting-row adm-orb-row" data-setting-text="桌面宠物 orb 悬浮球 外观"><span><b>桌面宠物形态</b><small>点击即可实时切换桌面悬浮球外观</small></span><div class="adm-orb-chips">${orbChips}</div></div>`;
+      const systemRows =
+        settingRow('登录 Windows 时启动', data.loginItem?.supported === true ? (data.loginItem?.configured ? '已开启开机自动启动' : '开机后手动打开或在此开启') : (data.loginItem?.reason ?? '当前环境不支持修改启动项'),
+          `<label class="switch-control"><input id="login-item-enabled" aria-label="登录 Windows 时启动" type="checkbox" ${data.loginItem?.configured===true?'checked':''} ${data.loginItem?.supported===true?'':'disabled'}><span></span></label><button type="button" class="btn btn-sm" id="login-item-refresh" data-pro-only="true">刷新状态</button>`, data.loginItem?.supported===true?'':'is-unavailable') +
+        settingRow('桌面与窗口', '语言、字体缩放与悬浮球贴边行为', '<button type="button" class="btn btn-sm" id="desktop-local-settings">桌面偏好</button>') +
+        settingRow('工作文件夹', data.coding?.configured ? `当前：${data.coding.displayName}；${data.coding.reason}` : data.coding?.reason ?? '工作文件夹尚未装配', `<button class="btn btn-sm" data-jump="workspace" ${data.coding?.selectionAvailable===false?'disabled':''}>选择或查看</button>`, 'adm-pro-row') +
+        settingRow('个人与用量', '查看使用仪表盘、Token 活动与预算上限', '<button type="button" class="btn btn-sm" data-jump="profile">查看用量</button>', 'adm-pro-row') +
+        settingRow('退出应用', '结束托盘和所有窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>');
+      const autoEnabledItems = [
+        {name: '子智能体规划 (Harness)', state: data.modelApi?.harness?.enabled !== false ? '已默认启用' : '已在专业配置停用'},
+        {name: '只读试运行预览', state: data.shadowPreview?.enabled !== false ? '已默认启用' : '已关闭'},
+        {name: '每日结果简报', state: data.dailyBriefing?.enabled !== false ? '已默认启用' : '已关闭'},
+        {name: '低风险操作自动放行', state: '默认开启'},
+      ];
+      const autoStrip = `<div class="adm-auto-strip" aria-label="已自动启用的智能能力">
+        <div class="adm-auto-strip-head"><strong>默认已为你自动开启的能力</strong><span class="muted">无需手动寻找总开关，复杂参数可在「专业配置」微调</span></div>
+        <div class="adm-auto-pills">${autoEnabledItems.map(item => `<span class="adm-auto-pill"><span class="badge-dot"></span><b>${escape(item.name)}</b><small>${escape(item.state)}</small></span>`).join('')}</div>
+      </div>`;
+      return `<section class="settings-content settings-single"><div class="settings-heading adm-sr-heading"><h2>常规</h2></div>${bento}<div class="adm-deck-2"><div class="adm-section-group"><h2 class="adm-group-title">外观与桌面宠物</h2><div class="settings-list">${appearanceRows}</div></div><div class="adm-section-group"><h2 class="adm-group-title">系统与应用</h2><div class="settings-list">${systemRows}</div></div></div>${autoStrip}</section>`;
+    }
+    const panes = {
+      general: ['常规', '管理应用的基础行为与入口', ''],
+      appearance: ['外观', '选择清晰舒适的界面主题与动效',
+        settingRow('界面主题', '悬浮面板、工作台和桌面设置使用同一套主题', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
+        settingRow('降低动效', '暂停轨道脉冲并移除界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>') +
+        settingRow('ORB-02', '黑核、白色规则点阵、球体模糊关闭', '<span class="value-pill">当前方案</span> <button type="button" class="btn btn-sm" data-jump="pets">桌面宠物设置</button>')],
+      interaction: ['交互', '悬浮球、面板与输入行为',
+        settingRow('靠近展开', '指针进入 ORB 周围 90px 后展开面板', '<span class="value-pill">90px</span>') +
+        settingRow('对话面板宽度', '桌面固定宽度，窄屏自动收缩', '<span class="value-pill">420px</span>') +
+        settingRow('任务取消', '只显示 Runtime 回读后的最终状态', '<span class="value-pill">严格确认</span>') +
+        settingRow('默认终端', '终端连接器尚未提供选择接口', '<span class="status-note">待接入</span>', 'is-unavailable')],
+      voice: ['语音', '听写、原生实时对话和加密凭据',
+        settingRow('麦克风听写', '本地语音听写仅填草稿；经 AgentArts 的实时听写当前不可用', `<span class="value-pill">${data.voice?.configuration?.configured ? '配置已保存' : '未配置'}</span>`, 'adm-pro-row') +
+        settingRow('实时语音', data.live?.reason ?? '在下方配置百炼北京业务空间和 API Key', `<span class="value-pill">${data.live?.active ? '通话中' : data.live?.configured ? '已配置' : '未配置'}</span>`, 'adm-pro-row') +
+        settingRow('语音播报', '停止播报与任务取消保持独立', '<span class="value-pill">安全隔离</span>', 'adm-pro-row')],
+      notifications: ['通知', '任务状态与需要用户处理的提醒',
+        settingRow('应用内通知', '当前只显示真实 Runtime 状态', '<span class="value-pill">已启用</span>') +
+        settingRow('系统通知', '按当前打扰策略投递，系统 show 回执与用户已读分别核实', `<span class="value-pill">${data.notificationCenter?.available?'宿主已装配，设备待验':'等待 Runtime'}</span>`) +
+        settingRow('授权提醒', '需要授权时在当前对话显示提问卡；安全页管理沙箱与已保存规则', '<button class="btn btn-sm" data-jump="authorizations">查看规则</button>')],
+      privacy: ['隐私与数据', '敏感数据与本地运行边界',
+        (agentArts
+          ? settingRow('AgentArts 凭据', '已保存的密钥不回传界面；在模型页面配置或更换', '<button class="btn btn-sm" data-jump="models">管理配置</button>')
+          : settingRow('API Key', data.model?.persisted ? '由 Windows 安全存储加密' : '尚未持久化到本机安全存储', `<span class="value-pill">${data.model?.persisted ? '已加密' : '未保存'}</span>`)) +
+        settingRow('模型状态', modelStatus, `<button class="btn btn-sm" data-jump="models">${agentArts ? '查看状态' : '管理'}</button>`) +
+        settingRow('任务数据', '本地 Runtime 按公共契约保存；界面不绕过 Runtime', '<span class="value-pill">本地</span>') +
+        settingRow('数据导出与清除', '对应模块尚未接入，避免提供无效操作', '<span class="status-note">待接入</span>', 'is-unavailable')],
+      permissions: ['权限', '所有副作用操作都由 Runtime 校验',
+        settingRow('默认策略', '外部内容不能提升权限，工具声明不构成授权', '<span class="value-pill">拒绝优先</span>') +
+        settingRow('操作授权', '在当前对话的提问卡选择本次、永久规则或拒绝，无需在此预先允许', '<button class="btn btn-sm" data-jump="authorizations">沙箱与规则</button>') +
+        settingRow('能力范围', '查看 Runtime 当前公开的能力与作用域', '<button class="btn btn-sm" data-jump="capabilities">查看能力</button>')],
+      experiments: ['实验性功能', '管理可选的实验功能',
+        settingRow('影子工作流试运行预览', '开启后，任务模型可按需预览计划中的操作。预览只读，无副作用，默认已自动启用。',
+          `<label class="switch-control"><input id="shadow-preview-enabled" aria-label="影子工作流试运行预览" type="checkbox" ${data.shadowPreview?.enabled ? 'checked' : ''} ${data.shadowPreview?.available ? '' : 'disabled'}><span></span></label>`)],
+      shortcuts: ['快捷键', '当前可用的桌面输入快捷键',
+        settingRow('发送消息', '输入框内提交任务', '<kbd>Enter</kbd>') +
+        settingRow('换行', '在输入框中插入新行', '<kbd>Shift</kbd><span class="key-plus">＋</span><kbd>Enter</kbd>') +
+        settingRow('收起面板', '使用面板右上角关闭按钮', '<span class="value-pill">右上角 ✕</span>') +
+        settingRow('实时语音开启 / 关闭', data.live?.shortcut?.reason || '在语音设置中修改全局快捷键', `<kbd>${escape(data.live?.shortcut?.key ?? 'F8')}</kbd><button class="btn btn-sm" data-jump="voice">语音设置</button>`)],
+      diagnostics: ['诊断与关于', '运行状态、版本边界与应用操作',
+        settingRow('Runtime', data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection, '<button class="btn btn-sm" data-jump="connections">连接状态</button>') +
+        settingRow('能力目录', capabilitySummary(data), '<button class="btn btn-sm" data-jump="capabilities">查看目录</button>') +
+        settingRow('Synstar Desktop', 'MOD-11 / MOD-12 / MOD-13 开发版本', '<span class="value-pill">Windows</span>') +
+        settingRow('退出应用', '结束托盘、ORB 与所有桌面窗口', '<button class="btn btn-danger btn-sm" id="quit">退出</button>')],
+    };
+    const pane = panes[selected] ?? panes.general;
+    return `<section class="settings-content settings-single"${selected === 'voice' ? ' data-pro-only="true"' : ''}><div class="settings-heading"><h2>${pane[0]}</h2><p>${pane[1]}</p></div><div class="settings-list">${pane[2]}</div></section>`;
+  }
+
+  function featurePage(data, id) {
+    const features = {
+      import: ['导入', '从受支持的数据源迁移个人资料、偏好和记忆。', [['数据文件', '导入协议尚未接入', '待接入'], ['ChatGPT 数据', '当前不会读取第三方账户数据', '不可用'], ['导入记录', '完成真实导入后在此显示', '0 项']]],
+      profile: ['个人资料', '管理 Synstar 在本机使用的身份信息。', [['显示名称', '个人资料模块尚未接入', '待设置'], ['头像', '使用本地资源，不会自动上传', '待设置'], ['时区', '跟随 Windows 系统', 'Asia/Shanghai']]],
+      configuration: ['配置', '集中查看模型、Runtime 与能力配置。', [['模型网关', data.model?.reason ?? '状态未知', 'models'], ['Runtime', data.connection, 'connections'], ['已公布能力', capabilitySummary(data), 'capabilities']]],
+      personalization: ['个性化', '管理回答偏好、工作方式和长期习惯。', [['回答风格', '个性化模块尚未接入 Runtime', '待接入'], ['主动建议', '只在有依据且无需额外授权时提出', '受控'], ['长期偏好', '由记忆模块确认后保存', 'memory']]],
+      pets: ['桌面宠物', '管理 ORB-02 与未来可选桌面伙伴。', [['当前伙伴', 'ORB-02 · 黑核与白色规则点阵', '已启用'], ['靠近响应', '进入 90px 范围展开对话', '90px'], ['宠物库', '额外角色资源尚未接入', '待接入']]],
+      usage: ['使用情况和计费', '每日和每月估算上限。', [['当前用量', '由用量设置显示', '待接入']]],
+      analytics: ['分析', '查看任务成功率、耗时和能力调用趋势。', [['任务分析', '分析模块尚未接入真实聚合数据', '待接入'], ['模型延迟', data.model?.latencyMs == null ? '尚无真实连接测试结果' : `${data.model.latencyMs} ms`, 'models'], ['连接健康', capabilitySummary(data, 'health'), 'connections']]],
+      account: ['账户', '管理本地身份与外部服务连接。', [['Synstar 账户', '当前版本使用本地桌面身份', '本地'], ['外部账户', '通过连接器单独授权，不共享密钥', 'connections'], ['订阅', 'Synstar 尚未提供订阅系统', '不可用']]],
+      computer: ['电脑操控', '管理 Windows 桌面操作能力与安全边界。', [['电脑操作', 'Windows Host 模块尚未完成真实接入', '待接入'], ['执行策略', '串行操作，同一资源写入加锁', '受控'], ['授权', '副作用操作必须经过 Runtime 校验', 'authorizations']]],
+      browser: ['浏览器', '管理网页读取、导航与浏览器自动化连接。', [['浏览器后端', '浏览器连接器尚未接入桌面 Runtime', '未连接'], ['站点权限', '按连接器和任务单独授权', 'authorizations'], ['下载', '不会在未授权时创建文件', '受控']]],
+      hooks: ['钩子', '配置任务生命周期中的受控扩展点。', [['任务开始', 'Hook 契约尚未发布', '待接入'], ['工具调用前', '策略网关始终先于外部执行', '固定'], ['任务完成', '只根据 Runtime 最终状态触发', '固定']]],
+      git: ['Git', '管理仓库状态、分支与协作能力。', [['Git 集成', 'Git 连接器尚未接入 Runtime', '未连接'], ['默认分支策略', '不会自行覆盖他人分支或未提交改动', '安全'], ['凭据', '不在前端保存 Git 凭据', '隔离']]],
+      environment: ['环境', '管理任务运行时、终端和环境变量边界。', [['集成终端', 'Shell 选择接口尚未接入', '待接入'], ['环境变量', '不会显示或记录敏感变量值', '受保护'], ['Runtime', data.connection, 'connections']]],
+      worktrees: ['Worktrees', '管理隔离工作树与共享仓库协作。', [['工作树管理', 'Worktree 连接器尚未接入桌面 Runtime', '待接入'], ['冲突保护', '不切换他人正在使用的分支', '启用'], ['项目边界', '依赖当前打开的工作区', '固定']]],
+      archive: ['已归档任务', '查看和恢复已归档的任务记录。', [['归档列表', 'Runtime 尚未公开任务归档接口', '待接入'], ['自动归档', '不会在未授权时自动移动任务', '关闭'], ['保留策略', '等待归档模块定义', '未设置']]],
+      memory: ['记忆', '管理经确认的偏好和工作流记忆。', [['记忆服务', '记忆模块尚未连接桌面 Runtime', '未连接'], ['写入策略', '仅保存已确认的偏好和验证过的工作流', '受控'], ['导出与清除', '等待记忆模块提供真实接口', '待接入']]],
+    };
+    const feature = features[id];
+    if (!feature) return `<div class="sheet"><h2>${sections[id]}</h2><div class="empty">此模块尚未接入真实服务。</div></div>`;
+    return `<section class="feature-page"><div class="settings-heading"><h2>${feature[0]}</h2><p>${escape(feature[1])}</p></div><div class="settings-list">${feature[2].map(([title, detail, target]) => settingRow(title, detail, sections[target] ? `<button class="btn btn-sm" data-jump="${target}">${sections[target]}</button>` : `<span class="${['待接入','不可用','未连接','待设置','未设置'].includes(target) ? 'status-note' : 'value-pill'}">${target}</span>`)).join('')}</div></section>`;
+  }
+
   let petsPreviewOrb = null;
   const syncPetsPreviewMotion = () => {
     petsPreviewOrb?.setCalm(document.documentElement.dataset.calm === 'true');
@@ -388,7 +536,7 @@ export function mountAdmin(root, invoke, escape) {
           </div>
           <p class="muted">${escape(currentVariantItem.note)} · ${escape(currentStateItem.detail)}</p>
           <div class="pets-hero-actions">
-            <button type="button" class="btn btn-sm" id="pets-breath-btn">触发深呼吸动效</button>
+            <button type="button" class="btn btn-sm" id="pets-breath-btn" data-pro-only="true">触发深呼吸动效</button>
             <button type="button" class="btn btn-sm" id="pets-reset-btn">恢复默认 (ORB-02 + 自动状态)</button>
           </div>
         </div>
@@ -399,7 +547,7 @@ export function mountAdmin(root, invoke, escape) {
           <span><b>宠物库 · 8 种伙伴形态切换</b><small>点击下方任意形态即可实时切换桌面悬浮球与大工作区球体外观</small></span>
           <div class="pets-option-grid">${variantButtons}</div>
         </div>
-        <div class="setting-row pets-setting-block">
+        <div class="setting-row pets-setting-block adm-pro-row" data-pro-only="true">
           <span><b>六态动态预览与联动</b><small>默认随任务状态自动流转；也可手动锁定任意状态用于演示或录屏</small></span>
           <div class="pets-option-grid">${stateButtons}</div>
         </div>
@@ -463,9 +611,11 @@ export function mountAdmin(root, invoke, escape) {
       && data.adminNavigation.revision > navigationRevision && Object.hasOwn(sections, canonicalPage(data.adminNavigation.page))) {
       navigationRevision = data.adminNavigation.revision;
       section = canonicalPage(data.adminNavigation.page);
-      const advanced = root.querySelector(`[data-page="${section}"]`)?.closest('details');
+      if (!SIMPLE_PAGES.has(section) && !proMode) applyAdminMode(true, {navigateFallback: false});
+      const advanced = root.querySelector(`[data-page="${section}"]`)?.closest?.('details');
+      const advancedDock = root.querySelector('.advanced-nav');
       if (advanced) advanced.open = true;
-      else if(primaryPages.includes(section)&&!root.querySelector('#admin-search').value.trim())root.querySelector('.advanced-nav').open=false;
+      else if (advancedDock && primaryPages.includes(section) && !root.querySelector('#admin-search')?.value?.trim()) advancedDock.open = false;
     }
     historyControls.update(data,section==='tasks'||section==='overview');
     if (root.querySelector('#profile-dialog')?.open) return;
@@ -473,7 +623,7 @@ export function mountAdmin(root, invoke, escape) {
     main.setAttribute('aria-busy', 'true');
     patchRecovery.sync(data.tasks, section === 'tasks' || section === 'overview', section);
     remoteMcpButton.hidden=!data.remoteMcp;
-    if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= mountSisVoiceSettings(root,invoke);}
+    if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= markProMounted(main, () => mountSisVoiceSettings(root,invoke), root.querySelector('#error'));}
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
     sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
     if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
@@ -484,8 +634,8 @@ export function mountAdmin(root, invoke, escape) {
     briefingControls?.render(data.dailyBriefing);briefingControls?.show(section==='briefing');
     if(section==='voice') wakeControls??=mountWakeSettings(root.querySelector('.main'),invoke);
     wakeControls?.render(data.wakePreference, data.wake);wakeControls?.show(section==='voice');
-    if(section==='usage') usageBudgetControls??=mountUsageBudget(root.querySelector('.main'),invoke);
-    usageBudgetControls?.update(data.usageBudget);usageBudgetControls?.show(section==='usage');
+    if(section==='usage'||section==='profile') usageBudgetControls??=mountUsageBudget(root.querySelector('.main'),invoke);
+    usageBudgetControls?.update(data.usageBudget);usageBudgetControls?.show(section==='usage'||section==='profile');
     if (section==='computer') computerControls ??= mountComputerControls(root.querySelector('.main'),invoke);
     computerControls?.render(data.computerControl);computerControls?.show(section==='computer');
     if(section==='computer')computerVisionControls??=mountComputerVisionControls(root.querySelector('.main'),invoke);
@@ -496,20 +646,23 @@ export function mountAdmin(root, invoke, escape) {
     proactiveWorkflowControls?.render(data.proactiveWorkflow);proactiveWorkflowControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
     notepadControls?.render(data.notepad);notepadControls?.show(section==='computer');
-    if (section==='connections' && data.proactiveTasks) proactiveTaskControls ??= mountProactiveTaskControls(root.querySelector('.main'),invoke);
+    if (section==='connections' && data.proactiveTasks) proactiveTaskControls ??= markProMounted(main, () => mountProactiveTaskControls(root.querySelector('.main'),invoke));
     proactiveTaskControls?.render(data.proactiveTasks);proactiveTaskControls?.show(section==='connections');
     if (section==='connections' && data.mail) mailControls ??= mountMailControls(root.querySelector('.main'),invoke);
     mailControls?.render(data.mail);mailControls?.showSettings(section==='connections');
     if (section==='connections' && data.calendar) calendarControls ??= mountCalendarControls(root.querySelector('.main'),invoke);
     calendarControls?.render(data.calendar);calendarControls?.show(section==='connections');
-    if (section==='connections' && data.feeds) feedsControls ??= mountFeedsControls(root.querySelector('.main'),invoke);
+    if (section==='connections' && data.github) githubControls ??= mountGitHubControls(root.querySelector('.main'),invoke);
+    githubControls?.render(data.github);githubControls?.show(section==='connections');
+    if (section==='connections' && data.feeds) feedsControls ??= markProMounted(main, () => mountFeedsControls(root.querySelector('.main'),invoke));
     feedsControls?.render(data.feeds);feedsControls?.show(section==='connections');
     if(section==='connections' && data.todo) todoControls ??= mountTodoControls(root.querySelector('.main'),invoke);
     todoControls?.render(data.todo);todoControls?.show(section==='connections');
-    if(section==='connections' && data.goalCloud) goalCloudControls ??= mountGoalCloudControls(root.querySelector('.main'),invoke);
+    if(section==='connections' && data.goalCloud) goalCloudControls ??= markProMounted(main, () => mountGoalCloudControls(root.querySelector('.main'),invoke));
     goalCloudControls?.render(data.goalCloud);goalCloudControls?.show(section==='connections');
     if (section==='connections' && data.laya && !layaControls) {
       layaRoot=document.createElement('details');layaRoot.className='laya-advanced';
+      if(layaRoot.dataset)layaRoot.dataset.proOnly='true';
       layaRoot.innerHTML='<summary>高级：本地判断组件</summary>';
       root.querySelector('#error').before(layaRoot);layaControls=mountLayaControls(layaRoot,invoke);
     }
@@ -534,6 +687,8 @@ export function mountAdmin(root, invoke, escape) {
     }
     if(memoryLearningRoot) memoryLearningRoot.hidden=section!=='memory';
     memoryLearningControls?.update({status:data.memoryLearning,refs:consumableMemoryRefs});
+    if(section==='memory'&&data.privateMemory)mailSourceControls??=mountMailSourceControls(root.querySelector('.main'),invoke);
+    if(mailSourceControls){mailSourceControls.element.hidden=section!=='memory';mailSourceControls.update(data.tasks);}
     if (section==='workspace') codingControls ??= mountWorkspaceControls(root.querySelector('.main'),invoke);
     codingControls?.render(data);codingControls?.show(section==='workspace');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
@@ -562,7 +717,7 @@ export function mountAdmin(root, invoke, escape) {
     if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
     if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
     if(modelApiRoot)modelApiRoot.hidden=section!=='models';
-    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
+    const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts', experiments: 'experiments'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     // Commit navigation only after its body and mounted controls are ready. A
     // highlighted sidebar alone must never acknowledge a half-rendered page.
@@ -572,9 +727,20 @@ export function mountAdmin(root, invoke, escape) {
       main.dataset.cloudConfig = String(section === 'models' && data.model?.provider === 'agentarts');
       main.dataset.surface = section === 'models' ? 'models' : directSettings[section] || featureSections.includes(section) ? 'settings' : 'standard';
       root.querySelector('#content').dataset.section = section;
+      const activeGroup = groupForPage(section);
+      const categoryNode = root.querySelector('#page-category');
+      if (categoryNode) categoryNode.textContent = activeGroup?.label ?? '设置';
       root.querySelector('#page-title').textContent = sections[section];
+      const subtitleNode = root.querySelector('#page-subtitle');
+      if (subtitleNode) subtitleNode.textContent = sectionSubtitles[section] ?? '';
+      if (windowTitle) windowTitle.textContent = `设置 / ${activeGroup?.label ? `${activeGroup.label} / ` : ''}${sections[section]}`;
       const connection = data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection;
-      root.querySelector('#connection').textContent = `${connection}。未连接的能力会保持明确的不可用状态。`;
+      const connectionBanner = root.querySelector('#connection');
+      connectionBanner.textContent = connection;
+      if (connectionBanner.dataset) connectionBanner.dataset.tone = data.connectionError ? 'warn' : /未连接|不可用|失败/.test(connection ?? '') ? 'off' : 'ready';
+      root.querySelectorAll('.nav-group').forEach(group => {
+        if (group.dataset) group.dataset.activeGroup = String(Boolean(activeGroup && group.dataset.group === activeGroup.id));
+      });
       root.querySelectorAll('[data-page]').forEach(button => button.setAttribute('aria-current', button.dataset.page === section ? 'page' : 'false'));
       main.setAttribute('aria-busy', 'false');
       showPage(section);
@@ -597,10 +763,18 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'workspace') {
       content = `<section class="feature-page"><div class="settings-heading"><h2>工作文件夹</h2><p>选择这台电脑上用来读写代码的文件夹。环境和工作树不再分成两页。</p></div></section>`;
     } else if (section === 'usage') {
-      content = `<section class="feature-page usage-page" data-usage-page><div class="settings-heading"><h2>使用情况和计费</h2><p>查看本机已经记录的使用情况。按日、按月的用量上限会显示在这里。</p></div><div data-usage-budget></div><div class="settings-list">${settingRow('当前记录的任务', '只统计本机已保存的任务', `<span class="value-pill">${data.tasks?.length ?? 0}</span>`)}</div></section>`;
+      const metrics = parseUsageMetrics(data.usageBudget);
+      content = `<section class="feature-page usage-page" data-usage-page>
+        <div class="settings-heading adm-sr-heading"><h2>使用情况和计费</h2></div>
+        <div data-usage-budget>${usageDashboardHtml(data.usageDashboard, data.usageBudget, escape, {metric: usageMetric})}</div>
+        <div class="adm-section-group" data-pro-only="true"><h2 class="adm-group-title">本机任务与账本说明</h2><div class="settings-list">
+          ${settingRow('当前记录的任务', '只统计本机已保存的任务', `<span class="value-pill">${data.tasks?.length ?? 0}</span>`)}
+          ${settingRow('超限保护策略', '手动发起的任务仍会执行并提示；具体上限在下方实时调整', `<span class="value-pill">${escape(metrics.actionLabel)}</span>`)}
+        </div></div>
+      </section>`;
     } else if (section === 'capabilities') {
-      content = `<div class="sheet"><div class="row"><h2>28 图工作流设计目录（F01–F28）</h2><span class="spacer"></span><button class="btn btn-sm" id="load-image-catalog">读取 28 图目录</button></div><p class="muted">从可信目录宿主实时读回 28 张工作流设计与 185 个节点的注册情况；缺少公开适配器或对话入口的图会如实标为「不可用」。</p><div id="image-catalog-result">${imageCatalogHtml}</div></div>`
-        + `<details class="developer-fold" data-developer-fold="capabilities"><summary>开发者：已公布能力</summary>${capabilityTable(data)}</details>`;
+      content = `<div class="sheet"><div class="row"><h2>28 图工作流设计目录（F01–F28）</h2><span class="spacer"></span><button class="btn btn-sm" id="load-image-catalog"${imageCatalogLoading ? ' disabled' : ''}>${imageCatalogLoading ? '正在读取…' : '读取 28 图目录'}</button></div><p class="muted">从可信目录宿主实时读回 28 张工作流设计与 185 个节点的注册情况；缺少公开适配器或对话入口的图会如实标为「不可用」。</p><div id="image-catalog-result">${imageCatalogHtml}</div></div>`
+        + `<details class="developer-fold" data-developer-fold="capabilities"${developerFoldOpen.get('capabilities') ? ' open' : ''}><summary>开发者：已公布能力</summary>${capabilityTable(data)}</details>`;
     } else if (section === 'models') {
       content = modelPage(data);
     } else if (section === 'connections') {
@@ -610,13 +784,15 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'authorizations') {
       const questionMode=Array.isArray(data.authorizationQuestions);
       content = (questionMode?'<p class="muted">需要决定的操作在原对话提问卡处理；此页只查看状态、配置沙箱和撤销规则。</p>':'')
+        + '<div class="adm-pro-block" data-pro-only="true">'
         + authorizationListHtml(questionMode?(data.approvals??[]).filter(item=>item.state!=='pending'):data.approvals,
           escape, approvalNow, {canRevoke: true, revocations})
-        + authorizationHistoryHtml(history.items, escape, history, approvalNow, {canRevoke: true, revocations});
+        + authorizationHistoryHtml(history.items, escape, history, approvalNow, {canRevoke: true, revocations})
+        + '</div>';
     } else if (directSettings[section]) {
       content = settingsPane(data, directSettings[section]);
     } else if (section === 'profile') {
-      content = profilePage(data, escape);
+      content = profilePage(data, escape, {usageMetric});
     } else if (section === 'pets') {
       content = petsPage(data);
     } else if (section === 'memory') {
@@ -633,13 +809,13 @@ export function mountAdmin(root, invoke, escape) {
     if (section === 'memory' && data.privateMemory?.available && renderedSection === section
       && !refreshMemory && nextMemoryKey === memoryRenderKey) { commitPage(); return; }
     // Keep interactive task/model DOM when an unrelated snapshot changes.
-    const preferenceKey = section === 'appearance'
-      ? `${themePreference()}/${typeof localStorage !== 'undefined' ? localStorage.getItem('pa-calm') : null}`
+    const preferenceKey = (section === 'appearance' || section === 'settings')
+      ? `${themePreference()}/${typeof localStorage !== 'undefined' ? localStorage.getItem('pa-calm') : null}/${orbVariantPreference()}`
       : section === 'pets'
         ? `${orbVariantPreference()}/${orbStateOverride() ?? 'auto'}/${visualOrbState(data)}`
         : undefined;
-    const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections'].includes(section)
-      || ['settings', 'appearance', 'pets'].includes(section) && renderedPreferenceKey === preferenceKey)
+    const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections', 'profile', 'usage', 'capabilities'].includes(section)
+      || ['settings', 'appearance', 'pets', 'experiments'].includes(section) && renderedPreferenceKey === preferenceKey)
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
       ? document.activeElement.parentElement.dataset.taskDetails : undefined;
@@ -665,6 +841,12 @@ export function mountAdmin(root, invoke, escape) {
     }
     authorizationSettingsControls?.show(section==='authorizations');
     if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');const host=page&&typeof page.querySelector==='function'?((fold=page.querySelector('[data-developer-fold="models"]'))=>fold||(typeof document<'u'&&document.createElement?(page.append(fold=document.createElement('details')),fold.className='developer-fold',fold.dataset.developerFold='models',fold.innerHTML='<summary>开发者</summary><p class="muted">连接地址、独立接口和调试项。</p>',fold):page))():page;if(host)for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==host)host.append(card);}
+    if (section === 'models') {
+      const fold = root.querySelector('[data-developer-fold="models"]');
+      if (fold) fold.open = true;
+      if (agentArtsConnectionRoot?.dataset) agentArtsConnectionRoot.dataset.proOnly = 'true';
+      if (modelApiRoot?.dataset) modelApiRoot.dataset.proOnly = 'true';
+    }
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
       if (nextExpiry !== undefined) {
@@ -691,10 +873,6 @@ export function mountAdmin(root, invoke, escape) {
         syncPetsPreviewMotion();
         window.addEventListener('preferences-changed', syncPetsPreviewMotion);
       }
-      root.querySelectorAll('[data-orb-variant]').forEach(button => button.addEventListener('click', () => {
-        saveOrbVariant(button.dataset.orbVariant);
-        render(current);
-      }));
       root.querySelectorAll('[data-orb-state]').forEach(button => button.addEventListener('click', () => {
         saveOrbStateOverride(button.dataset.orbState);
         render(current);
@@ -766,7 +944,8 @@ export function mountAdmin(root, invoke, escape) {
       button.disabled = true;
       try {
         const result = await invoke('memory.delete', {ref: savedMemory.facts[Number(button.dataset.memoryDelete)].ref});
-        if (result.state === 'deleted' || result.state === 'pending') {
+        if(result.state==='pending'&&['deletion_user_turn','deletion_result_unknown'].includes(result.phase))savedMemory.status=result.message;
+        else if (result.state === 'deleted' || result.state === 'pending') {
           const page = await invoke('memory.listSaved');
           savedMemory = {...page, status: result.state === 'deleted' ? '已删除该记忆的全部版本并完成读回。'
             : result.pendingBackupIds?.length ? '记忆已停止引用；应用备份仍待清理或整篇笔记备份已保留，删除尚未完成。'
@@ -792,6 +971,18 @@ export function mountAdmin(root, invoke, escape) {
       } catch (error) { root.querySelector('#error').textContent = error.message; button.disabled = false; }
     }));
     root.querySelector('#quit')?.addEventListener('click', () => invoke('app.quit'));
+    root.querySelector('#shadow-preview-enabled')?.addEventListener('change', async event => {
+      const input = event.currentTarget;
+      input.disabled = true;
+      try {
+        const shadowPreview = await invoke('shadowPreview.configure', {enabled: input.checked});
+        current = {...current, shadowPreview};
+        render(current);
+      } catch (error) {
+        input.checked = current.shadowPreview?.enabled === true;
+        root.querySelector('#error').textContent = error.message;
+      } finally { input.disabled = false; }
+    });
     root.querySelector('#login-item-refresh')?.addEventListener('click',async()=>{
       try{const result=await invoke('app.startup.read');current={...current,loginItem:result};render(current,true);}
       catch(error){root.querySelector('#error').textContent=error.message;}
@@ -815,11 +1006,16 @@ export function mountAdmin(root, invoke, escape) {
     root.querySelectorAll('[data-jump]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.jump)));
     const dashboardPeriod = root.querySelector('#dashboard-period');
     dashboardPeriod?.addEventListener('change', async () => {
+      const previous = current.personalDashboard?.period ?? 'weekly';
       try {
         const next = await invoke('personalDashboard.period', {period: dashboardPeriod.value});
         current = {...current, personalDashboard: next};
+        root.querySelector('#error').textContent = '';
         render(current);
-      } catch (error) { root.querySelector('#error').textContent = error.message; }
+      } catch (error) {
+        dashboardPeriod.value = previous;
+        root.querySelector('#error').textContent = error.message;
+      }
     });
     const themeSelect = root.querySelector('#pref-theme');
     if (themeSelect) {
@@ -836,12 +1032,11 @@ export function mountAdmin(root, invoke, escape) {
     root.querySelector('#refresh-capabilities')?.addEventListener('click', async () => {
       try { await invoke('capability.list'); } catch (error) { root.querySelector('#error').textContent = error.message; }
     });
-    root.querySelector('#load-image-catalog')?.addEventListener('click', async event => {
-      const button = event.currentTarget;
-      const box = root.querySelector('#image-catalog-result');
-      if (!box) return;
-      button.disabled = true;
-      box.textContent = '正在读取 28 图工作流目录…';
+    root.querySelector('#load-image-catalog')?.addEventListener('click', async () => {
+      if (imageCatalogLoading) return;
+      imageCatalogLoading = true;
+      imageCatalogHtml = '<p class="muted">正在读取 28 图工作流目录…</p>';
+      render(current);
       try {
         const catalog = await invoke('workflow.image.catalog');
         const workflows = Array.isArray(catalog?.workflows) ? catalog.workflows : [];
@@ -852,13 +1047,12 @@ export function mountAdmin(root, invoke, escape) {
           const rows = workflows.map(item => `<tr><td>${escape(item.workflowId)}</td><td>${escape(item.name)}</td><td>${escape(item.nodeCount)}</td><td>${badge(item.state === 'unavailable' ? '不可用' : '已注册（需任务授权）', item.state)}</td><td>${escape((item.unavailableReasons ?? []).join('、') || '—')}</td></tr>`).join('');
           imageCatalogHtml = `${summary}<div class="table-scroll"><table><thead><tr><th>编号</th><th>工作流</th><th>节点数</th><th>状态</th><th>缺口 / 说明</th></tr></thead><tbody>${rows}</tbody></table></div>`;
         }
-        if (root.querySelector('#image-catalog-result')) root.querySelector('#image-catalog-result').innerHTML = imageCatalogHtml;
       } catch (error) {
         const msg = error?.message || '28 图目录读取失败';
         imageCatalogHtml = `<p class="muted">${escape(msg)}</p>`;
-        if (root.querySelector('#image-catalog-result')) root.querySelector('#image-catalog-result').innerHTML = imageCatalogHtml;
       } finally {
-        button.disabled = false;
+        imageCatalogLoading = false;
+        if (!evidenceClosed && root.isConnected !== false) render(current);
       }
     });
     const modelForm = root.querySelector('#model-config-form');
@@ -1000,12 +1194,31 @@ export function mountAdmin(root, invoke, escape) {
     }
     render(current);
   });
+  function applyAdminMode(nextPro, {navigateFallback = true} = {}) {
+    proMode = Boolean(nextPro);
+    writeAdminProMode(proMode);
+    if (adminShell?.dataset) adminShell.dataset.adminMode = proMode ? 'pro' : 'simple';
+    root.querySelectorAll('[data-admin-mode-btn]')?.forEach?.(button => {
+      const pressed = button.dataset?.adminModeBtn === (proMode ? 'pro' : 'simple');
+      button.setAttribute('aria-pressed', String(pressed));
+    });
+    if (!proMode && navigateFallback && !SIMPLE_PAGES.has(section)) {
+      section = 'settings';
+      render(current);
+    }
+  }
+  root.querySelectorAll('[data-admin-mode-btn]')?.forEach?.(button => {
+    button.addEventListener('click', () => applyAdminMode(button.dataset?.adminModeBtn === 'pro'));
+  });
+  root.querySelector('[data-enter-pro-mode]')?.addEventListener('click', () => applyAdminMode(true));
   function navigate(page) {
     section = canonicalPage(page);
+    if (!SIMPLE_PAGES.has(section) && !proMode) applyAdminMode(true, {navigateFallback: false});
     const target = root.querySelector(`[data-page="${page}"]`);
-    const parent = target?.closest('details');
+    const parent = target?.closest?.('details');
+    const advancedDock = root.querySelector('.advanced-nav');
     if (parent) parent.open = true;
-    else if (primaryPages.includes(page) && !root.querySelector('#admin-search').value.trim()) root.querySelector('.advanced-nav').open = false;
+    else if (advancedDock && primaryPages.includes(page) && !root.querySelector('#admin-search')?.value?.trim()) advancedDock.open = false;
     render(current);
   }
   root.querySelector('nav').addEventListener('click', event => {
@@ -1022,7 +1235,8 @@ export function mountAdmin(root, invoke, escape) {
   let advancedBeforeSearch;
   function filterSettings() {
     const query = search.value.trim();
-    if (query && advancedBeforeSearch === undefined) advancedBeforeSearch = advanced.open;
+    if (adminShell?.dataset) adminShell.dataset.searching = String(Boolean(query));
+    if (advanced && query && advancedBeforeSearch === undefined) advancedBeforeSearch = advanced.open;
     let total = 0;
     root.querySelectorAll('.nav-group').forEach(group => {
       let visible = 0;
@@ -1033,12 +1247,14 @@ export function mountAdmin(root, invoke, escape) {
       total += visible;
       group.hidden = visible === 0;
     });
-    const advancedHasResults = [...advanced.querySelectorAll('[data-page]')].some(button => !button.hidden);
-    advanced.hidden = Boolean(query) && !advancedHasResults;
-    if (query && advancedHasResults) advanced.open = true;
-    if (!query && advancedBeforeSearch !== undefined) {
-      advanced.open = advancedBeforeSearch;
-      advancedBeforeSearch = undefined;
+    if (advanced) {
+      const advancedHasResults = [...advanced.querySelectorAll('[data-page]')].some(button => !button.hidden);
+      advanced.hidden = Boolean(query) && !advancedHasResults;
+      if (query && advancedHasResults) advanced.open = true;
+      if (!query && advancedBeforeSearch !== undefined) {
+        advanced.open = advancedBeforeSearch || !primaryPages.includes(section);
+        advancedBeforeSearch = undefined;
+      }
     }
     searchStatus.hidden = !query;
     searchStatus.textContent = total ? `找到 ${total} 项设置` : '没有匹配设置，试试“模型”“连接”或“任务”。';

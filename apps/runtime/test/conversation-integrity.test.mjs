@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRuntimeApplication,createAgentArtsRuntimeApplication,compileCoordinationGoal} from '../dist/application.js';
@@ -7,10 +9,10 @@ import {bindCompiledContext} from '../dist/application/context-binding.js';
 test('long history preserves early constraints, corrections, multiple requests and provenance',()=>{
  const messages=[{id:'budget',role:'user',content:'预算不超过500元；不要皮革。还要说明带什么。'},
   ...Array.from({length:40},(_,i)=>[{id:'u'+i,role:'user',content:'第'+i+'次补充'},
-   {id:'a'+i,role:'assistant',content:'历史助手回答'.repeat(1500)}]).flat(),
+   {id:'a'+i,role:'assistant',content:'historical answer '.repeat(1600)}]).flat(),
   {id:'correct',role:'user',content:'更正：地点改为青岛；预算和其他限制不变。'}];
  const goal=compileCoordinationGoal('在青岛','在青岛',messages,'preserve-user-requests'),compiled=JSON.parse(goal);
- assert.ok(goal.length<=128000);
+ assert.ok(goal.length<=1000000);
  assert.deepEqual(compiled.conversationContext.messages.filter(m=>m.role==='user'),messages.filter(m=>m.role==='user'));
  assert.ok(compiled.conversationContext.selection.omittedAssistantIds.length>0);
  assert.equal(compiled.conversationContext.selection.policy,'preserve-user-requests-v1');
@@ -20,9 +22,9 @@ test('long history preserves early constraints, corrections, multiple requests a
 });
 
 test('critical user information cannot be silently dropped and escaping counts toward the limit',()=>{
- assert.throws(()=>compileCoordinationGoal('继续','继续',[{id:'critical',role:'user',content:'必需条件'.repeat(32000)}]),{code:'INVALID_ARGUMENT'});
- assert.throws(()=>compileCoordinationGoal('继续','继续',[{id:'critical',role:'user',content:'"\\'.repeat(32000)}]),{code:'INVALID_ARGUMENT'});
- const goal=JSON.parse(compileCoordinationGoal('继续','继续',[{id:'long',role:'assistant',content:'x'.repeat(128001)}],'preserve-user-requests'));
+ assert.throws(()=>compileCoordinationGoal('继续','继续',[{id:'critical',role:'user',content:'必需条件'.repeat(520000)}]),{code:'INVALID_ARGUMENT'});
+ assert.throws(()=>compileCoordinationGoal('继续','继续',[{id:'critical',role:'user',content:'"\\'.repeat(520000)}]),{code:'INVALID_ARGUMENT'});
+ const goal=JSON.parse(compileCoordinationGoal('继续','继续',[{id:'long',role:'assistant',content:'x'.repeat(1000001)}],'preserve-user-requests'));
  assert.deepEqual(goal.conversationContext.selection.omittedAssistantIds,['long']);
 });
 
@@ -92,7 +94,7 @@ test('revocation of a child source also withholds the parent answer without disc
 test('revocation during credential lookup blocks historical answer bytes before HTTP',async()=>{
  let app,allowed=true,sends=0;
  const binding={toolName:'fixture.read',toolVersion:'1.0.0',exportPolicyVersion:'v1',accepts:()=>allowed,project:({result})=>result};
- app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'history',
+ app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'history',
   competitionToolExports:[binding],coordinationInput:{beforeCoordinationSend:()=>{},readConversationContext:async scope=>app.readConversationContext(scope)},
   authorizationProvider:{read:async()=>{allowed=false;return 'Bearer synthetic';}},fetchImpl:async()=>{sends++;throw Error('Must not send revoked history');}});
  try{

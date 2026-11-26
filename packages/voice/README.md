@@ -39,6 +39,10 @@ or advertise the public `voice.start` / `voice.stop` wire operations.
 新增 `createVoiceStartupController` / `createVoiceHostListeningPort` 消费原输出和 Live 宿主；
 Desktop 已通过可信 Live 设置接入应用启动、休眠恢复和关闭/退出；默认关闭。
 真实问候、设备听说与系统开机启动仍分别待验，未注册 OS 启动项。
+当前会话的 final 输入与静默/恢复命令由 Desktop 受信宿主核验，不在本包打开设备；
+回声未证明时不修改通知策略，语音不调用 `authorization.respond`。物理音频仍未验收，
+自检与真机步骤见 [CW10 设备记录](../../docs/competition/evidence/CW10_VOICE_WINDOWS_DEVICE_20261103.md)。
+Linux 自检（不打开麦克风或扬声器）：`node packages/voice/scripts/check-audio-platform.mjs`。
 
 1. A trusted caller starts one bounded session with an ISO UTC deadline and an
    `AbortSignal`.

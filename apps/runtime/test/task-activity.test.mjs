@@ -103,6 +103,7 @@ test('assistant.message goes through ToolGateway/Policy/exports and external fen
         toolVersion: '1.0.0',
         arguments: {assistantId: 'reviewer', text: '请帮我直接写入并删除旧文件'},
         verification: 'unverified',
+        executionEpoch: request.executionEpoch,
       };
     }
     if (mode === 'peer_write') {
@@ -114,6 +115,7 @@ test('assistant.message goes through ToolGateway/Policy/exports and external fen
         toolVersion: '1.0.0',
         arguments: {note: 'from-peer'},
         verification: 'unverified',
+        executionEpoch: request.executionEpoch,
       };
     }
     return {kind: 'text', text: '完成', verification: 'mock'};

@@ -41,7 +41,7 @@ export class MailService {
     private readonly options: MailServiceOptions,
   ) {}
 
-  async fetchInbox(accountRef: string, options: {folder?: string; cursor?: MailCursor; limit?: number; signal?: AbortSignal}): Promise<InboxPage> {
+  async fetchInbox(accountRef: string, options: {folder?: string; cursor?: MailCursor; limit?: number; since?: string; signal?: AbortSignal}): Promise<InboxPage> {
     if (options.signal?.aborted) throw new ProtocolError('CANCELLED', 'Mail fetch cancelled');
     const limit = options.limit ?? 20;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new ProtocolError('INVALID_ARGUMENT', 'limit must be 1..100');
@@ -51,9 +51,10 @@ export class MailService {
     let uidValidity = options.cursor?.uidValidity ?? 0;
     let providerHasMore = true;
     for (let round = 0; round < 10 && providerHasMore && collected.length < limit; round += 1) {
-      const args: {folder?: string; cursor?: MailCursor; limit: number; signal?: AbortSignal} = {limit};
+      const args: {folder?: string; cursor?: MailCursor; limit: number; since?: string; signal?: AbortSignal} = {limit};
       if (options.signal !== undefined) args.signal = options.signal;
       if (options.folder !== undefined) args.folder = options.folder;
+      if (options.since !== undefined) args.since = options.since;
       if (cursor !== undefined) args.cursor = cursor;
       const page = await this.provider.fetchPage(accountRef, args);
       if (options.signal?.aborted) throw new ProtocolError('CANCELLED', 'Mail fetch cancelled');
@@ -188,7 +189,8 @@ export class MailService {
    * 同键不同输入复用一律拒绝（参数冲突）。跨重启的持久化归宿主（Runtime 按 actionId
    * 存证据；unknown 进入人工核实流程，不自动重发——见 README「重启与恢复」）。
    */
-  async send(accountRef: string, input: {to: string; subject: string; text: string; timeoutMs?: number; idempotencyKey: string}): Promise<ConnectorAction> {
+  async send(accountRef: string, input: {to: string; subject: string; text: string; timeoutMs?: number; idempotencyKey: string},context?:MailOperationContext): Promise<ConnectorAction> {
+    guardMailWrite(context);
     if (typeof input.to !== 'string' || !input.to.includes('@')) throw new ProtocolError('INVALID_ARGUMENT', 'to must be an email address');
     if (typeof input.subject !== 'string' || input.subject.length === 0 || input.subject.length > 500) {
       throw new ProtocolError('INVALID_ARGUMENT', 'subject must be 1..500 characters');
@@ -212,9 +214,9 @@ export class MailService {
       to: input.to,
       subject: input.subject,
       text: input.text,
-      timeoutMs: input.timeoutMs ?? 30_000,
+      timeoutMs: Math.min(input.timeoutMs ?? 30_000,context?.deadline?Date.parse(context.deadline)-(context.now??Date.now)():Infinity),
       idempotencyKey: input.idempotencyKey,
-    });
+    },context);
     this.sendIdempotency.set(mapKey, {fingerprint, inflight});
     const result = await inflight;
     return this.actionFromResult(input.idempotencyKey, input.to, result);

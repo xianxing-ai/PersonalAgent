@@ -109,7 +109,7 @@ export async function fixture(t,workflow='F16') {
       const afterHead=await source(request('after','workspace.git.head',{repository}));
       ports.bindReproduction(scope,{operationId:'repro',repository,command,beforeHead,afterHead});
       const entry={nodeId:'F17_N03',toolName:'workspace.run_allowed_command',localTaskId:command.taskId,operationId:'repro',result:app.readHostToolTask(command.taskId).confirmed.result};
-      app.runtime.saveCheckpoint(parent.taskId,'driver',{sessionId:'session',controlRevision:1,confirmedHost:{'workspace.run_allowed_command':entry}});
+      app.runtime.saveCheckpoint(parent.taskId,'driver',{sessionId:'session',controlRevision:1,confirmedOperations:{repro:entry}});
       app.runtime.saveCheckpoint(parent.taskId,'driver:driver-binding',{taskId:parent.taskId,workflowId:'F17',sessionId:'session',deadline:deadlines});
       app.runtime.saveCheckpoint(parent.taskId,'owned-workflow:operation:repro',{taskId:parent.taskId,workflowId:'F17',sessionId:'session',localTaskId:command.taskId,
         proposal:{nodeId:'F17_N03',operationId:'repro',toolName:'workspace.run_allowed_command',arguments:{recipeId:recipe.id}}});

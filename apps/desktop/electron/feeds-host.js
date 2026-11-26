@@ -4,7 +4,13 @@ import {connectorResultProjectionSchema} from './connector-result-projection.js'
 import path from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {
+  createFeedsValidateAndDeduplicateHostPort,
+  createFeedsValidateAndDeduplicateAdapter,
+} from '@personal-agent/agentarts';
 import * as feeds from '@personal-agent/feeds';
+
+const MAX_PERSISTED_FINGERPRINTS = 2048;
 
 function subscription(value) {
   if (!value || typeof value.id !== 'string' || !/^[a-zA-Z0-9-]+$/.test(value.id)
@@ -64,6 +70,8 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     return {taskId, conversationId:task.conversationId, deadline, purposeDigest:hash(task.goal),goal:task.goal};
   }
   const grantKey = (sourceId,taskId) => 'feed-source-grant:' + hash({sourceId,taskId});
+  const cursorKey = sourceId => 'feed-source-cursor:' + hash({namespace,sourceId});
+  const fingerprintsKey = sourceId => 'feed-source-fingerprints:' + hash({namespace,sourceId});
   function readTrackingGrant(query) {
     const absent = {state:'none',id:'feed-scope-unavailable',revision:1,publicLowRiskTracking:false,
       expiresAt:new Date(now()).toISOString()};
@@ -80,6 +88,144 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
         || Date.parse(grant.expiresAt) <= now()) return absent;
       return structuredClone(grant);
     } catch { return absent; }
+  }
+  function assertNoSecrets(value) {
+    const text = JSON.stringify(value);
+    for (const item of saved) {
+      if (feeds.secretNeedles(new URL(item.url)).some(needle => text.includes(needle))) {
+        throw Error('订阅结果包含受保护配置，已停止保存或云端发送');
+      }
+    }
+  }
+  function assertTrackingGrant({sourceId, taskId, requiredScopes = []}) {
+    if (typeof sourceId !== 'string' || !sourceId.trim() || typeof taskId !== 'string' || !taskId.trim()) {
+      throw Error('订阅来源会话租约缺少订阅或任务标识');
+    }
+    const grant = readTrackingGrant({namespace, sourceId, taskId});
+    if (!grant || grant.state !== 'granted' || grant.publicLowRiskTracking !== true) {
+      throw Error('订阅来源会话租约缺失或已失效');
+    }
+    if (requiredScopes.length && Array.isArray(grant.grantedScopes)
+      && requiredScopes.some(scope => !grant.grantedScopes.includes(scope))) {
+      throw Error('订阅来源会话租约缺少所需权限范围');
+    }
+    return grant;
+  }
+  function readPersistedCursor(subscriptionId) {
+    if (!grantStore || !namespace || typeof subscriptionId !== 'string' || !subscriptionId.trim()) return undefined;
+    const binding = sourceBinding(subscriptionId);
+    if (!binding) return undefined;
+    const savedCursor = grantStore.get(cursorKey(subscriptionId));
+    if (!savedCursor || savedCursor.version !== 1 || savedCursor.namespace !== namespace
+      || savedCursor.subscriptionId !== subscriptionId || savedCursor.configurationRef !== binding.configurationRef
+      || typeof savedCursor.cursor !== 'string' || !savedCursor.cursor) {
+      return undefined;
+    }
+    return savedCursor.cursor;
+  }
+  function readKnownFingerprints(subscriptionId) {
+    const out = new Set();
+    if (!grantStore || !namespace || typeof subscriptionId !== 'string' || !subscriptionId.trim()) return out;
+    const binding = sourceBinding(subscriptionId);
+    if (!binding) return out;
+    const savedSet = grantStore.get(fingerprintsKey(subscriptionId));
+    if (!savedSet || savedSet.version !== 1 || savedSet.namespace !== namespace
+      || savedSet.subscriptionId !== subscriptionId || savedSet.configurationRef !== binding.configurationRef
+      || !Array.isArray(savedSet.fingerprints)) {
+      return out;
+    }
+    for (const fp of savedSet.fingerprints) {
+      if (typeof fp === 'string' && /^[a-f0-9]{64}$/.test(fp)) out.add(fp);
+    }
+    return out;
+  }
+  function commitIncrementalState({subscriptionId, cursor, fingerprints = [], taskId} = {}) {
+    if (!grantStore || !namespace || typeof subscriptionId !== 'string' || !subscriptionId.trim()) {
+      throw Error('订阅增量状态存储尚未装配');
+    }
+    const binding = sourceBinding(subscriptionId);
+    if (!binding || !active) throw Error('订阅来源配置不可用');
+    if (taskId) {
+      assertTrackingGrant({sourceId:subscriptionId,taskId,requiredScopes:['feeds.validate_and_deduplicate']});
+    } else if (!question && !current()) {
+      throw Error('订阅读取会话许可未授予或已撤销');
+    }
+    if (typeof cursor === 'string' && cursor) {
+      const decoded = feeds.decodeCursor(cursor);
+      assertNoSecrets({cursor, decoded});
+      grantStore.set(cursorKey(subscriptionId), {
+        version:1, namespace, subscriptionId,
+        configurationRef:binding.configurationRef,
+        cursor,
+        updatedAt:new Date(now()).toISOString(),
+      });
+    }
+    if (Array.isArray(fingerprints) && fingerprints.length) {
+      const existing = [...readKnownFingerprints(subscriptionId)];
+      const seen = new Set(existing);
+      for (const fp of fingerprints) {
+        if (typeof fp === 'string' && /^[a-f0-9]{64}$/.test(fp) && !seen.has(fp)) {
+          seen.add(fp);
+          existing.push(fp);
+        }
+      }
+      const bounded = existing.length > MAX_PERSISTED_FINGERPRINTS
+        ? existing.slice(existing.length - MAX_PERSISTED_FINGERPRINTS)
+        : existing;
+      grantStore.set(fingerprintsKey(subscriptionId), {
+        version:1, namespace, subscriptionId,
+        configurationRef:binding.configurationRef,
+        fingerprints:bounded,
+        updatedAt:new Date(now()).toISOString(),
+      });
+    }
+  }
+  function authorizeF09Context(context, subscriptionIdOverride, taskIdOverride) {
+    const inputObj = context?.input && typeof context.input === 'object' ? context.input : {};
+    const subId = subscriptionIdOverride
+      ?? (typeof inputObj.subscriptionId === 'string' ? inputObj.subscriptionId : undefined);
+    const tId = taskIdOverride
+      ?? (typeof inputObj.taskId === 'string' ? inputObj.taskId : undefined)
+      ?? (typeof context?.taskId === 'string' ? context.taskId : undefined);
+    if (!active || (!question && !current()) || (question && !questionReady())) {
+      return {granted:false, reason:'feed_session_not_authorized'};
+    }
+    if (!subId || !tId) return {granted:false, reason:'feed_source_grant_unavailable'};
+    try {
+      const grant = assertTrackingGrant({sourceId:subId, taskId:tId, requiredScopes:['feeds.validate_and_deduplicate']});
+      return {granted:true, authorizationRef:`feed-source-grant:${grant.id}`, subscriptionId:subId, taskId:tId};
+    } catch {
+      return {granted:false, reason:'feed_source_grant_unavailable'};
+    }
+  }
+  function f09ValidationOptions({subscriptionId, taskId, resolveSubscriptionId, resolveTaskId} = {}) {
+    return {
+      now,
+      authorizeSource(context) {
+        const subId = resolveSubscriptionId?.(context) ?? subscriptionId;
+        const tId = resolveTaskId?.(context) ?? taskId;
+        const auth = authorizeF09Context(context, subId, tId);
+        return auth.granted
+          ? {granted:true, authorizationRef:auth.authorizationRef}
+          : {granted:false, reason:auth.reason};
+      },
+      readKnownFingerprints(context) {
+        const subId = resolveSubscriptionId?.(context) ?? subscriptionId
+          ?? (context?.input && typeof context.input === 'object' ? context.input.subscriptionId : undefined);
+        return readKnownFingerprints(subId);
+      },
+      commitValidation({fingerprints, context}) {
+        const inputObj = context?.input && typeof context.input === 'object' ? context.input : {};
+        const subId = resolveSubscriptionId?.(context) ?? subscriptionId ?? inputObj.subscriptionId;
+        const tId = resolveTaskId?.(context) ?? taskId ?? inputObj.taskId ?? context?.taskId;
+        const cursor = typeof inputObj.nextCursor === 'string' ? inputObj.nextCursor
+          : typeof inputObj.cursor === 'string' ? inputObj.cursor : undefined;
+        commitIncrementalState({subscriptionId:subId, taskId:tId, fingerprints, cursor});
+      },
+    };
+  }
+  function createValidationHostPort(options = {}) {
+    return createFeedsValidateAndDeduplicateHostPort(f09ValidationOptions(options));
   }
   const current = () => active && allowed && boundRevision === revision() && tools.length > 0;
   const questionReady=()=>active&&Boolean(application)&&Boolean(namespace)&&boundRevision===revision()&&tools.length>0
@@ -99,6 +245,47 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     const entry=[...prepared.values()].find(value=>value.scope.taskId===scope.taskId&&value.scope.runId===scope.runId);
     if(!entry||entry.toolName!==tool.descriptor.name||entry.argumentsDigest!==hash(input))throw Error('订阅原操作参数已改变');
     original({...entry.scope,signal:scope.signal});question.currentRequirement({...entry.scope,...scope},'feeds-session');
+  }
+  function assertSafeProjection(result) {
+    const cursor=result.nextCursor ? feeds.decodeCursor(result.nextCursor) : undefined;
+    const text=JSON.stringify({result,cursor});
+    for(const item of saved)if(feeds.secretNeedles(new URL(item.url)).some(needle=>text.includes(needle)))
+      throw Error('订阅结果包含受保护配置，已停止云端发送');
+    if(Buffer.byteLength(JSON.stringify(result),'utf8')>960*1024)throw Error('订阅结果过大，请减小每页数量');
+  }
+  function graphDestination(parentTaskId,sourceTaskId) {
+    if(typeof application?.readAuthorizationQuestionDestination!=='function')throw Error('订阅图模型目标不可核实');
+    const parent=application.readAuthorizationQuestionDestination(parentTaskId);
+    const source=application.readAuthorizationQuestionDestination(sourceTaskId);
+    if(typeof parent!=='string'||!parent||source!==parent)throw Error('订阅出机授权与原图模型目标不一致');
+    return parent;
+  }
+  // Resolve only a persisted F09 source operation, never an arbitrary caller task.
+  function graphSource({parentTaskId,sourceTaskId,sourceOperationId,signal,result}) {
+    if(!questionReady()||typeof question?.assertConsumedResult!=='function'||!signal||signal.aborted)throw Error('订阅原图许可不可用');
+    const graph=application.runtime.getTask(parentTaskId);
+    if(graph.cancelRequested||['succeeded','failed','cancelled'].includes(graph.state))throw Error('原订阅图已停止');
+    const parent=application.runtime.loadCheckpoint(sourceTaskId,'coding-repair:parent');
+    const operation=application.runtime.loadCheckpoint(parentTaskId,'owned-workflow:operation:'+sourceOperationId);
+    const intent=application.runtime.loadCheckpoint(sourceTaskId,'host-tool-intent');
+    const host=application.runtime.loadCheckpoint(parentTaskId,'coding-repair:host:'+sourceOperationId);
+    if(parent?.taskId!==parentTaskId||parent.operationId!==sourceOperationId||operation?.taskId!==parentTaskId
+      ||operation.workflowId!=='F09'||operation.localTaskId!==sourceTaskId||operation.proposal?.nodeId!=='F09_N01'
+      ||operation.proposal.toolName!=='feeds.collect'||operation.proposal.operationId!==sourceOperationId
+      ||host?.localTaskId!==sourceTaskId||host.request?.commandId!==sourceOperationId
+      ||intent?.commandId!==sourceOperationId||intent.toolName!=='feeds.collect'
+      ||intent.toolVersion!==operation.proposal.toolVersion||!isDeepStrictEqual(intent.arguments,operation.proposal.arguments)
+      ||!isDeepStrictEqual(host.request.arguments,intent.arguments))throw Error('订阅原图操作绑定已变化');
+    const source=application.readHostToolTask(sourceTaskId),runId='host-tool-'+sourceTaskId;
+    if(source.commandId!==sourceOperationId||source.task?.state!=='succeeded'||source.toolName!=='feeds.collect'
+      ||source.toolVersion!==intent.toolVersion||source.confirmed?.runId!==runId
+      ||!source.confirmed.evidenceRefs.includes(runId)||!isDeepStrictEqual(source.confirmed.result,result))throw Error('订阅原回执不可用');
+    const entry=[...prepared.values()].find(value=>value.scope.taskId===sourceTaskId&&value.scope.runId===runId
+      &&value.toolName==='feeds.collect'&&value.argumentsDigest===hash(intent.arguments));
+    if(!entry||typeof intent.arguments?.subscriptionId!=='string'||!sourceBinding(intent.arguments.subscriptionId)
+      ||entry.graphDestination!==graphDestination(parentTaskId,sourceTaskId))throw Error('订阅原授权不可用');
+    original({...entry.scope,signal});
+    return entry;
   }
   const bound = (taskId, claim = false) => {
     if (!application || !taskId) return false;
@@ -191,13 +378,39 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     readSourceReceipt:subscriptionId=>sourceReceipts.has(subscriptionId)
       ? structuredClone(sourceReceipts.get(subscriptionId)) : undefined,
     readTrackingGrant,
+    assertTrackingGrant,
+    readPersistedCursor,
+    readKnownFingerprints:subscriptionId=>[...readKnownFingerprints(subscriptionId)],
+    commitIncrementalState,
+    createValidationHostPort,
+    async validateAndDeduplicate({subscriptionId,taskId,items,events,nextCursor,signal,deadline} = {}) {
+      const activeSignal = signal ?? new AbortController().signal;
+      if (activeSignal.aborted) throw Error('订阅校验与去重已取消');
+      const resolvedDeadline = deadline ?? new Date(now() + 30_000).toISOString();
+      if (!Number.isFinite(Date.parse(resolvedDeadline)) || Date.parse(resolvedDeadline) <= now()) {
+        throw Error('订阅校验与去重期限已到');
+      }
+      const hostPort = createValidationHostPort({subscriptionId,taskId});
+      const observation = await hostPort.read({
+        input:{subscriptionId,taskId,nextCursor,items:items ?? events},
+        signal:activeSignal,
+        deadline:resolvedDeadline,
+      });
+      if (observation.state !== 'completed') {
+        throw Error(observation.value?.reason ?? 'feeds_validation_unavailable');
+      }
+      return observation.value;
+    },
+    get workflowHostTools() {
+      return [createFeedsValidateAndDeduplicateAdapter(f09ValidationOptions())];
+    },
     prepareNativeSourceChoice({subscriptionId,taskId}) {
       const binding = sourceBinding(subscriptionId), task = taskBinding(taskId);
       if (!binding || !grantStore) throw Error('订阅来源尚未装配');
       const item = saved.find(entry => entry.id === subscriptionId);
       return {...binding,...task,title:item.title,url:item.url};
     },
-    applyNativeSourceChoice(choice, classification) {
+    applyNativeSourceChoice(choice, classification, options = {}) {
       if (!['public','private'].includes(classification) || !grantStore || !choice) throw Error('来源分类无效');
       const binding = sourceBinding(choice.subscriptionId), task = taskBinding(choice.taskId);
       if (!binding || binding.configurationRef !== choice.configurationRef || binding.generation !== choice.generation
@@ -210,11 +423,16 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
         registerCurrentSources();
       }
       const currentBinding = sourceBinding(binding.sourceId);
+      const grantedScopes = classification === 'public'
+        ? (Array.isArray(options?.grantedScopes) && options.grantedScopes.length
+          ? [...options.grantedScopes]
+          : ['feeds.collect','feeds.validate_and_deduplicate'])
+        : [];
       grantStore.set(key,{state:classification === 'public' ? 'granted' : 'revoked',id:randomUUID(),
         revision:Number.isSafeInteger(previous?.revision) ? previous.revision+1 : 1,
         namespace,sourceId:binding.sourceId,subscriptionId:binding.subscriptionId,
         configurationRef:currentBinding.configurationRef,taskId:task.taskId,conversationId:task.conversationId,
-        purposeDigest:task.purposeDigest,
+        purposeDigest:task.purposeDigest,grantedScopes,
         publicLowRiskTracking:classification === 'public',expiresAt:task.deadline,
         classifiedAt:new Date(now()).toISOString(),classificationSource:'native-user-choice'});
       const index = grantStore.get('feed-source-grant-index');
@@ -242,6 +460,55 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
     },
     revoke:() => revoke(),
     prepare,
+    // Called by requestToolAuthorization while the original HostTask is running,
+    // after Runtime froze its intent and before the user decides its question.
+    prepareWorkflowFeedSource(scope) {
+      if(scope?.toolName!=='feeds.collect'||!question)return false;
+      const parent=application?.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent');
+      if(!parent)return false;
+      const intent=application.runtime.loadCheckpoint(scope.taskId,'host-tool-intent');
+      const originalIntent=application.runtime.loadCheckpoint(parent.taskId,'owned-workflow:intent:'+parent.operationId);
+      if(originalIntent?.workflowId!=='F09')return false;
+      if(originalIntent.taskId!==parent.taskId||originalIntent.proposal?.nodeId!=='F09_N01'
+        ||originalIntent.proposal.operationId!==parent.operationId||originalIntent.proposal.toolName!=='feeds.collect'
+        ||intent?.commandId!==parent.operationId||intent.toolVersion!==scope.toolVersion
+        ||!isDeepStrictEqual(intent.arguments,originalIntent.proposal.arguments))throw Error('订阅原图请求绑定无效');
+      const destination=graphDestination(parent.taskId,scope.taskId);
+      this.prepareExport({...scope,phase:'preflight',proposal:{proposalId:parent.operationId,
+        toolName:scope.toolName,toolVersion:scope.toolVersion,arguments:structuredClone(intent.arguments)}});
+      const entry=prepared.get(preparationKey({...scope,proposalId:parent.operationId}));
+      if(!entry||entry.graphDestination!==undefined&&entry.graphDestination!==destination)throw Error('订阅图模型目标已变化');
+      entry.graphDestination=destination;
+      question.prepare(scope,{requirements:[],assertCurrent:()=>{try{
+        const task=application.runtime.getTask(parent.taskId);
+        return !task.cancelRequested&&!['succeeded','failed','cancelled'].includes(task.state)
+          &&graphDestination(parent.taskId,scope.taskId)===destination;
+      }catch{return false;}}});
+      return true;
+    },
+    // Graph receipt export must consume the original exact source result, not
+    // simply reuse Policy approval as permission to send to a model.
+    authorizeWorkflowFeedSourceExport(binding) {
+      const entry=graphSource(binding);
+      if(typeof question?.authorizeConsumedExport!=='function')throw Error('订阅原结果出机许可不可用');
+      assertSafeProjection(binding.result);
+      question.authorizeConsumedExport({...entry.scope,signal:binding.signal},binding.result,'feeds-export');
+      entry.projectionDigest=hash(binding.result);return true;
+    },
+    assertWorkflowFeedAccess(binding) {
+      try {
+        const {context}=binding,entry=graphSource({...binding,signal:context.signal});
+        const parent=application.runtime.loadCheckpoint(context.taskId,'coding-repair:parent');
+        const current=parent&&application.runtime.loadCheckpoint(parent.taskId,'owned-workflow:intent:'+parent.operationId);
+        const host=application.runtime.loadCheckpoint(context.taskId,'host-tool-intent');
+        if(parent?.taskId!==binding.parentTaskId||current?.workflowId!=='F09'
+          ||current.proposal?.nodeId!=='F09_N02'||current.proposal.operationId!==parent.operationId
+          ||current.proposal.arguments?.sourceOperationId!==binding.sourceOperationId
+          ||host?.commandId!==parent.operationId||host.toolName!=='workflow.host.f09_n02'
+          ||!isDeepStrictEqual(host.arguments,current.proposal.arguments)||entry.projectionDigest!==hash(binding.result))return false;
+        question.assertConsumedResult({...entry.scope,signal:context.signal},'feeds-export');return true;
+      } catch{return false;}
+    },
     prepareExport(scope) {
       const tool=tools.find(item=>item.descriptor.name===scope.proposal?.toolName&&item.descriptor.version===scope.proposal?.toolVersion);
       if(!tool||!question)return;
@@ -292,14 +559,7 @@ export function createDesktopFeedsHost({userData, safeStorage, provider = new fe
         else if (signal.aborted || !current() || !bound(taskId)) throw Error('订阅云端许可已失效');
         // The connector already redacts configured URLs. Also check the decoded cursor,
         // whose base64 encoding must not hide credentials reflected in response validators.
-        const cursor = result.nextCursor ? feeds.decodeCursor(result.nextCursor) : undefined;
-        const text = JSON.stringify({result,cursor});
-        for (const item of saved) {
-          if (feeds.secretNeedles(new URL(item.url)).some(needle => text.includes(needle))) {
-            throw Error('订阅结果包含受保护配置，已停止云端发送');
-          }
-        }
-        if (Buffer.byteLength(JSON.stringify(result),'utf8') > 960 * 1024) throw Error('订阅结果过大，请减小每页数量');
+        assertSafeProjection(result);
         return structuredClone(result);
       }}));},
     close() {if (!active) return; active=false;allowed=false;prepared.clear();

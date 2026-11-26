@@ -154,6 +154,12 @@ function findInstallerArtifact(projectRoot, customPath) {
   }
 
   const candidateRelativePaths = [
+    'apps/desktop/release/Synstar-Setup.exe',
+    'apps/desktop/release/Synstar Setup.exe',
+    'apps/desktop/dist/Synstar-Setup.exe',
+    'apps/desktop/dist/Synstar Setup.exe',
+    'release/Synstar-Setup.exe',
+    'dist/Synstar-Setup.exe',
     'apps/desktop/release/PersonalAgent-Setup.exe',
     'apps/desktop/release/PersonalAgent Setup.exe',
     'apps/desktop/dist/PersonalAgent-Setup.exe',

@@ -4,9 +4,11 @@ import {
   type AgentArtsAuthorizationProvider,
   type AgentArtsFailureDiagnostic,
   type AgentArtsFetch,
+  type CloudAgentPort,
   type CoordinationRequest,
   type AgentArtsTransportState,
   type AgentArtsWebSocketFactory,
+  type AgentArtsPayloadPreparer,
 } from '@personal-agent/coordination';
 import {ProtocolError} from '@personal-agent/contracts';
 import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
@@ -16,6 +18,8 @@ import {createRuntimeOwnedWorkflowImageAdapter} from './owned-workflow-image-ada
 import {createRuntimeWikiImportHost} from './wiki-import.js';
 import type {RuntimeWikiImportOptions,RuntimeWikiImportHost} from './wiki-import.js';
 import {createAgentArtsWikiModel} from './wiki-image-adapter.js';
+import type {RuntimeConfiguredWorkflowOptions} from './configured-workflow-worker.js';
+import {runtimeOwnedWorkflowWorkerConfigured,type RuntimeOwnedWorkflowWorkerOptions} from './owned-workflow-worker-capability.js';
 import {
   createAgentArtsObservationHost,
   type AgentArtsObservationAuthorization,
@@ -27,6 +31,10 @@ import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt,
   recordCompetitionCloudRequestIdentity} from './coordination.js';
 import {CompetitionCloudStatusReader, recordCompetitionCloudStatusBinding} from './competition-cloud-status.js';
 import type {CompetitionCloudStatusScope, CompetitionCloudStatusObservation} from './competition-cloud-status.js';
+import {
+  runtimeF09WorkflowWorkerConfigured,
+  type RuntimeF09WorkflowWorkerOptions,
+} from './owned-workflow-f09-worker-capability.js';
 import {
   createRuntimeApplication,
   type RuntimeApplication,
@@ -63,11 +71,24 @@ export interface AgentArtsRuntimeApplicationOptions
   /** Offline/native socket injection, independent of the task transport protocol. */
   realtimeSocket?: RealtimeSocketConstructor;
   onTransportState?: (state: AgentArtsTransportState) => void;
+  /** Optional host-only WSS cloud-run accounting hook; fires only when a frame was sent over WSS. */
+  onWebSocketCloudRun?: (info: {durationMs: number; ok: boolean; taskId: string; requestId: string; origin: 'user'|'autonomous'}) => void;
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
+  /** Main-only local classification of the complete outgoing payload. */
+  preparePayload?:AgentArtsPayloadPreparer;
   /** Explicit host-only key source for an image configured with a receipt-key override. */
   readOwnedWorkflowReceiptSecret?: (signal:AbortSignal)=>Promise<string>;
+  /**
+   * Desktop-trusted F09 ports without image. Composition merges the fixed owned-workflow
+   * AgentArts image when deploymentVersion and goal-with-tools-json are present.
+   * A fully configured `f09WorkflowWorker` on RuntimeApplicationOptions still wins.
+   */
+  f09WorkflowWorkerPorts?: Omit<RuntimeF09WorkflowWorkerOptions,'image'>;
+  /** Trusted per-graph ports share the fixed AgentArts image; absent deployment stays unavailable. */
+  configuredWorkflowWorkerPorts?: readonly Omit<RuntimeConfiguredWorkflowOptions,'image'>[];
+  f20WorkflowWorkerPorts?: Omit<RuntimeOwnedWorkflowWorkerOptions,'image'>;
   fetchHandlesHostAuthorization?:true;
   wikiImport?:RuntimeWikiImportOptions;
   /** Trusted observation read-back authorization; real reads need an AK/SK signer,
@@ -114,9 +135,14 @@ export function createAgentArtsRuntimeApplication(
     websocketFactory,
     realtimeSocket,
     onTransportState,
+    onWebSocketCloudRun,
     onDiagnostic,
     beforeCompetitionSend,
+    preparePayload:configuredPayloadPreparer,
     readOwnedWorkflowReceiptSecret,
+    f09WorkflowWorkerPorts,
+    configuredWorkflowWorkerPorts,
+    f20WorkflowWorkerPorts,
     fetchHandlesHostAuthorization,
     wikiImport,
     observationAuthorization,
@@ -124,6 +150,9 @@ export function createAgentArtsRuntimeApplication(
     observationApplicationId,
     ...runtimeOptions
   } = options;
+  if (onWebSocketCloudRun !== undefined && typeof onWebSocketCloudRun !== 'function') {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Invalid AgentArts WebSocket cloud run callback');
+  }
   if(recoverAcceptedStatus!==undefined&&(recoverAcceptedStatus!==true||transport!=='wss'))
     throw new ProtocolError('INVALID_ARGUMENT','Accepted-status recovery requires explicit WSS transport');
   if (deploymentVersion !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(deploymentVersion)) {
@@ -144,6 +173,11 @@ export function createAgentArtsRuntimeApplication(
     throw new ProtocolError('INVALID_ARGUMENT','New task continuations require the guarded Competition tool catalog');
   }
   let application: RuntimeApplication;
+  const wssStarted = new Map<string, {at: number; requestId: string}>();
+  const wssRunKey = (request: CoordinationRequest): string => `${request.taskId}\0${request.revision}`;
+  const preparePayload:AgentArtsPayloadPreparer=configuredPayloadPreparer??(async()=>{
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local cloud-payload classification is unavailable');
+  });
   const cloud = new AgentArtsCloudAgentPort(
     {
       gatewayUrl,
@@ -172,12 +206,15 @@ export function createAgentArtsRuntimeApplication(
     },
     onDiagnostic,
     transport !== 'wss' && websocketAuthorizationProvider === undefined && websocketFactory === undefined
-      && onTransportState === undefined ? undefined : {
+      && onTransportState === undefined && onWebSocketCloudRun === undefined ? undefined : {
         ...(websocketAuthorizationProvider === undefined ? {} : {authorizationProvider: websocketAuthorizationProvider}),
         ...(websocketFactory === undefined ? {} : {factory: websocketFactory}),
         ...(recoverAcceptedStatus===true?{recoverAcceptedStatus:true as const}:{}),
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
         onDispatch: (request, receipt) => {
+          if (onWebSocketCloudRun !== undefined && receipt.serverInstanceId !== undefined) {
+            wssStarted.set(wssRunKey(request), {at: Date.now(), requestId: receipt.requestId});
+          }
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);
           recordCompetitionCloudStatusBinding(application.runtime,request.taskId,application.coordinationConfigurationRef,receipt,request);
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-received', null);
@@ -199,22 +236,67 @@ export function createAgentArtsRuntimeApplication(
       }
     },
     runtimeOptions.enableNewTaskToolContinuations ? taskId => application.usesGoalContinuation(taskId) ? 'goal' : undefined : undefined,
+    preparePayload,
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
-    ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,
+    ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,preparePayload,
+      ...(recoverAcceptedStatus===true?{queryOriginalStatus:cloud.queryStatus.bind(cloud)}:{}),
+      onInvocationReadback:receipt=>{if(receipt.workflowId!=='F26')return;
+        const key='f26:image-readback:'+receipt.requestId,previous=application.runtime.loadCheckpoint(receipt.taskId,key);
+        if(previous!==undefined&&JSON.stringify(previous)!==JSON.stringify(receipt))throw new ProtocolError('REVISION_CONFLICT','Original F26 image receipt changed');
+        application.runtime.saveCheckpointOnce(receipt.taskId,key,receipt);application.runtime.saveCheckpoint(receipt.taskId,'f26:image-last',receipt.requestId);},
+      ...((f20WorkflowWorkerPorts||configuredWorkflowWorkerPorts?.length)?{
+        assertWorkflowCurrent:(request:import('@personal-agent/agentarts').OwnedWorkflowAdvanceRequest)=>{
+          const configured=(configuredWorkflowWorkerPorts??[]).filter(ports=>ports.workflowId===request.workflowId);
+          if(configured.length>1)throw new ProtocolError('UNAUTHORIZED','Original graph has ambiguous source guards');
+          const ports=request.workflowId==='F20'?f20WorkflowWorkerPorts:configured[0];
+          const result=ports?.assertCurrent({taskId:request.taskId,deadline:request.taskDeadline??request.deadline,signal:request.signal});
+          if(result!==undefined){void Promise.resolve(result).catch(()=>undefined);
+            throw new ProtocolError('UNAUTHORIZED','Graph current guard must be synchronous');}
+        }}:{}),
       ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),
       ...(transport===undefined?{}:{transport}),...(websocketUrl===undefined?{}:{websocketUrl}),
       ...(allowHttpsFallback===undefined?{}:{allowHttpsFallback}),...(websocketAuthorizationProvider?{websocketAuthorizationProvider}:{}),
       ...(websocketFactory?{websocketFactory}:{}),...(fetchImpl?{fetchImpl}:{}),...(invokeMode?{invokeMode}:{}),
       ...(workflowGoalInput?{workflowGoalInput}:{}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
       ...(onTransportState?{onTransportState}:{}),...(readOwnedWorkflowReceiptSecret?{readReceiptSecret:readOwnedWorkflowReceiptSecret}:{})}):undefined;
-  const wikiModel=wikiImport?createAgentArtsWikiModel({gatewayUrl,runtimeName,authorizationProvider,
+  const f09FromPorts=ownedImage&&f09WorkflowWorkerPorts
+    ?{...f09WorkflowWorkerPorts,image:ownedImage} satisfies RuntimeF09WorkflowWorkerOptions:undefined;
+  const f09WorkflowWorker=runtimeOptions.f09WorkflowWorker??(runtimeF09WorkflowWorkerConfigured(f09FromPorts)?f09FromPorts:undefined);
+  const configuredWorkflowWorkers=[...(runtimeOptions.configuredWorkflowWorkers??[]),
+    ...(ownedImage?(configuredWorkflowWorkerPorts??[]).map(ports=>({...ports,image:ownedImage})):[])];
+  const wikiModel=wikiImport?createAgentArtsWikiModel({gatewayUrl,runtimeName,authorizationProvider,preparePayload,
     ...(deploymentVersion===undefined?{}:{deploymentVersion}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
     ...(transport?{transport}:{}),...(websocketUrl?{websocketUrl}:{}),...(websocketFactory?{websocketFactory}:{}),
     ...(websocketAuthorizationProvider?{websocketAuthorizationProvider}:{}),...(fetchImpl?{fetchImpl}:{}),
     ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),...(invokeMode?{invokeMode}:{}),
     ...(workflowGoalInput?{workflowGoalInput}:{})}):undefined;
   const wikiHost=wikiImport&&wikiModel?createRuntimeWikiImportHost({...wikiImport,model:wikiModel}):undefined;
+  const trackedCloud: CloudAgentPort = onWebSocketCloudRun === undefined ? cloud : {
+    async invoke(request) {
+      const key = wssRunKey(request);
+      const record = (ok: boolean): void => {
+        const started = wssStarted.get(key);
+        if (started === undefined) return;
+        wssStarted.delete(key);
+        try {
+          onWebSocketCloudRun({durationMs: Math.max(1, Date.now() - started.at), ok, taskId: request.taskId,
+            requestId: started.requestId, origin: application.readTaskUsageOrigin(request.taskId)});
+        } catch {
+          /* Usage accounting never alters the cloud invocation outcome. */
+        }
+      };
+      try {
+        const result = await cloud.invoke(request);
+        record(true);
+        return result;
+      } catch (error) {
+        record(false);
+        throw error;
+      }
+    },
+  };
+  const f20FromPorts=ownedImage&&f20WorkflowWorkerPorts?{...f20WorkflowWorkerPorts,image:ownedImage}:undefined;
   application = createRuntimeApplication({
     ...runtimeOptions,
     ...(wikiHost?{tools:[...(runtimeOptions.tools??[]),...wikiHost.tools],
@@ -223,10 +305,14 @@ export function createAgentArtsRuntimeApplication(
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
     ...(runtimeOptions.codingRepair?{}:ownedImage?{codingRepair:{image:ownedImage}}:{}),
+    ...(f09WorkflowWorker?{f09WorkflowWorker}:{}),
+    ...(configuredWorkflowWorkers.length?{configuredWorkflowWorkers}:{}),
+    ...(runtimeOptions.ownedWorkflowWorker?{}:runtimeOwnedWorkflowWorkerConfigured(f20FromPorts)?{ownedWorkflowWorker:f20FromPorts}:{}),
     ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.
     competitionRealtimeModel: new AgentArtsRealtimeModelGateway({
+      preparePayload,
       ...(transport === 'wss' && websocketUrl !== undefined ? {websocketUrl} : {}),
       authorizationProvider,
       ...(websocketAuthorizationProvider === undefined ? {} : {websocketAuthorizationProvider}),
@@ -238,12 +324,12 @@ export function createAgentArtsRuntimeApplication(
       ...(continuationContext==='goal'?{continuationContext:'goal'}:{}),
       ...(transport === 'wss' ? {transport,websocketUrl,allowHttpsFallback:allowHttpsFallback??false} : {}),
       ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion})})).digest('hex'),
-    coordination: new CompetitionCoordinator(cloud),
+    coordination: new CompetitionCoordinator(trackedCloud),
   });
   const statusReader=new CompetitionCloudStatusReader(application.runtime,application.coordinationConfigurationRef,cloud,transport==='wss');
   wikiHost?.bind(application);
   const closeRuntime = application.close.bind(application);
-  application.close = () => { closeRuntime(); statusReader.close(); cloud.close(); ownedImage?.close(); wikiHost?.close(); wikiModel?.close(); };
+  application.close = () => { wssStarted.clear(); closeRuntime(); statusReader.close(); cloud.close(); ownedImage?.close(); wikiHost?.close(); wikiModel?.close(); };
   // The platform observation consumer lives only on the Competition composition; the
   // default (local) application keeps no observation surface at all.
   const observationHost = createAgentArtsObservationHost({

@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../../../',import.meta.url)),hash=value=>createHash('sha256').update(value).digest('hex');
 const json=async filename=>JSON.parse(await readFile(filename,'utf8'));
 const scalarSource=source=>source?Object.fromEntries(['path','gitBlob','sha256','lfSha256','bytes'].filter(key=>source[key]!==undefined).map(key=>[key,source[key]])):undefined;
-const publicRepo=source=>/^https:\/\/github\.com\/(?:zemeng5208|xianxing-ai)\/PersonalAgent(?:\.git)?$/.test(source??'')?source:{redacted:true,sha256:hash(String(source))};
+const publicRepo=source=>/^https:\/\/github\.com\/(?:zemeng5208|xianxing-ai)\/(?:PersonalAgent|Synstar)(?:\.git)?$/.test(source??'')?source:{redacted:true,sha256:hash(String(source))};
 export async function summarize({recovery,comparison,emit,remote,history,inputs,matchingDependencyFiles}){
   const recovered=await json(recovery),compared=await json(comparison),compiled=await json(emit),chain=await json(remote),builders=await json(history);
   const candidate=compared.candidates.find(value=>value.revision===compiled.revision);

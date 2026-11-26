@@ -15,24 +15,69 @@ function harness(t,invoke) {
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke,restore],
     reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='https';}});
-  const wss=node(),advanced=node();
-  const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
+  const wss=node(),advanced=node(),traceReplay=node(),traceReplayState=node(),decisionButton=node(),decisionState=node();
+  const scopeFields=Object.fromEntries(['dataLevel','cloudExportAllowed','publicQueries'].map(key=>[key,node()])),scopeForm=node(),scopeState=node(),scopeSubmit=node();
+  Object.assign(scopeForm,{elements:scopeFields,querySelectorAll:()=>[...Object.values(scopeFields),scopeSubmit]});
+  const evaluationStatus=node(),mainRows=node(),shadowRows=node(),evaluationRelease=node();
+  const experimentForm=Object.assign(node(),{elements:{experiment:node(),publicData:node()},querySelector:()=>node()});
+  const evaluationForm=Object.assign(node(),{elements:{binding:node()},querySelector:()=>node()});
+  const section={append(){},isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
     querySelector:selector=>({'form':form,'[data-status]':status,'[data-wss]':wss,'[data-token-hint]':tokenHint,
-      '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced}[selector])};
+      '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced,
+      '[data-trace-replay]':traceReplay,'[data-trace-replay-state]':traceReplayState,'[data-data-scope]':scopeForm,'[data-data-scope-state]':scopeState,
+      '[data-decision-initialize]':decisionButton,'[data-decision-state]':decisionState,
+      '[data-experiment]':experimentForm,'[data-evaluation-binding]':evaluationForm,'[data-evaluation-status]':evaluationStatus,
+      '[data-main]':mainRows,'[data-shadow]':shadowRows,'[data-evaluation-release]':evaluationRelease}[selector])};
   form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
-  globalThis.document={body,activeElement:body,createElement:()=>section,
+  globalThis.document={body,activeElement:body,createElement:tag=>tag==='section'?section:{...node(),querySelector:section.querySelector},
     addEventListener:(name,listener)=>documentListeners.set(name,listener),
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,traceReplay,traceReplayState,scopeFields,scopeState,scopeSubmit,decisionButton,decisionState,
+    saveScope:()=>scopeForm.listeners.get('submit')({preventDefault(){}}),save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
     recover:()=>restore.listeners.get('click')(),
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
+
+test('F23 baseline UI sends only the current catalog reference and preserves pending or unknown initialization',async t=>{
+  const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {taskId:'original-initialization',state:'created'};});
+  const invoke=()=>ui.decisionButton.listeners.get('click')();assert.equal(ui.decisionButton.disabled,true);await invoke();assert.equal(calls.length,0);
+  const state={available:true,initialized:false,catalogRevision:'a'.repeat(64)};
+  ui.controls.render({decisionConfiguration:state});ui.fields.authorization.value='private-connection-draft';await invoke();
+  assert.equal(calls[0].action,'workflow.decisionConfiguration.initialize');
+  assert.deepEqual(Object.keys(calls[0].payload).sort(),['catalogRevision','commandId']);assert.equal(calls[0].payload.catalogRevision,state.catalogRevision);
+  ui.controls.render({decisionConfiguration:{...state,initialization:{state:'waiting_reconciliation'}}});await invoke();assert.equal(calls.length,1);
+  ui.controls.render({decisionConfiguration:{...state,initialized:true,binding:{configuration:{revision:1},executionModel:{modelId:'original'}},initialization:{state:'succeeded'}}});
+  assert.equal(ui.decisionButton.disabled,true);assert.match(ui.decisionState.textContent,/已读回基线版本 1.*original.*评测尚未通过/);
+  assert.equal(ui.fields.authorization.value,'private-connection-draft');
+});
+
+test('F25 stages only the original data scope proposal and does not claim connectivity or apply permissions',async t=>{
+  const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {dataScope:{configured:true,stage:'selected',revision:4,
+    dataLevel:'public',cloudExportAllowed:true,available:true,accountConfigured:true}};});
+  assert.equal(ui.scopeSubmit.disabled,true);await ui.saveScope();assert.equal(calls.length,0);
+  ui.controls.render({dataScope:{configured:false,revision:3,available:true,accountConfigured:true}});
+  ui.fields.authorization.value='connection-draft-secret';ui.scopeFields.dataLevel.value='public';
+  ui.scopeFields.cloudExportAllowed.checked=true;ui.scopeFields.publicQueries.value='公开资料\n公开说明';
+  await ui.saveScope();assert.deepEqual(calls,[{action:'workflow.dataScope.configure',payload:{expectedRevision:3,dataLevel:'public',cloudExportAllowed:true,publicQueries:['公开资料','公开说明']}}]);
+  assert.equal(ui.fields.authorization.value,'connection-draft-secret');assert.equal(ui.scopeFields.publicQueries.value,'');
+  assert.match(ui.scopeState.textContent,/提案已暂存.*实际修改仍需确认/);assert.doesNotMatch(ui.scopeState.textContent,/已连接|已应用/);
+});
+
+test('F22 replay settings submit the original revision independently of connection credentials',async t=>{
+  const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {traceReplay:{enabled:true,revision:3,available:true}};});
+  assert.equal(ui.traceReplay.disabled,true);
+  ui.fields.authorization.value='unsaved-secret-fixture';
+  ui.controls.render({traceReplay:{enabled:false,revision:2,available:true}});
+  await ui.traceReplay.listeners.get('click')();
+  assert.deepEqual(calls,[{action:'workflow.traceReplay.configure',payload:{enabled:true,expectedRevision:2}}]);
+  assert.equal(ui.fields.authorization.value,'unsaved-secret-fixture');assert.equal(ui.traceReplay.textContent,'关闭历史回放');
+});
 
 test('AgentArts defaults to HTTPS and retains explicit WSS and secret handling',async t=>{
   let captured,fail=false;
@@ -328,7 +373,7 @@ test('recovery refuses mismatched readback and never retries or exposes private 
   await ui.recover();assert.equal(calls,8,'unconfigured state cannot invent a default destination');
 });
 
-test('AgentArts observation controls save AK/SK securely and revoke without leaking secrets', async t => {
+function observationHarness(t, invoke) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
   t.after(() => { if (previous) Object.defineProperty(globalThis, 'document', previous); else delete globalThis.document; });
   const makeNode = () => ({value: '', checked: false, disabled: false, textContent: '', listeners: new Map(), attributes: new Map(),
@@ -350,19 +395,36 @@ test('AgentArts observation controls save AK/SK securely and revoke without leak
   const obsBox = {
     querySelector: sel => ({'[data-observation-form]': obsForm, '[data-observation-state]': obsState, '[data-observation-status]': obsStatus, '[data-observation-revoke]': obsRevoke}[sel]),
   };
+  const neighboringControls = new Map(['[data-trace-replay]', '[data-trace-replay-state]', '[data-data-scope-state]',
+    '[data-decision-initialize]', '[data-decision-state]'].map(selector => [selector, makeNode()]));
+  neighboringControls.set('[data-data-scope]', {...makeNode(), querySelectorAll: () => [],
+    elements: {dataLevel: makeNode(), cloudExportAllowed: makeNode(), publicQueries: makeNode()}});
   const section = {
     isConnected: true, hidden: false, getClientRects: () => [{}],
+    append() {},
     insertAdjacentHTML(_p, html) { this.insertedHtml = (this.insertedHtml ?? '') + html; },
     querySelector: sel => ({
       'form': form, '[data-status]': status, '[data-wss]': wss, '[data-token-hint]': tokenHint,
       '[data-revoke]': revoke, '[data-restore-default]': restore, '.btn-group': buttonGroup,
       '[data-transport-state]': transportState, '[data-connection-advanced]': advanced, '[data-observation-controls]': obsBox,
-    }[sel]),
+    }[sel] ?? neighboringControls.get(sel)),
   };
-  globalThis.document = {body: {}, activeElement: null, createElement: () => section, addEventListener() {}, removeEventListener() {}};
+  const evaluationNodes = new Map(['[data-experiment]', '[data-evaluation-binding]', '[data-evaluation-status]',
+    '[data-main]', '[data-shadow]', '[data-evaluation-release]'].map(selector => [selector, makeNode()]));
+  const evaluation = {querySelector: selector => evaluationNodes.get(selector)};
+  globalThis.document = {body: {}, activeElement: null, createElement: tag => tag === 'section' ? section : evaluation,
+    addEventListener() {}, removeEventListener() {}};
 
+  const controls = mountAgentArtsControls({append() {}}, invoke);
+  return {controls, section, obsFields, obsForm, obsRevoke, obsState, obsStatus,
+    edit(key, value) { obsFields[key].value = value; obsForm.listeners.get('input')?.({target: obsFields[key]}); },
+    save: () => obsForm.listeners.get('submit')({preventDefault() {}}),
+    revoke: () => obsRevoke.listeners.get('click')()};
+}
+
+test('AgentArts observation controls save AK/SK securely and revoke without leaking secrets', async t => {
   const calls = [];
-  const controls = mountAgentArtsControls({append() {}}, async (action, payload) => {
+  const {controls, section, obsFields, obsForm, obsRevoke, obsStatus} = observationHarness(t, async (action, payload) => {
     calls.push({action, payload: payload ? {...payload} : undefined});
     if (action === 'agentarts.observation.configure') {
       return {configured: true, applicationIdConfigured: true, applicationId: payload.applicationId, reason: '观测凭据已加密保存'};
@@ -390,4 +452,55 @@ test('AgentArts observation controls save AK/SK securely and revoke without leak
   assert.deepEqual(calls[1], {action: 'agentarts.observation.revoke', payload: undefined});
   assert.match(obsStatus.textContent, /已清除/);
   assert.equal(obsRevoke.disabled, true);
+});
+
+test('observation snapshots preserve cleared application drafts and refresh clean saved values', async t => {
+  let resolve;
+  const calls = [];
+  const ui = observationHarness(t, (action, payload) => {
+    calls.push({action, payload: {...payload}});
+    return new Promise(done => { resolve = done; });
+  });
+  const render = applicationId => ui.controls.render({observation: {configured: true, applicationId}});
+  render('saved-app');
+  render('updated-app');
+  assert.equal(ui.obsFields.applicationId.value, 'updated-app');
+  ui.edit('applicationId', '');
+  render('stale-app');
+  assert.equal(ui.obsFields.applicationId.value, '', 'a deliberately cleared draft survives snapshots');
+  ui.edit('accessKey', 'SYNTHETICAK123456');
+  ui.edit('secretKey', 'synthetic-secret-key-0123456');
+  const saving = ui.save();
+  render('stale-app');
+  resolve({configured: true, applicationId: ''});
+  await saving;
+  assert.equal('applicationId' in calls[0].payload, false);
+  assert.equal(ui.obsFields.applicationId.value, '');
+  render('new-saved-app');
+  assert.equal(ui.obsFields.applicationId.value, 'new-saved-app');
+  render('');
+  assert.equal(ui.obsFields.applicationId.value, '', 'host-side revocation clears the clean field');
+  ui.controls.render({observation: null});
+  assert.match(ui.obsState.textContent, /未配置/);
+});
+
+test('failed observation saves retain the draft through refresh and confirmed revocation resets it', async t => {
+  let fail = true;
+  const ui = observationHarness(t, async action => {
+    if (fail) throw Error('synthetic failure');
+    assert.equal(action, 'agentarts.observation.revoke');
+    return {configured: false, applicationIdConfigured: false, applicationId: ''};
+  });
+  ui.controls.render({observation: {configured: true, applicationId: 'saved-app'}});
+  ui.edit('applicationId', '');
+  ui.edit('secretKey', 'synthetic-secret-key-0123456');
+  await ui.save();
+  ui.controls.render({observation: {configured: true, applicationId: 'stale-app'}});
+  assert.equal(ui.obsFields.applicationId.value, '');
+  assert.equal(ui.obsFields.secretKey.value, 'synthetic-secret-key-0123456');
+  fail = false;
+  await ui.revoke();
+  assert.equal(ui.obsFields.secretKey.value, '');
+  ui.controls.render({observation: {configured: true, applicationId: 'fresh-app'}});
+  assert.equal(ui.obsFields.applicationId.value, 'fresh-app');
 });

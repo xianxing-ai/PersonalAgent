@@ -34,9 +34,9 @@ const owner=()=>Object.assign(new EventEmitter(),{destroyed:false,isDestroyed(){
 function fixture(t,{ready=false,effective=true}={}){
   const preparation=createMailMonitorPreparation(),operations=[],starts=[],notifications=[],ticks=[];
   const configuration={configured:true,requiresRestart:false};
-  const context={admin:owner(),competitionMode:true,runtimeClosed:false,runtimeApplication:{},mailMonitorPreparation:preparation,
+  const context={admin:owner(),nativeTheme:{on(){},off(){},removeListener(){}},competitionMode:true,runtimeClosed:false,runtimeApplication:{},mailMonitorPreparation:preparation,
     mailMonitorRequest:undefined,mailFailure:'',runtimeError:'',activeConnectorMailRead:undefined,manualMailReadConversationId:undefined,
-    localServicesStopped:true,randomUUID,defaultNotificationSettings:{enabled:true},publish(){},
+    localServicesStopped:true,randomUUID,defaultNotificationSettings:{enabled:true},publish(){},syncAdminMaterial(){},
     conversations:{activeConversationId:()=> 'desktop-panel'},
     mailConfig:{snapshot:()=>({...configuration}),async configure(){configuration.requiresRestart=true;},async revoke(){configuration.configured=false;}},
     localLaya:{snapshot:()=>({ready}),start(){const work=deferred();starts.push(work);return work.promise;},stop(){throw Error('Shared Laya must not be stopped');}},
@@ -250,4 +250,18 @@ test('mail UI keeps stop and revoke available during preparation and discards st
   assert.equal(field('monitorStart').disabled,true);assert.equal(field('save').disabled,true);assert.equal(field('read').disabled,true);
   assert.match(field('status').textContent,/配置正在更新/);
   assert.equal(field('disable').disabled,false,'Configuration preparation cannot disable revocation');
+});
+
+test('mail.monitor.start initializes global notification policy first when unconfigured so connector:mail does not fail with INVALID_ARGUMENT',async t=>{
+  const f=fixture(t,{ready:true,effective:false});
+  const scopes=[];
+  f.context.notificationApplicationHost={
+    getInterruptionPolicy:scope=>scope.kind==='global'?{effective:null,revision:0}:{effective:null,revision:0},
+    configureSettings(input){scopes.push(input);return Promise.resolve({state:'confirmed'});},
+  };
+  await f.invoke('mail.monitor.start');
+  assert.equal(scopes.length,1);
+  assert.deepEqual(scopes[0].scope,{kind:'global'});
+  assert.equal(scopes[0].expectedRevision,0);
+  assert.equal(f.operations[0]?.operation,'start');
 });

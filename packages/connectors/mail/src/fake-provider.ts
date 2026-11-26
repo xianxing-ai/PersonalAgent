@@ -72,7 +72,11 @@ export class FakeMailProvider implements MailProvider {
       throw new ProtocolError('INVALID_ARGUMENT', 'limit must be 1..100');
     }
     const lastUid = input.cursor?.lastUid ?? 0;
-    const fresh = pool.filter(message => message.uid > lastUid).sort((left, right) => left.uid - right.uid);
+    const sinceMs = input.since ? Date.parse(input.since) : Number.NaN;
+    const fresh = pool
+      .filter(message => message.uid > lastUid)
+      .filter(message => !Number.isFinite(sinceMs) || message.sentAt === null || Date.parse(message.sentAt) >= sinceMs)
+      .sort((left, right) => left.uid - right.uid);
     const size = Math.min(this.pageSize, input.limit);
     const page = fresh.slice(0, size);
     const consumed = page.map(message => message.uid).reduce((max, uid) => Math.max(max, uid), lastUid);

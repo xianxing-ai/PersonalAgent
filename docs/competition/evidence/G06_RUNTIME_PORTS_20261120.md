@@ -2,7 +2,11 @@
 
 目标 Profile 为 `huawei_ict_agentarts`。本工作包对应 [联合验收 #675](https://github.com/xianxing-ai/PersonalAgent/pull/675) 的 G-06，代码基于 `f33ef383`。端口由 `goo122` 交付，Desktop 注册和工作流接线交 `2511375597-lab`。CalDAV 回执由 `Potatos498` 复核。
 
-## 端口与调用方
+## 2026-11-26 与主线的合并
+
+当前桌面沿用主线的可选预览和原授权流程。日历连接器在同一个后端完成更新及读回。WinRT 接受 LocalId 和 RoamingId，写后从实际事件核对请求标识、标题、时间、位置和备注。工具条目保留规范外部 ID；以别名更新时，回执的 `uid` 保留该次已核实的别名。CalDAV 按原 UID、字段和 HTTP ETag 更新、读回。F03/F04 重新校验查询会话，F05 检查只读工具和返回结构。F09→F10 由当前 Desktop 的订阅交接链处理。
+
+## 2026-11-20 草稿端口与调用方记录
 
 | 路径 | 接入及回执 |
 | --- | --- |

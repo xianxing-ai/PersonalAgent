@@ -1,0 +1,40 @@
+{
+  "package": "S531-P1",
+  "workflows": [
+    "F06",
+    "F07",
+    "F08",
+    "F11"
+  ],
+  "verifiedAt": "2026-11-20T06:09:55.142Z",
+  "caldavUrl": "http://127.0.0.1:12766/cal/",
+  "checks": {
+    "f06TodoRegisteredWrite": {
+      "taskId": "0eee0c3a-a26f-42be-a2d8-7fd8b286c05e",
+      "todoId": "5011c512-aa19-4a55-af99-f833a7b6057e",
+      "sqliteRestartReplayed": true
+    },
+    "f06ReminderClockRevision": {
+      "taskId": "e4225abe-de3e-4aba-b35f-ad128a1ac83a",
+      "state": "active",
+      "revisionMatch": true
+    },
+    "f07CalendarWriteAndFreshness": {
+      "writeTaskId": "fbf3856c-f83c-4ba4-adc1-e29afc06f775",
+      "freshTaskId": "effdd0fd-fc27-4bb0-ab63-95f35a536d91",
+      "externalId": "s531-cal-1",
+      "sequenceBefore": 0
+    },
+    "f11UpdateAndInvalidateReminder": {
+      "taskId": "53538f5c-04a6-4286-a8df-121eceee5f9e",
+      "invalidatedReminderId": "5011c512-aa19-4a55-af99-f833a7b6057e",
+      "state": "invalidated"
+    },
+    "f08MailArchiveAndSend": {
+      "archiveTaskId": "b3d54f9a-1137-4169-adf5-dfecd47d050d",
+      "sendTaskId": "3bce42e9-77bc-4568-a9ed-b778f2e7b06b",
+      "sendExternalId": "<fake-101@qq.com>",
+      "unknownTimeoutPreserved": true
+    }
+  }
+}

@@ -38,11 +38,11 @@ const outputSchema = object({source: {enum: ['windows-mcp', 'synthetic']}, upstr
   action: {enum: REMOTE_TOOLS}, goalVerified: {const: false}},
 ['source', 'upstreamVersion', 'state', 'targetRef', 'observedAt', 'expiresAt', 'observation', 'observationDigest', 'goalVerified']);
 
-export interface DesktopControlAttempt {
+export type DesktopControlAttempt = {
   taskId: string; runId: string; toolName: string; toolVersion: string;
-  authorizationRef: string; argumentsDigest: string; targetRef: string;
+  authorizationRef: string; argumentsDigest: string;
   observationDigest: string;
-}
+} & ({targetRef: string; app?: never} | {app: 'notepad'; targetRef?: never});
 /** Implement with the existing Runtime create-only checkpoint. A duplicate must reject,
  * including after restart; this provider never owns task state or replays a write. */
 export interface DesktopControlAttempts {

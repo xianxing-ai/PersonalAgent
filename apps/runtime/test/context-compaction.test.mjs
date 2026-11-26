@@ -1,3 +1,6 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {compactConversationContext,segmentConversationContext} from '../dist/application/context-compaction.js';
@@ -22,6 +25,59 @@ function fixture(patch={}) {
     assertCurrent(){},saveCheckpoint:receipt=>{saved.value=receipt;},loadCheckpoint:()=>saved.value,...patch};
   return {options,source,policy,saved,control,calls:()=>calls};
 }
+
+test('four complete turns and an active turn survive incremental summary and revalidation',async()=>{
+  let cache;
+  const f=fixture({force:true,remember:value=>{cache=value;}});delete f.options.loadCheckpoint;
+  Object.assign(f.policy,{retainTurns:4,maxSourceMessages:40,maxCharacters:20000,targetCharacters:12000,triggerCharacters:16000,segmentCharacters:1000});
+  const turn=i=>['user','assistant','assistant'].map((role,j)=>({id:`m-${i}-${j}`,role,taskId:'t-'+i,content:'Source material '.repeat(12)}));
+  f.source.messages=Array.from({length:7},(_,i)=>turn(i)).flat();
+  f.source.messages.at(-3).taskState='running';
+  const first=await compactConversationContext(f.options);
+  assert.deepEqual(first.messages.slice(-15),f.source.messages.slice(-15));
+  assert.equal(f.calls(),2);
+  delete f.source.messages.at(-3).taskState;
+  f.source.messages.push(...turn(7));
+  const second=await compactConversationContext({...f.options,previous:cache});
+  assert.deepEqual(second.messages.slice(-12),f.source.messages.slice(-12));
+  assert.equal(f.calls(),4,'only the two newly eligible turns are summarized');
+  f.source.messages.shift();
+  await compactConversationContext({...f.options,previous:cache});
+  assert.ok(f.calls()>4,'withdrawal invalidates the cached prefix');
+});
+
+test('UTF-8 byte pressure triggers compaction before the character threshold without inventing tokens',async()=>{
+  const f=fixture();
+  Object.assign(f.policy,{retainTurns:4,maxSourceMessages:96,maxCharacters:1000000,targetCharacters:800000,
+    triggerCharacters:950000,segmentCharacters:32000});
+  f.source.messages=Array.from({length:90},(_,i)=>({id:'utf8-'+i,role:'user',content:'中'.repeat(10000)}));
+  const result=await compactConversationContext(f.options);
+  assert.equal(result.state,'compacted');
+  assert.ok(result.receipt.budget.before.characters<950000);
+  assert.ok(result.receipt.budget.before.queryBytes>3_500_000*0.75);
+  assert.deepEqual(result.receipt.budget.after.tokens,{state:'unmeasured'});
+  assert.deepEqual(result.messages.slice(-4),f.source.messages.slice(-4));
+  f.saved.value=undefined;
+  f.source.messages=[{id:'large-active',role:'user',taskState:'running',content:'\u0001'.repeat(600000)}];
+  await assert.rejects(compactConversationContext({...f.options,compile:messages=>messages.map(message=>message.content).join('')}),
+    /UTF-8 query byte limit/);
+});
+
+test('the million-character preset begins compaction at exactly three quarters',async()=>{
+  const f=fixture({compile:messages=>messages.map(message=>message.content).join('')});
+  Object.assign(f.policy,{retainTurns:4,maxSourceMessages:64,maxCharacters:1_000_000,targetCharacters:500_000,
+    triggerCharacters:750_000,segmentCharacters:32_000});
+  f.source.messages=Array.from({length:60},(_,i)=>({id:'quarter-'+i,role:'user',content:'x'.repeat(i===0?12499:12500)}));
+  assert.equal((await compactConversationContext(f.options)).state,'unchanged');
+  assert.equal(f.calls(),0);
+  f.source.messages[0].content+='x';
+  const result=await compactConversationContext(f.options);
+  assert.equal(result.state,'compacted');
+  assert.equal(result.receipt.budget.before.characters,750_000);
+  assert.ok(result.receipt.budget.after.characters<=500_000);
+  assert.deepEqual(result.messages.slice(-4),f.source.messages.slice(-4));
+  assert.ok(f.calls()<56,'adjacent complete turns share a bounded summary request');
+});
 
 test('Synthetic compaction preserves the exact tail, segments only history, and saves detached digests',async()=>{
   const f=fixture();const original=structuredClone(f.source.messages);
@@ -173,7 +229,7 @@ test('Synthetic summary cannot invent a final guard, exceed output, make no prog
 
 test('Synthetic token budget can trigger a pass below the character trigger and measures the final wrapper',async()=>{
   const seen=[];const f=fixture({goalTokenBudget:{tokenizerRef:'synthetic:exact',contextTokens:100,reservedOutputTokens:10,
-    countTokens:text=>{seen.push(text);return text.includes('context-summary:')?50:100;}}});
+    countTokens:text=>{seen.push(text);return text.includes('context-summary:')?50:Math.ceil(text.length/40);}}});
   f.policy.triggerCharacters=4000;
   const result=await compactConversationContext(f.options);
   assert.equal(result.state,'compacted');assert.equal(result.receipt.budget.after.tokens.inputTokens,50);
@@ -245,6 +301,7 @@ test('slash commands compact immediately without delegation, tools or the main m
     const task=await client.call('task.submit',{goal:command,conversationId:'manual-context'},{idempotencyKey:command,timeoutMs:60000});
     const result=await settled(app,task.taskId);
     assert.equal(result.state,'succeeded',JSON.stringify(result));assert.match(result.resultSummary,/上下文已压缩/);
+    assert.equal(app.runtime.loadCheckpoint(task.taskId,'conversation-compaction-command:v1:execution-epoch'),0);
     assert.ok(summaries>0);assert.equal(sends,0);assert.equal(app.readSubagentTasks(task.taskId).length,0);
     assert.equal(app.runtime.readToolExecutions(task.taskId).length,0);
     const calls=summaries;
@@ -298,13 +355,17 @@ test('actual delegated child consumes the original main conversation summary, wi
   const first=await client.call('task.submit',{goal:'/压缩',conversationId:'original-main'},{idempotencyKey:'main-compact',timeoutMs:60000});
   assert.equal((await settled(app,first.taskId)).state,'succeeded');const calls=summaries;
   const next=await client.call('task.submit',{goal:'Continue my original request',conversationId:'original-main'},{idempotencyKey:'main-continue',timeoutMs:60000});
-  assert.equal((await settled(app,next.taskId)).state,'succeeded');
-  assert.equal(summaries,calls);assert.equal(sent.length,2);
+  const result=await settled(app,next.taskId);assert.equal(result.state,'succeeded');
   const [child]=app.readSubagentTasks(next.taskId);assert.equal(child.state,'succeeded');
+  assert.match(result.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
+  assert.match(child.resultSummary,/^Synthetic delegated answer/u);
+  assert.equal(summaries,calls);assert.deepEqual(sent.map(request=>request.taskId),[child.taskId]);
   assert.match(sent.find(request=>request.taskId===child.taskId).goal,/Synthetic original main history/);
   const other=await client.call('task.submit',{goal:'A separate conversation',conversationId:'other-main'},{idempotencyKey:'other',timeoutMs:60000});
   assert.equal((await settled(app,other.taskId)).state,'succeeded');
-  assert.doesNotMatch(sent.filter(request=>request.taskId!==child.taskId&&request.taskId!==next.taskId).map(request=>request.goal).join('\n'),/context-summary:/);
+  const [otherChild]=app.readSubagentTasks(other.taskId);
+  assert.deepEqual(sent.map(request=>request.taskId),[child.taskId,otherChild.taskId]);
+  assert.doesNotMatch(sent[1].goal,/context-summary:/);
 });
 
 test('cancelling an in-progress manual summary cannot publish a projection or checkpoint',async t=>{
@@ -318,6 +379,19 @@ test('cancelling an in-progress manual summary cannot publish a projection or ch
   await started;await client.call('task.cancel',{taskId:task.taskId,reason:'Synthetic cancellation'});
   assert.equal((await settled(app,task.taskId)).state,'cancelled');
   assert.equal(app.runtime.loadCheckpoint(task.taskId,COMPACTED),undefined);
+});
+test('manual summary retains its admitted epoch and cannot commit after local replan',async t=>{
+  let entered,release;const started=new Promise(resolve=>{entered=resolve;}),pending=new Promise(resolve=>{release=resolve;});
+  const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    coordinationInput:{beforeCoordinationSend(){},contextCompaction:{policy:runtimePolicy(),modelConfigurationRef:'summary:v1',
+      assertCurrent(){},readSnapshot:runtimeSource,summarize:async input=>{input.assertBeforeSend();entered();await pending;return 'Original summary';}}},
+    coordination:{execute:async()=>assert.fail('No main model call')}});
+  t.after(()=>app.close());const client=new Client(app);await client.connect();
+  const task=await client.call('task.submit',{goal:'/compact',conversationId:'replan-summary'},{idempotencyKey:'replan-summary',timeoutMs:60000});
+  await started;app.runtime.advanceExecutionEpoch(task.taskId,{requestId:'manual-replan',reason:'replan'});release();
+  const result=await settled(app,task.taskId);assert.equal(result.state,'failed');assert.equal(result.error.code,'REVISION_CONFLICT');
+  assert.equal(app.runtime.loadCheckpoint(task.taskId,'conversation-compaction-command:v1:execution-epoch'),0);
+  assert.equal(app.runtime.readExecutionEpoch(task.taskId),1);assert.equal(app.runtime.loadCheckpoint(task.taskId,COMPACTED),undefined);
 });
 
 test('quoted or extended slash text stays ordinary conversation and never becomes a command',async t=>{
@@ -347,14 +421,14 @@ test('Synthetic actual Coordination caller compacts over-16k history and preserv
       assertCurrent(){},readSnapshot:()=>source,summarize:async input=>{input.assertBeforeSend();summarized.push(input);
         assert.ok(input.segment.messages.every(message=>!message.content.includes('Keep this exact tool result')));
         return 'Synthetic compacted decisions '+input.segment.index;}}},
-    coordination:{execute:async request=>{
+    coordination:{execute:syntheticCoordinationExecution(async request=>{
       app.assertCompetitionExportAllowed(request);queries.push(request);
       if(!request.continuation)return {kind:'tool_proposal',proposalId:'current-native-proposal',toolName:descriptor.name,
         toolVersion:descriptor.version,arguments:{},verification:'unverified'};
       const loop=app.runtime.loadCheckpoint(request.taskId,'competition-loop');
       assert.equal(JSON.stringify(request.continuation),JSON.stringify(loop.continuation));
       assert.deepEqual(request.continuation.result,{toolResult:'Keep this exact tool result',nativeProposalId:'preserved'});
-      return {kind:'text',text:'Synthetic child execution answer',verification:'mock'};}}});
+      return {kind:'text',text:'Synthetic child execution answer',verification:'mock'};})}});
   t.after(()=>app.close());const client=new Client(app);await client.connect();
   const task=await client.call('task.submit',{goal:'Exact current public goal',conversationId:'compaction-caller'},
     {idempotencyKey:'actual-caller',timeoutMs:60000});
@@ -376,7 +450,7 @@ test('Synthetic real transport final guard rejects source withdrawal/config chan
     const source=runtimeSource();let sends=0;
     const compaction={policy:runtimePolicy(),modelConfigurationRef:'synthetic-summary:v1',assertCurrent(){},readSnapshot:()=>source,
       summarize:async input=>{input.assertBeforeSend();return 'Synthetic summary '+input.segment.index;}};
-    const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+    const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
       authorizationProvider:{read:async()=>{
         await Promise.resolve();
         if(mode==='body')source[0].content='Changed while reading credential';
@@ -425,12 +499,13 @@ test('Synthetic native persistent subagent conversation consumes more than twent
       {toolName:read.name,toolVersion:read.version,available:()=>true}],
     coordinationInput:{beforeCoordinationSend(){},contextCompaction:compaction},coordination:{execute:async request=>{
       sent.push(request);app.assertCompetitionExportAllowed(request);
-      return {kind:'text',text:app.runtime.getTask(request.taskId).conversationId==='native-main'
-        ?'Main interaction summary':'Synthetic executed subagent answer '+('retained detail '.repeat(55)),verification:'mock'};}}});
+      return {kind:'text',text:'Synthetic executed subagent answer '+('retained detail '.repeat(55)).trim(),verification:'mock'};}}});
   t.after(()=>app.close());const client=new Client(app);await client.connect();
   const parent=await client.call('task.submit',{goal:'Only a subagent performs the actual work',conversationId:'native-main'},
     {idempotencyKey:'native-parent',timeoutMs:60000});
-  await settled(app,parent.taskId);const [child]=app.readSubagentTasks(parent.taskId);
+  const result=await settled(app,parent.taskId);const [child]=app.readSubagentTasks(parent.taskId);
+  assert.equal(result.state,'succeeded');assert.match(result.resultSummary,/^子助手已完成。执行记录和结果在子对话中。/u);
+  assert.match(child.resultSummary,/^Synthetic executed subagent answer/u);
   assert.equal(child.state,'succeeded',JSON.stringify(app.runtime.getTask(child.taskId)));const origin={parentTaskId:parent.taskId,taskId:child.taskId};
   let final;
   for(let i=0;i<14;i++) {
@@ -443,5 +518,5 @@ test('Synthetic native persistent subagent conversation consumes more than twent
   assert.match(goal.publicGoal,/Synthetic user followup 13/);
   assert.equal(goal.conversationContext.treatment,'untrusted_data');
   assert.deepEqual(app.readSubagentTasks(parent.taskId).map(task=>task.taskId),[child.taskId]);
-  assert.ok(sent.filter(request=>request.taskId===parent.taskId).every(request=>(request.availableTools??[]).every(tool=>tool.name==='subagent.dispatch')));
+  assert.equal(sent.filter(request=>request.taskId===parent.taskId).length,0);
 });
