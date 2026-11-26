@@ -13,7 +13,7 @@ import {Orb} from '../orb/orb.js';
 import {orbVariantPreference,orbStateOverride} from '../../ui/preferences.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
 import {mountConversationRail} from '../conversation/rail.js';
-import {resultText,mainChatReplies} from '../conversation/result-text.js';
+import {resultText,mainChatReplies,browserExcerptReply} from '../conversation/result-text.js';
 import {conversationTimeline} from '../conversation/timeline.js';
 import {updateConversationTurns} from '../conversation/turn-view.js';
 import {connectorCards,connectorDestination} from './connectors.js';
@@ -107,7 +107,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     if(task?.bodyWithheld||task?.outputTruncated||!task&&!assistantSlot)return;
     const live=rememberActivity(liveTurns,event);
     pruneMap(liveTurns);
-    if(assistantSlot)replaceAnswerCard(assistantSlot,task??{taskId:event.taskId},live,escape);
+    if(assistantSlot&&!assistantSlot.hasAttribute('data-browser-excerpt'))replaceAnswerCard(assistantSlot,task??{taskId:event.taskId},live,escape);
     if(task){
       const children=current.subagentTasks?.filter(child=>child.parentTaskId===task.taskId)??[];
       const traceSlot=conversation.querySelector(`[data-trace-for="${CSS.escape(task.taskId)}"]`);
@@ -554,7 +554,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
         const traceHtml=traceBlockHtml(task,live,children,escape);
         const replies=mainChatReplies(task,children,live?.answer);
         const failure=task.bodyWithheld||task.outputTruncated?undefined:task.error?.message;
-        const streaming=!isTerminal(task)&&!task.bodyWithheld&&!task.outputTruncated;
+        const streaming=!isTerminal(task)&&!task.bodyWithheld&&!task.outputTruncated&&!browserExcerptReply(task,children);
         const streamAttr=streaming?` data-streaming-reply="${escape(task.taskId)}"`:'';
         const streamedChild=children.length?live?.answer:'';
         const delegated=children.length>0||task.backgroundDelegation===true;

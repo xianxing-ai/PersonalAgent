@@ -19,7 +19,7 @@ import {mountBriefingPanel} from '../features/admin/daily-briefing.js';
 import {mountWorkspace} from '../features/workspace/view.js';
 import {applyPreferences,orbVariantPreference,orbStateOverride} from '../ui/preferences.js';
 import {mountConversationRail} from '../features/conversation/rail.js';
-import {resultText,mainChatReplies} from '../features/conversation/result-text.js';
+import {resultText,mainChatReplies,browserExcerptReply} from '../features/conversation/result-text.js';
 import {DISPATCH_ACK, createDelegatedDeliveryTracker, delegatedDeliveryHtml, rememberActivity, replaceTraceBlock, syncTraceDisclosures, traceBlockHtml} from '../features/conversation/answer-block.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
 import {mountDesktopShell} from '../ui/desktop-shell.js';
@@ -663,6 +663,8 @@ else {
       const children=childrenByParent.get(task.taskId)??[];
       const live=panelLiveTurns.get(task.taskId);
       const traceHtml=traceBlockHtml(task,live,children,escape);
+      const excerpt=browserExcerptReply(task,children);
+      if(excerpt)return `${traceHtml}<div class="assistant-message">${escape(excerpt)}</div><div class="response-actions"><button type="button" data-ui-action="copy" title="复制网页摘录" aria-label="复制网页摘录">${responseIcons.copy}</button></div>`;
       const replies=mainChatReplies(task,children,streamedAnswers.get(task.taskId));
       if(!terminal&&!task.bodyWithheld){
         const liveText=replies.join('\n\n')||streamedAnswers.get(task.taskId)||'';

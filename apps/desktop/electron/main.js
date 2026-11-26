@@ -973,6 +973,11 @@ function localChildReplyAllowed(parent,child){
     &&!child.bodyWithheld&&!child.outputTruncated&&!conversationDelivery.stopped(child)
     &&child.conversationId==='desktop-subtask:'+parent.taskId;
 }
+function localWorkerReplyText(task,deviceReply){
+  if(deviceReply?.kind==='browser-excerpt')return deviceReply.text;
+  if(task.state!=='succeeded'||deviceReply?.kind==='withheld')return '';
+  return deviceReply?.kind==='notepad'?deviceReply.text:resultText(task.resultSummary,taskResultMetadata(task));
+}
 function compactSubagentTasks(children,visibleParents,surface){
   const runtime=runtimeApplication?.runtime;
   const recent=surface==='panel'?[]:children.slice(0,8);
@@ -995,10 +1000,10 @@ function compactSubagentTasks(children,visibleParents,surface){
     const {goal,resultSummary,error,latestMessageTaskId,...identity}=child;
     const parent=visibleParents.get(child.parentTaskId);
     const canReply=surface&&localChildReplyAllowed(parent,task);
-    const deviceReply=canReply&&task.state==='succeeded'?runtimeApplication.readDeviceWorkerReply(parent.taskId,task.taskId):undefined;
-    const finalReply=deviceReply?.kind==='notepad'?deviceReply.text:canReply&&task.state==='succeeded'&&deviceReply?.kind!=='withheld'
-      ?resultText(task.resultSummary,taskResultMetadata(task)):'';
-    const replyFields=finalReply?{finalReply,...(deviceReply?{replyForDeviceTask:true}:{})}:{};
+    const deviceReply=canReply&&['succeeded','failed','waiting_reconciliation'].includes(task.state)
+      ?runtimeApplication.readDeviceWorkerReply(parent.taskId,task.taskId):undefined;
+    const finalReply=canReply?localWorkerReplyText(task,deviceReply):'';
+    const replyFields=finalReply?{finalReply,...(deviceReply?{replyForDeviceTask:true,deviceReplyKind:deviceReply.kind}:{})}:{};
     if(surface==='panel')return {parentTaskId:child.parentTaskId,taskId:child.taskId,state:task.state,...(child.role?{role:child.role}:{}),...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),...replyFields};
     let preview=finalReply||(canReply&&task.state==='failed'?'执行异常':'');
     if(canReply&&latestMessageTaskId){
@@ -5384,8 +5389,12 @@ async function action(event, name, payload) {
       if(!turn||deviceReply.kind==='withheld')continue;
       const parent=safeDesktopTask(runtime.getTask(turn.taskId)),child=safeDesktopTask(runtime.getTask(worker.taskId));
       if(parent.conversationId!==thread.assistant.conversationId||!localChildReplyAllowed(parent,child))continue;
-      const answer=deviceReply.kind==='notepad'?deviceReply.text:resultText(child.resultSummary,taskResultMetadata(child));
-      if(answer){turn.replyText=answer;worker.resultSummary=answer.slice(0,280);}
+      const answer=localWorkerReplyText(child,deviceReply);
+      if(answer){
+        turn.replyText=answer;
+        if(deviceReply.kind==='browser-excerpt')turn.deviceReplyKind=deviceReply.kind;
+        worker.resultSummary=answer.slice(0,280);
+      }
     }
     return thread;
   }
