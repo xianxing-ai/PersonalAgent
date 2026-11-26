@@ -2,7 +2,7 @@
 [hidden] { display: none !important; }
 .shell {
   margin: 0; width: 100%; height: 100%; min-width: 0; min-height: 0;
-  display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; background: var(--bg);
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--bg);
   color: var(--fg); font: 14px/1.5 var(--font-ui); -webkit-font-smoothing: antialiased;
 }
 header { grid-row: 1; background: var(--surface); border-bottom: 1px solid var(--border-strong); }
@@ -25,7 +25,6 @@ button.icon { width: 32px; height: 32px; padding: 0; font: 21px/1 "Segoe UI Symb
 .primary:hover:enabled { background: var(--accent-hover); }
 #location { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0 5px; padding: 0 4px 0 11px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-2); }
 #location:focus-within { border-color: var(--accent); }
-.url-mark { color: var(--faint); font-size: 17px; }
 #address { min-width: 0; flex: 1; border: 0; background: transparent; padding: 7px 0; outline: none; }
 .go { font-size: 12px; border: 0; padding: 3px 8px; color: var(--fg-2); }
 #media-bar { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 3px 14px 8px; }
@@ -33,13 +32,10 @@ button.icon { width: 32px; height: 32px; padding: 0; font: 21px/1 "Segoe UI Symb
 #media-toggle { font-weight: 600; }
 #media-status { font-size: 12px; color: var(--muted); }
 #sound { margin-left: auto; }
-#error { grid-row: 2; gap: 8px; justify-content: space-between; padding: 6px 16px; background: var(--surface-2); color: var(--warn); border-bottom: 1px solid var(--border-strong); overflow-wrap: anywhere; }
-main { grid-row: 3; display: flex; min-height: 0; min-width: 0; }
+#error { gap: 2px; white-space: nowrap; color: var(--warn); font-size: 12px; }
+#retry { color: var(--fg); text-decoration: underline; text-underline-offset: .15em; }
+main { grid-row: 2; display: flex; min-height: 0; min-width: 0; }
 #canvas { position: relative; flex: 1; overflow: auto; min-width: 0; background: var(--bg); overscroll-behavior: contain; }
-#empty { display: grid; place-items: center; align-content: center; gap: 7px; min-height: 100%; text-align: center; padding: 30px; }
-.empty-symbol { color: var(--accent); font: 54px/1 var(--font-brand); }
-#empty h2 { font: 500 30px/1.4 var(--font-display); }
-#empty p { color: var(--muted); }
 #viewport { height: auto; display: block; margin: 0 auto; }
 #canvas:not(.natural) #viewport { width: 100%; }
 #capture, #media-target, #pointer { pointer-events: none; }
@@ -59,11 +55,7 @@ main { grid-row: 3; display: flex; min-height: 0; min-width: 0; }
 #controls-list p, .role { font-size: 12px; color: var(--muted); }
 #controls-list p { padding: 8px; }
 .role { display: block; }
-footer { grid-row: 4; min-height: 38px; gap: 8px; padding: 3px 12px; border-top: 1px solid var(--border-strong); background: var(--surface); }
-#signal { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--faint); }
-#signal[data-tone="ready"] { background: var(--success); }
-#signal[data-tone="busy"] { background: var(--warn); }
-#status { color: var(--muted); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+footer { grid-row: 3; min-height: 38px; gap: 8px; padding: 3px 12px; border-top: 1px solid var(--border-strong); background: var(--surface); }
 .actions { margin-left: auto; gap: 3px; }
 footer .icon { width: 26px; height: 26px; font-size: 16px; }
 dialog { width: min(440px, 90vw); color: var(--fg); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 22px; box-shadow: var(--shadow-3); }
@@ -77,15 +69,13 @@ dialog p { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .dialog-actions { justify-content: flex-end; gap: 6px; margin-top: 16px; }
 :host { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; container-type: inline-size; }
 :host([hidden]) { display: none; }
-.browser-mark { color: var(--accent); font: 20px/1 var(--font-brand); }
 @container (max-width: 550px) {
   .mast { padding-inline: 10px; } nav { gap: 0; padding: 6px 7px 9px; }
   nav .icon { width: 26px; height: 28px; font-size: 18px; }
   #location { margin-inline: 2px 5px; padding-left: 6px; gap: 4px; }
   #media-bar { padding: 2px 9px 7px; }
-  .url-mark { display: none; } .go { padding-inline: 5px; }
+  .go { padding-inline: 5px; }
   footer { flex-wrap: wrap; gap: 3px; padding: 5px 8px; }
-  #status { max-width: 100%; } .actions { margin-left: auto; }
   #controls-pane { width: min(47%, 190px); }
   .actions .quiet { padding: 3px 4px; }
 }

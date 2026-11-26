@@ -75,7 +75,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
     </nav>`;
   shell.prepend(rail);
   bar.querySelector('.workspace-app-title').textContent='工作台';
-  mountWorkspaceBrowserSidebar(shell,bar,invoke,report);
+  mountWorkspaceBrowserSidebar(shell,bar,invoke);
   const search=rail.querySelector('.cc-history-toggle');
   const themeButton=document.createElement('button');themeButton.type='button';themeButton.className='cc-theme-toggle';themeButton.setAttribute('aria-label','切换黑白主题');themeButton.title='切换黑白主题';themeButton.textContent='◐';themeButton.onclick=async()=>{const {saveTheme}=await import('../../ui/preferences.js');saveTheme(document.documentElement.dataset.theme==='light'?'dark':'light');};bar.querySelector('.window-controls').before(themeButton);
   const railToggle=document.createElement('button');railToggle.type='button';railToggle.className='cc-sidebar-toggle';railToggle.setAttribute('aria-label','显示或隐藏侧栏');railToggle.setAttribute('aria-expanded','false');railToggle.innerHTML=centerIcon('tasks');bar.prepend(railToggle);

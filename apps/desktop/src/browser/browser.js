@@ -5,7 +5,7 @@ const textInputs = new Set(['', 'text', 'email', 'url', 'search', 'tel', 'number
 const layout = `<div class="shell">
   <header>
     <div class="mast">
-      <span class="browser-mark" aria-hidden="true">◎</span><h1>内置浏览器</h1>
+      <h1>内置浏览器</h1>
       <button id="dismiss" class="quiet last" aria-label="收起内置浏览器" title="收起内置浏览器">收起</button>
     </div>
     <nav aria-label="网页导航">
@@ -13,10 +13,10 @@ const layout = `<div class="shell">
       <button id="forward" class="icon" title="前进（Alt + →）" aria-label="前进" disabled>→</button>
       <button id="reload" class="icon" title="重新加载网页（Ctrl + R）" aria-label="重新加载网页" disabled>↻</button>
       <form id="location">
-        <span class="url-mark" aria-hidden="true">◎</span>
-        <input id="address" aria-label="网页地址" placeholder="输入网址" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="4096">
+        <input id="address" aria-label="网页地址" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="4096">
         <button id="go" type="submit" class="go" aria-label="打开输入的网址" title="打开网址">前往</button>
       </form>
+      <span id="error" hidden><span id="error-text" role="status"></span><button id="retry" type="button" class="quiet" aria-label="重试加载">重试</button></span>
     </nav>
     <div id="media-bar" hidden>
       <button id="media-toggle" type="button">播放</button>
@@ -24,14 +24,8 @@ const layout = `<div class="shell">
       <button id="sound" type="button" aria-label="打开声音" aria-pressed="false" disabled>打开声音</button>
     </div>
   </header>
-  <div id="error" role="alert" hidden><span id="error-text"></span><button id="clear-error" class="quiet">收起</button></div>
   <main>
     <section id="canvas" aria-label="网页视口" tabindex="-1">
-      <div id="empty">
-        <span class="empty-symbol" aria-hidden="true">◎</span>
-        <h2 id="empty-title">打开网页</h2>
-        <p id="empty-message">在地址栏输入要访问的公开网址。</p>
-      </div>
       <div id="media-dock" hidden><video id="player" autoplay muted playsinline disablepictureinpicture aria-label="当前网页的实时媒体"></video></div>
       <svg id="viewport" xmlns="http://www.w3.org/2000/svg" aria-label="当前网页，可通过已识别的控件操作" hidden>
         <image id="capture" x="0" y="0" preserveAspectRatio="none" aria-hidden="true"></image>
@@ -45,8 +39,7 @@ const layout = `<div class="shell">
       <div id="controls-list"></div>
     </aside>
   </main>
-  <footer>
-    <span id="signal" aria-hidden="true"></span><span id="status" role="status">正在连接浏览器…</span>
+  <footer id="page-tools" hidden>
     <div class="actions">
       <button id="up" class="icon" aria-label="向上滚动网页" title="向上滚动网页" disabled>↑</button>
       <button id="down" class="icon" aria-label="向下滚动网页" title="向下滚动网页" disabled>↓</button>
@@ -90,7 +83,7 @@ export function mountBrowserPane(host, bridge) {
   let timer;
   let wheelTimer;
   let wheelDelta = 0;
-  let notice = '';
+  let retryAction;
   let passiveError = false;
   let editingAddress = false;
   let shown = false;
@@ -106,13 +99,12 @@ export function mountBrowserPane(host, bridge) {
     changed(state, detail) { mediaState = state; mediaDetail = detail; renderMedia(); }
   });
 
-  function message(error) {
-    const raw = typeof error?.message === 'string' ? error.message : '';
-    return raw.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '').trim().slice(0, 280) || '浏览器没有返回结果，请同步页面后查看。';
-  }
-  function showError(detail) {
-    $('error-text').textContent = detail;
-    $('error').hidden = !detail;
+  function showError(label = '', retry) {
+    retryAction = retry;
+    $('error-text').textContent = label;
+    $('error').hidden = !label;
+    $('retry').hidden = !retry;
+    $('address').setAttribute('aria-invalid', String(label === '网址无效'));
   }
 
   function validScreen(value) {
@@ -211,15 +203,9 @@ export function mountBrowserPane(host, bridge) {
     $('up').disabled = !ready;
     $('down').disabled = !ready;
     $('zoom').disabled = !screen;
-    $('signal').dataset.tone = running || page.busy ? 'busy' : ready ? 'ready' : '';
-    const fallback = blocked ? '会话已停止，请到原任务核对结果' : page.state === 'unavailable' ? '浏览器组件未就绪' :
-      connected ? (page.title || '网页已打开') : '尚未打开网页';
-    $('status').textContent = running ? '正在处理…' : page.busy ? '浏览器正在执行操作…' : notice || fallback;
-    $('empty').hidden = !!screen;
+    $('page-tools').hidden = !connected;
+    $('canvas').setAttribute('aria-busy', String(running || page.busy === true));
     $('viewport').toggleAttribute('hidden', !screen);
-    $('empty-title').textContent = connected ? '等候网页画面' : blocked ? '会话已停止' : '打开网页';
-    $('empty-message').textContent = connected ? '可以在下方选择“同步画面”读取当前页面。' :
-      blocked ? '请在工作台查看原任务的执行情况。' : '在地址栏输入要访问的公开网址。';
     if (!screen) {
       $('controls-pane').hidden = true;
       $('show-controls').setAttribute('aria-expanded', 'false');
@@ -294,10 +280,7 @@ export function mountBrowserPane(host, bridge) {
       $('address').value = page.url || '';
       editingAddress = false;
     }
-    if (oldUrl !== page.url) {
-      $('canvas').scrollTop = 0;
-      if (passive) notice = '';
-    }
+    if (oldUrl !== page.url) $('canvas').scrollTop = 0;
     updateChrome();
     renderPointer(page.pointer);
     if (page.mediaPlaying && page.connected && inForeground()) media.start();
@@ -339,9 +322,9 @@ export function mountBrowserPane(host, bridge) {
       }
     })();
     try { await refreshing; }
-    catch (error) {
+    catch {
       if (!running && inForeground()) {
-        showError(message(error));
+        showError('加载失败', retryRead);
         passiveError = true;
       }
     } finally { refreshing = undefined; }
@@ -350,11 +333,14 @@ export function mountBrowserPane(host, bridge) {
     if (!inForeground() || timer !== undefined) return;
     timer = setTimeout(() => { timer = undefined; void sync(true); }, delay);
   }
+  async function retryRead() {
+    if (refreshing) await refreshing.catch(() => {});
+    await sync(false, true);
+  }
 
   async function perform(action, payload = {}, options = {}) {
     if (disposed || !shown || document.hidden || running) return false;
     running = true;
-    notice = '';
     showError('');
     updateChrome();
     try {
@@ -371,11 +357,12 @@ export function mountBrowserPane(host, bridge) {
       if (shown && !document.hidden) apply(value);
       passiveError = false;
       return true;
-    } catch (error) {
+    } catch {
       if (disposed) return false;
-      const detail = message(error);
-      showError(detail);
-      if (options.errorTarget) options.errorTarget.textContent = detail;
+      if (options.errorTarget) options.errorTarget.textContent = '更改未确认';
+      else if (action === 'open') showError('加载失败', navigate);
+      else if (['reload','back','forward'].includes(action)) showError('加载失败', retryRead);
+      else showError('操作未确认', retryRead);
       return false;
     } finally {
       running = false;
@@ -394,7 +381,7 @@ export function mountBrowserPane(host, bridge) {
       if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password)
         throw Error('请输入不含登录信息的公开 HTTP 或 HTTPS 网址。');
       void perform('open', {url: url.href});
-    } catch (error) { showError(message(error)); }
+    } catch { showError('网址无效'); $('address').focus(); }
   }
   function showField(control) {
     field = {viewId: screen.viewId, ref: control.ref, kind: control.tag === 'select' ? 'select' : 'type'};
@@ -431,24 +418,24 @@ export function mountBrowserPane(host, bridge) {
   }
 
   $('location').addEventListener('submit', event => { event.preventDefault(); navigate(); });
-  $('address').addEventListener('input', () => { editingAddress = true; });
+  $('address').addEventListener('input', () => { editingAddress = true; showError(); });
   $('address').addEventListener('keydown', event => {
     if (event.key === 'Escape' && editingAddress) {
       event.preventDefault(); event.stopPropagation();
       $('address').value = page.url || ''; editingAddress = false;
     }
   });
-  $('clear-error').addEventListener('click', () => showError(''));
+  $('retry').addEventListener('click', () => { const retry = retryAction; showError(); void retry?.(); });
   for (const action of ['back', 'forward', 'reload']) $(action).addEventListener('click', () => { void perform(action); });
   $('sync').addEventListener('click', () => { if (mediaState === 'unavailable') media.stop(); void sync(false, true); });
   $('media-toggle').addEventListener('click', () => {
-    if (mediaState === 'gesture') { void player.play().catch(error => showError(message(error))); return; }
+    if (mediaState === 'gesture') { void player.play().catch(() => showError('播放失败')); return; }
     const control = mediaControl();
     if (control) useControl(control.ref);
   });
   $('sound').addEventListener('click', () => {
     player.muted = !player.muted;
-    if (!player.muted) void player.play().catch(error => { player.muted = true; renderMedia(); showError(message(error)); });
+    if (!player.muted) void player.play().catch(() => { player.muted = true; renderMedia(); showError('播放失败'); });
     renderMedia();
   });
   $('dismiss').addEventListener('click', () => bridge.dismiss());
@@ -482,11 +469,6 @@ export function mountBrowserPane(host, bridge) {
       if (hit) useControl(hit.dataset.ref);
     });
   }
-  $('viewport').addEventListener('click', event => {
-    if (event.target.closest('[data-ref]') || !screen) return;
-    notice = '此处没有可操作的控件。可查看“页面控件”或同步画面。';
-    updateChrome();
-  });
   $('hotspots').addEventListener('keydown', async event => {
     const ref = event.target.dataset.ref;
     const key = event.key === ' ' ? 'Space' : event.key;
@@ -571,6 +553,7 @@ export function mountBrowserPane(host, bridge) {
   }
   function releasePane() {
     pausePolling();
+    showError();
     for (const dialog of root.querySelectorAll('dialog[open]')) dialog.close();
     screen = undefined;
     $('capture').removeAttribute('href');

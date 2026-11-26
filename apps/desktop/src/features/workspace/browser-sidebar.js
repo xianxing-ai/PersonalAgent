@@ -1,4 +1,4 @@
-export function mountWorkspaceBrowserSidebar(shell, bar, invoke, report) {
+export function mountWorkspaceBrowserSidebar(shell, bar, invoke) {
   const document = shell.ownerDocument;
   const window = document.defaultView;
   const container = document.createElement('aside');
@@ -60,9 +60,17 @@ export function mountWorkspaceBrowserSidebar(shell, bar, invoke, report) {
         });
       }
       pane.onShow();
-    } catch (error) {
+    } catch {
       loading = undefined;
-      if (!disposed && current === presentation) { dismiss(); report(error); }
+      if (disposed || container.hidden || current !== presentation) return;
+      pane?.dispose();
+      pane = undefined;
+      const label = document.createElement('span'), retry = document.createElement('button');
+      label.setAttribute('role', 'status');
+      label.textContent = '加载失败';
+      retry.type = 'button'; retry.textContent = '重试';
+      retry.addEventListener('click', () => { retry.disabled = true; void mountVisiblePane(); });
+      container.replaceChildren(label, retry);
     }
   }
   function show() {
