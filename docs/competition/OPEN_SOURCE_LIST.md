@@ -1,8 +1,7 @@
 # 开源组件清单（华为 ICT 大赛 AgentArts 赛道）
 
-> 项目：PersonalAgent（xianxing-ai/PersonalAgent）
-> 声明：本文件列出项目直接依赖的第三方开源组件。本项目全部第一方代码（`packages/*`、`apps/*` 内标注 `@personal-agent/*` 的包与宿主应用）为团队原创，未复制任何第三方项目的源码；第三方组件仅以 npm 包形式按其开源许可证引入使用。逐项核对由 `scripts/competition/verify-open-source-list.mjs` 自动完成（`node --test tests/contracts/open-source-list.test.mjs`）。
-> 基准版本：origin/main `855a90c4`（2026-11-02）+ 本 PR；清单随依赖变更同步维护。
+> 项目：衔星（Synstar），仓库 xianxing-ai/PersonalAgent。清单按 2026-11-26 的主线 `707ea6f6` 整理。
+> 范围：列出各工作区及根目录直接声明的第三方 npm 依赖与 Node.js 运行时。版本取自锁文件，许可证栏依据对应软件包的元数据。来源、数据与模型的分发范围见[原创性核对稿](ORIGINALITY_STATEMENT.md)。
 
 ## 1. 运行时与构建工具链
 
@@ -21,6 +20,7 @@
 | @modelcontextprotocol/sdk | 1.31.0 | MIT | MCP 客户端/服务端协议 | packages/mcp、packages/windows-client、apps/agentarts-runtime |
 | @modelcontextprotocol/server-filesystem | 2026.8.31 | MIT（见包内 LICENSE） | 官方参考实现，固定版本受控 stdio 文件系统服务 | packages/mcp |
 | ajv | 8.17.1 | MIT | JSON Schema 校验（契约层） | packages/contracts |
+| ajv-formats | 3.0.1 | MIT | 为契约 Schema 提供标准格式校验 | packages/contracts |
 | json-schema-to-typescript | 15.0.4 | MIT | 契约 Schema → TypeScript 类型生成（开发工具） | packages/contracts devDependencies |
 
 ## 3. 传输与模型接入
@@ -60,11 +60,10 @@
 | --- | --- | --- | --- | --- |
 | @types/node | 24.10.1 | MIT | Node 类型定义 | 根 devDependencies |
 
-## 7. 未使用第三方代码的说明
+## 7. 源码与传递依赖
 
-- `packages/crew`（子智能体编排）参考了公开的开源智能体编排**设计思路**（架构分层与生命周期职责划分），但**未复制任何第三方源码**，实现为本仓原创。
-- 模型推理、编排引擎、工作流图引擎、Policy/审批引擎、存储引擎均为本仓第一方原创代码，不依赖第三方编排框架（LangChain/LangGraph/AutoGen 等均未使用）。
-- 第三方依赖的传递依赖（package-lock.json 中共约 246 个锁定包）按 npm 递归解析引入，其许可证随各包分发，未直接调用其源码之外的能力；本清单登记直接依赖，传递依赖可在 package-lock.json 中完整追溯。
+- 子智能体编排实现及开发记录位于 `packages/crew`。源码来源与贡献归属由团队结合提交记录核对。
+- 传递依赖及嵌套版本可在根目录的 `package-lock.json` 中按安装位置查询。
 
 ## 8. 维护方式
 
