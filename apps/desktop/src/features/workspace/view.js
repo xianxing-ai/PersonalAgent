@@ -241,7 +241,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const runtimeControls=mountWorkspaceRuntimeControls(root,invoke,report);
   const actions=root.querySelector('.workspace-composer-actions');
   const runtimeStrip=root.querySelector('.cc-runtime-controls');
-  actions.append(runtimeStrip.querySelector('.cc-live'));
+  actions.querySelector('[data-send]').before(runtimeStrip.querySelector('.cc-live'));
   const more=document.createElement('details');
   const moreLabel=document.createElement('summary');
   moreLabel.textContent='权限与语音设置';
