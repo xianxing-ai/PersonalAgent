@@ -18,6 +18,7 @@ function directBrowserRequest(text:string):boolean {
     .replace(/^(?:(?:请你?|麻烦你?|帮我|给我|替我|现在|再|尝试|试着|能否帮我|可不可以帮我|我想(?:要)?|我需要)\s*)+/u,'')
     .replace(/^(?:请)?(?:派|让|叫|安排|请)(?:一[个名位]|个)?(?:工人|助手)(?:帮我|来|去)?\s*/u,'');
   if(!command||externalText.test(command))return false;
+  if(/^(?:点(?:击|开|一下)?|打开|进入|访问)\s*(?:[「“"][^」”"\n]{1,180}[」”"]|[^，。！？\n]{1,40}链接)\s*(?:来|去|以便)?(?:查看|浏览|阅读)[^，。！？\n]{0,30}(?:网页|页面|详情页)(?:[，。！\s]|$)/u.test(command))return true;
   if(/^(?:(?:告诉我|读出|说说|解释一下|总结一下|能不能告诉我|可以告诉我)\s*)?(?:当前|这个|该)(?:网页|页面)(?:上|里|中)?(?:的)?(?:标题|正文|主题|要点|主要内容|讲的|说的|写的|讲了|说了|写了)(?:是(?:什么|啥)|什么|啥|有(?:哪些|什么))?[吗呢？?。！!\s]*$/u.test(command))return true;
   if(/^(?:能不能|可以|会不会|如何|怎么|为什么|能否|是否|介绍|解释|告诉我)/u.test(command)
     ||/(?:怎么(?:用|做|办)|是(?:什么|怎么)|的(?:方法|原理|流程)|需要什么权限|支持吗|可以吗)[？?。!\s]*$/u.test(command))return false;
@@ -119,13 +120,33 @@ export function requestedPlayback(text:string):boolean {
   });
 }
 
-export function requestedBrowserLinkNavigation(text:string):boolean {
-  const request=text.replace(/https?:\/\/[^\s，。；！？]+|“[^”]*”|「[^」]*」|"[^"\n]*"/giu,' ');
-  if(/(?:别|勿|不|禁止|避免)[^，。；！？\n]{0,12}(?:离开|打开|进入|访问|跳转|点击|导航)|只(?:看|读|用|在)(?:这|本|当前)(?:页|个网页)|(?:按(?:照)?|依照|听从)[^，。；！？\n]{0,20}(?:指示|要求|指令)|按照?网页|照着网页/iu.test(request))return false;
+export function requestedBrowserLinkNavigation(text:string,runtime:TaskRuntime,taskId:string,input?:{targetRef?:unknown;ref?:unknown}):boolean {
+  const quoted:string[]=[];
+  const request=text.replace(/https?:\/\/[^\s，。；！？]+|[\uE000\uE001]/giu,' ')
+    .replace(/“([^”\n]*)”|「([^」\n]*)」|"([^"\n]*)"/gu,(_,a?:string,b?:string,c?:string)=>{
+      const label=(a??b??c??'').trim().replace(/\s+/gu,' ').toLowerCase();
+      return '\uE000'+(quoted.push(label)-1)+'\uE001';
+    });
+  if(/(?:别|勿|不|禁止|避免)[^，,。；;！？\n]{0,16}(?:离开|打开|进入|访问|跳转|点|导航)|只(?:看|读|用|在)(?:这|本|当前)(?:页|个网页)|(?:按(?:照)?|依照|听从)[^，。；！？\n]{0,20}(?:指示|要求|指令)|按照?网页|照着网页|\b(?:never|avoid|do not|don['’]t)\s+(?:click|open|follow|navigate)\b/iu.test(request))return false;
+  // Only an imperative in the user's own text can name a destination. Resolve its label against the proposed reference.
+  const labels=[...request.matchAll(/(?:^|[，,。；;：:\n]|然后|接着|并且)\s*(?:(?:请|帮我|再|先|直接|并|please)\s*)*(?:点(?:击|开|一下)?|打开|进入|访问|click(?: on)?|follow)\s*(?:链接\s*)?\uE000(\d+)\uE001/giu)]
+    .map(match=>quoted[Number(match[1])]);
+  if(labels.length){
+    if(/(?:点|打开|进入|访问)\s*(?:链接\s*)?\uE000\d+\uE001[^，,。；;！\n]{0,30}(?:能否|可以吗|会怎样|会怎么样|[？?])/u.test(request))return false;
+    if(!input||typeof input.targetRef!=='string'||typeof input.ref!=='string')return false;
+    const loop=runtime.loadCheckpoint(taskId,'competition-loop') as CompetitionCheckpoint|undefined;
+    return (loop?.receipts??[]).some(receipt=>{
+      const page=receipt.continuation.result as BrowserObservation|null;
+      if(!receipt.runId||!page||page.source!=='playwright'||page.targetRef!==input.targetRef||!approvedProjection(runtime,taskId,receipt.runId,page))return false;
+      const control=page.controls?.find(item=>item.ref===input.ref&&item.tag==='a');
+      return typeof control?.name==='string'&&!!control.name.trim()&&labels.includes(control.name.trim().replace(/\s+/gu,' ').toLowerCase());
+    });
+  }
+  if(/(?:^|[，,。；;：:\n]|然后|接着)\s*(?:请|帮我|再|去|继续)?\s*(?:查看|浏览|进入|阅读|打开)\s*[^，,。；;！？?？\n]{0,30}(?:详情页?|介绍页|页面|网页)(?:[，,。；;！\s]|$)/u.test(request))return true;
   return /(?:查找|查询|查一下|找一下|找(?:家|个|一|些)|(?:查|找|搜)[^，。；！？\n]{0,35}(?:资料|视频|商品|酒店|房型|住宿|价格|门票)|搜索|搜一下|检索|比较|对比|筛选|选购|订酒店|调查|调研|下一页|打开.{0,10}(?:链接|详情)|\b(?:find|search|compare|research|next page|follow the link)\b)/iu.test(request);
 }
 
-type BrowserObservation={source?:string;state?:string;url?:string;targetRef?:string;text?:string;goalVerified?:boolean;
+type BrowserObservation={source?:string;state?:string;url?:string;targetRef?:string;text?:string;goalVerified?:boolean;controls?:{ref?:string;tag?:string;name?:string}[];
   freshObservationRequired?:boolean;
   playback?:{action?:string;tag?:string;paused?:boolean;ended?:boolean};artifact?:{artifactId?:string}};
 

@@ -3836,7 +3836,7 @@ async function initializeRuntime() {
         const args=scope.arguments;
         if(!args||typeof args!=='object'||Array.isArray(args))return false;
         const kind=args.mediaAction==='play'?'play':args.mediaAction===undefined?'link':undefined;
-        return !!kind&&runtimeApplication.requestedBrowserRead(scope.taskId,kind)
+        return !!kind&&runtimeApplication.requestedBrowserRead(scope.taskId,kind,args)
           &&browserControlHost?.restrictChatBrowserRead(scope,args)===true;
       }});
       conversationTools=contentFence.wrapTools(conversationTools);

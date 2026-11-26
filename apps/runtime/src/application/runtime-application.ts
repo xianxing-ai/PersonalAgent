@@ -6503,12 +6503,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** The host may further restrict one concrete click only for the original human's browser worker. */
-  requestedBrowserRead(taskId:string,kind:'play'|'link'):boolean {
+  requestedBrowserRead(taskId:string,kind:'play'|'link',input?:{targetRef?:unknown;ref?:unknown}):boolean {
     if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks)return false;
     const marker=this.runtime.loadCheckpoint(taskId,BROWSER_WORKER) as {parentTaskId?:string}|undefined;
     if(!marker?.parentTaskId||readCanonicalUserWorkParent(this.runtime,taskId)!==marker.parentTaskId)return false;
     const source=browserWorkerSource(this.runtime,taskId);
-    return !!source&&(kind==='play'?requestedPlayback(source.text):kind==='link'&&requestedBrowserLinkNavigation(source.text));
+    return !!source&&(kind==='play'?requestedPlayback(source.text):kind==='link'&&requestedBrowserLinkNavigation(source.text,this.runtime,taskId,input));
   }
 
   /** Device-only result projection. The parent transcript and its cloud context keep no copy. */
