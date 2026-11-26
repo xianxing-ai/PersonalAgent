@@ -153,6 +153,12 @@ else {
     setOperatorBrake(current?.operatorBrake?.paused!==true).then(()=>{},report).finally(()=>{operatorBrakePending=false;operatorBrakeButton.disabled=false;});
   };
   root.querySelector('#close').before(expand);
+  const dragSurface = document.createElement('span');
+  dragSurface.className = 'panel-drag-surface';
+  dragSurface.setAttribute('aria-hidden', 'true');
+  // Consume the drag's touch gesture so Chromium delivers even the next immediate button tap.
+  dragSurface.addEventListener('touchstart', event => event.preventDefault(), {passive:false});
+  root.querySelector('.panel>header').prepend(dragSurface);
   expand.onclick=()=>invoke('workspace.open').catch(error=>{setFeedback(error.message);});
   let current,pending=false,submitGeneration=0,lastTaskSignature='',draftRevision=0;
   const streamedAnswers=new Map();
@@ -396,7 +402,12 @@ else {
   }else if(sendBtn.dataset.mode==='live'){
     void liveControls.toggle();
   }else form.requestSubmit();});
-  document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!modelMenu.hidden){const restore=modelMenu.contains(document.activeElement);closeModel();if(restore)modelBtn.focus({preventScroll:true});return;}if(!bellMenu.hidden){closeBell();return;}invoke('panel.hide').catch(report);});
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape'||e.isComposing||e.keyCode===229)return;
+    if(!modelMenu.hidden){const restore=modelMenu.contains(document.activeElement);closeModel();if(restore)modelBtn.focus({preventScroll:true});return;}
+    if(!bellMenu.hidden){closeBell();return;}
+    invoke('panel.hide').catch(report);
+  });
   const stopActiveTasks=async running=>{
     messageQueue.pause();submitGeneration++;pending=false;
     for(const task of running){truncatedTaskIds.add(task.taskId);truncatedOutput.set(task.taskId,structuredClone(task));}

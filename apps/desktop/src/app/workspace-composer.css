@@ -6,7 +6,21 @@
   min-height:48px;
   padding-bottom:10px;
 }
-.command-center .workspace-composer-actions {gap:5px}
+.command-center .workspace-composer-actions {
+  --send-size:32px;
+  position:relative;
+  gap:5px;
+  min-height:var(--send-size);
+  padding-inline-end:calc(var(--send-size) + 5px);
+}
+/* Keep the send hit area separate from voice and stop, even when controls wrap. */
+.command-center .workspace-composer-actions>[data-send] {
+  position:absolute;
+  inset-inline-end:0;
+  bottom:0;
+  width:var(--send-size);
+  height:var(--send-size);
+}
 .command-center .workspace-composer-actions .cc-compact,
 .command-center .workspace-composer-actions .cc-goals {
   flex-shrink:0;
@@ -54,10 +68,6 @@
 .command-center .workspace-composer-actions>[data-stop]:not(:disabled):hover {
   background:var(--cc-hover);
   color:var(--cc-text);
-}
-.command-center .workspace-composer-actions [data-send][hidden],
-.command-center .workspace-composer-actions:has([data-send]:not([hidden])) .cc-live:not([aria-pressed="true"]) {
-  display:none;
 }
 .command-center .cc-context>details {font-size:12px;color:var(--cc-muted)}
 .command-center .cc-context>details>summary {cursor:pointer;padding:8px 0}

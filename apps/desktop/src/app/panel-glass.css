@@ -23,7 +23,9 @@
   content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;
   background:radial-gradient(ellipse 330px 260px at var(--light-x,12%) var(--light-y,0%),rgba(218,237,255,.065),transparent 80%);
 }
-.panel>header {padding:18px 20px 12px;gap:7px;border:0;background:transparent}
+.panel>header {position:relative;padding:18px 20px 12px;gap:7px;border:0;background:transparent}
+.panel>header>.panel-drag-surface {position:absolute;inset:0;touch-action:none}
+.panel>header>:is(button,.bell-box) {position:relative}
 .panel>header strong {font-size:14px;letter-spacing:-.025em}
 .panel>header .status {font-size:11px;color:var(--muted)}
 .panel .dot {width:6px;height:6px;background:#d9e8f9;box-shadow:0 0 9px rgba(216,236,255,.35)}
