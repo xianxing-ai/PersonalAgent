@@ -46,7 +46,11 @@ const voiceFailureStages = Object.freeze({pcm_acquire:'麦克风就绪',session_
   pcm_release:'麦克风释放',audio_buffer:'音频缓冲',recognition:'语音识别',
   consumption:'请求回答',dictation:'填写文字',playback:'云端合成或播报',auto_finish:'自动结束',cleanup:'资源释放',
   initialization:'适配器启动'});
-const responseIcons={copy:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'};
+const responseIcons={
+  copy:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+  speak:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+  stopSpeak:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+};
 let activeDesktopConversationId;
 let adoptSnapshotRead;
 async function setOperatorBrake(paused) {
@@ -512,6 +516,20 @@ else {
       [...tasksNode.querySelectorAll('[data-turn]')].find(item=>item.dataset.turn===b.dataset.id)?.scrollIntoView?.({behavior:'smooth',block:'center'});
       return;
     }
+    if(b.dataset.uiAction==='speak'){
+      b.disabled=true;
+      try{
+        if(current?.voice?.status==='speaking'){
+          const stopped=await invoke('voice.stop');
+          if(!stopped?.stopped)report(stopped?.reason??'当前没有正在播报的回答');
+        }else{
+          const target=b.dataset.messageId?{messageId:b.dataset.messageId}:{taskId:b.dataset.id};
+          await invoke('voice.play',target);
+        }
+      }catch(err){report(err);}
+      finally{b.disabled=!Boolean(current?.voice?.experimental)||Boolean(current?.live?.active);}
+      return;
+    }
     if(b.dataset.uiAction==='copy'){
       const value=current?.messages?.find(item=>item.id===b.dataset.messageId)?.text
         ?? b.closest('.assistant-turn')?.querySelectorAll('.assistant-message')[Number(b.dataset.replyIndex??0)]?.textContent;
@@ -610,6 +628,10 @@ else {
     stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持实时语音）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
     root.querySelector('.bubble').hidden=!emptyThread;quickStart.hidden=!emptyThread;
+    const voiceSpeaking=voiceState==='speaking';
+    const speakDisabled=!voiceReady||Boolean(data.live?.active);
+    const speakLabel=voiceSpeaking?'停止播报':voiceReady?'播报回答':'语音播报未连接';
+    const speakIcon=voiceSpeaking?responseIcons.stopSpeak:responseIcons.speak;
     const childrenByParent=new Map();
     for(const child of data.subagentTasks??[]) {
       if(!childrenByParent.has(child.parentTaskId)) childrenByParent.set(child.parentTaskId,[]);
@@ -618,7 +640,7 @@ else {
     const timeline=conversationTimeline(data.tasks,data.messages);
     delegatedTracker.observe(timeline,childrenByParent,mainChatReplies);
     const deliveries=delegatedTracker.list();
-    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.bodyWithheld,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.backgroundDelegation,t.error?.message,t.steps?.map(s=>[s.stepId,s.label,s.state]),childrenByParent.get(t.taskId)?.map(c=>[c.taskId,c.state,c.finalReply,c.steps?.map(s=>[s.stepId,s.label,s.state])])]),data.messages,data.approvals,deliveries.map(d=>[d.taskId,d.state,d.reply])]);
+    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.bodyWithheld,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.backgroundDelegation,t.error?.message,t.steps?.map(s=>[s.stepId,s.label,s.state]),childrenByParent.get(t.taskId)?.map(c=>[c.taskId,c.state,c.finalReply,c.steps?.map(s=>[s.stepId,s.label,s.state])])]),data.messages,data.approvals,deliveries.map(d=>[d.taskId,d.state,d.reply]),voiceReady,voiceSpeaking,Boolean(data.live?.active)]);
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
     function renderTaskAnswer(task, terminal) {
       const children=childrenByParent.get(task.taskId)??[];
@@ -635,7 +657,7 @@ else {
             : `<div class="assistant-message" data-chat-answer="${escape(task.taskId)}">正在回复…</div>`;
         return `${traceHtml}${bubble}`;
       }
-      if(replies.length)return `${traceHtml}${replies.map((reply,index)=>`<div class="assistant-message">${escape(reply)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-reply-index="${index}" title="复制回复" aria-label="复制回复">${responseIcons.copy}</button></div>`).join('')}`;
+      if(replies.length)return `${traceHtml}${replies.map((reply,index)=>`<div class="assistant-message">${escape(reply)}</div><div class="response-actions"><button type="button" data-ui-action="speak" data-id="${escape(task.taskId)}" title="${speakLabel}" aria-label="${speakLabel}" ${speakDisabled?'disabled':''}>${speakIcon}</button><button type="button" data-ui-action="copy" data-reply-index="${index}" title="复制回复" aria-label="复制回复">${responseIcons.copy}</button></div>`).join('')}`;
       return traceHtml;
     }
     if(taskSignature!==lastTaskSignature) {
@@ -643,7 +665,7 @@ else {
       const html=timeline.map(entry=>{
         if(entry.kind==='message') {
           const m=entry.value;
-          const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;
+          const msgSpeak=m.role==='assistant'?`<button type="button" data-ui-action="speak" data-message-id="${escape(m.id)}" title="${speakLabel}" aria-label="${speakLabel}" ${speakDisabled?'disabled':''}>${speakIcon}</button>`:'';const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions">${msgSpeak}<button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;
           return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;
         }
         const t=entry.value;

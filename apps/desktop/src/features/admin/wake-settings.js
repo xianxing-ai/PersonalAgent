@@ -1,4 +1,4 @@
-const DURATIONS = [['minutes30', '30 分钟'], ['hours2', '2 小时'], ['untilQuit', '直到关闭应用']];
+const DURATIONS = [['minutes30', '30 分钟'], ['hours2', '2 小时（默认）'], ['untilQuit', '直到关闭应用（单次最长 2 小时）']];
 
 export function mountWakeSettings(root, invoke) {
   const section = document.createElement('section');
@@ -8,12 +8,12 @@ export function mountWakeSettings(root, invoke) {
       <label class="notification-check"><input name="enabled" type="checkbox">允许语音唤醒</label>
       <label>开启后保持<select name="duration">${DURATIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
     </form>
-    <p class="muted">选「直到关闭应用」时，单次最长 8 小时，避免麦克风一直开着。到点后如果开关还开着，可以再开一次。</p>
+    <p class="muted">单次麦克风许可最长 2 小时（120 分钟），避免麦克风长时占用。到点后如果开关还开着，可以再开一次。</p>
     <p data-wake-status role="status"></p>`;
   root.append(section);
   const form = section.querySelector('[data-wake-form]');
   const status = section.querySelector('[data-wake-status]');
-  let current = {enabled: false, duration: 'untilQuit'};
+  let current = {enabled: false, duration: 'hours2'};
   let closed = false;
   form.addEventListener('change', () => {
     const enabled = form.elements.namedItem('enabled').checked;

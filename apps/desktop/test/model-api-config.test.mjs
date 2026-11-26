@@ -22,6 +22,37 @@ function fixture(fetch) {
 }
 const answer = () => new Response(JSON.stringify({choices:[{message:{content:'Synthetic answer'}}]}));
 
+test('reopening upgrades only exact old context presets and keeps the selected summary model', () => {
+  const presets=[
+    {maxCharacters:128000,retainMessages:8},
+    {maxCharacters:1000000,retainMessages:0,retainTurns:4},
+    {maxCharacters:128000,retainMessages:5},
+  ];
+  for(const [index,preset] of presets.entries()){
+    const {host,options}=fixture(()=>{throw Error('loading settings must not call a model');});
+    const model=host.configure({...input,id:'summary'}).models[0];
+    const policy={triggerCharacters:96000,targetCharacters:64000,maxSourceMessages:2000,
+      segmentCharacters:32000,maxSummaryCharacters:4000,...preset};
+    host.configureHarness({expectedRevision:'unconfigured',enabled:true,
+      context:{enabled:true,modelId:model.id,configurationRef:model.configurationRef,policy}});
+    const old=host.readHarnessConfiguration().context;host.dispose();
+    const restored=createModelApiConfig(options);
+    try {
+      const {context}=restored.readHarnessConfiguration();
+      assert.equal(context.enabled,true);
+      assert.equal(context.configurationRef,model.configurationRef);
+      if(index===2)assert.deepEqual(context,old);
+      else {
+        assert.equal(context.policy.maxCharacters,1000000);
+        assert.equal(context.policy.triggerCharacters,750000);
+        assert.equal(context.policy.targetCharacters,500000);
+        assert.equal(context.policy.retainTurns,4);
+        assert.notEqual(context.policy.version,old.policy.version);
+      }
+    }finally{restored.dispose();}
+  }
+});
+
 test('new Harness settings use defaults while existing explicit values and model bindings survive later saves', () => {
   let requests=0;
   const {host,options}=fixture(()=>{requests++;throw Error('saving must not call a model');});
@@ -32,8 +63,8 @@ test('new Harness settings use defaults while existing explicit values and model
     host.configureHarness({expectedRevision:'unconfigured',enabled:true,context:selection});
     let saved=host.readHarnessConfiguration();
     assert.equal(saved.maxExecutorSteps,32);assert.equal(saved.context.maxOutputTokens,2048);
-    assert.deepEqual({...saved.context.policy,version:'test'}, {version:'test',triggerCharacters:96000,targetCharacters:64000,
-      maxCharacters:128000,retainMessages:8,maxSourceMessages:2000,segmentCharacters:32000,maxSummaryCharacters:4000});
+    assert.deepEqual({...saved.context.policy,version:'test'}, {version:'test',triggerCharacters:750000,targetCharacters:500000,
+      maxCharacters:1000000,retainMessages:0,retainTurns:4,maxSourceMessages:2000,segmentCharacters:32000,maxSummaryCharacters:4000});
     restored=createModelApiConfig(options);
     assert.deepEqual(restored.readHarnessConfiguration(),saved);restored.dispose();restored=undefined;
     const custom={triggerCharacters:12000,targetCharacters:9000,maxCharacters:16000,retainMessages:2,

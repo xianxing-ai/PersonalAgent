@@ -9,7 +9,11 @@ import {
   TASK_FAILURE_READONLY_RETRY_CHECKPOINT,
   TASK_FAILURE_REPAIR_CHECKPOINT,
 } from '@personal-agent/agentarts';
-import {failureRepairModel} from '../src/features/conversation/failure-repair-card.js';
+import {
+  failureRepairModel,
+  formatLocatedFailureLines,
+  mountFailureRepairCard,
+} from '../src/features/conversation/failure-repair-card.js';
 import {createFailureRepairHost} from '../electron/failure-repair-host.js';
 
 const at = '2026-11-11T00:00:00.000Z';
@@ -85,4 +89,120 @@ test('manual retry submits a new read and leaves the failed task failed', () => 
     assert.equal(blocked.followUpTaskId, undefined);
     assert.equal(runtime.getTask(task.taskId).state, 'failed');
   } finally { runtime.close(); }
+});
+
+function createFakeDomElement(tagName) {
+  const listeners = new Map();
+  const node = {
+    tagName: String(tagName).toUpperCase(),
+    className: '',
+    dataset: {},
+    hidden: false,
+    disabled: false,
+    type: '',
+    textContent: '',
+    childNodes: [],
+    parentNode: null,
+    append(...children) {
+      for (const child of children) {
+        child.parentNode = node;
+        node.childNodes.push(child);
+      }
+    },
+    insertBefore(child) {
+      child.parentNode = node;
+      node.childNodes.push(child);
+      return child;
+    },
+    replaceChildren() {
+      node.childNodes = [];
+    },
+    addEventListener(event, handler) {
+      listeners.set(event, handler);
+    },
+    dispatchClick(target) {
+      listeners.get('click')?.({target});
+    },
+    closest(selector) {
+      let cursor = node;
+      while (cursor) {
+        if (selector === 'button[data-repair-locate]' && cursor.tagName === 'BUTTON' && cursor.dataset.repairLocate) return cursor;
+        if (selector === 'button[data-repair]' && cursor.tagName === 'BUTTON' && cursor.dataset.repair) return cursor;
+        cursor = cursor.parentNode;
+      }
+      return null;
+    },
+    querySelector(selector) {
+      const queue = [...node.childNodes];
+      while (queue.length) {
+        const current = queue.shift();
+        if (selector === '[data-repair-locate-result]' && current.dataset?.repairLocateResult) return current;
+        if (selector === 'button[data-repair-locate]' && current.tagName === 'BUTTON' && current.dataset?.repairLocate) return current;
+        queue.push(...(current.childNodes ?? []));
+      }
+      return null;
+    },
+  };
+  return node;
+}
+
+test('failure repair card mounts locate button and renders task.locate file:line as plain text (L-06 #649)', async () => {
+  const read = planRuntimeTaskFailure({taskId: 't-loc', effect: 'read', outcome: 'failed', errorCode: 'COMMAND_FAILED', occurredAt: at, evidenceRefs: ['e-1']});
+  const model = failureRepairModel([{
+    taskId: 't-loc',
+    state: 'failed',
+    hasCommandDiagnostic: true,
+    error: {message: '语法检查未通过'},
+    repair: {
+      classification: 'correctable', effect: 'read', risk: 'ordinary', awaitingApproval: false, abandoned: false,
+      canRetryRead: false, canReplan: true, canAbandon: true, recovery: read.recovery, attempts: [],
+    },
+  }]);
+  assert.equal(model.hasDiagnostic, true);
+  assert.equal(model.errorMessage, '语法检查未通过');
+  assert.deepEqual(formatLocatedFailureLines({failures: []}), ['未能从错误输出定位到源码位置']);
+
+  const previousDocument = globalThis.document;
+  globalThis.document = {createElement: createFakeDomElement};
+  try {
+    const container = createFakeDomElement('div');
+    const calls = [];
+    const paint = mountFailureRepairCard(container, null, async (name, payload) => {
+      calls.push({name, payload});
+      return {
+        totalFailures: 1,
+        failures: [{
+          name: 'SyntaxError',
+          frames: [{file: 'broken<img onerror=1>.js', line: 3, column: 18, confidence: 0.95}],
+        }],
+      };
+    });
+    paint([{
+      taskId: 't-loc',
+      state: 'failed',
+      hasCommandDiagnostic: true,
+      error: {message: '语法检查未通过'},
+      repair: {
+        classification: 'correctable', effect: 'read', risk: 'ordinary', awaitingApproval: false, abandoned: false,
+        canRetryRead: false, canReplan: true, canAbandon: true, recovery: read.recovery, attempts: [],
+      },
+    }]);
+    const section = container.childNodes[0];
+    const locateButton = section.querySelector('button[data-repair-locate]');
+    const resultNode = section.querySelector('[data-repair-locate-result]');
+    assert.ok(locateButton);
+    assert.ok(resultNode);
+    assert.equal(locateButton.textContent, '定位源码位置');
+    assert.equal(resultNode.hidden, true);
+
+    section.dispatchClick(locateButton);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(calls, [{name: 'task.locate', payload: {taskId: 't-loc', text: '语法检查未通过'}}]);
+    assert.equal(resultNode.hidden, false);
+    assert.equal(resultNode.textContent, 'SyntaxError · broken<img onerror=1>.js:3:18（置信度 95%）');
+    assert.equal(resultNode.childNodes.length, 0);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
