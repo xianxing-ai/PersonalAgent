@@ -100,9 +100,9 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   leadButton.className = 'cc-team-lead';
   leadButton.setAttribute('aria-label', '切换到主对话');
   leadButton.innerHTML = `<span class="cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span>
-    <span class="cc-lead-copy"><span class="cc-lead-heading"><strong>主对话</strong><span class="cc-state" data-cc-coordinator>待机</span></span><small>日程 · 订阅 · 天气</small></span>`;
+    <span class="cc-lead-copy"><span class="cc-lead-heading"><strong>主对话</strong><span class="cc-state" data-cc-coordinator>待机</span></span><small>网页 · 电脑 · 日常事务</small></span>`;
   side.querySelector('.cc-team-lead').replaceWith(leadButton);
-  side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>主对话只处理日程、订阅和天气。邮件、知识库和其他连接器交给助手自己的工人。工人可插话复用，不必一句话一个。</p>';side.querySelector('.cc-trust').hidden=true;
+  side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>直接在聊天里说要做什么。任务开始后，可以在这里查看进度。</p>';side.querySelector('.cc-trust').hidden=true;
   const team=side.querySelector('.cc-team');team.querySelector('h2').textContent='工人';team.prepend(leadButton);rail.querySelector('.cc-thread-scroll').append(team);
   const internal=document.createElement('section');internal.className='cc-internal-chat';internal.setAttribute('aria-label','内部群聊');
   internal.innerHTML=`<header><h2>内部群聊</h2></header><div class="cc-internal-list" data-internal-list></div>
@@ -339,7 +339,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   rail.querySelector('.cc-settings').onclick=()=>openAdmin('settings');side.querySelector('[data-cc-records]').onclick=()=>showLocal('tasks');
   rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{setHistoryOpen(false);showHome();inline.main();closeSidebar();input.focus();}};
   const form=root.querySelector('.workspace-composer'),actions=form.querySelector('.workspace-composer-actions');
-  input.placeholder='跟主对话说，例如查天气、看今天的日程、看订阅';actions.prepend(preferences);
+  input.placeholder='例如：帮我查家酒店，或打开记事本写一段话';actions.prepend(preferences);
   const compact=document.createElement('button');compact.className='cc-compact';
   bindCompactButton(compact,input,root.querySelector('#workspace-error'));
   actions.prepend(compact);
