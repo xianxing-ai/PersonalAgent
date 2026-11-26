@@ -271,3 +271,58 @@ test('actual Runtime passes registered external write risk to the exact content 
   await wait(()=>['succeeded','failed'].includes(app.runtime.getTask(submitted.taskId).state));
   assert.equal(app.runtime.getTask(submitted.taskId).state,'succeeded');assert.equal(writes,1);
 });
+
+test('fullAccessAutoContent auto-approves safe external writes via Runtime while still blocking credential arguments',async t=>{
+  let app,writes=0,nextArgs={target:'/synthetic/target',body:'safe body'};
+  const directory=mkdtempSync(new URL('full-auto-content-',cache));
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,
+    namespace:'Synthetic full auto',resolveConversation:()=> 'Synthetic full conversation',available:()=>true,
+    profiles:[{ref:'full-access',label:'完全访问',mode:'full-access',revision:1,available:true,fullAccessAutoContent:true}],defaultProfileRef:'full-access'});
+  const descriptor={name:'vendor.execute',version:'1.0.0',sideEffect:'external_write',inputSchema:{type:'object'},
+    outputSchema:{type:'object'},requiredScopes:['vendor:write'],idempotencySupport:true,recoverySupport:true,requiresPresence:false};
+  app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',
+    tools:[{descriptor,execute:async()=>{writes++;return {ok:true};}}],
+    competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
+    competitionToolExports:[{toolName:descriptor.name,toolVersion:descriptor.version,exportPolicyVersion:'synthetic-v1',
+      accepts:()=>true,project:({result})=>result}],
+    requiresToolAuthorization:scope=>question.requiresAuthorization(scope),
+    requestToolAuthorization:scope=>question.requestToolAuthorization(scope),
+    coordination:{async execute(request){return request.continuation?{kind:'text',text:'Synthetic done',verification:'mock',executionEpoch:request.executionEpoch}:
+      {kind:'tool_proposal',proposalId:'proposal-'+request.taskId,toolName:descriptor.name,toolVersion:descriptor.version,
+        arguments:nextArgs,verification:'unverified',executionEpoch:request.executionEpoch};}}});
+  t.after(async()=>{question.close();await wait(()=>app.activeTaskCount===0);app.close();});
+  const client=new Client(app);await client.connect();
+  const safeTask=await client.call('task.submit',{goal:'Safe external write in full-access',conversationId:'Synthetic full conversation'},
+    {idempotencyKey:'full-safe'});
+  await wait(()=>['succeeded','failed'].includes(app.runtime.getTask(safeTask.taskId).state));
+  assert.equal(app.runtime.getTask(safeTask.taskId).state,'succeeded');
+  assert.equal(writes,1);
+  assert.equal(question.snapshot().length,0);
+
+  nextArgs={target:'/synthetic/target',apiKey:'secret-value-must-ask'};
+  const secretTask=await client.call('task.submit',{goal:'Secret external write in full-access',conversationId:'Synthetic full conversation'},
+    {idempotencyKey:'full-secret-deny'});
+  const secretCard=await wait(()=>question.snapshot().find(q=>q.state==='pending'&&q.taskId===secretTask.taskId));
+  assert.equal(secretCard.forceAsk,true);
+  assert.equal(secretCard.canAlways,true);
+  assert.equal(writes,1);
+  question.respond({questionId:secretCard.questionId,expectedRevision:secretCard.revision,decision:'deny'},secretCard.conversationId);
+  await wait(()=>['succeeded','failed','cancelled'].includes(app.runtime.getTask(secretTask.taskId).state));
+  assert.equal(app.runtime.getTask(secretTask.taskId).state,'cancelled');
+  assert.equal(writes,1);
+
+  const allowTask=await client.call('task.submit',{goal:'Whitelist secret external write in full-access',conversationId:'Synthetic full conversation'},
+    {idempotencyKey:'full-secret-allow-always'});
+  const whitelistCard=await wait(()=>question.snapshot().find(q=>q.state==='pending'&&q.taskId===allowTask.taskId));
+  question.respond({questionId:whitelistCard.questionId,expectedRevision:whitelistCard.revision,decision:'allow_always'},whitelistCard.conversationId);
+  await wait(()=>['succeeded','failed'].includes(app.runtime.getTask(allowTask.taskId).state));
+  assert.equal(app.runtime.getTask(allowTask.taskId).state,'succeeded');
+  assert.equal(writes,2);
+
+  // Repeating the same whitelisted secret auto-approves without prompting.
+  const reusedTask=await client.call('task.submit',{goal:'Repeat whitelisted secret in full-access',conversationId:'Synthetic full conversation'},
+    {idempotencyKey:'full-secret-reused'});
+  await wait(()=>['succeeded','failed'].includes(app.runtime.getTask(reusedTask.taskId).state));
+  assert.equal(app.runtime.getTask(reusedTask.taskId).state,'succeeded');
+  assert.equal(writes,3);
+});

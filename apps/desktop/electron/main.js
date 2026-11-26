@@ -2638,9 +2638,17 @@ function initializeAuthorizationHosts(runtimeModule){
     available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:()=>publish(['approvals']),
     profiles:[{ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
       {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true},
-      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true},
-      {ref:'full-access',label:'完全访问',mode:'full-access',revision:1,available:true}],
+      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true},
+      {ref:'full-access',label:'完全访问',mode:'full-access',revision:1,available:true,fullAccessAutoContent:true}],
     defaultProfileRef:'low-risk-auto',
+    canAutoApprove:kind=>{
+      const autonomy=riskAutonomyHost?.snapshot?.();
+      if(!autonomy)return true;
+      if(autonomy.revoked===true||autonomy.stance==='conservative')return false;
+      if(kind==='low-risk'&&autonomy.categories?.some(item=>item.category==='read'&&item.override==='ask'))return false;
+      if(kind==='local-write'&&autonomy.categories?.some(item=>item.category==='local_reversible_write'&&item.override==='ask'))return false;
+      return true;
+    },
     resolveProfile:(request,selected)=>selected.mode==='read-only'&&(request.taskConsent?.mode==='workspace-write'||request.requirements.some(item=>
       item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
         ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
@@ -2650,6 +2658,17 @@ function initializeAuthorizationHosts(runtimeModule){
   authorizationIntentHost?.close();
   authorizationIntentHost=createDesktopAuthorizationIntentHost({getApplication:()=>runtimeApplication,question:authorizationQuestionPort,
     openConversation:()=>openPanel(true)});
+}
+
+function readDesktopEgressPolicy() {
+  if(!runtimeApplication||!authorizationQuestionHost)return {mode:'ask'};
+  try{
+    const selected=authorizationQuestionHost.sandboxSnapshot()?.selected;
+    if(selected?.mode==='full-access')return {mode:'full-access'};
+    if(selected?.mode==='workspace-write')return {mode:'auto-standard'};
+    if(selected?.mode==='read-only'&&(selected?.ref==='low-risk-auto'||selected?.label==='低风险自动'))return {mode:'auto-standard'};
+    return {mode:'ask'};
+  }catch{return {mode:'ask'};}
 }
 
 function authorizeAgentArtsEgress(scope) {
@@ -2663,9 +2682,10 @@ function authorizeAgentArtsEgress(scope) {
     activePanelConversationId:()=>conversations?.activeConversationId('panel'),
   });
   if(!binding)return false;
-  return authorizationIntentHost.request({action:'model.egress',payload:scope.payloadDigest,
-    scope:{taskId:scope.taskId,requestId:scope.requestId,destination:scope.destination},
-    summary:`将当前任务所列内容仅发送本次到 ${scope.destination}`,
+  return authorizationIntentHost.request({action:'model.egress',
+    payload:{taskId:scope.taskId,requestId:scope.requestId,payloadDigest:scope.payloadDigest},
+    scope:{destination:scope.destination},
+    summary:`允许本任务向已配置云端地址 ${scope.destination} 发送非敏感对话内容`,
     deadline:scope.deadline,signal:scope.signal,
     isCurrent:()=>owner===runtimeApplication&&isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
       resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
@@ -2673,7 +2693,42 @@ function authorizeAgentArtsEgress(scope) {
       readToolConversation:taskId=>owner.readToolConversation(taskId),
       activePanelConversationId:()=>conversations?.activeConversationId('panel'),
     }),
-    egressReview:{conversationId:binding.conversationId,payload:scope.payload}});
+    egressReview:{conversationId:binding.conversationId,payload:scope.payload,ownerTaskId:scope.taskId,destination:scope.destination,allowTaskReuse:true}});
+}
+
+function authorizeSecretAgentArtsEgress(scope) {
+  const owner=runtimeApplication;
+  if(!owner||!authorizationIntentHost||!conversationToolAccess)return false;
+  const panelId=conversations?.activeConversationId('panel');
+  const binding=scope.taskId!==undefined
+    ?resolveEgressReviewConversation({
+      taskId:scope.taskId,
+      resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      readTask:taskId=>owner.runtime.getTask(taskId),
+      readToolConversation:taskId=>owner.readToolConversation(taskId),
+      activePanelConversationId:()=>panelId,
+    })
+    :(panelId?{conversationId:panelId,assistantOwned:false,directPanel:true}:undefined);
+  if(!binding)return false;
+  const categories=scope.secretDetections?.categories?.length?scope.secretDetections.categories.join('、'):'密钥/凭据';
+  return authorizationIntentHost.request({
+    action:'model.egress.secret',
+    forceAsk:true,
+    payload:{taskId:scope.taskId??'direct',requestId:scope.requestId,payloadDigest:scope.payloadDigest},
+    scope:{destination:scope.destination,secretFingerprints:scope.secretDetections?.fingerprints??[]},
+    summary:`检测到疑似真实密钥/凭据（${categories}），是否允许发送到 ${scope.destination}？（可加入白名单）`,
+    deadline:scope.deadline,
+    signal:scope.signal,
+    isCurrent:()=>owner===runtimeApplication&&(binding.directPanel
+      ?conversations?.activeConversationId('panel')===binding.conversationId
+      :isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
+        resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        readTask:taskId=>owner.runtime.getTask(taskId),
+        readToolConversation:taskId=>owner.readToolConversation(taskId),
+        activePanelConversationId:()=>conversations?.activeConversationId('panel'),
+      })),
+    egressReview:{conversationId:binding.conversationId,payload:scope.redactedPreview||'（已脱敏预览）',secretWarning:true},
+  });
 }
 
 async function initializeLocalAuthorizationControlPlane(){
@@ -6810,6 +6865,8 @@ app.whenReady().then(async () => {
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage,
     onCloudRun: info => usageBudgetProduct.recordCloud(info)});
   egressHost=createNativeEgressHost({dialog,authorizeTaskEgress:authorizeAgentArtsEgress,
+    authorizeSecretEgress:authorizeSecretAgentArtsEgress,
+    readEgressPolicy:readDesktopEgressPolicy,
     isTrustedIdentifier:id=>{
       if(typeof id!=='string')return false;
       const isUuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(id);
@@ -6855,6 +6912,37 @@ app.whenReady().then(async () => {
         }
       }catch{}
       return shas;
+    },
+    readTrustedConnectorOutputs(taskId){
+      const runtime=runtimeApplication?.runtime;
+      if(!runtime||typeof taskId!=='string'||!taskId)return undefined;
+      const texts=new Set();
+      const collect=value=>{
+        if(typeof value==='string'&&value.length>0&&texts.size<2000)texts.add(value);
+      };
+      try{
+        for(const record of runtime.readToolExecutions(taskId)){
+          if(['mail.inbox','mail.accounts','calendar.events'].includes(record.toolName)
+            &&record.state==='confirmed'&&record.executionStarted){
+            const saved=runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId);
+            const result=saved?.result;
+            if(!result||typeof result!=='object')continue;
+            if(Array.isArray(result.items)){
+              for(const item of result.items){
+                if(!item||typeof item!=='object')continue;
+                collect(item.contentRef);collect(item.summary);collect(item.title);
+              }
+            }
+            if(Array.isArray(result.accounts)){
+              for(const account of result.accounts){
+                if(!account||typeof account!=='object')continue;
+                collect(account.label);collect(account.accountRef);
+              }
+            }
+          }
+        }
+      }catch{}
+      return texts;
     },
     readPendingWorkflowGraph({taskId,requestId,deadline}){
       const runtime=runtimeApplication?.runtime;
