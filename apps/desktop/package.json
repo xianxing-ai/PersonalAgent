@@ -72,7 +72,7 @@
   },
   "build": {
     "appId": "com.personalagent.desktop",
-    "productName": "PersonalAgent",
+    "productName": "Synstar",
     "directories": {
       "output": "release"
     },

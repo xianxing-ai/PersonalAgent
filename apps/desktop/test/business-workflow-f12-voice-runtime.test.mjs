@@ -56,7 +56,7 @@ test('original F12 voice policy runs one rendition and reads renderer drain whil
     restoredHost.bindApplication(restored);
     assert.deepEqual(restoredHost.readVoiceDelivery({taskId:f.original.taskId,roundId:f.round.roundId}),f.receipt);
     assert.equal(restoredHost.runtimeHost.getInterruptionRound(f.round.roundId).attempts.voice.state,'unknown');
-    await assert.rejects(restoredHost.deliverRound({roundId:f.round.roundId,channel:'voice',title:'PersonalAgent 通知',body:'有 2 条更新，请查看通知列表。',
+    await assert.rejects(restoredHost.deliverRound({roundId:f.round.roundId,channel:'voice',title:'Synstar 通知',body:'有 2 条更新，请查看通知列表。',
       authority:{context:{taskId:f.original.taskId,runId:'host-tool-'+f.original.taskId,authorizationRef:'host-tool-'+f.original.taskId,
         signal:new AbortController().signal,deadline:f.round.expiresAt},assertCurrent(){}}}),/独立 Policy/);
     assert.equal(f.spoken.length,1);

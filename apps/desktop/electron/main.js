@@ -1502,7 +1502,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1180, area.width), height: Math.min(800, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 设置', frame: false, transparent: false,
+    {title: 'Synstar · 设置', frame: false, transparent: false,
       backgroundMaterial: adminAcrylic ? 'acrylic' : 'none',
       backgroundColor: adminAcrylic ? '#00000000' : '#090b10',
       roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
@@ -1653,7 +1653,7 @@ const operatorBrakeTray = createOperatorBrakeTrayController({
       {label: '打开设置', click: () => openAdmin()},
       {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
       {type: 'separator'},
-      {label: '退出 PersonalAgent', click: () => app.quit()},
+      {label: '退出 Synstar', click: () => app.quit()},
     ]));
   },
   publish: () => publish(),
@@ -1816,7 +1816,7 @@ async function openWorkspace() {
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+    {title: 'Synstar · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
   bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
   const window=workspace;
@@ -1926,7 +1926,7 @@ async function openSubagentConversation(payload,surface){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'PersonalAgent · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},activityTaskIds:childActivityTaskIds(detail),
     revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
   subagentWindows.set(key,record);
@@ -1986,7 +1986,7 @@ function openAllSubagentConversations(){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(900,area.width-32),height=Math.min(760,area.height-32);
   subagentListWindow=windowFor('subagent-list',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'PersonalAgent · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   subagentListWindow.on('closed',()=>{subagentListWindow=undefined;});
 }
 
@@ -2895,7 +2895,7 @@ async function initializeRuntime() {
             if (!item.batchId) return;
             return notificationApplicationHost.deliverBatch({batchId:item.batchId,
               scope:{kind:'connector',connectorId:'productivity'},expiresAt:new Date(Date.now()+30_000).toISOString(),
-              title:'PersonalAgent 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
+              title:'Synstar 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
@@ -2914,7 +2914,7 @@ async function initializeRuntime() {
           },
           readTaskBinding:taskId=>conversationToolAccess.resolveConversation(taskId),
           onPrompt:request=>{
-            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'PersonalAgent 本机确认',
+            if(request.state==='waiting'&&request.kind==='presence'&&Notification.isSupported())new Notification({title:'Synstar 本机确认',
               body:'保持本次操作的应用在前台，按 F9 确认当前任务在场。具体写入仍按原任务审批。'}).show();
             publish();
           },
@@ -2941,7 +2941,7 @@ async function initializeRuntime() {
           await windowsControlHost.start({deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
         }
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
-          downloadDirectory:path.join(app.getPath('downloads'),'PersonalAgent'),
+          downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
           authorizePresence:async scope=>{
@@ -3057,7 +3057,7 @@ async function initializeRuntime() {
         requestWorkspaceExportExact:(query,context)=>publicReferenceConsent?.requestExact(query,context),
         jobHelperExecutable:existsSync(commandHelper)?commandHelper:undefined,
         selectDirectory:async () => {
-          const result = await dialog.showOpenDialog(admin, {title:'选择允许 PersonalAgent 使用的编程工作区',
+          const result = await dialog.showOpenDialog(admin, {title:'选择允许 Synstar 使用的编程工作区',
             properties:['openDirectory']});
           return result.canceled ? undefined : result.filePaths[0];
         },

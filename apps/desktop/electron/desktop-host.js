@@ -21,7 +21,7 @@ export function createDesktopHost({onOrbPlacementChanged} = {}) {
     if (recoveryPrompt || win.isDestroyed()) return;
     recoveryPrompt = true;
     try {
-      const {response} = await dialog.showMessageBox({type: 'warning', title: 'PersonalAgent', message: '桌面设置未响应或已中断 / Desktop settings interrupted', detail: '重新加载会丢失未保存的设置。Reload discards unsaved settings.', buttons: ['重新加载 / Reload', '取消 / Cancel'], defaultId: 1, cancelId: 1});
+      const {response} = await dialog.showMessageBox({type: 'warning', title: 'Synstar', message: '桌面设置未响应或已中断 / Desktop settings interrupted', detail: '重新加载会丢失未保存的设置。Reload discards unsaved settings.', buttons: ['重新加载 / Reload', '取消 / Cancel'], defaultId: 1, cancelId: 1});
       if (response === 0 && !win.isDestroyed()) win.webContents.reload();
     } finally { recoveryPrompt = false; }
   }
@@ -162,7 +162,7 @@ export function createDesktopHost({onOrbPlacementChanged} = {}) {
   function openSettings() {
     if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.restore(); settingsWindow.show(); settingsWindow.focus(); return; }
     const display = screen.getPrimaryDisplay().workArea;
-    settingsWindow = new BrowserWindow({...restore('desktop-settings', {width: Math.min(780, display.width), height: Math.min(700, display.height)}), title: 'PersonalAgent · 桌面设置', autoHideMenuBar: true,
+    settingsWindow = new BrowserWindow({...restore('desktop-settings', {width: Math.min(780, display.width), height: Math.min(700, display.height)}), title: 'Synstar · 桌面设置', autoHideMenuBar: true,
       webPreferences: {preload: path.join(dir, 'desktop-preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false}});
     attach(settingsWindow, 'desktop-settings');
     settingsWindow.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
