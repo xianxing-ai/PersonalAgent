@@ -8,7 +8,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import {TOOL_DISCOVERY_NAME} from './tool-discovery.js';
-import {BROWSER_ACTIONS,BROWSER_EXPORT_WITHHELD} from './browser-worker.js';
+import {BROWSER_ACTIONS,BROWSER_EXPORT_WITHHELD,BROWSER_WORKER} from './browser-worker.js';
 import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
 
@@ -205,7 +205,7 @@ export interface CompetitionToolExport {
   project(input: {taskId: string; proposalId: string; result: unknown; signal: AbortSignal}): unknown | Promise<unknown>;
 }
 
-interface CompetitionCheckpoint {
+export interface CompetitionCheckpoint {
   executionEpoch?:number;
   step: number;
   continuation?: CoordinationContinuation;
@@ -453,6 +453,7 @@ export async function runCoordinationWorker(
       throw new ProtocolError('UNAUTHORIZED','Original Competition execution capacity binding changed');
     let maxSteps=capacity?.windowEndStep??originalMaxSteps;
     const saved = context.loadCheckpoint('competition-loop') as CompetitionCheckpoint | undefined;
+    const browserWorker = context.loadCheckpoint(BROWSER_WORKER)!==undefined;
     const executionEpoch=saved?.executionEpoch??0;
     runtime.assertExecutionEpoch(taskId,executionEpoch);
     let evidenceRefs = saved?.evidenceRefs ?? [];
@@ -520,7 +521,7 @@ export async function runCoordinationWorker(
           return;
         }
         if (event.kind === 'answer_delta') {
-          if (executionDiscovery) return;
+          if (executionDiscovery||browserWorker) return;
           streamedAnswer = true;
         }
         context.noteActivity?.({kind: event.kind === 'reasoning' ? 'reasoning' : 'answer_delta', stepId: `competition-${step}`, ...(event.text === undefined ? {} : {text: event.text}), label: event.label});
@@ -597,22 +598,23 @@ export async function runCoordinationWorker(
           consumeCompetitionCloudReceipt(runtime,taskId);
           throw new ProtocolError('EXTERNAL_FAILURE','云端只查到了工具，尚未执行用户要求的操作');
         }
-        if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: result.text, label: '回答'});
         let completion:unknown;
         try {completion=options.assertCompletion?.();}
         catch(error){
           runtime.assertExecutionEpoch(taskId,executionEpoch);
           context.saveCheckpoint('competition-completion-conflict',{version:1,executionEpoch,
             cloudResultDigest:createHash('sha256').update(JSON.stringify(result)).digest('hex'),
-            localVerdict:'required_delegation_incomplete'});
+            localVerdict:browserWorker?'required_browser_result_missing':'required_delegation_incomplete'});
+          if(browserWorker&&error instanceof ProtocolError&&error.code==='EXTERNAL_FAILURE')consumeCompetitionCloudReceipt(runtime,taskId);
           throw error;
         }
         if(completion!==undefined){void Promise.resolve(completion).catch(()=>undefined);
           throw new ProtocolError('INVALID_ARGUMENT','Competition completion check must be synchronous');}
+        if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: result.text, label: '回答'});
         return {resultSummary: summary(result.text, result.verification), evidenceRefs};
       }
       if (result.kind === 'repair_candidate') {
-        if (options.repairCandidateVersion !== '1.0') {
+        if (browserWorker||options.repairCandidateVersion !== '1.0') {
           throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Repair candidates are not enabled');
         }
         context.saveCheckpoint('competition-repair-candidate', result);
