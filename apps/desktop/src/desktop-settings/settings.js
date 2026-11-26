@@ -23,7 +23,7 @@ function apply(settings, locale) {
   words = text[language];
   document.documentElement.lang = language;
   document.documentElement.dataset.calm = String(settings.calm);
-  document.title = `PersonalAgent · ${words.title}`;
+  document.title = `Synstar · ${words.title}`;
   document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = words[node.dataset.i18n]; });
   document.documentElement.dataset.theme = settings.theme === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : settings.theme;
 }
@@ -37,7 +37,7 @@ async function read() {
     if (field) { if (field.type === 'checkbox') field.checked = value; else field.value = value; }
   }
   apply(current.settings, current.locale);
-  document.querySelector('#info').textContent = `PersonalAgent ${current.version} · Electron ${current.electron} · ${current.platform} ${current.arch} · ${current.displays.map(d => `${d.width}×${d.height} @ ${d.scale}×`).join(', ')}`;
+  document.querySelector('#info').textContent = `Synstar ${current.version} · Electron ${current.electron} · ${current.platform} ${current.arch} · ${current.displays.map(d => `${d.width}×${d.height} @ ${d.scale}×`).join(', ')}`;
   document.querySelector('#log').textContent = current.logs;
   const container = document.querySelector('#windows');
   container.replaceChildren();

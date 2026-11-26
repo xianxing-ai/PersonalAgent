@@ -1,6 +1,6 @@
 {
   "id": "personal-agent-knowledge",
-  "name": "PersonalAgent Knowledge",
+  "name": "Synstar Knowledge",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
   "description": "Search an explicitly selected folder locally and open version-checked citations.",

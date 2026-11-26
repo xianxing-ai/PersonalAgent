@@ -276,7 +276,7 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
   const currentOrigin = () => originStore.getStore() === 'autonomous' ? 'autonomous' : 'user';
   let readRuntime;
   let notifier = async notice => {
-    if (Notification?.isSupported?.()) new Notification({title: 'PersonalAgent 用量', body: notice.body}).show();
+    if (Notification?.isSupported?.()) new Notification({title: 'Synstar 用量', body: notice.body}).show();
   };
   const budget = createUsageBudgetHost({
     userData, safeStorage, now, timeZone,
@@ -304,7 +304,7 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
     bindNotifier(port) {
       if (!port || typeof port.sendAdvisoryNotification !== 'function') throw Error('用量通知端口无效');
       notifier = async notice => {
-        await port.sendAdvisoryNotification({id: notice.id, title: 'PersonalAgent 用量', body: notice.body, source: 'usage-budget'});
+        await port.sendAdvisoryNotification({id: notice.id, title: 'Synstar 用量', body: notice.body, source: 'usage-budget'});
       };
     },
     decide(input) { return budget.decide({...input, candidates: input.candidates ?? candidates?.() ?? []}); },

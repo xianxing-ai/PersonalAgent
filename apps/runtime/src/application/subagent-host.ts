@@ -320,7 +320,7 @@ export async function runSubagentWorker(options: SubagentHostOptions, subtask: S
     if (typeof value === 'string' && value.trim() && value.trim().length <= 2_000) preferenceText = value.trim();
   } catch { preferenceText = ''; }
   const rolePrompt: ModelMessage = {role: 'system',
-    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。${preferenceText ? `\n\n${preferenceText}` : ''}`};
+    content: `你是 Synstar 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。${preferenceText ? `\n\n${preferenceText}` : ''}`};
   const typePrompt = childWorker.loadCheckpoint('async-subagent-type:v1') as {instructions?: unknown; version?: unknown} | undefined;
   const typeInstructions = typePrompt && typeof typePrompt.instructions === 'string' ? typePrompt.instructions.trim() : '';
   if (typeInstructions) rolePrompt.content += `\n\n自定义类型指示（version ${typeof typePrompt?.version === 'number' ? typePrompt.version : 0}）：\n${typeInstructions}`;

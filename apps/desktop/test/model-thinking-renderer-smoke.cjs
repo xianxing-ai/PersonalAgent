@@ -41,7 +41,7 @@ const {chromium}=require('playwright');
     const checkMenu=async()=>{const box=await page.locator('.model-thinking-menu').boundingBox();const size=page.viewportSize();assert.ok(box&&box.x>=0&&box.y>=0&&box.x+box.width<=size.width+1&&box.y+box.height<=size.height+1,JSON.stringify({box,size}));};
     await page.goto(url+'?mode=panel');await page.locator('[data-picker-model]').filter({hasText:'示例旗舰模型'}).waitFor();
     if(process.env.PA_PICKER_STOP_QA==='1'){
-      assert.match(page.url(),/mode=panel/);assert.match(await page.title(),/PersonalAgent/);
+      assert.match(page.url(),/mode=panel/);assert.match(await page.title(),/Synstar/);
       await page.evaluate(()=>{const f=window.pickerFixture;f.state.tasks=[{taskId:'synthetic-stop-compat',goal:'Synthetic active task',state:'running',createdAt:new Date().toISOString(),steps:[],resultSummary:'Synthetic before stop'}];f.publish();});
       await page.getByRole('combobox',{name:'对话中发送方式',exact:true}).selectOption('queue');
       await page.getByRole('textbox',{name:'任务内容',exact:true}).fill('Synthetic queued draft');await page.locator('#send').click();
@@ -64,7 +64,7 @@ const {chromium}=require('playwright');
         checks:['queue does not submit while running','stop retains paused draft','late result remains truncated','picker and Fast remain usable','one slider','no page or console errors'],screenshots,errors};
       fs.writeFileSync(path.join(output,'stop-queue-result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));return;
     }
-    assert.match(page.url(),/mode=panel/);assert.match(await page.title(),/PersonalAgent/);
+    assert.match(page.url(),/mode=panel/);assert.match(await page.title(),/Synstar/);
     assert.equal(await page.locator('input[type=range]').count(),1);assert.equal(await page.getByRole('slider',{name:/执行步骤预算|主思考模型/}).count(),0);
     await page.getByRole('button',{name:'模型与思考',exact:true}).click();await checkMenu();
     assert.equal(await page.locator('.picker-model-choices').isVisible(),false);assert.equal(await page.locator('.picker-model-list button').count(),3);assert.match(await page.locator('.picker-detail').textContent(),/默认组合/);
@@ -89,7 +89,7 @@ const {chromium}=require('playwright');
     await page.evaluate(()=>{localStorage.setItem('pa-theme','light');document.documentElement.dataset.theme='light';});
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.picker-model-heading')).color==='rgb(23, 23, 23)');await capture('panel-narrow-light.png');
     await page.setViewportSize({width:1000,height:760});await page.goto(url+'?mode=workspace');await page.locator('[data-picker-model]').filter({hasText:'示例旗舰模型'}).waitFor();
-    assert.match(page.url(),/mode=workspace/);assert.match(await page.title(),/PersonalAgent/);
+    assert.match(page.url(),/mode=workspace/);assert.match(await page.title(),/Synstar/);
     assert.equal(await page.locator('input[type=range]').count(),1);await page.getByRole('button',{name:'模型与思考',exact:true}).click();await openChoices();await page.getByRole('button',{name:'示例轻量模型',exact:true}).click();await settled();assert.equal(await range().getAttribute('max'),'1');
     await range().focus();await page.keyboard.press('End');await settled();assert.equal(await page.evaluate(()=>window.pickerFixture.state.conversationPreference.executionModel.reasoningEffort),'max');await checkMenu();await capture('workspace-max.png');
     assert.deepEqual(errors,[]);

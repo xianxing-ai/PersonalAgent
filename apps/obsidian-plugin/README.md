@@ -1,4 +1,4 @@
-# PersonalAgent Knowledge 桌面插件
+# Synstar Knowledge 桌面插件
 
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责

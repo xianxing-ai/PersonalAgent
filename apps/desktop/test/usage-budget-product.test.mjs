@@ -58,7 +58,7 @@ test('startup hooks record a real gateway call, survive restart, drive settings,
   await host.getModelGateway(expensive.id, expensive.configurationRef).complete(request());
   assert.deepEqual(calls, ['qwen-max']);
   assert.equal(notices.length, 1);
-  assert.equal(notices[0].title, 'PersonalAgent 用量');
+  assert.equal(notices[0].title, 'Synstar 用量');
   assert.match(notices[0].body, /接近上限/);
   assert.match(notices[0].id, /^usage-budget-approach-/);
 

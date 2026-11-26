@@ -183,7 +183,7 @@ export function mountComputerControls(root, invoke) {
     const target = event.target.closest('[data-computer-action]');
     if (closed || !target || !section.contains(target) || target.disabled) return;
     const action = target.dataset.computerAction;
-    if (action === 'demo') {field('text').value = '在当前窗口输入“PersonalAgent 电脑操作演示”，先不要发送或提交。'; paint(); return;}
+    if (action === 'demo') {field('text').value = '在当前窗口输入“Synstar 电脑操作演示”，先不要发送或提交。'; paint(); return;}
     if (action === 'open') {
       const original = originalTask(); if (!original) return;
       try {await invoke('task.openConversation', {taskId: original});}

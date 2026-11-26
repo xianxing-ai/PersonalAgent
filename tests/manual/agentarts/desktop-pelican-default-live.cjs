@@ -375,7 +375,7 @@ async function installPublicDialogAutomation(app, inputs) {
     const originalOpen = dialog.showOpenDialog.bind(dialog);
     const originalMessage = dialog.showMessageBox.bind(dialog);
     const selections = new Map([
-      ['选择允许 PersonalAgent 使用的编程工作区', values.workspace],
+      ['选择允许 Synstar 使用的编程工作区', values.workspace],
       ['选择可信安装目录中的 Node 可执行文件', values.node],
       ['选择可信 Node 安装目录中的 npm-cli.js', values.npm],
       ['选择此工作区内需要语法检查的文件', values.check],
