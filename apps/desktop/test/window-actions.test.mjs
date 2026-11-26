@@ -30,3 +30,35 @@ test('native window state is readable only for settings and workspace surfaces',
   for(const mode of ['admin','workspace'])assert.equal(read({mode,win:{isMaximized:()=>true}}).maximized,true);
   for(const mode of ['orb','panel','desktop-settings'])assert.throws(()=>read({mode,win:{isMaximized(){assert.fail('state must not be read');}}}),/unavailable/);
 });
+
+test('a delayed bottom-placement command respects the current panel activation', async () => {
+  function findLower(node) {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'lowerWhenIdle') return node;
+    return ts.forEachChild(node, findLower);
+  }
+  const settings = {orbPlacement:'bottom'};
+  let finishNative, z, focused, visible, destroyed;
+  const win = {
+    isFocused:() => focused, isVisible:() => visible, isDestroyed:() => destroyed,
+    moveTop() { z = 'top'; },
+  };
+  const lower = vm.runInNewContext('(' + findLower(host).getText(host) + ')', {
+    process:{platform:'win32'}, dir:'', app:{}, state:{value:{settings}},
+    lowering:new Map(), AbortController,
+    lowerOwnDesktopWindow:() => new Promise(resolve => {
+      finishNative = () => { z = 'bottom'; resolve(); };
+    }),
+  });
+  for (const scenario of ['refocus','blur-again','hidden','destroyed','new-placement','orb']) {
+    focused = false; visible = true; destroyed = false; z = 'top'; settings.orbPlacement = 'bottom';
+    const pending = lower(win, scenario === 'orb' ? 'orb' : 'panel');
+    focused = true;  // The user reopened the panel while its helper was starting.
+    if (scenario === 'blur-again') focused = false;
+    if (scenario === 'hidden') visible = false;
+    if (scenario === 'destroyed') destroyed = true;
+    if (scenario === 'new-placement') settings.orbPlacement = 'top';
+    finishNative();
+    await pending;
+    assert.equal(z, scenario === 'refocus' ? 'top' : 'bottom', scenario);
+  }
+});

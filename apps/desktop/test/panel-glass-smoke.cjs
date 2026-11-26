@@ -26,6 +26,29 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     assert.equal((await orb.evaluate(() => window.desktop.invoke('orb.open'))).ok, true);
     const panel = app.windows().find(page => page.url().includes('mode=panel'));
     await panel.waitForSelector('[data-session-list] option', {state:'attached'});
+    const draft = panel.locator('.composer>textarea');
+    const starters = panel.locator('#quick-start button');
+    await starters.first().click();
+    assert.equal(await draft.inputValue(), await starters.first().getAttribute('data-fill'));
+    await draft.fill('已手写的事项');
+    await starters.nth(1).focus();
+    await panel.keyboard.press('Enter');
+    assert.equal(await draft.inputValue(), '已手写的事项\n' + await starters.nth(1).getAttribute('data-fill'));
+    await starters.nth(2).click();
+    await starters.nth(2).click();
+    assert.equal(await draft.inputValue(), '已手写的事项\n' + await starters.nth(2).getAttribute('data-fill'));
+    assert.equal(await draft.evaluate(input => document.activeElement === input), true);
+    await draft.fill('');
+    const compact = panel.getByRole('button', {name:'压缩对话'});
+    await compact.click();
+    await compact.click();
+    assert.equal(await draft.inputValue(), '/压缩');
+    const original = '  手写草稿\n第二行  ';
+    await draft.fill(original);
+    await compact.click();
+    assert.equal(await draft.inputValue(), original);
+    assert.match(await panel.locator('#error').innerText(), /请先发送或清空当前草稿/);
+    await draft.fill('');
     const themeFlags = await app.evaluate(({nativeTheme}) => ({
       prefersReducedTransparency:nativeTheme.prefersReducedTransparency,
       shouldUseHighContrastColors:nativeTheme.shouldUseHighContrastColors,

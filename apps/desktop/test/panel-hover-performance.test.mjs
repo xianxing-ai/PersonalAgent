@@ -98,7 +98,47 @@ test('personalDashboardHost.tick suppresses unchanged onUpdate broadcasts and re
   assert.equal(updates, 1);
 });
 
-test('panel window stays warm in background and clears opaque blue backing flash after load', () => {
+test('panel window stays warm in background', () => {
   assert.match(mainSource, /mode === 'panel' \? \{autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false\} : \{\}/);
-  assert.match(mainSource, /if \(panelPageLoaded && !panel\.isVisible\(\)\) panel\.setBackgroundColor\('#00000000'\);/);
+});
+
+test('a hover-opened panel remains available for typing until focus and pointer both leave', () => {
+  let now = 1000, point = {x:50, y:50}, visible = false, focused = false, hides = 0;
+  const ctx = vm.createContext({
+    orb: {isDestroyed: () => false, getBounds: () => ({x:0, y:0, width:100, height:100})},
+    panel: {
+      isDestroyed: () => false, isVisible: () => visible, isFocused: () => focused,
+      getBounds: () => ({x:120, y:0, width:420, height:600}),
+      showInactive: () => { visible = true; },
+      // The native material owns the backing color through opening and theming.
+      setBackgroundColor: () => assert.fail('opening overwrote the material fallback'),
+    },
+    screen: {getCursorScreenPoint: () => point}, desktopHost: {settings:{hover:true, orbPlacement:'top'}},
+    dragging:false, pinned:false, away:0, workspace:undefined, placePanelNearOrb() {},
+    hidePanel: async () => { visible = false; hides++; }, reportPanelVoiceFailure: assert.fail,
+    Date:{now: () => now},
+  });
+  vm.runInContext(fn('openPanel') + '\n' + fn('pollPanelHover'), ctx);
+  const tick = (ms = 80) => { now += ms; ctx.pollPanelHover(); };
+  tick();
+  assert.equal(visible, true);
+  point = {x:130, y:10};
+  focused = true;
+  tick();
+  point = {x:900, y:900};
+  tick();
+  tick(800);
+  assert.equal(hides, 0, 'pointer left while the editor still had focus');
+  focused = false;
+  tick();
+  tick(400);
+  assert.equal(hides, 0, 'keep the hover grace period after focus leaves');
+  tick(200);
+  assert.equal(hides, 1);
+  point = {x:50, y:50};
+  tick();
+  point = {x:900, y:900};
+  tick();
+  tick(600);
+  assert.equal(hides, 2, 'an untouched hover preview still collapses');
 });
