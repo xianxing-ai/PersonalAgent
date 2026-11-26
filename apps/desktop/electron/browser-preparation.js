@@ -194,7 +194,7 @@ export async function addShopifyItem({page,meta,check,timeout,validate,markDispa
       return sum+line.quantity;
     },0);
   };
-  const beforeQuantity=await count();await validate();markDispatched();
+  const beforeQuantity=await count();await validate();await markDispatched();
   const result=await read(meta.cartBase+'cart/add.js',{items:[{id:item.id,quantity:meta.quantity}]});
   if(result.items?.length!==1||String(result.items[0].variant_id)!==meta.variantId)fail('RESULT_UNKNOWN','原规格加入购物袋的结果待核实');
   const afterQuantity=await count();

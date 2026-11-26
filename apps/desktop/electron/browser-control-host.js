@@ -4,7 +4,7 @@ import {isIP,connect as netConnect} from 'node:net';
 import {createServer,request as httpRequest,Agent as HttpAgent} from 'node:http';
 import path from 'node:path';
 import {mkdir, readFile, writeFile,unlink,mkdtemp,lstat,copyFile,rm} from 'node:fs/promises';
-import {existsSync,constants as fsConstants} from 'node:fs';
+import {constants as fsConstants} from 'node:fs';
 import {Transform} from 'node:stream';
 import {ProtocolError, ToolNotStartedError, validateToolValue} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -13,6 +13,9 @@ import {detectSecretsInText} from './authorization-operation-policy.js';
 import {redactEgressPersonalText} from './egress-host.js';
 import {computerControlRecoveryTaskStates,isComputerControlWrite,isReadOnlyBrowserReceipt} from './computer-control-lease.js';
 import {createBrowserWorkspacePage,validateWorkspaceCommand} from './browser-workspace-page.js';
+import {createWorkspaceMedia} from './browser-workspace-media.js';
+import {createWorkspacePointer} from './browser-workspace-pointer.js';
+import {locateControlledChromium} from './controlled-chromium.js';
 import {readPreparationFields,preparationPlan,addShopifyItem,observedAvailability} from './browser-preparation.js';
 
 const VERSION='1.0.0',SCOPE='browser:control',TTL=30_000,MAX_CONTROLS=100,MAX_TEXT=12_000,MAX_IMAGE=5_242_880;
@@ -359,6 +362,8 @@ export function createBrowserControlHost(options={}) {
       validateWorkspaceCommand(action,args);
       if(closed||typeof scope?.conversationId!=='string'||!scope.conversationId)fail('UNAUTHORIZED','当前聊天未绑定到工作台');
       visible=scope.conversationId;
+      if(!sessions.has(visible)&&action==='media')return {state:'idle'};
+      if(!sessions.has(visible)&&action==='frame')return {state:'unavailable'};
       if(!sessions.has(visible)&&['state','preview'].includes(action))
         return {state:'stopped',connected:false,busy:false,presenting:false,url:'',title:'',canGoBack:false,canGoForward:false};
       return session(visible).workspace(action,args,scope);
@@ -405,8 +410,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   const testOrigins=testOnlyAllowedOrigins.map(value=>new URL(value).origin);
   let application,context,page,egress,closed=false,blocked=false,busy=false,releaseFailed=false,activeOperation,state='stopped',generation=0;
   let session=new AbortController(),networkError,lastFailure,downloadSession,expectedDownload;
-  let workspaceOwned=false,pendingHandoff,handoffTask,waitingWorkers=0;
-  let pageConversation,pageOrigin,documentEpoch=0,presented,mediaPlayback,handoffDocument,confirmedDocument;
+  let workspaceOwned=false,pendingHandoff,handoffTask,waitingWorkers=0,readingFrame=false;
+  let pageConversation,pageOrigin,documentEpoch=0,mediaPlayback,handoffDocument,confirmedDocument;
   let localRead,workspaceVisibility=0,previewSuspended=false;
   const targets=new Map(),artifacts=new Map(),exportScopes=new Map(),exportRequests=new Map();
   const restrictedReads=new Map();
@@ -499,10 +504,14 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     if(blocked)fail('RESULT_UNKNOWN','原浏览器动作结果未知；先核实原任务，不会自动重放');
   }
   const networkOptions={dnsLookup,testOnlyAllowedOrigins:testOrigins,allowFakeIpProxy:Boolean(allowFakeIpProxy)};
-  const startMinimized=process.platform==='win32'&&!injectedPlaywright;
+  const workspaceMedia=createWorkspaceMedia(),pointer=createWorkspacePointer({now,onUpdate:publish});
   const workspacePage=createBrowserWorkspacePage({checkUrl:url=>assertPublicBrowserUrl(url,networkOptions),readDocument,findControl:control,
     navigateGet:authorizationQuestions?navigateGet:undefined,
-    beforeMediaPlay:startMinimized?presentWorkspacePage:undefined,fail,now});
+    mediaAttribute:workspaceMedia.attribute,onMedia:async(ownedPage,media,check)=>{
+      const source=!media.paused&&!media.ended&&/^https?:/i.test(media.source)?await assertPublicBrowserUrl(media.source,networkOptions):undefined;
+      check();workspaceMedia.select(ownedPage,media);
+      mediaPlayback=source?{page:ownedPage,document:ownedPage.url(),visibility:workspaceVisibility,url:source.href,origin:source.origin}:undefined;
+    },fail,now});
   const chatPages=new WeakMap();
   function captureChatPage(conversationId){
     if(!conversationId||!page||page.isClosed()||pageConversation!==conversationId||!pageOrigin||closed||blocked||busy&&!activeOperation?.passive)return;
@@ -515,25 +524,25 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     if(!owner||owner.conversationId!==conversationId||pageConversation!==conversationId||page!==owner.page||
       !page||page.isClosed()||page.url()!==owner.url||owner.epoch!==documentEpoch||closed||blocked||busy&&!activeOperation?.passive)return false;
     try{if(application?.runtime.getTask(taskId)?.conversationId!==conversationId)return false;}catch{return false;}
-    workspaceOwned=true;handoffTask=taskId;handoffDocument={page,epoch:documentEpoch};pendingHandoff=undefined;localRead=undefined;presented=undefined;mediaPlayback=undefined;clearTargets();++generation;
+    workspaceOwned=true;handoffTask=taskId;handoffDocument={page,epoch:documentEpoch};pendingHandoff=undefined;localRead=undefined;mediaPlayback=undefined;workspaceMedia.clear();pointer.clear();clearTargets();++generation;
     return true;
   }
   function allowLocalRead(url){
     if(!page||closed||blocked||!workspaceOwned||pendingHandoff||handoffTask)return false;
     const current=new URL(page.url()).origin;
-    if(presented?.page===page&&presented.origin===current)return true;
     return !previewSuspended&&!!localRead&&localRead.page===page&&localRead.expires>now()&&localRead.origin===url.origin&&current===url.origin;
   }
   function suspendWorkspaceView(){
-    previewSuspended=true;localRead=undefined;
+    previewSuspended=true;localRead=undefined;workspaceMedia.stop();pointer.clear();
   }
   function playingSource(url){
     return mediaPlayback&&mediaPlayback.page===page&&!page.isClosed()&&mediaPlayback.document===page.url()
-      &&!mediaPlayback.scope.signal.aborted&&now()<Date.parse(mediaPlayback.scope.deadline)&&mediaPlayback.origin===url.origin;
+      &&mediaPlayback.origin===url.origin&&(mediaPlayback.scope?!mediaPlayback.scope.signal.aborted&&now()<Date.parse(mediaPlayback.scope.deadline):
+        mediaPlayback.visibility===workspaceVisibility&&!previewSuspended&&workspaceOwned&&!handoffTask&&!pendingHandoff);
   }
   function releaseWorkspaceView(conversationId){
     if(conversationId&&conversationId!==pageConversation)return;
-    ++workspaceVisibility;localRead=undefined;pendingHandoff=undefined;presented=undefined;mediaPlayback=undefined;workspacePage.invalidate();
+    ++workspaceVisibility;localRead=undefined;pendingHandoff=undefined;mediaPlayback=undefined;workspaceMedia.clear();pointer.clear();workspacePage.invalidate();
   }
   function belongsToHandoff(taskId){
     const seen=new Set();
@@ -687,7 +696,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
             const write=!['GET','HEAD'].includes(event.request.method);
             if(page!==ownedPage||activeOperation!==operation||write&&from.origin!==to.origin)fail('UNAUTHORIZED');
             if(!operation||operation.passive){
-              if(!allowLocalRead(to)||top&&(presented?.origin!==to.origin||from.origin!==to.origin))fail('UNAUTHORIZED');
+              if(!allowLocalRead(to)||top)fail('UNAUTHORIZED');
             }else{
               active(operation.scope);
               if(operation.workspace&&operation.visibility!==workspaceVisibility||operation.downloadOrigin&&to.origin!==operation.downloadOrigin)fail('UNAUTHORIZED');
@@ -736,37 +745,12 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       throw browserError(lastFailure.code,lastFailure.message);
     }
   }
-  async function revealPage(ownedPage,check){
-    const driver=await ownedPage.context().newCDPSession(ownedPage);
-    try{
-      const {windowId,bounds}=await driver.send('Browser.getWindowForTarget');
-      check();
-      if(bounds.windowState==='minimized')await driver.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'normal'}});
-      check();await ownedPage.bringToFront();check();
-    }finally{await driver.detach().catch(()=>{});}
-  }
-  async function presentWorkspacePage(ownedPage,check){
-    const url=await assertPublicBrowserUrl(ownedPage.url(),networkOptions);
-    const samePage=()=>{
-      check();
-      if(ownedPage!==page||ownedPage.url()!==url.href)fail('REVISION_CONFLICT','网页已变化，请重新打开');
-    };
-    samePage();await revealPage(ownedPage,samePage);
-    samePage();presented={page:ownedPage,origin:url.origin};
-  }
   async function launchDriver(scope) {
     active(scope);if(context&&page&&!page.isClosed())return;
     if(context)await disposeContext(false);
     state='starting';publish();await mkdir(profile,{recursive:true});
     const lib=injectedPlaywright??await import('playwright');active(scope);
-    const edgeAvailable=process.platform==='win32'&&[
-      path.join(process.env['ProgramFiles(x86)']??'C:/Program Files (x86)','Microsoft/Edge/Application/msedge.exe'),
-      path.join(process.env.ProgramFiles??'C:/Program Files','Microsoft/Edge/Application/msedge.exe')].some(file=>existsSync(file));
-    const chromeAvailable=process.platform==='win32'&&[
-      path.join(process.env.ProgramFiles??'C:/Program Files','Google/Chrome/Application/chrome.exe'),
-      path.join(process.env['ProgramFiles(x86)']??'C:/Program Files (x86)','Google/Chrome/Application/chrome.exe'),
-      ...(process.env.LOCALAPPDATA?[path.join(process.env.LOCALAPPDATA,'Google/Chrome/Application/chrome.exe')]:[])].some(file=>existsSync(file));
-    const channel=!injectedPlaywright&&!existsSync(lib.chromium.executablePath())?(edgeAvailable?'msedge':chromeAvailable?'chrome':undefined):undefined;
+    const executablePath=injectedPlaywright?undefined:locateControlledChromium();
     egress=await createBrowserEgressProxy({...networkOptions,authorize:url=>{
       if(!activeOperation||activeOperation.passive)return allowLocalRead(url)||playingSource(url);
       if(activeOperation.workspace&&activeOperation.visibility!==workspaceVisibility)return false;
@@ -779,9 +763,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(url.origin!==pending.origin||pending.trafficBytes>maxDownloadBytes){rejectDownload('INVALID_ARGUMENT','下载流量超过受控来源或大小上限');fail('INVALID_ARGUMENT','下载流量超过受控上限');}
     }});
     let launched;
-    try{launched=await lib.chromium.launchPersistentContext(profile,{...(channel?{channel}:{}),headless:false,chromiumSandbox:true,acceptDownloads:false,serviceWorkers:'block',
+    try{launched=await lib.chromium.launchPersistentContext(profile,{...(executablePath?{executablePath}:{}),headless:true,chromiumSandbox:true,acceptDownloads:false,serviceWorkers:'block',
       proxy:{server:egress.server,username:egress.username,password:egress.password,bypass:'<-loopback>'},
-      viewport:{width:1280,height:800},permissions:[],args:[...(startMinimized?['--start-minimized']:[]),'--disable-background-networking','--disable-component-update',
+      viewport:{width:1280,height:800},permissions:[],args:['--disable-background-networking','--disable-component-update',
         '--disable-extensions','--disable-sync','--dns-prefetch-disable','--disable-quic','--proxy-bypass-list=<-loopback>',
         '--force-webrtc-ip-handling-policy=disable_non_proxied_udp']});
       active(scope);
@@ -808,8 +792,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           if(safeMethod&&request.resourceType()==='media'&&frame===page?.mainFrame()&&playingSource(url)&&mediaPlayback.url===url.href&&activeOperation===operation){
             await route.continue();return;
           }
-          const sameOriginInteraction=presented?.page===page&&presented.origin===url.origin&&new URL(frame.url()).origin===url.origin;
-          if((mainNavigation&&!sameOriginInteraction)||!allowLocalRead(url)||(!safeMethod&&!sameOriginInteraction)
+          if(mainNavigation||!allowLocalRead(url)||!safeMethod
             ||frame.page()!==page||activeOperation!==operation)fail('UNAUTHORIZED');
           await route.continue();return;
         }
@@ -850,27 +833,18 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     await context.routeWebSocket('**/*',socket=>socket.close());
     const pages=context.pages();page=pages[0]??await context.newPage();
     for(const extra of pages.slice(1))await extra.close();
-    if(startMinimized){
-      // Some branded Chromium builds initially ignore the startup hint.
-      // Presentation is best effort; the mandatory sandbox is set at launch.
-      const driver=await context.newCDPSession(page);
-      try{
-        const {windowId,bounds}=await driver.send('Browser.getWindowForTarget');
-        if(bounds.windowState!=='minimized')await driver.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'minimized'}});
-      }catch{}finally{await driver.detach().catch(()=>{});}
-    }
     if(authorizationQuestions)await guardRedirects(page);
     context.on('page',extra=>{if(extra!==page)void extra.close().catch(()=>{});});
     const launchedEgress=egress;
     context.on('close',()=>{if(context===launched){context=undefined;page=undefined;clearTargets();
-      releaseWorkspaceView();workspaceOwned=false;handoffTask=undefined;pageConversation=undefined;pageOrigin=undefined;presented=undefined;
+      releaseWorkspaceView();workspaceOwned=false;handoffTask=undefined;pageConversation=undefined;pageOrigin=undefined;
       if(egress===launchedEgress)egress=undefined;void launchedEgress.close().catch(()=>{});
       if(state!=='disposed')state=blocked?'blocked':'stopped';publish();}});
     page.on('download',download=>{if(!expectedDownload?.armed)void download.cancel().catch(()=>{});});
     page.on('dialog',dialog=>void dialog.dismiss().catch(()=>{}));
     const ownedPage=page;
     page.on('framenavigated',frame=>{
-      if(page===ownedPage&&frame===ownedPage.mainFrame()){++documentEpoch;clearTargets();confirmedDocument=undefined;mediaPlayback=undefined;workspacePage.invalidate();}
+      if(page===ownedPage&&frame===ownedPage.mainFrame()){++documentEpoch;clearTargets();confirmedDocument=undefined;mediaPlayback=undefined;workspaceMedia.clear();pointer.clear();workspacePage.invalidate();}
     });
     active(scope);state='ready';lastFailure=undefined;publish();
     }catch(error){await disposeContext().catch(()=>{});throw error;}
@@ -957,7 +931,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   }
   async function readDocument(ownedPage,attribute,localView=false,keepNodes) {
     const captureNodes=!!keepNodes&&!!authorizationQuestions;
-    const collect=({attribute,limit,textLimit,localView,exclude,captureNodes})=>{
+    const collect=({attribute,limit,textLimit,localView,exclude,captureNodes,mediaMarker})=>{
       const visible=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';};
       const safe=el=>!['password','file','hidden'].includes((el.getAttribute('type')??'').toLowerCase());
       const previous=localView?new Set(document.querySelectorAll('['+attribute+']')):undefined;
@@ -989,6 +963,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           ...(type==='a'?{downloadUrl:el.href,downloadAttribute:el.hasAttribute('download')}:{}),
           ...(['input','button'].includes(type)?{submitsForm:!!el.form&&['submit','image'].includes(el.type)}:{}),
           ...(media?{paused:el.paused===true,ended:el.ended===true,
+            ...(localView&&mediaMarker?{mediaPlaying:el.getAttribute(mediaMarker.attribute)===mediaMarker.token&&el.currentSrc===mediaMarker.source&&!el.paused&&!el.ended}:{}),
             mediaSource:source.length<=4096&&/^(?:https?:|blob:)/iu.test(source)?source:''}:{}),
           ...(type==='select'?{options:[...el.options].slice(0,40).map(o=>({value:o.value.slice(0,200),label:o.label.slice(0,200),
             ...(localView?{selected:o.selected,disabled:o.disabled||!!o.closest('optgroup[disabled]')}:{})}))}:{}),
@@ -1028,7 +1003,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       const data={title:document.title.slice(0,300),text:body,controls,truncated};
       return captureNodes?{data,nodes:all.slice(0,limit)}:data;
     };
-    const params={attribute,limit:MAX_CONTROLS,textLimit:MAX_TEXT,localView,exclude:pageChrome,captureNodes};
+    const watched=localView&&workspaceMedia.current(ownedPage);
+    const params={attribute,limit:MAX_CONTROLS,textLimit:MAX_TEXT,localView,exclude:pageChrome,captureNodes,
+      ...(watched?{mediaMarker:{attribute:watched.attribute,token:watched.token,source:watched.source}}:{})};
     if(!captureNodes)return ownedPage.evaluate(collect,params);
     const capture=await ownedPage.evaluateHandle(collect,params);
     try{
@@ -1109,7 +1086,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     await attempts?.record?.(identity,{...scope,arguments:structuredClone(args)});active(scope);
   }
   async function disposeContext(abort=true) {
-    releaseWorkspaceView();workspaceOwned=false;handoffTask=undefined;pageConversation=undefined;pageOrigin=undefined;presented=undefined;
+    releaseWorkspaceView();workspaceOwned=false;handoffTask=undefined;pageConversation=undefined;pageOrigin=undefined;
     ++generation;clearTargets();if(abort)session.abort();
     rejectDownload('CANCELLED','原下载任务已停止');const previousDriver=downloadSession;downloadSession=undefined;
     const proxy=egress;egress=undefined;await proxy?.close();
@@ -1151,7 +1128,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
           fail('REVISION_CONFLICT','此聊天刚打开了网页，请重新观察以取得本页授权');
       }
       if(!read||name==='open')workspacePage.invalidate();
-      presented=undefined;
+      if(name==='scroll'||name==='open')pointer.clear();
       busy=true;owned=true;activeOperation={scope,args,toolName,restrictedRead,restrictedTarget:restriction?.targetRef,preparationAction:name==='prepare'?args.action:undefined,
         readOnlyNavigation:name==='open'&&!!authorizationQuestions||restrictedRead==='link'||name==='prepare'&&args.action==='check_availability',
         readOnlyObservation:read&&!!authorizationQuestions||restrictedRead==='media',readOnlyScroll:name==='scroll'&&!!authorizationQuestions,
@@ -1196,13 +1173,13 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
               await validate();await recordAttempt(scope,args,toolName,()=>{recorded=true;});
               let extra={};
               if(args.action==='add_to_cart'){
-                extra=await addShopifyItem({page,meta,check,timeout,validate,markDispatched:()=>{dispatched=true;},fail});
+                extra=await addShopifyItem({page,meta,check,timeout,validate,markDispatched:async()=>{await pointer.mark(page,el,'prepare');await validate();dispatched=true;},fail});
               }else if(args.action==='check_availability'){
                 const url=await assertPublicBrowserUrl(meta.href,networkOptions);
-                await addNavigationOrigin(activeOperation,new URL(seen.url).origin,url.origin);await validate();dispatched=true;
+                await addNavigationOrigin(activeOperation,new URL(seen.url).origin,url.origin);await pointer.mark(page,el,'prepare');await validate();dispatched=true;
                 await navigateGet(page,url,()=>active(scope),timeout);
               }else{
-                await validate();dispatched=true;
+                await pointer.mark(page,el,'prepare');await validate();dispatched=true;
                 if(args.action==='set_date')await el.fill(args.value,{timeout:timeout()});
                 else if(selected.type.tag==='select')await el.selectOption({value:args.value},{timeout:timeout()});
                 else if(selected.type.tag==='label')await el.click({timeout:timeout()});
@@ -1301,28 +1278,29 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
             if(!unchanged)fail('REVISION_CONFLICT','原只读链接已经改变，请重新观察');
           }
           if(restrictedRead)currentTarget(scope,args,toolName);
+          if(['click','type','select'].includes(name)&&selected){
+            await pointer.mark(page,originalElement?.asElement()??selected.locator,name);
+            currentTarget(scope,args,toolName);
+          }
           forgetTarget(args.targetRef);dispatched=restrictedRead!=='media';
           const timeout=Math.max(1,Date.parse(scope.deadline)-now());
           if(name==='click'){
             if(args.mediaAction){
-              if(args.mediaAction==='play'&&startMinimized)await revealPage(seen.page,()=>{
-                active(scope);
-                if(page!==seen.page||page.url()!==seen.url||generation!==seen.generation||seen.epoch!==documentEpoch)
-                  fail('REVISION_CONFLICT','原媒体页面已变化，请重新观察');
-              });
               const originalMedia=restrictedRead==='media'?seen.controls.find(field=>field.ref===args.ref):undefined;
+              const token=randomUUID();
               dispatched=true;
-              const media=await (originalElement??selected.locator).evaluate(async(element,{action,source,tag,attribute,ref})=>{
+              const media=await (originalElement??selected.locator).evaluate(async(element,{action,source,tag,attribute,ref,mediaAttribute,token})=>{
                 if(!(element instanceof HTMLMediaElement))throw Error('Media unavailable');
                 if(tag&&(!element.isConnected||element.ownerDocument!==document||element.getAttribute(attribute)!==ref||
                   !element.getClientRects().length||!element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})||
                   element.tagName.toLowerCase()!==tag||!source||
                   (element.currentSrc||element.src||element.querySelector('source[src]')?.src||'')!==source))return null;
-                if(action==='play')await element.play();else element.pause();
-                return {source:element.paused?'':element.currentSrc,tag:element.tagName.toLowerCase(),paused:element.paused,ended:element.ended};
-              },{action:args.mediaAction,source:originalMedia?.mediaSource,tag:originalMedia?.tag,attribute:seen.attribute,ref:args.ref});
+                if(action==='play'){await element.play();element.setAttribute(mediaAttribute,token);}else element.pause();
+                return {source:element.paused?'':element.currentSrc,tag:element.tagName.toLowerCase(),paused:element.paused,ended:element.ended,token};
+              },{action:args.mediaAction,source:originalMedia?.mediaSource,tag:originalMedia?.tag,attribute:seen.attribute,ref:args.ref,
+                mediaAttribute:workspaceMedia.attribute,token});
               if(!media){dispatched=false;fail('REVISION_CONFLICT','原媒体或来源已变化，请重新观察');}
-              active(scope);mediaPlayback=undefined;
+              active(scope);mediaPlayback=undefined;workspaceMedia.select(page,media);
               const source=media.source;
               playback={action:args.mediaAction,tag:media.tag,paused:media.paused,ended:media.ended};
               if(source&&/^https?:/i.test(source)){
@@ -1387,7 +1365,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       activeOperation=undefined;busy=false;publish();}}
   }
   function workspaceState(){
-    return {...workspacePage.state(page),state:snapshot().state,connected:!!page&&!page.isClosed(),busy,presenting:!!presented};
+    return {...workspacePage.state(page),state:snapshot().state,connected:!!page&&!page.isClosed(),busy,presenting:false,
+      mediaPlaying:!!workspaceMedia.current(page),pointer:pointer.state(page)};
   }
   // The trusted local workbench is the caller. Its observations stay off the
   // model export path; worker tools above always require their original Runtime bindings.
@@ -1399,6 +1378,21 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(action==='state'||action==='preview')return {state:'stopped',connected:false,busy:false,url:'',title:'',canGoBack:false,canGoForward:false,presenting:false};
       fail('REVISION_CONFLICT','浏览器仍在另一段对话中使用，请先在原对话关闭页面');
     }
+    if(action==='frame'){
+      if(!page||page.isClosed()||previewSuspended||blocked||closed)return {state:'unavailable'};
+      if(readingFrame||busy&&!activeOperation?.workspace)return {state:'waiting',pointer:pointer.state(page)};
+      const epoch=workspaceVisibility,ownedPage=page;
+      const check=()=>{active(request);if(epoch!==workspaceVisibility||previewSuspended||ownedPage!==page||pageConversation!==conversationId)fail('CANCELLED');};
+      try{
+        check();readingFrame=true;
+        return {...await workspacePage.frame(ownedPage,check,()=>Math.max(1,Date.parse(request.deadline)-now())),pointer:pointer.state(ownedPage)};
+      }catch{return {state:'waiting'};}finally{readingFrame=false;}
+    }
+    if(action==='media'){
+      const check=()=>{active(request);if(previewSuspended||pageConversation!==conversationId)fail('CANCELLED');};
+      if(args.stop||!page||previewSuspended)return workspaceMedia.pull(page,{stop:true},check);
+      check();return workspaceMedia.pull(page,args,check);
+    }
     previewSuspended=false;
     if(action==='state')return workspaceState();
     if(busy||waitingWorkers)fail('REVISION_CONFLICT','浏览器正在处理另一项操作，请稍后再试');
@@ -1406,7 +1400,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     const scope={deadline:request.deadline,signal:AbortSignal.any([request.signal,session.signal,owned.signal])};
     active(scope);
     if(!page&&action==='preview')return workspaceState();
-    const passive=['preview','handoff'].includes(action);
+    const passive=['preview','handoff','present'].includes(action);
     const visibility=workspaceVisibility;
     let release;
     const finished=new Promise(resolve=>{release=resolve;});
@@ -1419,7 +1413,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     const interrupt=()=>{if(!passive&&context&&activeOperation===operation)void context.close().catch(()=>{});};
     scope.signal.addEventListener('abort',interrupt,{once:true});
     busy=true;activeOperation=operation;networkError=undefined;
-    if(!passive){clearTargets();++generation;++documentEpoch;presented=undefined;mediaPlayback=undefined;localRead=undefined;pendingHandoff=undefined;handoffTask=undefined;workspaceOwned=true;publish();}
+    if(!passive){clearTargets();pointer.clear();++generation;++documentEpoch;mediaPlayback=undefined;localRead=undefined;pendingHandoff=undefined;handoffTask=undefined;workspaceOwned=true;publish();}
     try{
       if(action==='close'){await disposeContext(false);return {...workspaceState(),busy:false};}
       if(action==='open'){
@@ -1428,11 +1422,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       check();
       if(!page||page.isClosed())fail('UNSUPPORTED_CAPABILITY','请先打开公共网页');
       const ownedPage=page;
-      if(action==='present'){
-        await presentWorkspacePage(ownedPage,check);
-        return {...workspaceState(),busy:false};
-      }
-      if(action!=='preview'){
+      if(action!=='preview'&&action!=='present'){
         const handoff=await workspacePage.operate(ownedPage,action,args,operation,check,timeout);
         check();if(action==='handoff'){
           workspaceOwned=true;handoffTask=undefined;localRead=undefined;clearTargets();++generation;
