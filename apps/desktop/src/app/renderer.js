@@ -27,6 +27,8 @@ import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {approvalCards,approvalResponse,focusApprovalCard,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
+import {bindCompactButton} from '../features/conversation/compact-command.js';
+import {createStarterDraft} from '../features/conversation/starter-draft.js';
 import {applyOperatorBrake} from '../features/conversation/operator-brake-view.js';
 import {mountPanelLight} from './panel-light.js';
 import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
@@ -212,10 +214,9 @@ else {
   tasksNode.addEventListener?.('toggle',()=>syncTraceDisclosures(tasksNode,panelLiveTurns),true);
   window.addEventListener('unload',()=>removeAnswerStream?.(),{once:true});
   const briefingPanel=mountBriefingPanel(thread,invoke);
-  const compact=document.createElement('button');compact.type='button';compact.id='compact';compact.className='compact-entry';compact.textContent='压缩';compact.title='把较早的对话收成摘要';compact.setAttribute('aria-label','压缩对话');
+  const compact=document.createElement('button');compact.id='compact';compact.className='compact-entry';
+  bindCompactButton(compact,input,root.querySelector('#error'));
   form.querySelector('.composer-bar')?.prepend(compact);
-  compact.onclick=()=>{const text=input.value.trim();if(!/^\/(?:压缩|compact)\b/u.test(text))input.value=text?`/压缩 ${text}`:'/压缩 ';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};
-  input.title='也可以输入 /压缩 或 /compact，把较早的对话收成摘要。';
   const messageQueue=createMessageQueue();
   const sendingQueueIds=new Set();
   const deliveryControls=document.createElement('div');deliveryControls.className='message-delivery';
@@ -249,9 +250,13 @@ else {
   };
   const updateProgress=mountTaskProgress(thread.parentElement,thread,taskId=>invoke('computer.control.confirm',{taskId}));
   const quickStart=root.querySelector('#quick-start');
+  const starterDraft=createStarterDraft(input);
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
-  quickStart.onclick=e=>{const chip=e.target.closest('button[data-fill]');if(!chip)return;input.value=chip.dataset.fill;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};
+  quickStart.onclick = event => {
+    const chip = event.target.closest('button[data-fill]');
+    if (chip) starterDraft.select(chip.dataset.fill);
+  };
   const prohibitionsRoot=document.createElement('aside');prohibitionsRoot.setAttribute('aria-label','本对话禁止项');root.querySelector('.panel').append(prohibitionsRoot);
   const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.panel header').after(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,input,invoke,report,{singleMain:true,flushBeforeClose:bridge?.flushDrafts,prohibitionsRoot});
   const preserveQueuedDrafts=event=>{
@@ -626,6 +631,7 @@ else {
     const hasActiveTask=stoppableTasks().length>0;
     stopButton.hidden=!hasActiveTask&&!pending&&voiceState!=='speaking'&&!data.live?.active;
     stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持实时语音）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
+    if (changed) starterDraft.reset();
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
     root.querySelector('.bubble').hidden=!emptyThread;quickStart.hidden=!emptyThread;
     const voiceSpeaking=voiceState==='speaking';

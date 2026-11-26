@@ -103,7 +103,12 @@ export function createDesktopHost({onOrbPlacementChanged} = {}) {
     if (lowering.has(win)) return lowering.get(win).request;
     const controller = new AbortController();
     const request = lowerOwnDesktopWindow(win, {electronDir: dir, packaged: app.isPackaged,
-      resourcesPath: process.resourcesPath, signal: controller.signal}).finally(() => lowering.delete(win));
+      resourcesPath: process.resourcesPath, signal: controller.signal}).then(() => {
+      // The native command can finish after a user reopens the panel. Restore
+      // its stacking order only while it still owns focus; moveTop does not activate it.
+      if (mode === 'panel' && state.value.settings.orbPlacement === 'bottom' &&
+          !win.isDestroyed() && win.isVisible() && win.isFocused()) win.moveTop();
+    }).finally(() => lowering.delete(win));
     lowering.set(win, {controller, request});
     return request;
   }

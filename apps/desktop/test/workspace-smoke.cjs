@@ -18,7 +18,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
   const errors = [], shellCases = [];
   app.on('window', page => page.on('pageerror', error => errors.push(error.message)));
 
-  async function assertFlatShell(page, selector) {
+  async function assertFlatShell(page, selector, expectedBackground) {
     const shell = await page.locator(selector).evaluate(element => {
       const style = getComputedStyle(element), rect = element.getBoundingClientRect();
       return {x:rect.x,y:rect.y,width:rect.width,height:rect.height,viewportWidth:innerWidth,viewportHeight:innerHeight,
@@ -29,7 +29,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     assert.ok(Math.abs(shell.width-shell.viewportWidth)<1 && Math.abs(shell.height-shell.viewportHeight)<1,JSON.stringify(shell));
     assert.equal(shell.border,'0px');assert.equal(shell.radius,'0px');
     assert.equal(shell.shadow,'none');assert.equal(shell.clip,'none');assert.equal(shell.blur,'none');
-    assert.match(shell.background,/^rgba?\(/,'the workspace has a readable acrylic coat; settings retain their opaque theme');
+    assert.equal(shell.background, expectedBackground, selector+' keeps its selected theme and material');
     shellCases.push({selector,...shell});
   }
 
@@ -116,26 +116,31 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     await admin.waitForSelector('[data-page="appearance"]',{state:'attached'});
     for (const removed of ['import', 'browser', 'account']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
     assert.equal(await admin.locator('.side [data-page="usage"]').count(), 1, 'the usage and billing route remains available');
+    await admin.getByRole('button', {name:'专业配置', exact:true}).click();
     await admin.locator('.side [data-page="usage"]').click();
     await admin.locator('#content h2').filter({hasText:'使用情况和计费'}).waitFor();
     assert.equal(await admin.locator('.side [data-page="tasks"]').count(), 1, 'the current task monitoring route remains available');
-    await admin.locator('.side [data-page="settings"]').click();
-    await admin.locator('[data-jump="appearance"]').click();
+    await admin.locator('.side [data-page="appearance"]').click();
     for (const theme of ['dark', 'light']) {
       await admin.locator('#pref-theme').selectOption(theme);
       await workspace.waitForFunction(value => document.documentElement.dataset.theme === value, theme);
-      const expected=theme==='light'?'rgb(233, 235, 238)':'rgb(17, 18, 21)';
-      assert.equal(await workspace.locator('.workspace').evaluate(element => getComputedStyle(element).backgroundColor),expected,'workspace follows the selected solid glass theme');
-      assert.equal(await admin.locator('.admin').evaluate(element => getComputedStyle(element).backgroundColor),expected,'settings follow the same theme');
-      await assertFlatShell(workspace,'.workspace');
-      await assertFlatShell(admin,'.admin');
+      await admin.waitForFunction(value => document.documentElement.dataset.theme === value, theme);
+      const workspaceBackground = theme === 'light' ? 'rgb(233, 235, 238)' : 'rgb(17, 18, 21)';
+      const reducedTransparency = await admin.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches);
+      const adminBackground = reducedTransparency
+        ? {dark:'rgb(11, 13, 18)', light:'rgb(244, 246, 249)'}[theme]
+        : {dark:'rgba(8, 10, 14, 0.72)', light:'rgba(240, 243, 248, 0.78)'}[theme];
+      await assertFlatShell(workspace,'.workspace',workspaceBackground);
+      await assertFlatShell(admin,'.admin',adminBackground);
       for (const page of [workspace,admin]) {
+        const selector = page === workspace ? '.workspace' : '.admin';
+        const background = page === workspace ? workspaceBackground : adminBackground;
         await page.locator('[data-window="maximize"]').click();
         await page.waitForFunction(() => document.documentElement.dataset.windowMaximized === 'true');
-        await assertFlatShell(page,page===workspace?'.workspace':'.admin');
+        await assertFlatShell(page,selector,background);
         await page.locator('[data-window="maximize"]').click();
         await page.waitForFunction(() => document.documentElement.dataset.windowMaximized === 'false');
-        await assertFlatShell(page,page===workspace?'.workspace':'.admin');
+        await assertFlatShell(page,selector,background);
       }
       await workspace.screenshot({path: path.join(output, `workspace-${theme}.png`)});
       await captureNative('workspace', `native-workspace-${theme}.png`);
@@ -148,12 +153,20 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     await workspace.locator('[data-window="close"]').click();
     await orb.evaluate(() => window.desktop.invoke('orb.open'));
     await panel.locator('#send').click();
-    await panel.waitForSelector('[data-action="task.cancel"]');
-    await panel.evaluate(async () => {
-      const snapshot = await window.desktop.invoke('snapshot');
-      for (let step = 0; step < 4; step++) await window.desktop.invoke('test.advance', snapshot.value.tasks[0].taskId);
-    });
+    const firstTurn = panel.locator('[data-turn]').filter({hasText:'从小面板继续'});
+    await firstTurn.getByRole('button', {name:'推进联调', exact:true}).waitFor();
+    const firstTaskId = await firstTurn.getAttribute('data-turn');
     await panel.locator('textarea[aria-label="任务内容"]').fill('小窗口的第二轮');
+    await panel.getByRole('button', {name:'停止当前任务', exact:true}).waitFor();
+    const completed = await panel.evaluate(async taskId => {
+      let result;
+      for (let step = 0; step < 4; step++) {
+        result = await window.desktop.invoke('test.advance', taskId);
+        if (!result.ok) throw Error(result.error || 'Fake Runtime 未能推进首轮任务');
+      }
+      return result.value;
+    }, firstTaskId);
+    assert.equal(completed.state, 'succeeded');
     await panel.locator('#send').click();
     await panel.waitForFunction(() => document.querySelectorAll('[data-turn]').length === 2);
     assert.equal(await panel.locator('.conversation-rail button').count(), 2);
@@ -162,7 +175,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     await captureNative('panel', 'native-panel.png');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output,'shell-receipt.json'),JSON.stringify({profile:'explicit_fake_runtime',bounds,shellCases,pageErrors:errors},null,2));
-    console.log('PASS: light/dark solid glass workspace and settings; maximize/restore; connectors, orb, conversations and native captures verified; screenshots: ' + output);
+    console.log('PASS: light/dark workspace and settings materials; maximize/restore; connectors, orb, conversations and native captures verified; screenshots: ' + output);
   } finally {
     await closeDesktop(app);
   }
