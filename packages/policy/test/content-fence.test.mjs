@@ -16,6 +16,9 @@ test('mail, web, file and other tool results keep a source kind', () => {
   assert.equal(externalKindForTool('weather.forecast'), 'tool');
   assert.equal(isLocalReadOnlyTool('conversation.read_history', 'read'), true);
   assert.equal(isLocalReadOnlyTool('workspace.read_text', 'read'), true);
+  assert.equal(isLocalReadOnlyTool('workflow.image.catalog', 'read'), true);
+  assert.equal(isLocalReadOnlyTool('Workflow.Image.Catalog', 'read'), false);
+  assert.equal(isLocalReadOnlyTool('workflow.image.catalog', 'local_write'), false);
   assert.equal(isLocalReadOnlyTool('mail.inbox', 'read'), false);
   assert.equal(isLocalReadOnlyTool('workspace.apply_patch', 'local_write'), false);
 });
