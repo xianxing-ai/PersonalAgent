@@ -24,10 +24,11 @@ export interface MailMessage {
   seen: boolean;
 }
 
-/** 增量游标：`uidValidity:lastUid`——只返回 UID 更大的邮件；uidValidity 变化 → CURSOR_EXPIRED。 */
+/** The last returned UID is exclusive. Descending cursors are tagged; old cursors remain ascending. */
 export interface MailCursor {
   uidValidity: number;
   lastUid: number;
+  order?: 'newest';
 }
 
 export interface MailFetchInput {
@@ -35,6 +36,7 @@ export interface MailFetchInput {
   cursor?: MailCursor;
   limit: number;
   since?: string;
+  order?: 'oldest' | 'newest';
   signal?: AbortSignal;
 }
 
@@ -119,15 +121,15 @@ export interface MailProvider {
 }
 
 export function encodeMailCursor(cursor: MailCursor): string {
-  return `${cursor.uidValidity}:${cursor.lastUid}`;
+  return `${cursor.order === 'newest' ? 'newest:' : ''}${cursor.uidValidity}:${cursor.lastUid}`;
 }
 
 export function decodeMailCursor(value: string): MailCursor {
-  const match = /^(\d+):(\d+)$/.exec(value);
+  const match = /^(?:newest:)?(\d+):(\d+)$/.exec(value);
   const uidValidity = match === null ? Number.NaN : Number(match[1]);
   const lastUid = match === null ? Number.NaN : Number(match[2]);
   if (!Number.isSafeInteger(uidValidity) || !Number.isSafeInteger(lastUid)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Malformed mail cursor; expected uidValidity:lastUid');
   }
-  return {uidValidity, lastUid};
+  return value.startsWith('newest:') ? {uidValidity, lastUid, order: 'newest'} : {uidValidity, lastUid};
 }
