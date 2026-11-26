@@ -193,7 +193,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     if(!forceAsk&&!autoFullContent)contentConfirmation=operationContentConfirmation(source);
     // The main host describes the actual observed element. The model proposal
     // supplies only references and the original exact parameters remain visible.
-    const click=!secrets&&source.toolName==='browser.click'?describeBrowserClick?.(source):undefined;
+    const click=!secrets&&['browser.click','browser.prepare'].includes(source.toolName)?describeBrowserClick?.(source):undefined;
     if(click&&contentConfirmation){
       const text=click.detail+'\n\n'+contentConfirmation.text;
       contentConfirmation={text,digest:digest(text)};
