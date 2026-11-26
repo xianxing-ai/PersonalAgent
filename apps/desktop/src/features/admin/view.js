@@ -835,9 +835,13 @@ export function mountAdmin(root, invoke, escape) {
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
       ? document.activeElement.parentElement.dataset.taskDetails : undefined;
+    const focusedMetric = renderedSection === section && document.activeElement?.dataset?.udMetric;
     renderedSection = section; memoryRenderKey = nextMemoryKey;
     if (!retainContent) {
       root.querySelector('#content').innerHTML = content;
+      if (focusedMetric && document.activeElement === document.body) {
+        root.querySelector(`#content [data-ud-metric="${CSS.escape(focusedMetric)}"]`)?.focus({preventScroll: true});
+      }
       root.querySelectorAll('[data-task-details]').forEach(details => {
         if (taskDetails.has(details.dataset.taskDetails)) details.open = taskDetails.get(details.dataset.taskDetails);
         if (focusedSummary === details.dataset.taskDetails && document.activeElement === document.body) {

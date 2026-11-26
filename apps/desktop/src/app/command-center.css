@@ -219,7 +219,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .subagent-conversations button {padding:3px 5px;border:0;border-radius:5px;background:transparent;color:var(--cc-dim);font-size:9px}
 .command-center .subagent-conversations button:hover {color:var(--cc-text);background:var(--cc-hover)}
 .command-center .subagent-conversations .notice:empty {display:none}
-.cc-activity header {border-top:1px solid var(--cc-line);padding-top:17px}
+.cc-activity {padding-top:10px;border-top:1px solid var(--cc-line)}
 .cc-activity-list>button {display:flex;width:100%;align-items:center;gap:8px;padding:10px 6px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--cc-muted)}
 .cc-activity-list>button:hover {background:var(--cc-hover)}
 .cc-activity-list>button>span:nth-child(2) {flex:1;min-width:0}
@@ -227,7 +227,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .cc-activity-list small {display:block;margin-top:4px;color:var(--cc-dim);font-size:8px}
 .cc-activity-list>button>svg {width:10px;height:10px;color:var(--cc-dim)}
 .cc-activity-dot {width:4px;height:4px;border-radius:50%;background:var(--cc-dim);flex-shrink:0}
-.cc-activity-empty {padding:12px 8px}.cc-activity-empty>span {display:none}.cc-activity-empty strong {font-size:10px;font-weight:400;color:var(--cc-muted)}.cc-activity-empty p {font-size:9px;color:var(--cc-dim);line-height:1.8;margin:8px 0 0}
+.cc-activity-empty,.command-center .cc-internal-empty {margin:0;padding:0 1px;color:var(--cc-muted);font:11.5px/1.5 var(--font-ui)}
 .cc-timeline {border:1px solid var(--cc-line);border-radius:9px;padding:14px 16px;background:var(--cc-soft)}
 .cc-timeline header {display:flex;align-items:center;gap:7px;font-size:10px;color:var(--cc-muted);margin-bottom:14px}
 .cc-timeline header svg {width:13px;height:13px}.cc-timeline header span {margin-left:auto;font-size:8px;color:var(--cc-dim)}
@@ -758,8 +758,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-showing-assistant :is(.cc-empty,.workspace-composer,.cc-starters) {display:none}
 /* Right sidebar: Internal Group Chat (Main <-> Assistants) */
 .command-center .cc-internal-chat {
-  display:flex;flex-direction:column;gap:8px;min-width:0;
-  padding-top:14px;border-top:1px solid var(--cc-line)
+  display:flex;flex-direction:column;gap:0;min-width:0
 }
 .command-center .cc-internal-chat>header {
   display:flex;align-items:center;justify-content:space-between;gap:8px;
@@ -768,22 +767,11 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-internal-chat>header h2 {
   font-size:11.5px;font-weight:550;color:var(--cc-muted);letter-spacing:.01em;margin:0
 }
-.command-center .cc-internal-chat>header>span {
-  margin-left:auto;padding:2px 7px;border-radius:999px;
-  border:1px solid var(--cc-line);background:var(--cc-soft);
-  font-size:9.5px;font-weight:500;line-height:1.3;color:var(--cc-dim);white-space:nowrap
-}
 .command-center .cc-internal-list {
   display:flex;flex-direction:column;gap:6px;min-width:0;
   max-height:176px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--cc-line) transparent
 }
 .command-center .cc-internal-list:empty {display:none}
-.command-center .cc-internal-empty {
-  margin:0;padding:8px 10px;border-radius:10px;
-  border:1px dashed var(--cc-line);background:rgba(255,255,255,.016);
-  font-size:10.8px;line-height:1.58;color:var(--cc-dim);overflow-wrap:anywhere
-}
-:root[data-theme="light"] .command-center .cc-internal-empty {background:rgba(15,23,42,.02)}
 .command-center .cc-internal-list article {
   display:flex;flex-direction:column;gap:3px;padding:8px 10px;
   border:1px solid var(--cc-line);border-radius:10px;background:var(--cc-soft);min-width:0
@@ -799,7 +787,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-internal-list article small {font-size:9.5px;color:var(--cc-dim)}
 .command-center .cc-internal-compose {
   display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;
-  padding:10px 11px 9px;border:1px solid var(--cc-line);border-radius:13px;
+  margin-top:7px;padding:9px 10px;border:1px solid var(--cc-line);border-radius:11px;
   background:var(--cc-soft);transition:border-color .15s ease,background-color .15s ease,box-shadow .15s ease
 }
 .command-center .cc-internal-compose:focus-within {
@@ -807,7 +795,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
   box-shadow:0 4px 16px -8px rgba(0,0,0,.22)
 }
 .command-center .cc-internal-compose textarea {
-  order:1;grid-column:1/-1;display:block;width:100%;min-height:48px;max-height:112px;
+  grid-column:1/-1;display:block;width:100%;min-height:33px;max-height:112px;
   field-sizing:content;padding:0 0 7px;margin:0;
   border:0;border-bottom:1px solid var(--cc-line);border-radius:0;
   background:transparent;color:var(--cc-text);font:12px/1.55 var(--font-ui);
@@ -816,7 +804,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-internal-compose textarea::placeholder {color:var(--cc-dim)}
 .command-center .cc-internal-compose textarea:focus-visible {outline:none;box-shadow:none}
 .command-center .cc-internal-compose label {
-  order:2;display:inline-flex;align-items:center;gap:6px;min-width:0;
+  display:inline-flex;align-items:center;gap:6px;min-width:0;
   font-size:10.5px;color:var(--cc-dim);white-space:nowrap
 }
 .command-center .cc-internal-compose select {
@@ -833,7 +821,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-internal-compose select:hover {border-color:var(--cc-dim)}
 .command-center .cc-internal-compose select option {background:var(--cc-solid);color:var(--cc-text)}
 .command-center .cc-internal-compose button[type="submit"] {
-  order:3;height:26px;padding:0 13px;border:0;border-radius:999px;
+  height:28px;padding:0 12px;border:0;border-radius:8px;
   background:var(--cc-action);color:var(--cc-action-ink);
   font:550 11px/1 var(--font-ui);cursor:pointer;white-space:nowrap;
   transition:opacity .14s ease,transform .12s ease
@@ -841,7 +829,7 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-internal-compose button[type="submit"]:hover:not(:disabled) {opacity:.9;transform:translateY(-0.5px)}
 .command-center .cc-internal-compose button[type="submit"]:disabled {opacity:.42;cursor:default}
 .command-center .cc-internal-status {
-  order:4;grid-column:1/-1;margin:0;font-size:10.5px;line-height:1.45;color:var(--cc-muted)
+  grid-column:1/-1;margin:0;font-size:10.5px;line-height:1.45;color:var(--cc-muted)
 }
 .command-center .cc-internal-status:empty {display:none}
 .command-center .cc-context>details {

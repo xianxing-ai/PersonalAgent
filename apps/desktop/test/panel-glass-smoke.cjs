@@ -4,6 +4,59 @@ const fs = require('node:fs');
 const {_electron} = require('playwright');
 const {closeDesktop}=require('../test-support/close-desktop.cjs');
 
+async function verifyPanelInput(app, panel) {
+  const cdp = await panel.context().newCDPSession(panel);
+  try {
+    await cdp.send('Emulation.setTouchEmulationEnabled', {enabled:true, maxTouchPoints:1});
+    const title = await panel.locator('.panel>header strong').boundingBox();
+    const x = title.x + title.width / 2, y = title.y + title.height / 2;
+    await panel.evaluate(() => {
+      const header = document.querySelector('.panel>header');
+      const listeners = new AbortController();
+      const done = event => {
+        header.dataset.terminalEvent = event.type;
+        listeners.abort();
+      };
+      header.addEventListener('pointerup', done, {signal:listeners.signal});
+      header.addEventListener('pointercancel', done, {signal:listeners.signal});
+    });
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchStart', touchPoints:[{x,y}]});
+    for (const distance of [7,14,21,28]) {
+      await cdp.send('Input.dispatchTouchEvent', {type:'touchMove', touchPoints:[{x:x+distance,y:y+distance}]});
+    }
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchEnd', touchPoints:[]});
+    const header = panel.locator('.panel>header[data-terminal-event]');
+    await header.waitFor({timeout:3000});
+    assert.equal(await header.getAttribute('data-terminal-event'), 'pointerup', 'title drag must reach finger release');
+    const bell = await panel.locator('#bell').boundingBox();
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchStart', touchPoints:[{x:bell.x+bell.width/2,y:bell.y+bell.height/2}]});
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchEnd', touchPoints:[]});
+    await panel.locator('#bell-menu').waitFor({timeout:3000});
+    await panel.keyboard.press('Escape');
+
+    const input = panel.locator('.composer>textarea');
+    await input.fill('保留草稿');
+    await cdp.send('Input.imeSetComposition', {text:'ni', selectionStart:2, selectionEnd:2});
+    await input.press('Escape');
+    // Fence the renderer's asynchronous panel.hide path before inspecting the native window.
+    await panel.evaluate(() => window.desktop.invoke('snapshot'));
+    const panelVisible = () => app.evaluate(({BrowserWindow}) =>
+      BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('mode=panel')).isVisible());
+    assert.equal(await panelVisible(), true);
+    await cdp.send('Input.imeSetComposition', {text:'', selectionStart:0, selectionEnd:0});
+    assert.equal(await input.inputValue(), '保留草稿');
+    await input.press('Escape');
+    await panel.evaluate(() => window.desktop.invoke('snapshot'));
+    assert.equal(await panelVisible(), false, 'an ordinary Escape still hides the panel');
+    const orb = app.windows().find(page => page.url().includes('mode=orb'));
+    assert.ok((await orb.evaluate(() => window.desktop.invoke('orb.open'))).ok);
+    await input.fill('');
+  } finally {
+    await cdp.send('Emulation.setTouchEmulationEnabled', {enabled:false});
+    await cdp.detach();
+  }
+}
+
 // Production panel, isolated data and explicit Fake. The backdrop contains only
 // synthetic text/colours so compositor captures never need other app content.
 (async () => {
@@ -56,6 +109,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     }));
     const {panelWindowAppearance} = await import('../electron/panel-material.js');
     const material = {os:require('node:os').release(), ...themeFlags, ...panelWindowAppearance(themeFlags)};
+    await verifyPanelInput(app, panel);
     for (const theme of ['light','dark']) {
       await app.evaluate(({nativeTheme}, value) => {nativeTheme.themeSource=value;}, theme);
       await panel.evaluate(async value => (await import('../ui/preferences.js')).saveTheme(value), theme);
