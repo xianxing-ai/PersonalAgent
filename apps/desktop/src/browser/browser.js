@@ -146,7 +146,8 @@ export function mountBrowserPane(host, bridge) {
   }
   function mediaControl() {
     const items = (screen?.controls || []).filter(control => !control.disabled && ['video', 'audio'].includes(control.tag));
-    return items.find(control => control.mediaPlaying) ?? (items.length === 1 ? items[0] : undefined);
+    if (page.mediaPlaying) return items.find(control => control.mediaPlaying);
+    return items.length === 1 ? items[0] : undefined;
   }
   function renderMedia() {
     const current = mediaControl(), playing = page.mediaPlaying === true;
