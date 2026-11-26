@@ -92,11 +92,39 @@ fi
 
 echo "[4/4] Deploying Webtop Ubuntu XFCE cloud desktop ($CONTAINER_NAME)..."
 mkdir -p "$WEBTOP_DATA"
-if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
-  docker start "$CONTAINER_NAME" >/dev/null
+
+# Validate Docker's stored bindings before starting an existing container and
+# query the effective bindings again after start. Pin both checks to the same ID.
+read_bindings() {
+  docker container inspect --format "$1" "$CONTAINER_ID" | node -e '
+    const fs = require("node:fs");
+    const b = JSON.parse(fs.readFileSync(0, "utf8"));
+    const ports = ["3000", "3001"];
+    if (!b || Object.entries(b).some(([key, value]) =>
+      !ports.some(port => key === port + "/tcp") && value !== null)) process.exit(1);
+    const addresses = ports.map(port => {
+      const entries = b[port + "/tcp"];
+      if (!Array.isArray(entries) || entries.length !== 1 ||
+          entries[0]?.HostIp !== "127.0.0.1" || entries[0]?.HostPort !== port) process.exit(1);
+      return entries[0].HostIp + ":" + entries[0].HostPort;
+    });
+    console.log(addresses[0] + " (HTTP) / " + addresses[1] + " (HTTPS)");
+  '
+}
+if CONTAINER_ID=$(docker container inspect --format '{{.Id}}' "$CONTAINER_NAME" 2>/dev/null); then
+  NETWORK_MODE=$(docker container inspect --format '{{.HostConfig.NetworkMode}} {{.HostConfig.PublishAllPorts}}' "$CONTAINER_ID")
+  case "$NETWORK_MODE" in
+    'default false'|'bridge false') ;;
+    *) echo "Existing Webtop has incompatible network settings; leaving it untouched." >&2; exit 1 ;;
+  esac
+  if ! read_bindings '{{json .HostConfig.PortBindings}}' >/dev/null; then
+    echo "Existing Webtop has incompatible port bindings; leaving it untouched." >&2
+    exit 1
+  fi
+  docker start "$CONTAINER_ID" >/dev/null
 else
   docker pull "$WEBTOP_IMAGE"
-  docker run -d \
+  CONTAINER_ID=$(docker run -d \
     --name "$CONTAINER_NAME" \
     --security-opt seccomp=unconfined \
     -e PUID=1000 \
@@ -107,14 +135,18 @@ else
     -v "$WEBTOP_DATA:/config" \
     --shm-size=1gb \
     --restart unless-stopped \
-    "$WEBTOP_IMAGE" >/dev/null
+    "$WEBTOP_IMAGE")
 fi
 
-STATUS=$(docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "unknown")
+STATUS=$(docker container inspect --format '{{.State.Status}}' "$CONTAINER_ID")
+if [ "$STATUS" != running ] || ! BINDINGS=$(read_bindings '{{json .NetworkSettings.Ports}}'); then
+  echo "Webtop is not running with the expected loopback bindings; inspect the container." >&2
+  exit 1
+fi
 echo ""
 echo "=== PersonalAgent VPS Cloud Desktop Ready ==="
 echo "Webtop container : $CONTAINER_NAME ($STATUS)"
-echo "Bind addresses   : 127.0.0.1:3000 (HTTP) / 127.0.0.1:3001 (HTTPS)"
+echo "Bind addresses   : $BINDINGS"
 echo "Policy file      : $POLICY_FILE"
 echo ""
 echo "Next steps:"
