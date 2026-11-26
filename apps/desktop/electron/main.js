@@ -3825,6 +3825,12 @@ async function initializeRuntime() {
       });
       contentFence=createContentFenceProduct({readGoal:taskId=>{
         try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
+      },restrictBrowserRead:scope=>{
+        const args=scope.arguments;
+        if(!args||typeof args!=='object'||Array.isArray(args))return false;
+        const kind=args.mediaAction==='play'?'play':args.mediaAction===undefined?'link':undefined;
+        return !!kind&&runtimeApplication.requestedBrowserRead(scope.taskId,kind)
+          &&browserControlHost?.restrictChatBrowserRead(scope,args)===true;
       }});
       conversationTools=contentFence.wrapTools(conversationTools);
       conversationTools=permissionAudit.observeTools(conversationTools);

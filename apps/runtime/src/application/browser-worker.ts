@@ -6,7 +6,7 @@ import type {CompetitionCheckpoint} from './coordination.js';
 export const BROWSER_TURN='browser-user-task:v1';
 export const BROWSER_WORKER='browser-worker-scope:v1';
 export const BROWSER_EXPORT_WITHHELD='浏览器操作已执行，结果已保存在本机。网页结果未获准发送给模型，任务尚未完成。';
-const externalText=/"treatment"\s*:\s*"untrusted_data"|\[EXTERNAL\b|BEGIN EXTERNAL/iu;
+const externalText=/"treatment"\s*:\s*"untrusted_data"|\[EXTERNAL\b|BEGIN EXTERNAL|<<<(?:END_)?PA_EXTERNAL\b/iu;
 const internalConversation=/^(?:host-tool:|proactive-source:|desktop-(?:proactive|mail|skills|subtask|subagent|coding|notification))/u;
 const protectedCheckpoints=['subtask-parent','assistant-external-fence','private-copy-erasure','private-memory:consumption:v1',
   'private-derived-output','knowledge-recheck-result','harness-event-origin','scheduled-text-origin:v1','desktop-proactive-source-v1'];
@@ -16,7 +16,9 @@ function directBrowserRequest(text:string):boolean {
   const command=text.trim().replace(/^(?:测试\s*[:：]\s*)?/u,'')
     .replace(/^(?:(?:请你?|麻烦你?|帮我|给我|替我|现在|再|尝试|试着|能否帮我|可不可以帮我|我想(?:要)?|我需要)\s*)+/u,'')
     .replace(/^(?:请)?(?:派|让|叫|安排|请)(?:一[个名位]|个)?(?:工人|助手)(?:帮我|来|去)?\s*/u,'');
-  if(!command||externalText.test(command)||/^(?:能不能|可以|会不会|如何|怎么|为什么|能否|是否|介绍|解释|告诉我)/u.test(command)
+  if(!command||externalText.test(command))return false;
+  if(/^(?:(?:告诉我|读出|说说|解释一下|总结一下|能不能告诉我|可以告诉我)\s*)?(?:当前|这个|该)(?:网页|页面)(?:上|里|中)?(?:的)?(?:标题|正文|主题|要点|主要内容|讲的|说的|写的|讲了|说了|写了)(?:是(?:什么|啥)|什么|啥|有(?:哪些|什么))?[吗呢？?。！!\s]*$/u.test(command))return true;
+  if(/^(?:能不能|可以|会不会|如何|怎么|为什么|能否|是否|介绍|解释|告诉我)/u.test(command)
     ||/(?:怎么(?:用|做|办)|是(?:什么|怎么)|的(?:方法|原理|流程)|需要什么权限|支持吗|可以吗)[？?。!\s]*$/u.test(command))return false;
   if(/^(?:在|到|用|使用|通过|利用|打开|启动|进入|切换到)\s*(?:这个|当前|自带的?|内置的?|受控的?|独立的?)?\s*(?:受控)?浏览器(?=$|[\s，,。！!]|里|中|帮|给|查|找|看|搜|打|去|访|浏|操|完|注|读|点|播|登|比|买|订)/u.test(command)
     ||/^(?:在|用|查看|继续|浏览|打开|读取|总结|分析|滚动|刷新|阅读|点击|回到)?\s*(?:当前|这个|该)\s*(?:网页|页面)(?=$|[，,。！!\s]|上|中|里|的|继续|向|去|找|搜|查|看|点|读|播放)/u.test(command)
@@ -101,11 +103,25 @@ export const BROWSER_ACTIONS=['browser.open','browser.observe','browser.click','
   'browser.select','browser.back','browser.wait','browser.download','browser.screenshot','browser.close'];
 
 // The mode is derived only from the original human request, never from page text or the cloud proposal.
-function requestedPlayback(text:string):boolean {
-  const action=text.replace(/播放(?:量|列表|器|地址|链接|次数|记录|时长|状态|方法|键|按钮|设置)/gu,'');
-  if(/(?:不(?:要|用|需(?:要)?)|别|禁止|避免|无需|停止)\s*(?:自动|实际|直接)?播放|\b(?:do not|don't|never)\s+play\b/iu.test(action))return false;
-  return /(?:^|[\s，,。；;：:！!]|并(?:且)?|然后|再|去|直接|开始|点击|帮我|给我|请|想|上|里|中|网页|网站|官网|浏览器|视频|工人)(?:播放|观看)|(?:看(?:一[段部个]|个|段)?视频)(?:吧|[，,。！!\s]|$)|\b(?:play|watch)\b.{0,80}\b(?:video|audio|music|clip)\b/iu.test(action)
-    ||/(?:点击|按下|点一下)播放(?:键|按钮)/u.test(text);
+export function requestedPlayback(text:string):boolean {
+  // A URL, quoted example, question about playing, or explicit prohibition never authorizes playback.
+  const action=text.replace(/https?:\/\/[^\s，。；！？]+|“[^”]*”|「[^」]*」|"[^"\n]*"/giu,' ')
+    .replace(/播放(?:量|列表|器|地址|链接|次数|记录|时长|状态|方法|设置)/gu,'');
+  if(/(?:别|勿|不|禁止|不要|无需|停止|取消|避免)[^，。；！？\n]{0,12}(?:观看|播放|看视频)|\b(?:do not|don't|never|without)\s+(?:play|watch)/iu.test(action)
+    ||/(?:按(?:照)?|依照|听从)[^，。；！？\n]{0,20}(?:指示|要求|指令)|按照?网页|照着网页|do what (?:the|it|they)/iu.test(action))return false;
+  return action.split(/[，,。；;：:！!\n]|并(?:且)?|然后|接着/u).some(raw=>{
+    const clause=raw.trim().replace(/^(?:(?:请你?|麻烦你?|帮我|给我|替我|现在|直接|开始|我想|我要|再)\s*)+/u,'')
+      .replace(/^(?:派|让|叫|安排)(?:一[个名位]|个)?(?:工人|助手)(?:帮我|来|去)?\s*/u,'');
+    if(!clause||/[？?吗么]|(?:查|搜|看|读|解释|介绍|告诉我|如何|怎么|能否|可否|教程).{0,30}(?:播放|观看)|(?:播放|观看).*(?:的教程|的说明|的文章|几个字)/u.test(clause))return false;
+    return /^(?:(?:在|用|通过|使用|到|去)[^，。；！？\n]{1,45}?(?:上|里|中|站|网站|浏览器|网页|页面))?\s*(?:播放|观看|(?:点击|按下|点一下)播放(?:键|按钮)|看(?:一[段部个]|个|段)?视频)/u.test(clause)
+      ||/^(?:(?:please|can you|could you)\s+)?(?:play|watch)\b/iu.test(clause);
+  });
+}
+
+export function requestedBrowserLinkNavigation(text:string):boolean {
+  const request=text.replace(/https?:\/\/[^\s，。；！？]+|“[^”]*”|「[^」]*」|"[^"\n]*"/giu,' ');
+  if(/(?:别|勿|不|禁止|避免)[^，。；！？\n]{0,12}(?:离开|打开|进入|访问|跳转|点击|导航)|只(?:看|读|用|在)(?:这|本|当前)(?:页|个网页)|(?:按(?:照)?|依照|听从)[^，。；！？\n]{0,20}(?:指示|要求|指令)|按照?网页|照着网页/iu.test(request))return false;
+  return /(?:查找|查询|查一下|找一下|找(?:家|个|一|些)|(?:查|找|搜)[^，。；！？\n]{0,35}(?:资料|视频|商品|酒店|房型|住宿|价格|门票)|搜索|搜一下|检索|比较|对比|筛选|选购|订酒店|调查|调研|下一页|打开.{0,10}(?:链接|详情)|\b(?:find|search|compare|research|next page|follow the link)\b)/iu.test(request);
 }
 
 type BrowserObservation={source?:string;state?:string;url?:string;targetRef?:string;text?:string;goalVerified?:boolean;

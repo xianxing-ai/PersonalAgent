@@ -27,7 +27,7 @@ import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapabilit
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
 import {bindNotepadWorker,NOTEPAD_INTENT,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
-import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete} from './browser-worker.js';
+import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete,requestedPlayback,requestedBrowserLinkNavigation} from './browser-worker.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -6492,6 +6492,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** Trusted Desktop can attach a current page only to a human browser request. */
   browserConversationIntent(conversationId:string,text:string):boolean {
     return this.profile==='huawei_ict_agentarts'&&this.delegateUserTasks&&browserIntent(this.runtime,conversationId,text)!==undefined;
+  }
+
+  /** The host may further restrict one concrete click only for the original human's browser worker. */
+  requestedBrowserRead(taskId:string,kind:'play'|'link'):boolean {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks)return false;
+    const marker=this.runtime.loadCheckpoint(taskId,BROWSER_WORKER) as {parentTaskId?:string}|undefined;
+    if(!marker?.parentTaskId||readCanonicalUserWorkParent(this.runtime,taskId)!==marker.parentTaskId)return false;
+    const source=browserWorkerSource(this.runtime,taskId);
+    return !!source&&(kind==='play'?requestedPlayback(source.text):kind==='link'&&requestedBrowserLinkNavigation(source.text));
   }
 
   /** Device-only result projection. The parent transcript and its cloud context keep no copy. */
