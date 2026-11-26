@@ -32,7 +32,9 @@
 .cc-context .cc-context-switch button[aria-pressed="true"],
 .cc-context .cc-context-switch button:hover { background: var(--cc-soft); color: var(--cc-text); }
 .cc-context[data-context-view="activity"] :is([data-connector="obsidian"], [data-connector="feeds"], [data-connector="mail"]),
-.cc-context[data-context-view="library"] :is(.cc-computer, .cc-activity, .notification-card, [data-connector="weather"], [data-connector="calendar"]) { display: none; }
+.cc-context[data-context-view="library"] :is(.cc-computer, .cc-internal-chat, .cc-activity, .notification-card, [data-connector="weather"], [data-connector="calendar"]) { display: none; }
+.cc-computer > header { min-height: 0; padding: 0 2px 8px; }
+.cc-computer > header h2 { font-size: 11.5px; font-weight: 550; color: var(--cc-muted); letter-spacing: .01em; }
 .cc-computer .cc-computer-header {
   display: flex;
   flex-direction: column;
@@ -43,8 +45,9 @@
 .cc-computer .cc-computer-header h2 {
   margin: 0;
   color: var(--cc-muted);
-  font-size: 11px;
-  font-weight: 560;
+  font-size: 11.5px;
+  font-weight: 550;
+  letter-spacing: .01em;
 }
 .cc-computer .cc-computer-quickbar {
   display: flex;
@@ -54,32 +57,60 @@
 .cc-computer [data-runner-controls] .rr-refresh-btn {
   display: none;
 }
-.cc-computer .cc-quick-btn,
-.cc-computer .btn {
-  padding: 4px 9px;
-  border: 1px solid var(--cc-line);
-  border-radius: 8px;
-  background: var(--cc-soft);
-  color: var(--cc-text);
-  font: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
-}
-.cc-computer .cc-quick-btn:hover:not(:disabled),
-.cc-computer .btn:hover:not(:disabled) {
-  background: var(--cc-hover);
-}
 .cc-computer details {
   border: 1px solid var(--cc-line);
   border-radius: 12px;
   background: var(--cc-soft);
   color: var(--cc-text);
+  transition: border-color .15s ease, background-color .15s ease;
 }
-.cc-computer summary { padding: 12px; cursor: pointer; font-size: 12px; }
-.cc-computer summary small { display: block; margin-top: 4px; color: var(--cc-muted); overflow-wrap: anywhere; }
-.cc-computer [data-runner-controls] { padding: 0 12px 12px; font-size: 12px; overflow-wrap: anywhere; }
+.cc-computer details:hover { border-color: var(--cc-dim); }
+.cc-computer summary {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: center;
+  padding: 11px 13px;
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+  user-select: none;
+}
+.cc-computer summary::-webkit-details-marker { display: none; }
+.cc-computer summary::before {
+  content: '›';
+  grid-column: 1;
+  grid-row: 1 / 3;
+  align-self: start;
+  margin-top: 1px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--cc-muted);
+  transition: transform .15s ease;
+}
+.cc-computer details[open] > summary::before { transform: rotate(90deg); }
+.cc-computer summary strong { grid-column: 2; font-size: 12.5px; font-weight: 550; color: var(--cc-text); }
+.cc-computer summary small { grid-column: 2; display: block; margin-top: 3px; font-size: 10.5px; color: var(--cc-muted); overflow-wrap: anywhere; }
+.cc-computer [data-runner-controls] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 13px 12px;
+  border-top: 1px solid var(--cc-line);
+  font-size: 11.5px;
+  color: var(--cc-muted);
+  overflow-wrap: anywhere;
+}
+.cc-computer [data-runner-controls] > p { margin: 0; font-size: 11px; line-height: 1.5; }
 .cc-computer [data-runner-controls] > p:empty, .cc-computer .remote-runners > h2 { display: none; }
-.cc-computer .remote-runners ul { padding: 0; list-style: none; margin: 8px 0 0; }
+.cc-computer .remote-runners { display: flex; flex-direction: column; gap: 6px; }
+.cc-computer .remote-runners p { margin: 0; font-size: 11px; line-height: 1.55; color: var(--cc-muted); }
+.cc-computer .remote-runners p:empty { display: none; }
+.cc-computer .remote-runners h3, .cc-computer .remote-runners h4 { margin: 6px 0 2px; font-size: 11.5px; font-weight: 550; color: var(--cc-text); }
+.cc-computer .remote-runners ul { margin: 6px 0 0; padding: 0; list-style: none; }
+.cc-computer .remote-runners ul:empty { display: none; }
+.cc-computer .remote-runners li > span { display: block; margin-bottom: 6px; }
+.cc-computer .remote-runners li + li { margin-top: 10px; }
 .cc-computer .rr-toolbar,
 .cc-computer .rr-host-actions,
 .cc-computer .rr-form-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -100,15 +131,6 @@
   border: 1px solid var(--cc-line);
   border-radius: 8px;
 }
-.cc-computer .remote-runners-form input,
-.cc-computer .remote-runners-form select,
-.cc-computer .remote-runners-form textarea {
-  width: 100%;
-  font: inherit;
-  font-size: 12px;
-}
-.cc-computer button, .cc-computer input, .cc-computer select, .cc-computer textarea, .cc-computer pre { max-width: 100%; box-sizing: border-box; }
-.cc-computer pre { white-space: pre-wrap; }
 .cc-computer .rr-vps-result {
   margin: 6px 0;
   padding: 8px;
@@ -116,3 +138,37 @@
   border-radius: 8px;
 }
 .cc-computer .rr-tunnel-cmd { display: block; font-size: 11px; overflow-wrap: anywhere; margin: 4px 0; }
+.cc-computer button, .cc-computer input, .cc-computer select, .cc-computer textarea, .cc-computer pre { max-width: 100%; box-sizing: border-box; }
+.cc-computer pre { margin: 4px 0 0; padding: 8px; border-radius: 8px; background: var(--cc-input); white-space: pre-wrap; font-size: 11px; }
+.cc-computer button,
+.cc-computer .cc-quick-btn,
+.cc-computer .btn {
+  align-self: flex-start;
+  min-height: 27px;
+  margin: 0;
+  padding: 4px 11px;
+  border: 1px solid var(--cc-line);
+  border-radius: 8px;
+  background: var(--cc-hover);
+  color: var(--cc-text);
+  font: 500 11px/1.3 var(--font-ui);
+  cursor: pointer;
+  transition: background-color .14s ease, border-color .14s ease;
+}
+.cc-computer button:hover:not(:disabled),
+.cc-computer .cc-quick-btn:hover:not(:disabled),
+.cc-computer .btn:hover:not(:disabled) { border-color: var(--cc-dim); background: var(--cc-soft); }
+.cc-computer button:disabled,
+.cc-computer .cc-quick-btn:disabled,
+.cc-computer .btn:disabled { opacity: .45; cursor: default; }
+.cc-computer :is(input, select, textarea) {
+  width: 100%;
+  min-height: 28px;
+  margin: 3px 0;
+  padding: 4px 8px;
+  border: 1px solid var(--cc-line);
+  border-radius: 8px;
+  background: var(--cc-input);
+  color: var(--cc-text);
+  font: 11.5px var(--font-ui);
+}

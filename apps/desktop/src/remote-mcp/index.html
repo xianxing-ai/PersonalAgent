@@ -6,6 +6,11 @@
 <p>添加一个只读插件。密钥只保存在这台电脑上，每次使用仍会在对话里请你确认。</p>
 <p id="status" role="status"></p><p id="error" role="alert"></p>
 <section><h2>已添加的插件</h2><label for="server">当前插件</label><select id="server"></select>
+<label for="preset">公开只读服务</label><select id="preset">
+<option value="microsoft-learn" data-example='{"query":"Windows per-monitor DPI"}'>Microsoft Learn 文档搜索</option>
+<option value="microsoft-samples" data-example='{"query":"Windows DPI","language":"csharp"}'>Microsoft Learn 代码示例</option>
+<option value="huggingface-hub" data-example='{"operations":[{"cmd":"stat","args":["hf://models/google-bert/bert-base-uncased/README.md"]}]}'>Hugging Face Hub 仓库查询</option>
+</select><button id="choose-preset">选择服务</button>
 <label for="server-id">名称（小写字母、数字、短横线）</label><input id="server-id" type="text" autocomplete="off" maxlength="64" placeholder="例如 notes">
 <button id="new-server">添加</button>
 <details><summary>从旧版本搬过来</summary><button id="migrate-server">搬移旧配置</button></details></section>
