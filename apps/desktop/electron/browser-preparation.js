@@ -162,14 +162,29 @@ export function preparationPlan(meta,args,documentUrl){
   }
 }
 
-// BrowserContext.request uses this same context's cookies and mandatory
-// authenticated egress proxy. Redirects and retries are disabled on every call.
+// The trusted Ajax transport has its own authenticated proxy connection; only
+// this store's cookies are copied from/to the current browser context.
 // Shopify's storefront Cart Ajax API accepts item variants; no checkout or
 // payment API is exposed. Never project cart tokens, other lines or customer data.
-export async function addShopifyItem({page,meta,check,timeout,validate,markDispatched,fail}){
+export async function addShopifyItem({page,requestFactory,proxy,meta,check,timeout,validate,markDispatched,fail}){
+  check();
+  const ctx=page.context(),store=new URL(meta.cartBase);
+  const exactStore=cookie=>cookie.domain.replace(/^\./,'')===store.hostname;
+  const cookies=(await ctx.cookies([meta.productUrl,meta.cartBase+'cart.js',meta.cartBase+'cart/add.js'])).filter(exactStore);
+  const request=await requestFactory.newContext({proxy:{server:proxy.server,username:proxy.username,password:proxy.password},
+    storageState:{cookies,origins:[]}});
+  // Response cookies may create the cart ID. Persist them locally even if a
+  // dispatched POST must later be reconciled. Never send another store's jar.
+  try{return await changeCart({request,meta,check,timeout,validate,markDispatched,fail});}
+  finally{
+    try{const current=(await request.storageState()).cookies.filter(exactStore);if(current.length)await ctx.addCookies(current);}
+    finally{await request.dispose();}
+  }
+}
+async function changeCart({request,meta,check,timeout,validate,markDispatched,fail}){
   const read=async(url,body)=>{
     check();
-    const response=await page.context().request.fetch(url,{method:body?'POST':'GET',...(body?{data:body}:{}),
+    const response=await request.fetch(url,{method:body?'POST':'GET',...(body?{data:body}:{}),
       headers:{accept:'application/json'},maxRedirects:0,maxRetries:0,timeout:timeout()});
     try{
       check();

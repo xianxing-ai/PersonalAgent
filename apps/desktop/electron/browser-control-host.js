@@ -126,7 +126,7 @@ const browserReasons={ENOENT:'浏览器组件文件不存在，请准备浏览�
 function driverReason(error){
   const message=Object.getOwnPropertyDescriptor(error??{},'message')?.value;
   if(typeof message!=='string')return;
-  const code=message.match(/\bnet::(ERR_[A-Z0-9_]{1,48})\b/u)?.[1];
+  const code=message.match(/\b(?:net::)?(ERR_[A-Z0-9_]{1,48})\b/u)?.[1];
   if(code)return code;
   if(/Execution context was destroyed|because of a navigation/i.test(message))return 'DOCUMENT_CHANGED';
   if(/Target page, context or browser has been closed|Target closed/i.test(message))return 'TARGET_CLOSED';
@@ -423,7 +423,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   if(!path.isAbsolute(downloadRoot)||!Number.isSafeInteger(maxDownloadBytes)||maxDownloadBytes<1||maxDownloadBytes>52_428_800)fail('INVALID_ARGUMENT','下载目录和大小上限必须由可信宿主指定');
   const testOrigins=testOnlyAllowedOrigins.map(value=>new URL(value).origin);
   let application,context,page,egress,closed=false,blocked=false,busy=false,releaseFailed=false,activeOperation,state='stopped',generation=0;
-  let session=new AbortController(),networkError,lastFailure,downloadSession,expectedDownload;
+  let session=new AbortController(),networkError,lastFailure,downloadSession,expectedDownload,requestFactory;
   let workspaceOwned=false,pendingHandoff,handoffTask,waitingWorkers=0,readingFrame=false;
   let pageConversation,pageOrigin,documentEpoch=0,mediaPlayback,handoffDocument,confirmedDocument;
   let localRead,workspaceVisibility=0,previewSuspended=false;
@@ -675,7 +675,20 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       }
       await pending.frameDriver.send('Fetch.continueResponse',{requestId:event.requestId});
     })().catch(()=>rejectDownload('PROTOCOL_MISMATCH','下载响应头闸未能确认，已停止下载'));});
-    await pending.frameDriver.send('Fetch.enable',{patterns:[{requestStage:'Request'},{requestStage:'Response'}]});
+    await enableProxyInterception(pending.frameDriver);
+  }
+  async function enableProxyInterception(driver){
+    const proxy=egress;
+    driver.on('Fetch.authRequired',event=>{
+      const auth=event.authChallenge;
+      const local=proxy&&egress===proxy&&auth?.source==='Proxy'&&auth.origin===proxy.server
+        &&auth.scheme?.toLowerCase()==='basic'&&auth.realm==='controlled-browser';
+      const authChallengeResponse=local?{response:'ProvideCredentials',username:proxy.username,password:proxy.password}:{response:'CancelAuth'};
+      void driver.send('Fetch.continueWithAuth',{requestId:event.requestId,authChallengeResponse}).catch(()=>{});
+    });
+    // A response-only Fetch session consumes Chromium's 407 before its
+    // proxy-auth challenge can be answered. Own both stages and the challenge.
+    await driver.send('Fetch.enable',{patterns:[{requestStage:'Request'},{requestStage:'Response'}],handleAuthRequests:true});
   }
   async function addNavigationOrigin(operation,from,to) {
     if(operation.origins.has(to))return;
@@ -701,6 +714,8 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       const top=event.resourceType==='Document'&&event.frameId===frameTree.frame.id;
       const requestId=event.requestId;
       void (async()=>{
+        if(top&&operation?.navigationStage==='document_response'&&Number.isInteger(event.responseStatusCode))
+          operation.httpStatus=event.responseStatusCode;
         if([301,302,303,307,308].includes(event.responseStatusCode)){
           const locations=event.responseHeaders.filter(header=>header.name.toLowerCase()==='location');
           if(locations.length>1)fail('PROTOCOL_MISMATCH','网页返回了歧义跳转');
@@ -727,7 +742,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         await driver.send('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'}).catch(()=>{});
       });
     });
-    await driver.send('Fetch.enable',{patterns:[{requestStage:'Response'}]});
+    await enableProxyInterception(driver);
   }
   async function cleanDownload(pending){
     if(!pending)return;
@@ -764,6 +779,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     if(context)await disposeContext(false);
     state='starting';publish();await mkdir(profile,{recursive:true});
     const lib=injectedPlaywright??await import('playwright');active(scope);
+    requestFactory=lib.request;
     const executablePath=injectedPlaywright?undefined:locateControlledChromium();
     egress=await createBrowserEgressProxy({...networkOptions,authorize:url=>{
       if(!activeOperation||activeOperation.passive)return allowLocalRead(url)||playingSource(url);
@@ -778,7 +794,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     }});
     let launched;
     try{launched=await lib.chromium.launchPersistentContext(profile,{...(executablePath?{executablePath}:{}),headless:true,chromiumSandbox:true,acceptDownloads:false,serviceWorkers:'block',
-      proxy:{server:egress.server,username:egress.username,password:egress.password,bypass:'<-loopback>'},
+      proxy:{server:egress.server,bypass:'<-loopback>'},
       viewport:{width:1280,height:800},permissions:[],args:['--disable-background-networking','--disable-component-update',
         '--disable-extensions','--disable-sync','--dns-prefetch-disable','--disable-quic','--proxy-bypass-list=<-loopback>',
         '--force-webrtc-ip-handling-policy=disable_non_proxied_udp']});
@@ -848,6 +864,12 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     const pages=context.pages();page=pages[0]??await context.newPage();
     for(const extra of pages.slice(1))await extra.close();
     if(authorizationQuestions)await guardRedirects(page);
+    else if(!injectedPlaywright||context.newCDPSession){
+      const driver=await context.newCDPSession(page);
+      driver.on('Fetch.requestPaused',event=>void driver.send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse',
+        {requestId:event.requestId}).catch(()=>{}));
+      await enableProxyInterception(driver);
+    }
     context.on('page',extra=>{if(extra!==page)void extra.close().catch(()=>{});});
     const launchedEgress=egress;
     context.on('close',()=>{if(context===launched){context=undefined;page=undefined;clearTargets();
@@ -1197,7 +1219,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
               await validate();await recordAttempt(scope,args,toolName,()=>{recorded=true;});
               let extra={};
               if(args.action==='add_to_cart'){
-                extra=await addShopifyItem({page,meta,check,timeout,validate,markDispatched:async()=>{await pointer.mark(page,el,'prepare');await validate();dispatched=true;},fail});
+                extra=await addShopifyItem({page,requestFactory,proxy:egress,meta,check,timeout,validate,markDispatched:async()=>{await pointer.mark(page,el,'prepare');await validate();dispatched=true;},fail});
               }else if(args.action==='check_availability'){
                 const url=await assertPublicBrowserUrl(meta.href,networkOptions);
                 await addNavigationOrigin(activeOperation,new URL(seen.url).origin,url.origin);await pointer.mark(page,el,'prepare');await validate();dispatched=true;
