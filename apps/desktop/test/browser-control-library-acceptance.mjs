@@ -1,4 +1,4 @@
-// Explicit manual library acceptance: real visible Chromium + synthetic local page.
+// Explicit manual library acceptance: real headless Chromium + synthetic local page.
 // This does not use accounts, AgentArts, a model, or prove the real Runtime/Policy loop.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -29,8 +29,12 @@ const runtime={listTasks:()=>({items:[]}),getTask:()=>({state:'running'}),
   saveCheckpointOnce(taskId,key,value){const id=taskId+':'+key;if(checkpoints.has(id))return false;checkpoints.set(id,value);return true;}};
 const permissions=[];
 const browserChannel=existsSync(playwright.chromium.executablePath())?'bundled-chromium':'msedge';
-const driver={chromium:{launchPersistentContext:(profile,options)=>playwright.chromium.launchPersistentContext(profile,
-  {...options,...(browserChannel==='msedge'?{channel:'msedge'}:{})})}};
+let visibleBrowser;
+const driver={chromium:{launchPersistentContext:(profile,options)=>{
+  assert.equal(options.headless,true);
+  visibleBrowser=options.headless===false;
+  return playwright.chromium.launchPersistentContext(profile,{...options,...(browserChannel==='msedge'?{channel:'msedge'}:{})});
+}}};
 const host=createBrowserControlHost({userDataPath:directory,playwright:driver,testOnlyAllowedOrigins:[origin],
   authorizePresence:async request=>{permissions.push({phase:request.phase,toolName:request.toolName});return request.origin===undefined||request.origin===origin;}});
 host.bind({runtime});
@@ -57,7 +61,7 @@ try {
   assert.equal((await invoke('close')).state,'closed');
   assert.equal((await host.stop()).connected,false);
   const receipt={evidenceLevel:'real_playwright_synthetic_page_with_runtime_fixture',recordedAt:new Date().toISOString(),
-    realRuntimePolicyAgentArtsAcceptance:'not_run',accountsUsed:false,modelCalls:0,visibleBrowser:true,browserChannel,
+    realRuntimePolicyAgentArtsAcceptance:'not_run',accountsUsed:false,modelCalls:0,visibleBrowser,browserChannel,
     checks:{openObserveTypeClickReadback:true,passwordControlExcluded:true,screenshotMetadataOnly:true,
       screenshotTrustedByteRead:true,ownedBrowserClosed:true},writeCheckpoints:checkpoints.size,permissionChecks:permissions.length,
     artifact:screenshot.artifact};

@@ -140,13 +140,13 @@ test('workflow click accepts unchanged original fields through its existing brow
   }finally{await f.close();}
 });
 
-test('stable tools expose bounded public schemas, own visible profile and open/observe/type/click readback',async()=>{
+test('stable tools use an isolated headless browser and return open/observe/type/click readback',async()=>{
   const f=await fixture();try {
     const stable=f.host.tools;assert.equal(stable.length,12);assert.equal(f.host.tools,stable);
     assert.equal(stable.find(t=>t.descriptor.name==='browser.click').descriptor.sideEffect,'external_write');
     const opened=await f.invoke('open',{url:'https://example.com/?private=not-exported#fragment'});
     assert.equal(opened.url,'https://example.com/');assert.equal(opened.goalVerified,false);
-    assert.equal(f.calls.find(c=>c[0]==='launch')[2].headless,false);
+    assert.equal(f.calls.find(c=>c[0]==='launch')[2].headless,true);
     const typed=await f.invoke('type',{targetRef:opened.targetRef,ref:'r1',text:'hello'});
     assert.equal(typed.controls.find(c=>c.ref==='r1').value,'hello');assert.notEqual(typed.targetRef,opened.targetRef);
     const clicked=await f.invoke('click',{targetRef:typed.targetRef,ref:'r2'});assert.equal(clicked.text,'Count 1');

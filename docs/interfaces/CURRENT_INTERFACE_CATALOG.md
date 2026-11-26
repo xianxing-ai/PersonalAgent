@@ -146,9 +146,13 @@ Desktop 提供明确保存的推荐预算；出机确认、原数据与工具 co
 
 当前聊天尚无网页时，`browser.observe` 返回固定回执 `{source:"playwright", state:"no_page", nextTool:"browser.open", goalVerified:false}`。工人随后打开任务需要的公共网址。该回执只描述会话状态，可以由 Runtime 核对后直接返回模型。真实网页观察仍须本次页面内容出口授权。对原生音视频执行 `browser.click` 的 `mediaAction` 后，回执的 `playback` 字段记录原媒体元素的 `action`、`tag`、`paused` 和 `ended`。
 
+受控 Chromium 或 Edge 在后台运行。原聊天右上角的地球按钮展开浏览器侧栏，用户在这里看网页、播放或暂停媒体、打开声音。侧栏初始静音。宿主只把当前聊天已获准媒体的本地流交给可见的侧栏播放，收起侧栏、切换聊天或把工作台转到后台会停止读取。受保护的媒体或不支持捕获的页面会显示原因。
+
+实机验收可从「Synstar 实机验收」进入工作台，在聊天里要求播放一段可公开访问的视频，核对授权卡上的站点和媒体后允许操作。展开同一聊天的侧栏，观察连续画面、暂停与继续，并确认桌面焦点一直留在 Synstar。声音另用已知含音轨的片段解除静音试听。切到其他聊天后应看不到上一段媒体。
+
 在对话中点名网页链接时，确认卡展示原页面的链接文字与目标地址。对购物和住宿准备，`browser.prepare` 将单步授权绑定到原用户请求和实际观察到的表单控件。支持的步骤包括选择规格、设置入住条件、查询公开房态，以及在支持的 Shopify 店铺中将指定商品加入购物袋。加购完成须读回同规格商品的数量变化。实时房态须按实际入住条件查询。付款和提交预订单需另外授权和核实。
 
-Competition Desktop 组合新增固定 `personal-agent-desktop/1` 原生 stdio 执行器、16 个 `computer.desktop.*` 工具、原任务 `computer.request_access`、12 个 `browser.*` 工具及可选 `computer.vision.inspect`。默认视觉关闭、来源为 AgentArts 代理，保留自定义兼容接口；注册和配置不授予执行或图片出机权限。Main／Preload／IPC 使用原 Runtime／Policy／Questions／ToolGateway，未新增任务库或 Core wire 操作。
+Competition Desktop 组合提供固定 `personal-agent-desktop/1` 原生 stdio 执行器、16 个 `computer.desktop.*` 工具、原任务 `computer.request_access`、12 个常规 `browser.*` 工具及可选 `computer.vision.inspect`。接入逐操作 Questions 的宿主还注册 `browser.prepare`。默认视觉关闭、来源为 AgentArts 代理，保留自定义兼容接口；注册和配置不授予执行或图片出机权限。Main／Preload／IPC 使用原 Runtime／Policy／Questions／ToolGateway，未新增任务库或 Core wire 操作。
 
 2026-10-27 增量（provisional）：原生 Desktop 可选注册 `computer.desktop.suggest_control@1.0.0`，接受原任务最新 `targetRef` 和简单操作类型，以同一观察中的可用控件向本机 Laya 请求有界建议。仅传任务目标、窗口标题和控件角色／名称／支持的 pattern，不传控件值或坐标；建议不执行输入、不授予权限、不证明目标完成。候选过多、观察截断、选择不确定或本机模型不可用均显式返回复核或不可用；目标、在场、取消和期限在选择前后重新核对。该工具仍经原 Runtime、Policy、ToolGateway 和观察出口规则；实际操作仍须独立授权并读回。此增量尚未取得真实设备和平台完整链路验收，不能据此声称已修复云端模型响应解析失败。
 

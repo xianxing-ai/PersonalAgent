@@ -56,7 +56,7 @@ try {
   const realDriver = {chromium: {async launchPersistentContext(profile, options) {
     launchedProfile = profile; launchOptions = options;
     assert.equal(path.relative(directory, profile).startsWith('..'), false);
-    assert.equal(options.headless, false); assert.equal(options.acceptDownloads, false);
+    assert.equal(options.headless, true); assert.equal(options.acceptDownloads, false);
     // Explicit injection forces installed Edge even if bundled Chromium happens to exist.
     actualContext = await playwright.chromium.launchPersistentContext(profile, {...options, channel: 'msedge'});
     actualContext.once('close', () => {contextClosed = true;});
