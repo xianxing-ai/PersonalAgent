@@ -259,6 +259,14 @@ export function createDesktopHost({onOrbPlacementChanged} = {}) {
     return settings;
   }
   return {attach, restore, openSettings, updateAppearance, logAgentArtsFailure,
+    logBrowserDiagnostic({action,stage,code,reason,httpStatus}){
+      if(!['open','preview','back','forward','reload','click','type','select','press','scroll','close','present','worker_open'].includes(action))return;
+      if(!['resolve','start','action','navigate','document_response','document_content','observation','preview','preview_controls','preview_history','preview_frame','preflight','read','execute'].includes(stage))return;
+      const detail={action,stage,code:/^(?:INVALID_ARGUMENT|UNSUPPORTED_CAPABILITY|NOT_FOUND|PROTOCOL_MISMATCH|UNAUTHORIZED|REVISION_CONFLICT|CANCELLED|TIMEOUT|EXTERNAL_FAILURE|RESULT_UNKNOWN|ENOENT|EACCES|EPERM|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT)$/.test(code)?code:'EXTERNAL_FAILURE'};
+      if(/^(?:ERR_(?:INVALID_AUTH_CREDENTIALS|PROXY_AUTH_REQUESTED|NAME_NOT_RESOLVED|CERT_[A-Z_]{1,28}|CONNECTION_(?:RESET|REFUSED|CLOSED|TIMED_OUT|ABORTED|FAILED)|TUNNEL_CONNECTION_FAILED|PROXY_CONNECTION_FAILED|NO_SUPPORTED_PROXIES|ABORTED|BLOCKED_BY_CLIENT|TIMED_OUT|HTTP2_PROTOCOL_ERROR|FAILED|NETWORK_CHANGED|EMPTY_RESPONSE)|DOCUMENT_CHANGED|TARGET_CLOSED|FONTS_PENDING|DEADLINE|CAPTURE_FAILED|DRIVER_PROTOCOL|PAGE_REFERENCE|PAGE_TYPE)$/.test(reason))detail.reason=reason;
+      if(Number.isInteger(httpStatus)&&httpStatus>=100&&httpStatus<=599)detail.httpStatus=httpStatus;
+      log('browser-workspace-failure','workspace',JSON.stringify(detail));
+    },
     configureShadowPreview(enabled) { return state.update({shadowPreview: enabled}).shadowPreview; },
     loginItemSnapshot:loginItem.snapshot,readLoginItem:loginItem.read,configureLoginItem:loginItem.configure,
     hasSavedBounds: mode => Boolean(state.value.windows[mode]),

@@ -94,6 +94,9 @@ test('confirmed original child receipts preserve an attempt even with export-wit
     application.runtime.readToolExecutions=()=>[{executionStarted:true,policyDecision:'allow',state:'confirmed',toolName:name}];
     const status=readReconciliationStatus(application,task,now);
     assert.equal(status.actionLabel,'按已有回执尝试结束');assert.equal(status.blockedReason,undefined);
+    application.readSubagentTasks=()=>[{state:'waiting_reconciliation'}];
+    const pending=readReconciliationStatus(application,task,now);
+    assert.equal(pending.actionLabel,undefined);assert.match(pending.blockedReason,/工人任务尚未结束/);
   }
   for(const record of [{executionStarted:true,policyDecision:'allow',state:'unknown',toolName:'subagent.dispatch'},
     {executionStarted:true,policyDecision:'allow',state:'confirmed',toolName:'mail.send'},

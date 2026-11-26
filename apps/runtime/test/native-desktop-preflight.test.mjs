@@ -8,9 +8,10 @@ import {TaskRuntime} from '../dist/index.js';
 
 test('trusted desktop preflight refusal records failed/non-dispatched; ordinary write failure remains unknown',async()=>{
   const base=fileURLToPath(new URL('../../../.cache/native-desktop-runtime/',import.meta.url));await mkdir(base,{recursive:true});
-  for(const notStarted of [true,false]){
+  for(const cause of ['UNAUTHORIZED','RESULT_UNKNOWN',undefined]){
+    const notStarted=cause!==undefined;
     const runtime=new TaskRuntime(path.join(await mkdtemp(path.join(base,'case-')),'runtime.sqlite'),{toolGateway:{list:()=>[],async invoke(request){
-      request.onAuthorized();throw notStarted?new ToolNotStartedError('UNAUTHORIZED','Target changed before dispatch'):new ProtocolError('RESULT_UNKNOWN','Original device result unknown');
+      request.onAuthorized();throw notStarted?new ToolNotStartedError(cause,'Target blocked before dispatch'):new ProtocolError('RESULT_UNKNOWN','Original device result unknown');
     }}});
     try{
       const task=runtime.submitTask({goal:'synthetic desktop preflight',conversationId:'native-test',idempotencyKey:'native-test'});

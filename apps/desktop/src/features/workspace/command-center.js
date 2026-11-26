@@ -6,6 +6,7 @@ import {mountContextSidebar} from './context-sidebar.js';
 import {createRecentConversations} from './recent-conversations.js';
 import {bindCompactButton} from '../conversation/compact-command.js';
 import {createStarterDraft} from '../conversation/starter-draft.js';
+import {mountWorkspaceBrowserSidebar} from './browser-sidebar.js';
 
 const paths={home:'m3 10 9-7 9 7v11h-7v-7h-4v7H3z',team:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m8-7a4 4 0 0 1 0 8',tasks:'M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01',memory:'M12 3c5 0 8 2 8 4s-3 4-8 4-8-2-8-4 3-4 8-4m-8 4v10c0 2 3 4 8 4s8-2 8-4V7M4 12c0 2 3 4 8 4s8-2 8-4',link:'m10 13 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',arrow:'m9 5 7 7-7 7',plus:'M12 5v14M5 12h14',search:'M21 21l-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',history:'M3 12a9 9 0 1 0 2-6M3 3v5h5m4-1v5l3 2',close:'m6 6 12 12M6 18 18 6',send:'m4 4 17 8-17 8 4-8-4-8m4 8h13',voice:'M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 6a7 7 0 0 0 14 0m-7 7v4'};
 export const centerIcon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]??paths.team}"/></svg>`;
@@ -74,6 +75,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
     </nav>`;
   shell.prepend(rail);
   bar.querySelector('.workspace-app-title').textContent='工作台';
+  mountWorkspaceBrowserSidebar(shell,bar,invoke);
   const search=rail.querySelector('.cc-history-toggle');
   const themeButton=document.createElement('button');themeButton.type='button';themeButton.className='cc-theme-toggle';themeButton.setAttribute('aria-label','切换黑白主题');themeButton.title='切换黑白主题';themeButton.textContent='◐';themeButton.onclick=async()=>{const {saveTheme}=await import('../../ui/preferences.js');saveTheme(document.documentElement.dataset.theme==='light'?'dark':'light');};bar.querySelector('.window-controls').before(themeButton);
   const railToggle=document.createElement('button');railToggle.type='button';railToggle.className='cc-sidebar-toggle';railToggle.setAttribute('aria-label','显示或隐藏侧栏');railToggle.setAttribute('aria-expanded','false');railToggle.innerHTML=centerIcon('tasks');bar.prepend(railToggle);
@@ -98,9 +100,9 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   leadButton.className = 'cc-team-lead';
   leadButton.setAttribute('aria-label', '切换到主对话');
   leadButton.innerHTML = `<span class="cc-avatar-lead" aria-hidden="true">${leadAvatarSvg()}</span>
-    <span class="cc-lead-copy"><span class="cc-lead-heading"><strong>主对话</strong><span class="cc-state" data-cc-coordinator>待机</span></span><small>日程 · 订阅 · 天气</small></span>`;
+    <span class="cc-lead-copy"><span class="cc-lead-heading"><strong>主对话</strong><span class="cc-state" data-cc-coordinator>待机</span></span><small>网页 · 电脑 · 日常事务</small></span>`;
   side.querySelector('.cc-team-lead').replaceWith(leadButton);
-  side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>主对话只处理日程、订阅和天气。邮件、知识库和其他连接器交给助手自己的工人。工人可插话复用，不必一句话一个。</p>';side.querySelector('.cc-trust').hidden=true;
+  side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>直接在聊天里说要做什么。任务开始后，可以在这里查看进度。</p>';side.querySelector('.cc-trust').hidden=true;
   const team=side.querySelector('.cc-team');team.querySelector('h2').textContent='工人';team.prepend(leadButton);rail.querySelector('.cc-thread-scroll').append(team);
   const internal=document.createElement('section');internal.className='cc-internal-chat';internal.setAttribute('aria-label','内部群聊');
   internal.innerHTML=`<header><h2>内部群聊</h2></header><div class="cc-internal-list" data-internal-list></div>
@@ -337,7 +339,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   rail.querySelector('.cc-settings').onclick=()=>openAdmin('settings');side.querySelector('[data-cc-records]').onclick=()=>showLocal('tasks');
   rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{setHistoryOpen(false);showHome();inline.main();closeSidebar();input.focus();}};
   const form=root.querySelector('.workspace-composer'),actions=form.querySelector('.workspace-composer-actions');
-  input.placeholder='跟主对话说，例如查天气、看今天的日程、看订阅';actions.prepend(preferences);
+  input.placeholder='例如：帮我查家酒店，或打开记事本写一段话';actions.prepend(preferences);
   const compact=document.createElement('button');compact.className='cc-compact';
   bindCompactButton(compact,input,root.querySelector('#workspace-error'));
   actions.prepend(compact);

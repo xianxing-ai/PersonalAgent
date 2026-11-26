@@ -19,7 +19,7 @@ import {mountBriefingPanel} from '../features/admin/daily-briefing.js';
 import {mountWorkspace} from '../features/workspace/view.js';
 import {applyPreferences,orbVariantPreference,orbStateOverride} from '../ui/preferences.js';
 import {mountConversationRail} from '../features/conversation/rail.js';
-import {resultText,mainChatReplies} from '../features/conversation/result-text.js';
+import {resultText,mainChatReplies,browserExcerptReply} from '../features/conversation/result-text.js';
 import {DISPATCH_ACK, createDelegatedDeliveryTracker, delegatedDeliveryHtml, rememberActivity, replaceTraceBlock, syncTraceDisclosures, traceBlockHtml} from '../features/conversation/answer-block.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
 import {mountDesktopShell} from '../ui/desktop-shell.js';
@@ -663,6 +663,8 @@ else {
       const children=childrenByParent.get(task.taskId)??[];
       const live=panelLiveTurns.get(task.taskId);
       const traceHtml=traceBlockHtml(task,live,children,escape);
+      const excerpt=browserExcerptReply(task,children);
+      if(excerpt)return `${traceHtml}<div class="assistant-message">${escape(excerpt)}</div><div class="response-actions"><button type="button" data-ui-action="copy" title="复制网页摘录" aria-label="复制网页摘录">${responseIcons.copy}</button></div>`;
       const replies=mainChatReplies(task,children,streamedAnswers.get(task.taskId));
       if(!terminal&&!task.bodyWithheld){
         const liveText=replies.join('\n\n')||streamedAnswers.get(task.taskId)||'';
@@ -689,6 +691,7 @@ else {
         const terminal=isTerminal(t)||t.outputTruncated||t.conflictOnly;
         return `<article class="task turn" data-turn="${escape(t.taskId)}">${!t.conflictOnly&&t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}
           <div class="assistant-turn">${renderTaskAnswer(t,terminal)}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)&&t.state!=='waiting_reconciliation'?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}
+          ${t.state==='waiting_reconciliation'&&t.reconciliationStatus?.blockedReason?`<p class="notice">${escape(t.reconciliationStatus.blockedReason)}</p>`:''}
           ${t.state==='waiting_reconciliation'&&!t.conflictOnly&&t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}
           ${conflictDecisionMarkup(t,escape)}${!terminal&&t.state!=='waiting_reconciliation'&&data.fake?`<div class="turn-actions"><button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button></div>`:''}</article>`;
       }).join('')+delegatedDeliveryHtml(deliveries,escape,'panel');
@@ -727,9 +730,9 @@ if(bridge&&authorizationThread) {
   render=(data,...options)=>{
     previousRender(data,...options);
     // Missing conversation identity must not widen the view to another conversation's questions.
-    const conversationId=data.conversationState?.activeId;
+    const conversationId=mode==='workspace'&&data.assistantAuthorization?undefined:data.conversationState?.activeId;
     questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
-    workflowQuestions.update(data.workflowQuestions,{conversationId});
+    workflowQuestions.update(conversationId?data.workflowQuestions:[],{conversationId});
     const focus=data.approvalFocus,focusKey=focus?.focusId??(focus?.taskId?`${focus.taskId}:${focus.approvalId??''}`:undefined);
     if(focus?.taskId&&focusKey!==focusedQuestionApproval&&focusApprovalCard(questionRoot,focus.taskId,focus.approvalId)){
       focusedQuestionApproval=focusKey;

@@ -46,6 +46,20 @@ test('signatures match the headless runner and a mismatched host key is refused'
   await assert.rejects(pool.tools.find(tool => tool.descriptor.name === 'runner.host.add').execute({host: {...hostInput, hostKey: 'other-key'}}, context(task.taskId)), {code: 'UNAUTHORIZED'});
 });
 
+test('host addresses are validated on registration and again when reading older records', async () => {
+  const runtime = new TaskRuntime(':memory:');
+  const task = parent(runtime);
+  const {pool} = service(runtime);
+  for (const address of ['invalid host', '-option', 'example.test/path', '300.0.0.1']) {
+    assert.throws(() => pool.propose('add', {...hostInput, address}), {code: 'INVALID_ARGUMENT'});
+  }
+  const host = await addHost(pool, task.taskId, {...hostInput, address: '[2001:db8::8]'});
+  assert.equal(host.address, '2001:db8::8');
+  const registry = runtime.findTaskByIdempotencyKey('remote-runner-registry:v1');
+  runtime.saveCheckpoint(registry.taskId, 'remote-runner-host:' + host.id, {...host, address:'legacy invalid host'});
+  await assert.rejects(pool.vpsStatus(host.id), {code:'INVALID_ARGUMENT'});
+});
+
 test('confirmed host heartbeats, polls without treating a gap as no change, and does not redo an unknown comment', async () => {
   const runtime = new TaskRuntime(':memory:');
   const task = parent(runtime);
@@ -170,4 +184,144 @@ test('the headless process returns one receipt and the installer script parses',
   saveRunnerState(state, {version: 1, jobs: {}, cursors: {}, comments: {}, recent: []});
   assert.equal(readFileSync(state, 'utf8').includes('PRIVATE KEY'), false);
   rmSync(directory, {recursive: true, force: true});
+});
+
+test('vps-ops enforces fail-closed policy, allowlisted argv/desktop actions, secret redaction, and no local fallback', async () => {
+  const mkMsg = (id, payload) => {
+    const msg = {v: 1, id, idempotencyKey: `key-${id}`, kind: 'vps-ops', payload, sentAt: '2026-11-25T00:00:00.000Z'};
+    return {...msg, signature: signJob(msg, token)};
+  };
+  let spawned = [];
+  const state = {version: 1, jobs: {}, cursors: {}, comments: {}, recent: []};
+
+  // 1. Without vpsControlPolicy: status succeeds read-only, while exec & desktop fail closed with zero commands spawned.
+  const statusRes = await handleRunnerJob(state, mkMsg('st-1', {action: 'status'}), {
+    token,
+    vpsControlPolicy: null,
+    spawnImpl: async args => { spawned.push(args); return {code: 0, stdout: 'should-not-run'}; },
+  });
+  assert.equal(statusRes.state, 'succeeded');
+  assert.equal(statusRes.vpsControlEnabled, false);
+  assert.equal(spawned.length, 0);
+
+  const deniedExec = await handleRunnerJob(state, mkMsg('ex-no-policy', {action: 'exec', command: ['node', '-v']}), {
+    token,
+    vpsControlPolicy: null,
+    spawnImpl: async args => { spawned.push(args); return {code: 0, stdout: ''}; },
+  });
+  assert.equal(deniedExec.state, 'failed');
+  assert.equal(deniedExec.needsConfig, true);
+  assert.equal(spawned.length, 0);
+
+  // 2. With valid policy: non-allowlisted command rejected; allowlisted command runs & redacts secrets; desktop open_url validates URL & uses DISPLAY=:1.
+  const policy = {
+    enabled: true,
+    allowExec: true,
+    allowDesktop: true,
+    desktopContainer: 'personal-agent-webtop',
+    webtopHttpPort: 3000,
+    webtopHttpsPort: 3001,
+    maxTimeoutMs: 10000,
+    allowedExecutables: ['node', 'xdg-open'],
+    allowedCommands: [['node','-v']],
+  };
+  const blockedBin = await handleRunnerJob(state, mkMsg('ex-rm', {action: 'exec', command: ['rm', '-rf', '/']}), {
+    token,
+    vpsControlPolicy: policy,
+    spawnImpl: async args => { spawned.push(args); return {code: 0, stdout: ''}; },
+  });
+  assert.equal(blockedBin.state, 'failed');
+  assert.match(blockedBin.error, /not in allowedExecutables/);
+  assert.equal(spawned.length, 0);
+
+  for (const payload of [{action:'exec'}, {action:'desktop',desktopAction:'exec'}]) {
+    const disabled = await handleRunnerJob(state, mkMsg('disabled-'+payload.action, {...payload,command:['node','-v']}), {
+      token, vpsControlPolicy:{...policy,allowExec:false},
+      spawnImpl:async args=>{spawned.push(args);return {code:0,stdout:''};},
+    });
+    assert.equal(disabled.state,'failed');
+    assert.equal(disabled.needsConfig,true);
+    assert.equal(spawned.length,0);
+  }
+  const okExec = await handleRunnerJob(state, mkMsg('ex-node', {action: 'exec', command: ['node', '-v']}), {
+    token,
+    vpsControlPolicy: policy,
+    spawnImpl: async args => {
+      spawned.push(args);
+      return {code: 0, stdout: 'v24.15.0 -----BEGIN OPENSSH PRIVATE KEY-----\nTOPSECRET\n-----END OPENSSH PRIVATE KEY-----', stderr: ''};
+    },
+  });
+  assert.equal(okExec.state, 'succeeded');
+  assert.equal(spawned.length, 1);
+  assert.deepEqual(spawned[0].command, ['node', '-v']);
+  assert.equal(okExec.stdout.includes('TOPSECRET'), false);
+  assert.match(okExec.stdout, /\[redacted-key\]/);
+
+  const badUrl = await handleRunnerJob(state, mkMsg('dk-badurl', {action: 'desktop', desktopAction: 'open_url', url: 'file:///etc/passwd'}), {
+    token,
+    vpsControlPolicy: policy,
+    spawnImpl: async args => { spawned.push(args); return {code: 0, stdout: ''}; },
+  });
+  assert.equal(badUrl.state, 'failed');
+  assert.equal(spawned.length, 1);
+
+  const okOpen = await handleRunnerJob(state, mkMsg('dk-open', {action: 'desktop', desktopAction: 'open_url', url: 'https://example.com/'}), {
+    token,
+    vpsControlPolicy: policy,
+    spawnImpl: async args => { spawned.push(args); return {code: 0, stdout: 'opened', stderr: ''}; },
+  });
+  assert.equal(okOpen.state, 'succeeded');
+  assert.deepEqual(spawned[1].command, ['docker', 'exec', '-e', 'DISPLAY=:1', 'personal-agent-webtop', 'xdg-open', 'https://example.com/']);
+
+  // 3. Through createRemoteRunnerService tools: requiresPresence/sideEffect, end-to-end vps.status/vps.exec, and no local fallback when host is down.
+  const runtime = new TaskRuntime(':memory:');
+  const task = parent(runtime);
+  const secrets = createMemoryRunnerSecrets();
+  let localRuns = 0;
+  const fakePrepareDispatch = async scope => {
+    scope.assertCurrent();
+    return {assertBeforeSend() { scope.assertCurrent(); }};
+  };
+  const downPool = createRemoteRunnerService({
+    getRuntime: () => runtime,
+    secrets,
+    prepareDispatch: fakePrepareDispatch,
+    transport: {connect: async () => { throw new Error('ssh unreachable ' + token); }},
+    localExecute: async () => { localRuns += 1; return {state: 'succeeded'}; },
+  });
+  await addHost(downPool, task.taskId);
+  assert.equal(downPool.tools.find(t => t.descriptor.name === 'runner.vps.status').descriptor.sideEffect, 'read');
+  assert.equal(downPool.tools.find(t => t.descriptor.name === 'runner.vps.exec').descriptor.requiresPresence, true);
+  assert.equal(downPool.tools.find(t => t.descriptor.name === 'runner.vps.exec').descriptor.sideEffect, 'external_write');
+  assert.equal(downPool.tools.find(t => t.descriptor.name === 'runner.vps.desktop').descriptor.requiresPresence, true);
+  assert.equal(downPool.tools.find(t => t.descriptor.name === 'runner.vps.desktop').descriptor.sideEffect, 'external_write');
+
+  const execRes = await downPool.tools.find(t => t.descriptor.name === 'runner.vps.exec').execute({command: ['node', '-v']}, context(task.taskId));
+  assert.equal(execRes.accepted, false);
+  assert.equal(execRes.location, 'remote');
+  assert.equal(execRes.receipt.state, 'rejected');
+  assert.equal(localRuns, 0);
+  assert.equal(JSON.stringify(execRes).includes(token), false);
+
+  const liveRuntime = new TaskRuntime(':memory:');
+  const liveTask = parent(liveRuntime);
+  const liveState = {version: 1, jobs: {}, cursors: {}, comments: {}, recent: []};
+  const livePool = createRemoteRunnerService({
+    getRuntime: () => liveRuntime,
+    secrets: createMemoryRunnerSecrets(),
+    prepareDispatch: fakePrepareDispatch,
+    transport: createLoopbackRunnerTransport(async (job, runnerToken) => handleRunnerJob(liveState, job, {
+      token: runnerToken,
+      vpsControlPolicy: policy,
+      spawnImpl: async args => ({code: 0, stdout: `ran:${args.command.join(' ')}`, stderr: ''}),
+    })),
+  });
+  const liveHost = await addHost(livePool, liveTask.taskId);
+  const liveStatus = await livePool.vpsStatus(liveHost.id);
+  assert.equal(liveStatus.state, 'succeeded');
+  assert.equal(liveStatus.receipt.desktop.status, 'ran:docker inspect -f {{.State.Status}} personal-agent-webtop');
+  const toolExec = await livePool.tools.find(t => t.descriptor.name === 'runner.vps.exec').execute({command: ['node', '-v']}, {...context(liveTask.taskId), runId: 'run-exec'});
+  assert.equal(toolExec.accepted, true);
+  assert.equal(toolExec.receipt.state, 'succeeded');
+  assert.equal(toolExec.receipt.stdout, 'ran:node -v');
 });

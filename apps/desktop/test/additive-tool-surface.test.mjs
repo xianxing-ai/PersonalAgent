@@ -51,6 +51,8 @@ test('every additive tool is on the model-visible surface and hidden from child 
   const visible = app.readConversationToolCapabilities().map(tool => tool.name);
   for (const name of ADDITIVE_CONVERSATION_TOOL_NAMES) assert.equal(visible.includes(name), true, name);
   assert.equal(app.readConversationToolCapabilities().find(tool => tool.name === 'runner.host.confirm').requiresPresence, true);
+  assert.equal(app.readConversationToolCapabilities().find(tool => tool.name === 'runner.vps.exec').requiresPresence, true);
+  assert.equal(app.readConversationToolCapabilities().find(tool => tool.name === 'runner.vps.desktop').requiresPresence, true);
   assert.equal(app.readConversationToolCapabilities().find(tool => tool.name === 'subagent.type.confirm').requiresPresence, true);
   const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '主对话', idempotencyKey: 'surface-parent'});
   const child = runtime.submitTask({conversationId: `desktop-subtask:${parent.taskId}`, goal: '子任务', idempotencyKey: 'surface-child'});

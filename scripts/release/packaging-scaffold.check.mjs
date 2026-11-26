@@ -286,7 +286,8 @@ export async function runPackagingScaffoldCheck(projectRoot) {
     const safeOneClick = nsis.oneClick === false;
     const safePerMachine = nsis.perMachine === false;
     const safeDirectory = nsis.allowToChangeInstallationDirectory === true;
-    const safeElevation = nsis.requestedExecutionLevel === 'asInvoker' || nsis.requestedExecutionLevel === undefined;
+    const safeElevation = effectiveConfig.win?.requestedExecutionLevel === 'asInvoker' &&
+      nsis.allowElevation === false && nsis.requestedExecutionLevel === undefined;
     const safeUninstall = nsis.deleteAppDataOnUninstall === false || nsis.deleteAppDataOnUninstall === undefined;
     nsisConservative = safeOneClick && safePerMachine && safeDirectory && safeElevation && safeUninstall;
   }
@@ -295,7 +296,7 @@ export async function runPackagingScaffoldCheck(projectRoot) {
     addCheck(checks, 'packaging-nsis-conservative', yamlPath, 'pass', 'NSIS_CONSERVATIVE_CONFIGURED');
   } else {
     addCheck(checks, 'packaging-nsis-conservative', yamlPath, 'fail', 'NSIS_CONSERVATIVE_REQUIRED');
-    errors.push('NSIS must specify conservative options: oneClick=false, perMachine=false, allowToChangeInstallationDirectory=true, requestedExecutionLevel=asInvoker');
+    errors.push('Windows packaging requires win.requestedExecutionLevel=asInvoker and NSIS oneClick=false, perMachine=false, allowToChangeInstallationDirectory=true, allowElevation=false');
   }
 
   const passCount = checks.filter((c) => c.status === 'pass').length;

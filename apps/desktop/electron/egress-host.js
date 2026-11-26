@@ -196,6 +196,13 @@ function extractFencedText(value) {
   return {prefix:'',inner:value,suffix:''};
 }
 
+/** Remove the same personal identifiers the text egress gate detects, while
+ * keeping the external-source envelope and its original reference intact. */
+export function redactEgressPersonalText(value) {
+  const parts=extractFencedText(value);
+  return parts?parts.prefix+parts.inner.replace(new RegExp(piiText.source,'giu'),'[已隐藏]')+parts.suffix:value;
+}
+
 function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs) {
   function object(text) {
     if(typeof text!=='string')return;

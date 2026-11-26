@@ -1,8 +1,8 @@
-// Manual real Runtime + Edge acceptance. Run only during an exclusive device-input slot.
+// Manual Runtime and dedicated Chromium acceptance. Run only during an exclusive device-input slot.
 // Uses a new isolated profile, synthetic localhost page and explicit real-driver/allowed-origin test seams.
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {existsSync} from 'node:fs';
+import {locateControlledChromium} from '../electron/controlled-chromium.js';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import path from 'node:path';
@@ -30,9 +30,8 @@ let pauseType = false, admissionPaused = false, launchedProfile, browserClosedBy
 const mark = name => checks.push({name, status: 'passed'});
 
 try {
-  assert.equal(process.platform, 'win32', 'This acceptance requires real Windows Edge');
-  assert(['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe'].some(existsSync),
-    'An installed Edge is required; this test never downloads a browser');
+  assert.equal(process.platform,'win32','This acceptance requires Windows');
+  const executablePath=locateControlledChromium();
   await mkdir(directory, {recursive: true});
   server = createServer((request, response) => {
     if (request.url !== '/') {response.writeHead(204); response.end(); return;}
@@ -56,9 +55,8 @@ try {
   const realDriver = {chromium: {async launchPersistentContext(profile, options) {
     launchedProfile = profile; launchOptions = options;
     assert.equal(path.relative(directory, profile).startsWith('..'), false);
-    assert.equal(options.headless, false); assert.equal(options.acceptDownloads, false);
-    // Explicit injection forces installed Edge even if bundled Chromium happens to exist.
-    actualContext = await playwright.chromium.launchPersistentContext(profile, {...options, channel: 'msedge'});
+    assert.equal(options.headless, true); assert.equal(options.acceptDownloads, false);
+    actualContext = await playwright.chromium.launchPersistentContext(profile, {...options,executablePath});
     actualContext.once('close', () => {contextClosed = true;});
     return actualContext;
   }}};
@@ -91,7 +89,7 @@ try {
   host.bind(application);
   const runtime = application.runtime;
   assert(runtime instanceof TaskRuntime); assert(runtime.policy instanceof AuthorizationPolicy);
-  const task = runtime.submitTask({goal: 'Synthetic Edge exact authorization and shared input lease acceptance',
+  const task = runtime.submitTask({goal: 'Synthetic Chromium exact authorization and shared input lease acceptance',
     conversationId: 'synthetic-browser-runtime', idempotencyKey: 'synthetic-' + randomUUID()});
   taskId = task.taskId;
   runtime.saveCheckpoint(taskId, 'application-deadline', deadline);
@@ -167,7 +165,7 @@ try {
     assert.equal((await domReadback()).saves, 0);
     const observed = await confirmed('observe', {}, context.signal);
     const note = observed.result.controls.find(control => control.name === 'Synthetic note'); assert(note);
-    mark('real-Edge-own-profile-open-observe-with-original-runtime-attempt');
+    mark('dedicated-Chromium-own-profile-open-observe-with-original-runtime-attempt');
 
     stage = 'exact-arguments';
     const typeArguments = {targetRef: observed.result.targetRef, ref: note.ref, text: expectedText};
@@ -233,7 +231,7 @@ try {
     assert.equal(closed.result.state, 'closed'); assert.equal(host.snapshot().connected, false);
     assert.equal(contextClosed, true); browserClosedByTool = true; leaseAfterClose = lease.snapshot();
     assert.equal(leaseAfterClose.state, 'idle'); assert.equal(attemptKeys().length, 4);
-    mark('original-approved-close-releases-only-owned-Edge-and-shared-lease');
+    mark('original-approved-close-releases-only-owned-Chromium-and-shared-lease');
 
     stage = 'records-evidence';
     records = runtime.readToolExecutions(taskId); evidence = runtime.readEvidence(taskId);
@@ -245,7 +243,7 @@ try {
       assert.equal(item.sourceRef, run.toolName); assert.equal(item.kind, 'execution'); assert.equal(item.verification, 'conditional');
     }
     mark('real-runtime-original-runs-attempts-and-conditional-evidence-retained');
-    return {resultSummary: 'Synthetic Edge Runtime exact authorization, shared lease, DOM readback and close passed.',
+    return {resultSummary: 'Synthetic Chromium Runtime exact authorization, shared lease, DOM readback and close passed.',
       evidenceRefs: records.map(record => record.evidenceId)};
   }, {deadline, sideEffect: 'external_write'});
   if (finalTask.state !== 'succeeded') {
@@ -274,15 +272,15 @@ if (!failure && taskId) {
 }
 await mkdir(directory, {recursive: true});
 const receipt = {recordedAt: new Date().toISOString(), status: failure ? 'failed' : 'passed',
-  scope: 'real-TaskRuntime-SQLite-AuthorizationPolicy-ToolGateway-shared-ComputerControlLease-real-Edge-synthetic-local-page',
+  scope: 'real-TaskRuntime-SQLite-AuthorizationPolicy-ToolGateway-shared-ComputerControlLease-dedicated-Chromium-synthetic-local-page',
   profile: 'huawei_ict_agentarts', taskId, taskState: finalTask?.state, checks, approvals, invocations,
   toolExecutionRecords: records, evidence, nativeBrowserAttempts: savedAttempts, permissionChecks: permissions,
-  testOnlyAllowedOrigins: origin ? [origin] : [], explicitDriver: 'real Playwright chromium.launchPersistentContext channel=msedge',
+  testOnlyAllowedOrigins: origin ? [origin] : [], explicitDriver: 'dedicated Playwright Chromium',
   visibleBrowser: launchOptions?.headless === false, isolatedProfile: launchedProfile ? path.relative(directory, launchedProfile) : undefined,
   browserClosedByTool, ownedContextClosed: contextClosed, sharedLeaseAfterClose: leaseAfterClose,
   modelCalls: 0, cloudCalls: 0, accountCalls: 0, artifact: screenshot,
   limitations: ['Deterministic synthetic trusted approvals and authorization barrier test seam; no user account, model, AgentArts or Electron renderer acceptance.',
-    'localhost admission requires both explicit exact testOnlyAllowedOrigins and injected real Edge driver; production public-network admission remains unchanged.',
+    'Localhost admission requires an exact testOnlyAllowedOrigins entry and an explicitly injected Chromium driver.',
     'Independent DOM readback is test-only on the owned page. Browser results never claim goalVerified; generic Runtime Evidence stays conditional.',
     'A concurrent read is Policy-authorized but rejected by the shared lease before provider dispatch; its Runtime executionStarted remains true under current generic read semantics.'],
   ...(failure ? {failure} : {})};

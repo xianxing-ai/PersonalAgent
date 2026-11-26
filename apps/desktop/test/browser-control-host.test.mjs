@@ -85,6 +85,8 @@ test('public address admission rejects special ranges, mapped IPv6, private DNS 
   for(const value of ['file:///C:/private','http://localhost/','https://metadata.google.internal','http://127.1/','https://u:p@example.com'])
     await assert.rejects(assertPublicBrowserUrl(value,{dnsLookup:publicDns}),{code:'UNAUTHORIZED'});
   await assert.rejects(assertPublicBrowserUrl('https://example.com',{dnsLookup:async()=>[{address:'8.8.8.8'},{address:'192.168.1.1'}]}),{code:'UNAUTHORIZED'});
+  await assert.rejects(assertPublicBrowserUrl('https://example.com',{dnsLookup:async()=>[{address:'198.18.1.132'}]}),
+    error=>error.code==='UNAUTHORIZED'&&error.message.includes('Fake-IP'));
 });
 
 test('a trusted workflow target handoff admits only the exact next child and retains current-page checks',async()=>{
@@ -138,13 +140,13 @@ test('workflow click accepts unchanged original fields through its existing brow
   }finally{await f.close();}
 });
 
-test('stable tools expose bounded public schemas, own visible profile and open/observe/type/click readback',async()=>{
+test('stable tools use an isolated headless browser and return open/observe/type/click readback',async()=>{
   const f=await fixture();try {
     const stable=f.host.tools;assert.equal(stable.length,12);assert.equal(f.host.tools,stable);
     assert.equal(stable.find(t=>t.descriptor.name==='browser.click').descriptor.sideEffect,'external_write');
     const opened=await f.invoke('open',{url:'https://example.com/?private=not-exported#fragment'});
     assert.equal(opened.url,'https://example.com/');assert.equal(opened.goalVerified,false);
-    assert.equal(f.calls.find(c=>c[0]==='launch')[2].headless,false);
+    assert.equal(f.calls.find(c=>c[0]==='launch')[2].headless,true);
     const typed=await f.invoke('type',{targetRef:opened.targetRef,ref:'r1',text:'hello'});
     assert.equal(typed.controls.find(c=>c.ref==='r1').value,'hello');assert.notEqual(typed.targetRef,opened.targetRef);
     const clicked=await f.invoke('click',{targetRef:typed.targetRef,ref:'r2'});assert.equal(clicked.text,'Count 1');
@@ -229,6 +231,20 @@ test('redirects and subresources cannot reach loopback, and uncertain dispatched
       assert.equal(f.host.snapshot().state,'blocked');
     }finally{await f.close();}
   }
+});
+
+test('failing non-navigation third-party subresource DNS is safely aborted without blocking browser.open',async()=>{
+  const f=await fixture({dnsLookup:async host=>{
+    if(host==='dead-cdn.example')throw Object.assign(Error('getaddrinfo ENOTFOUND dead-cdn.example'),{code:'ENOTFOUND'});
+    return [{address:'93.184.216.34'}];
+  }});
+  try{
+    f.afterGoto=()=>f.request('https://dead-cdn.example/pixel.png',false);
+    const opened=await f.invoke('open',{url:'https://example.com'});
+    assert.equal(opened.state,'action_observed');
+    assert.ok(f.calls.some(c=>c[0]==='aborted'&&c[1].includes('dead-cdn.example')));
+    assert.equal(f.host.snapshot().state,'ready');
+  }finally{await f.close();}
 });
 
 test('explicit test-only local origins require injected driver and do not open other private origins',async()=>{
@@ -529,4 +545,21 @@ test('proxy response guards stop HTTP body and CONNECT ciphertext before an over
       socket.on('connect',()=>socket.write('CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\nProxy-Authorization: '+proxyAuthorization(tunnel)+'\r\n\r\n'));});
     const bytes=Buffer.concat(chunks),end=bytes.indexOf('\r\n\r\n');assert.ok(counted>16);assert.ok(end>=0);assert.ok(bytes.length-end-4<=16);
   }finally{socket?.destroy();await tunnel.close();await stopServer(tcpTarget);}
+});
+
+test('allowFakeIpProxy permits public domains resolved to 198.18.x.x while keeping literal IPs and private ranges blocked',async()=>{
+  const fakeDns=async()=>[{address:'198.18.1.132'}];
+  assert.equal((await assertPublicBrowserUrl('https://example.com/',{dnsLookup:fakeDns,allowFakeIpProxy:true})).hostname,'example.com');
+  await assert.rejects(assertPublicBrowserUrl('http://198.18.1.132/',{dnsLookup:fakeDns,allowFakeIpProxy:true}),{code:'UNAUTHORIZED'});
+  await assert.rejects(assertPublicBrowserUrl('https://example.com/',{dnsLookup:async()=>[{address:'198.18.1.132'},{address:'10.0.0.1'}],allowFakeIpProxy:true}),{code:'UNAUTHORIZED'});
+  await assert.rejects(assertPublicBrowserUrl('http://localhost/',{dnsLookup:fakeDns,allowFakeIpProxy:true}),{code:'UNAUTHORIZED'});
+  const target=createHttpServer((_req,res)=>res.end('ok-via-fake-ip'));await listen(target);
+  const dials=[],proxy=await createBrowserEgressProxy({dnsLookup:fakeDns,allowFakeIpProxy:true,
+    connect:options=>{dials.push(options);return netConnect({host:'127.0.0.1',port:target.address().port});}});
+  try{
+    const reply=await proxyRequest(proxy,'http://example.com/',{'proxy-authorization':proxyAuthorization(proxy)});
+    assert.equal(reply.status,200);assert.equal(reply.body,'ok-via-fake-ip');
+    assert.deepEqual(dials,[{host:'198.18.1.132',port:80}]);
+    assert.equal((await proxyRequest(proxy,'http://198.18.1.132/',{'proxy-authorization':proxyAuthorization(proxy)})).status,403);
+  }finally{await proxy.close();await stopServer(target);}
 });

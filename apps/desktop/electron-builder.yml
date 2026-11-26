@@ -24,12 +24,14 @@ files:
   - "!**/.cache*"
 
 asar: true
+afterPack: ./scripts/package-controlled-chromium.mjs
 asarUnpack:
   - electron/f20-typescript-check.cjs
   - node_modules/typescript/lib/**/*
   - node_modules/typescript/package.json
 
 win:
+  requestedExecutionLevel: asInvoker
   target:
     - target: nsis
       arch:
@@ -43,7 +45,7 @@ nsis:
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Synstar
-  requestedExecutionLevel: asInvoker
+  allowElevation: false
 
 # 图标待补，当前使用 electron-builder 默认配置
 # native/windows-host 资源当前未纳入打包（unavailable），不伪装已打包原生工具

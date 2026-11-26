@@ -1,5 +1,6 @@
 import {ProtocolError,ToolNotStartedError,isToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 import {randomUUID} from 'node:crypto';
+import {skippedNotepadAttempt} from './reconciliation-conflict.js';
 
 const OBSERVE='computer.desktop.observe';
 const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.screenshot','computer.desktop.wait','computer.desktop.suggest_control',
@@ -7,6 +8,16 @@ const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.s
 const controlled=name=>name==='computer.notepad.replace_text'||/^computer\.desktop\.[a-z_]+$/.test(name)||/^browser\.[a-z_]+$/.test(name);
 const isWrite=name=>controlled(name)&&!reads.has(name);
 export {isWrite as isComputerControlWrite};
+// Only new, explicitly GET/HEAD-restricted browser invocations receive this
+// trusted checkpoint. Historical uncertain writes retain their original guard.
+function readOnlyNavigation(runtime,record){
+  if(!['browser.open','browser.click','browser.scroll'].includes(record.toolName))return false;
+  const attempt=runtime.loadCheckpoint?.(record.taskId,'browser-control-attempt:'+record.evidenceId);
+  const marker={'browser.open':'readOnlyNavigation','browser.click':'restrictedRead','browser.scroll':'readOnlyScroll'}[record.toolName];
+  return attempt?.[marker]===true&&attempt.taskId===record.taskId&&attempt.runId===record.evidenceId
+    &&attempt.toolName===record.toolName&&attempt.toolVersion===record.toolVersion;
+}
+export {readOnlyNavigation as isReadOnlyBrowserReceipt};
 // Native orchestration can end while its original tool outcome stays unknown.
 // Normal running tasks include the current Gateway's not-yet-dispatched started record.
 export const computerControlRecoveryTaskStates=Object.freeze(['waiting_reconciliation','failed','cancelled']);
@@ -15,7 +26,7 @@ const fail=(code,message)=>{throw new ProtocolError(code,message);};
 /** One main-process input lease shared by the native Notepad and Windows-MCP
  * tools. It never grants permission, schedules work, persists state or replays a run.
  * getRuntime returns the original Runtime after main composition has bound it. */
-export function createComputerControlLease({getRuntime,now=Date.now}={}) {
+export function createComputerControlLease({getRuntime,readInSeparateBrowser,now=Date.now}={}) {
   let active,settling,reservation,closed=false;
   const wrappers=new WeakMap();
   const runtime=()=>{
@@ -37,9 +48,21 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
     const resolved=record.state==='confirmed'&&record.policyDecision==='allow'&&record.executionStarted===true
       &&(!settling.uncertain||record.reconciliationOutcome==='applied');
     const notApplied=record.state==='failed'&&record.reconciliationOutcome==='not_applied';
-    if(resolved||notApplied)settling=undefined;
+    const endedRead=record.state==='unknown'&&source.isToolExecutionActive?.(record)===false&&readOnlyNavigation(source,record);
+    if(resolved||notApplied||endedRead||skippedNotepadAttempt(source,record))settling=undefined;
   }
-  function originalUnknown(source) {
+  function independentOfNavigation(source,record,next){
+    if(!next||record?.toolName!=='browser.open'||record.toolVersion!=='1.0.0'||record.state!=='unknown'||record.taskId===next.context.taskId
+      ||!record.executionStarted||record.policyDecision!=='allow'||source.isToolExecutionActive?.(record)!==false)return false;
+    const attempt=source.loadCheckpoint(record.taskId,'browser-control-attempt:'+record.evidenceId);
+    const original=source.loadCheckpoint(record.taskId,'application-tool-invocation:'+record.evidenceId);
+    if(attempt?.taskId!==record.taskId||attempt.runId!==record.evidenceId||attempt.toolName!==record.toolName||attempt.toolVersion!==record.toolVersion
+      ||original?.toolName!==record.toolName||original.toolVersion!==record.toolVersion||original.argumentsDigest!==attempt.argumentsDigest
+      ||!source.matchesToolExecutionInput(record,{arguments:original.arguments,scopeRef:attempt.authorizationRef}))return false;
+    if(next.name==='computer.notepad.replace_text'||next.name==='computer.desktop.launch_app'&&next.input.app==='notepad')return true;
+    return next.name==='browser.click'&&readInSeparateBrowser?.(record,next.context,next.input)===true;
+  }
+  function originalUnknown(source,next) {
     let beforeSequence;
     do {
       const page=source.listTasks({states:computerControlRecoveryTaskStates,limit:100,
@@ -49,11 +72,12 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
         const records=source.readToolExecutions(task.taskId);
         if(!Array.isArray(records))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录读取无效');
         if(records.some(record=>isWrite(record.toolName)&&record.policyDecision==='allow'&&record.executionStarted===true
-          &&['started','unknown'].includes(record.state)))return true;
+          &&['started','unknown'].includes(record.state)&&!readOnlyNavigation(source,record)&&!skippedNotepadAttempt(source,record)
+          &&!independentOfNavigation(source,record,next)))return true;
       }
-      const next=page.nextBeforeSequence;
-      if(next!==undefined&&(!Number.isSafeInteger(next)||next<0||(beforeSequence!==undefined&&next>=beforeSequence)))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录分页无效');
-      beforeSequence=next;
+      const cursor=page.nextBeforeSequence;
+      if(cursor!==undefined&&(!Number.isSafeInteger(cursor)||cursor<0||(beforeSequence!==undefined&&cursor>=beforeSequence)))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录分页无效');
+      beforeSequence=cursor;
     }while(beforeSequence!==undefined);
     return false;
   }
@@ -65,7 +89,8 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
     if(!controlled(tool?.descriptor?.name??''))return tool;
     if(wrappers.has(tool))return wrappers.get(tool);
     const wrapped={...tool,descriptor:tool.descriptor,async execute(input,context){
-      const write=isWrite(tool.descriptor.name);let source;
+      const trustedRead=['browser.open','browser.scroll'].includes(tool.descriptor.name)&&tool.descriptor.sideEffect==='read';
+      const write=isWrite(tool.descriptor.name)&&!trustedRead;let source;
       try{
         check(context);
         if(active)fail('REVISION_CONFLICT','另一个电脑控制引擎正在执行；本次尚未调用设备');
@@ -75,7 +100,12 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
           if(reservation.authorizeOperation(input,context,tool.descriptor.name)!==true)
             fail('UNAUTHORIZED','原工作流持有输入锁；此设备操作不属于其精确原子任务');
         }
-        if(write&&(settling||originalUnknown(source)))fail('RESULT_UNKNOWN','原电脑操作尚未核实；禁止新的电脑写入，不会重放原操作');
+        if(write){
+          const next={name:tool.descriptor.name,input,context};
+          const previous=settling&&source.readToolExecutions(settling.taskId).find(record=>record.evidenceId===settling.runId);
+          if(settling&&!independentOfNavigation(source,previous,next)||originalUnknown(source,next))
+            fail('RESULT_UNKNOWN','原电脑操作尚未核实；禁止可能影响同一目标的写入，不会重放原操作');
+        }
       }catch(error){
         // Only this trusted wrapper knows the driver has not been called.
         if(write)throw new ToolNotStartedError(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE',

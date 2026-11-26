@@ -1,8 +1,24 @@
 const {contextBridge, ipcRenderer} = require('electron');
+const browserOpenListeners = new Set();
+let pendingBrowserOpen = false;
+ipcRenderer.on('desktop:browser-workspace-open', () => {
+  if (!browserOpenListeners.size) pendingBrowserOpen = true;
+  for (const listener of browserOpenListeners) listener();
+});
 for (const type of ['error', 'unhandledrejection']) window.addEventListener(type, () => {
   ipcRenderer.invoke('desktop-local', 'renderer-error', type).catch(() => {});
 });
 contextBridge.exposeInMainWorld('desktop', Object.freeze({
+  onBrowserWorkspaceOpen(listener) {
+    browserOpenListeners.add(listener);
+    if (pendingBrowserOpen) { pendingBrowserOpen = false; queueMicrotask(listener); }
+    return () => browserOpenListeners.delete(listener);
+  },
+  onBrowserWorkspaceChange(listener) {
+    const receive = () => listener();
+    ipcRenderer.on('desktop:browser-workspace-change', receive);
+    return () => ipcRenderer.removeListener('desktop:browser-workspace-change', receive);
+  },
   openSettings: () => ipcRenderer.invoke('desktop-local', 'open'),
   preferences: () => ipcRenderer.invoke('desktop-local', 'preferences'),
   windowState: () => ipcRenderer.invoke('desktop-local', 'window-state'),

@@ -27,6 +27,9 @@ fi
 if [ -f "$PREFIX/VERSION" ] && [ "$(cat "$PREFIX/VERSION")" = "$VERSION" ] \
   && [ -x /usr/local/bin/node ] && [ "$(/usr/local/bin/node --version)" = "v$NODE_VERSION" ] \
   && [ -x /usr/local/bin/npm ] && [ "$(/usr/local/bin/npm --version)" = "$NPM_VERSION" ]; then
+  if [ ! -e /usr/bin/node ] && [ -x /usr/local/bin/node ]; then
+    ln -sf /usr/local/bin/node /usr/bin/node
+  fi
   node "$PREFIX/remote-runner-service.mjs" --verify
   exit 0
 fi
@@ -49,6 +52,9 @@ if [ ! -x /usr/local/bin/node ] || [ "$(/usr/local/bin/node --version)" != "v$NO
   curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$NODE_ARCH.tar.xz" -o "$TMP/node.tar.xz"
   tar -xJf "$TMP/node.tar.xz" -C /usr/local --strip-components=1
   rm -rf "$TMP"
+fi
+if [ ! -e /usr/bin/node ] && [ -x /usr/local/bin/node ]; then
+  ln -sf /usr/local/bin/node /usr/bin/node
 fi
 if [ "$(/usr/local/bin/npm --version)" != "$NPM_VERSION" ]; then
   /usr/local/bin/npm install --global --prefix /usr/local "npm@$NPM_VERSION"

@@ -36,6 +36,8 @@ import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {isDeepStrictEqual} from 'node:util';
 import type {TaskRuntime, WorkerContext, WorkerResult, SubmitTaskInput} from '../index.js';
 import {readCanonicalUserWorkParent} from './user-task-delegation.js';
+import {BROWSER_TURN,BROWSER_ACTIONS} from './browser-worker.js';
+import {TOOL_DISCOVERY_NAME} from './tool-discovery.js';
 import {createSubagentTypeRegistry,subagentTypeDigest} from './subagent-type-registry.js';
 
 export {SUBAGENT_DISPATCH_TOOL_NAME, SUBAGENT_DISPATCH_TOOL_VERSION};
@@ -239,12 +241,17 @@ export async function runSubagentWorker(options: SubagentHostOptions, subtask: S
   childWorker.saveCheckpoint('subtask-execution-binding', {kind});
   const sourceTools = options.getToolsForSubtask ? options.getToolsForSubtask(subtask, childWorker) : options.getTools?.();
   const sibling = readRuntimeSubagentSibling(runtime, childWorker.taskId);
-  const required = runtime.loadCheckpoint(childBinding(runtime, childWorker.taskId).parentTaskId, 'required-subagent-delegation:v1') as
+  const parentTaskId=childBinding(runtime, childWorker.taskId).parentTaskId;
+  const required = runtime.loadCheckpoint(parentTaskId, 'required-subagent-delegation:v1') as
     {subtask?: SubtaskDefinition} | undefined;
   const isOriginalUserWorker = !sibling && subtask.subtaskId === 'user-work'
     && required?.subtask !== undefined && computeSubtaskInputDigest(required.subtask) === computeSubtaskInputDigest(subtask);
+  // Apply the task scope before provider readiness or catalog freezing. Unrelated
+  // Windows and VPS providers cannot block this browser worker's first decision.
+  const browserOnly=isOriginalUserWorker&&runtime.loadCheckpoint(parentTaskId,BROWSER_TURN)!==undefined;
   const available = sourceTools?.list() ?? [];
   const descriptors = structuredClone(available.filter(item => item.name !== SUBAGENT_DISPATCH_TOOL_NAME
+    &&(!browserOnly||BROWSER_ACTIONS.includes(item.name)||item.name===TOOL_DISCOVERY_NAME)
     &&(!asyncScope?.type||asyncScope.type.allowedTools.includes(item.name)&&!item.name.startsWith('subagent.'))
     && (item.name !== DEVELOPER_HARNESS_TOOL_NAME || isOriginalUserWorker)
     && (!sibling || sibling.binding.tools.some(allowed => isDeepStrictEqual(allowed, item)))));

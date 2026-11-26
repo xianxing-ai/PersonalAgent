@@ -25,7 +25,10 @@ import type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability}
 import {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured} from './configured-workflow-worker.js';
 import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability,RuntimeConfiguredWorkflowBindingScope,
   RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
-import {capabilityContext} from './capability-context.js';
+import {capabilityContext,isDirectNotepadRequest} from './capability-context.js';
+import {bindNotepadWorker,NOTEPAD_INTENT,NOTEPAD_TOOL,assertNotepadWorkerComplete} from './notepad-worker.js';
+import {BROWSER_TURN,BROWSER_WORKER,BROWSER_EXPORT_WITHHELD,browserIntent,bindBrowserTurn,bindBrowserWorker,browserWorkerGoal,browserWorkerSource,assertBrowserWorkerComplete,explicitlyRequestedBrowserUrl,requestedPlayback,requestedBrowserLinkNavigation,browserReadExcerpt} from './browser-worker.js';
+import {browserPreparationIntent,preparationMatches,requestedChoices,type PreparationControl} from './browser-preparation.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -62,7 +65,7 @@ import type {WorkerContext,WorkerResult,SubmitTaskInput} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import type {QwenRealtimeModelGateway} from '@personal-agent/models';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError,parseCoordinationContinuation} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError,readAgentArtsResponseFailure,parseCoordinationContinuation} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationResult, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import {ASSISTANT_MODEL_UNAVAILABLE, optionalAssistantModelId} from '../assistant-roster.js';
@@ -117,7 +120,7 @@ import {MailReadSessions, MAIL_READ_SESSION_CHECKPOINT, MAIL_READ_TOOL, MAIL_REA
 import type {StartMailReadSessionRequest, MailReadSession} from './mail-read-session.js';
 import {createRuntimeSubagentDispatchTool, resumeRuntimeSubagentTask, readRuntimeSubagentSummary,
   SUBAGENT_DISPATCH_TOOL_NAME, readRuntimeSubagentBinding, readRuntimeSubagentSibling,readRuntimeAsyncSubagentScope} from './subagent-host.js';
-import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,assertUserTaskDelegationComplete,
+import {USER_TASK_DELEGATION, readUserTaskDelegation, readCanonicalUserWorkParent, assertUserTaskDelegationInvocation,assertUserTaskDelegationComplete,
   userTaskDelegationPort} from './user-task-delegation.js';
 import {SUBAGENT_CONVERSATION_MESSAGE,assertConversationScope,readSubagentConversationOrigin,
   readSubagentConversationMessage,listSubagentConversationMessages,subagentConversationMessageKey,
@@ -486,6 +489,7 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   delegateUserTasks?: true;
   /** Ordinary panel turns stay on the front desk: light tools such as weather run there, heavy work is still dispatched. */
   frontDeskUserTurns?: true;
+  prepareDesktopWorker?: (scope:{deadline:string;signal:AbortSignal})=>Promise<void>;
   /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
   proactiveWorkflows?: true;
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
@@ -636,6 +640,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly coordination: CoordinationPort | undefined;
   private readonly delegateUserTasks: boolean;
   private readonly frontDeskUserTurns: boolean;
+  private readonly prepareDesktopWorker: RuntimeApplicationOptions['prepareDesktopWorker'];
   private contextSummaryCaches=new WeakMap<RuntimeContextCompactionOptions,Map<string,ContextCompactionCache>>();
   private readonly coordinationBinding: string;
   private readonly assertCoordinationBinding?: () => void;
@@ -723,6 +728,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Front-desk turns require Competition user delegation to remain available for heavy work');
     }
     this.frontDeskUserTurns = options.frontDeskUserTurns === true;
+    this.prepareDesktopWorker = options.prepareDesktopWorker;
     if(options.onHarnessEventProgress!==undefined) {
       if(typeof options.onHarnessEventProgress!=='function')throw new ProtocolError('INVALID_ARGUMENT','Invalid harness event progress listener');
       this.onHarnessEventProgress=options.onHarnessEventProgress;
@@ -1575,9 +1581,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             toolVersion: tool.version,
           });
           const unknown = unresolved.some(child => child.state === 'waiting_reconciliation');
+          const exportHeld=unresolved.every(child=>child.state==='waiting_reconciliation'&&child.error?.code==='UNAUTHORIZED'
+            &&child.error.message===BROWSER_EXPORT_WITHHELD);
           this.runtime.transitionTask(invocation.taskId, unknown ? 'waiting_reconciliation' : 'waiting_approval',
-            {resultSummary: summary.summary});
-          return {state: unknown ? 'unknown' : 'pending', evidenceRefs: result.evidenceRefs};
+            exportHeld?{resultSummary:BROWSER_EXPORT_WITHHELD,error:{code:'UNAUTHORIZED',message:BROWSER_EXPORT_WITHHELD,retryable:false}}
+              :{resultSummary: summary.summary});
+          return {state: unknown&&!exportHeld ? 'unknown' : 'pending', evidenceRefs: result.evidenceRefs};
         }
         return {...result, result: summary,
           evidenceRefs: [...new Set([...result.evidenceRefs, ...children.flatMap(child => child.evidenceRefs)])]};
@@ -2125,6 +2134,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   readToolConversation(taskId:string):string|undefined {
     const root=this.readBoundToolRootTask(taskId,new Set());
     return root?this.runtime.getTask(root).conversationId:undefined;
+  }
+
+  /** Only a Runtime-created assistant turn and its bound workers own the assistant's approval cards. */
+  readAssistantToolConversation(taskId:string):string|undefined {
+    const root=this.readBoundToolRootTask(taskId,new Set());
+    if(!root)return;
+    const turn=this.runtime.loadCheckpoint(root,'assistant-turn') as {assistantId?:string;source?:string}|undefined;
+    if(!turn?.assistantId||turn.source!=='user'&&turn.source!=='peer')return;
+    const conversationId=this.runtime.getTask(root).conversationId;
+    try{return this.runtime.getAssistant(turn.assistantId).conversationId===conversationId?conversationId:undefined;}
+    catch{return;}
   }
 
   private readBoundToolRootTask(taskId:string,seen:Set<string>):string|undefined {
@@ -3000,7 +3020,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       try {
         this.assertContextHooksAvailable(request.taskId);
         const strategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT?experienceText:'';
-        const goal=this.appendPromptPreferences(request.taskId, request.goal, request.goal+strategy);
+        const goal=this.appendPromptPreferences(request.taskId, request.goal, browserWorkerGoal(this.runtime,request.taskId,request.goal+strategy));
         const withStrategy=this.fitContinuationRequest(goal===request.goal?request:Object.freeze({...request,goal}));
         if(!strategy)this.experienceSendPolicies.delete(request.taskId);
         this.assertInputActive(withStrategy);
@@ -3018,7 +3038,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       deadline:request.deadline,signal:request.signal};
     const preparedSource=manualCompaction?request.goal:await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
     const privateDerived=preparedSource!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
-    let prepared=preparedSource;
+    let prepared=teacherScope?preparedSource:browserWorkerGoal(this.runtime,task.taskId,preparedSource);
     this.assertInputActive(request);
     if(!privateDerived&&experienceText&&prepared.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT)prepared+=experienceText;
     else this.experienceSendPolicies.delete(request.taskId);
@@ -3206,6 +3226,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private holdCompetitionExport(taskId:string,error?:unknown):void {
+    const responseFailure=readAgentArtsResponseFailure(error);
+    if(responseFailure&&!this.runtime.loadCheckpoint(taskId,'competition-cloud-inflight')&&!this.runtime.loadCheckpoint(taskId,'competition-cloud-unknown')
+      &&!this.isHistoryWithheld(taskId)&&browserReadExcerpt(this.runtime,taskId)){
+      // The adapter received a definite response and every device operation was a confirmed read.
+      // Preserve the actual response failure; the authorized source can be read by the initiating chat.
+      this.runtime.saveCheckpoint(taskId,'browser-summary-response-failure:v1',responseFailure);
+      return;
+    }
     // The adapter's typed never-sent proof is required in addition to local effect
     // readback. Missing inflight alone cannot establish this (plain HTTPS may send).
     if(error instanceof AgentArtsBeforeInvokeError&&this.runtime.canFailTrackedCoordinationWithoutEffects(taskId))return;
@@ -3575,6 +3603,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       || !isDeepStrictEqual(worker.loadCheckpoint('subtask-tools-binding'),descriptors)) {
       throw new ProtocolError('UNAUTHORIZED','Default child tool scope changed');
     }
+    if(delegation&&subtask.subtaskId==='user-work')bindBrowserWorker(this.runtime,worker.taskId,parent.taskId);
+    if (bindNotepadWorker(this.runtime,worker.taskId,parent.taskId,subtask.subtaskId,subtask.goal)) {
+      if (!descriptors.some(tool=>tool.name===NOTEPAD_TOOL&&tool.version==='1.0.0'))
+        throw new ProtocolError('UNSUPPORTED_CAPABILITY','此工人未获分配记事本操作工具');
+      await this.prepareDesktopWorker?.({deadline:worker.deadline,signal:worker.signal});
+    }
     if(binding.subtaskId==='user-work')this.harnessExperienceRecipes(worker.taskId,worker,true);
     const catalog=this.competitionToolCatalog?.restrict(tools);
     if(readRuntimeCodingRepairRequest(this,subtask,worker.taskId)) {
@@ -3604,6 +3638,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }}:originalPort;
     return runCoordinationWorker(this.runtime,port,tools,worker.taskId,child.goal,worker,
       {retainPriorToolResults:this.usesGoalContinuation(worker.taskId),allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        assertCompletion:()=>{assertNotepadWorkerComplete(this.runtime,worker.taskId);assertBrowserWorkerComplete(this.runtime,worker.taskId);},
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }
@@ -5288,6 +5323,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.assertCompetitionTaskConfiguration(request.taskId);
     this.assertInputActive(request);
     this.assertContextHooksAvailable(request.taskId);
+    browserWorkerSource(this.runtime,request.taskId);
     if(this.coordinationInput||teacherScope) {
       const effective=this.ephemeralSends.get(leaseKey);
       if(!effective || effective.goal!==request.goal || effective.revision!==request.revision
@@ -5377,14 +5413,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private taskCompetitionCatalog(taskId:string):RuntimeCompetitionToolCatalog|undefined {
-    if(this.frontDeskTurn(taskId)) {
+    if(this.frontDeskTurn(taskId)||readUserTaskDelegation(this.runtime,taskId)) {
       const tools=this.taskTools(taskId);return tools?this.competitionToolCatalog?.restrict(tools):undefined;
     }
     if(this.runtime.loadCheckpoint(taskId,'assistant-turn')!==undefined) {
       return this.assistantCatalog(taskId);
-    }
-    if(readUserTaskDelegation(this.runtime,taskId)) {
-      const tools=this.taskTools(taskId);return tools?this.competitionToolCatalog?.restrict(tools):undefined;
     }
     if(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')===undefined)return this.competitionToolCatalog;
     const descriptors=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
@@ -5896,8 +5929,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       &&this.confirmedSubagentWait(parent.taskId,false)) {
       // State projection only: the original dispatch is confirmed but its child is
       // unresolved. Do not resume either loop or describe this as another approval.
-      this.runtime.transitionTask(parent.taskId,'waiting_reconciliation',{error:{code:'RESULT_UNKNOWN',
-        message:'Original child execution requires reconciliation',retryable:false}});
+      const exportHeld=child.error?.code==='UNAUTHORIZED'&&child.error.message===BROWSER_EXPORT_WITHHELD
+        &&readCanonicalUserWorkParent(this.runtime,child.taskId)===parent.taskId;
+      this.runtime.transitionTask(parent.taskId,'waiting_reconciliation',exportHeld
+        ?{error:{code:'UNAUTHORIZED',message:BROWSER_EXPORT_WITHHELD,retryable:false},resultSummary:BROWSER_EXPORT_WITHHELD}
+        :{error:{code:'RESULT_UNKNOWN',message:'Original child execution requires reconciliation',retryable:false}});
       return;
     }
     if(this.confirmedSubagentWait(binding.parentTaskId)) {
@@ -6462,6 +6498,101 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.dispatchAcceptedTextTask(taskId,goal,conversationId,request.deadline);
   }
 
+  /** Trusted Desktop can attach a current page only to a human browser request. */
+  browserConversationIntent(conversationId:string,text:string):boolean {
+    return this.profile==='huawei_ict_agentarts'&&this.delegateUserTasks&&browserIntent(this.runtime,conversationId,text)!==undefined;
+  }
+
+  browserWorkerExplicitlyOpens(taskId:string,url:unknown):boolean {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks)return false;
+    const parent=(this.runtime.loadCheckpoint(taskId,BROWSER_WORKER) as {parentTaskId?:string}|undefined)?.parentTaskId;
+    if(!parent||readCanonicalUserWorkParent(this.runtime,taskId)!==parent)return false;
+    const source=browserWorkerSource(this.runtime,taskId);
+    return !!source&&!source.isFollowUp&&explicitlyRequestedBrowserUrl(source.text,url);
+  }
+
+  /** The host may further restrict one concrete click only for the original human's browser worker. */
+  requestedBrowserRead(taskId:string,kind:'play'|'link',input?:{targetRef?:unknown;ref?:unknown}):boolean {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks)return false;
+    const marker=this.runtime.loadCheckpoint(taskId,BROWSER_WORKER) as {parentTaskId?:string}|undefined;
+    if(!marker?.parentTaskId||readCanonicalUserWorkParent(this.runtime,taskId)!==marker.parentTaskId)return false;
+    const source=browserWorkerSource(this.runtime,taskId);
+    return !!source&&(kind==='play'?requestedPlayback(source.text):kind==='link'&&requestedBrowserLinkNavigation(source.text,this.runtime,taskId,input));
+  }
+
+  /** Human's stop point for a staged task. The host still binds the exact operation and obtains #715 consent. */
+  browserPreparationStage(taskId:string) {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks)return;
+    const parent=(this.runtime.loadCheckpoint(taskId,BROWSER_WORKER) as {parentTaskId?:string}|undefined)?.parentTaskId;
+    if(!parent||readCanonicalUserWorkParent(this.runtime,taskId)!==parent)return;
+    const source=browserWorkerSource(this.runtime,taskId);
+    return source&&browserPreparationIntent(source.text,source.localDay)?.stage;
+  }
+
+  requestedBrowserPreparation(taskId:string,runId:string,args:Record<string,unknown>,control:PreparationControl):boolean {
+    if(!this.browserPreparationStage(taskId))return false;
+    const source=browserWorkerSource(this.runtime,taskId)!;
+    const intent=browserPreparationIntent(source.text,source.localDay)!;
+    if(!preparationMatches(intent,source.text,args.action,args.value,control))return false;
+    if(args.action==='add_to_cart'&&this.runtime.readToolExecutions(taskId).some(run=>{
+      if(run.evidenceId===runId||run.toolName!=='browser.prepare'||!run.executionStarted||run.policyDecision!=='allow')return false;
+      const prior=this.runtime.loadCheckpoint(taskId,'browser-prepare-intent:'+run.evidenceId) as {field?:string}|undefined;
+      return prior?.field==='cart';
+    }))return false;
+    const key='browser-prepare-intent:'+runId;
+    const proof={taskId,runId,digest:toolArgumentsDigest(args),field:control.field,stage:intent.stage,
+      ...(control.field==='variant'?{requestedChoices:requestedChoices(intent,control.variantChoices)}:{}),
+      ...(control.field==='cart'?{variantId:control.variantId,quantity:intent.quantity}:{})};
+    return this.runtime.saveCheckpointOnce(taskId,key,proof)||isDeepStrictEqual(this.runtime.loadCheckpoint(taskId,key),proof);
+  }
+
+  /** Device-only result projection. The parent transcript and its cloud context keep no copy. */
+  readDeviceWorkerReply(parentTaskId:string,childTaskId:string):{kind:'browser'|'withheld'}|{kind:'notepad'|'browser-excerpt';text:string}|undefined {
+    const notepad=this.runtime.loadCheckpoint(childTaskId,NOTEPAD_INTENT)!==undefined;
+    const browser=this.runtime.loadCheckpoint(childTaskId,BROWSER_WORKER)!==undefined;
+    if(!notepad&&!browser)return;
+    const withheld={kind:'withheld' as const};
+    if(this.isHistoryWithheld(parentTaskId)||this.isHistoryWithheld(childTaskId))return withheld;
+    const parent=this.runtime.getTask(parentTaskId);
+    const child=this.runtime.findTaskByIdempotencyKey('subagent-dispatch-'+parentTaskId+'-user-work');
+    if(child?.taskId!==childTaskId)return withheld;
+    try {
+      if(readCanonicalUserWorkParent(this.runtime,child.taskId)!==parentTaskId)return withheld;
+      if(browser&&['failed','waiting_reconciliation'].includes(parent.state)&&['failed','waiting_reconciliation'].includes(child.state)){
+        const diagnostic=this.runtime.loadCheckpoint(childTaskId,'competition-coordination-failure') as {phase?:string;kind?:string;code?:string}|undefined;
+        const sent=this.runtime.loadCheckpoint(childTaskId,'competition-cloud-request-identity') as {requests?:{revision?:number;recordedAt?:string}[]}|undefined;
+        const latestFinish=Math.max(...this.runtime.readToolExecutions(childTaskId).map(run=>Date.parse(run.finishedAt??'')));
+        // Old deployments used a generic hold even after the second cloud send. A preflight refusal is not a sent response.
+        const historical=child.state==='waiting_reconciliation'&&this.runtime.loadCheckpoint(childTaskId,'competition-export-withheld')!==undefined
+          &&diagnostic?.phase==='continuation'&&diagnostic.kind==='protocol_error'&&diagnostic.code==='EXTERNAL_FAILURE'
+          &&new Set(sent?.requests?.map(request=>request.revision)).size>1
+          &&sent?.requests?.some(request=>Date.parse(request.recordedAt??'')>=latestFinish)===true;
+        if(!this.runtime.loadCheckpoint(childTaskId,'competition-cloud-unknown')&&!this.runtime.loadCheckpoint(childTaskId,'competition-cloud-inflight')
+          &&!this.runtime.loadCheckpoint(childTaskId,'browser-export-denial:v1')
+          &&(historical||this.runtime.loadCheckpoint(childTaskId,'browser-summary-response-failure:v1')!==undefined)){
+          const text=browserReadExcerpt(this.runtime,childTaskId);
+          if(text)return {kind:'browser-excerpt',text};
+        }
+      }
+      if(parent.state!=='succeeded'||child.state!=='succeeded')return withheld;
+      if(notepad) {
+        const verified=assertNotepadWorkerComplete(this.runtime,child.taskId);
+        return verified?{kind:'notepad',text:verified==='value'?'已打开记事本，已写入并核对文字。':'已打开记事本。'}:withheld;
+      }
+      if(!child.resultSummary||this.runtime.loadCheckpoint(parentTaskId,BROWSER_TURN)===undefined
+        ||!browserWorkerSource(this.runtime,child.taskId))return withheld;
+      assertBrowserWorkerComplete(this.runtime,child.taskId);
+      return {kind:'browser'};
+    }catch{return withheld;}
+  }
+
+  private bindUserTaskDelegation(taskId:string,goal:string,deadline:string,maxSteps:number,depth:number):void {
+    const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
+    this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline,maxSteps,
+      subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:depth,
+        ...(selected?{model:selected.modelId,...(selected.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{})}:{})}});
+  }
+
   private dispatchAcceptedTextTask(taskId:string,goalInput:string,conversationId:string,deadline:string):void {
     let goal=goalInput;
     if(this.activeTextTasks.has(taskId))return;
@@ -6496,7 +6627,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if (preference?.modelId) this.runtime.saveCheckpoint(taskId,'task-model-preference',{
         modelId:preference.modelId,...(preference.configurationRef?{configurationRef:preference.configurationRef}:{})});
       const hostOwned=/^(host-tool:|desktop-proactive|desktop-mail|desktop-skills|desktop-subtask|desktop-assistant|desktop-subagent|desktop-coding|desktop-notification)/.test(conversationId);
-      if(this.frontDeskUserTurns&&!hostOwned&&!manualCompaction
+      // These direct desktop commands can enter the existing user-worker dispatch path immediately.
+      // The worker still plans with AgentArts and calls the published, policy-checked device tool.
+      const browserTurn=this.delegateUserTasks&&!hostOwned&&!manualCompaction&&bindBrowserTurn(this.runtime,taskId);
+      if(this.frontDeskUserTurns&&!browserTurn&&!isDirectNotepadRequest(goal)&&!hostOwned&&!manualCompaction
         &&this.runtime.loadCheckpoint(taskId,'assistant-turn')===undefined
         &&this.runtime.loadCheckpoint(taskId,'subtask-parent')===undefined
         &&!readUserTaskDelegation(this.runtime,taskId)) {
@@ -6506,13 +6640,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           assistantId:item.assistantId,displayName:item.displayName,role:item.role,status:item.status,
         }))});
         // Host-owned hint: users speak naturally; do not ask for tool names or IDs.
-        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
+        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。电脑操作由工人执行。收到实际桌面操作请求时，用当前目录派工或交给已有工人，保留用户原指令和限制。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
       }
       if(this.delegateUserTasks&&!manualCompaction&&!this.frontDeskTurn(taskId)) {
-        const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
-        this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline,maxSteps,
-          subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:config.depth,
-            ...(selected?{model:selected.modelId,...(selected.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{})}:{})}});
+        this.bindUserTaskDelegation(taskId,goal,deadline,maxSteps,config.depth);
       }
       const catalog=manualCompaction?undefined:this.taskCompetitionCatalog(taskId);
       const execution = Promise.resolve().then(() => manualCompaction?this.runtime.runTask(taskId,async context=>{
@@ -6681,8 +6812,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const assistant=this.runtime.listAssistants().find(item=>item.assistantId===input.assistantId);
     if(!assistant)throw new ProtocolError('NOT_FOUND','找不到这个助手');
     const source = input.source ?? 'user';
+    const browserTurn=source==='user'&&this.browserConversationIntent(assistant.conversationId,input.text);
     const activeId=assistant.activeTaskId??this.latestAssistantChild(assistant.role)?.taskId;
-    if(activeId) {
+    // A new browser request needs its own immutable page and worker binding.
+    if(activeId&&!browserTurn) {
       try {
         const active=this.runtime.getTask(activeId);
         if(!['succeeded','failed','cancelled','waiting_reconciliation','cancelling'].includes(active.state)) {
@@ -6761,8 +6894,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
         }
         const summary=(task.resultSummary??task.error?.message??'').slice(0,280);
-        this.runtime.updateAssistant(assistantId,{status:task.state==='waiting_approval'?'waiting_approval':'idle',
-          activeTaskId:terminal?null:taskId,...(terminal?{unreadDelta:1,lastSummary:summary||task.state}:{})});
+        const ownsStatus=this.runtime.getAssistant(assistantId).activeTaskId===taskId;
+        this.runtime.updateAssistant(assistantId,{...(ownsStatus?{status:task.state==='waiting_approval'?'waiting_approval':'idle',
+          activeTaskId:terminal?null:taskId}:{}),...(terminal?{unreadDelta:1,lastSummary:summary||task.state}:{})});
         this.runtime.flushActivity(taskId);
         const parent=this.runtime.loadCheckpoint(taskId,'assistant-parent') as {parentTaskId?:string}|undefined;
         if(terminal&&parent?.parentTaskId) {
@@ -6775,9 +6909,20 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId,'application-profile',this.profile);
       this.runtime.saveCheckpoint(taskId,'application-deadline',deadline);
       this.runtime.saveCheckpoint(taskId,'competition-max-steps',this.competitionMaxSteps);
-      const assistantCatalog=this.assistantCatalog(taskId);
-      const execution=this.runtime.runTask(taskId,worker=>runCoordinationWorker(this.runtime,this.coordination,this.assistantTools(taskId),taskId,goal,worker,
+      const browserTurn=this.delegateUserTasks&&bindBrowserTurn(this.runtime,taskId);
+      if(browserTurn) {
+        this.runtime.saveCheckpoint(taskId,'application-goal',goal);
+        this.runtime.saveCheckpoint(taskId,'competition-configuration-binding',this.coordinationBinding);
+        this.runtime.saveCheckpoint(taskId,'task-thinking',{...this.thinkingConfig,maxSteps:this.competitionMaxSteps});
+        if(this.enableNewTaskToolContinuations&&!this.retainPriorToolResults)this.pinGoalContinuation(taskId,goal,deadline);
+        this.seedExecutionCapacity(taskId,this.competitionMaxSteps,deadline);
+        this.bindUserTaskDelegation(taskId,goal,deadline,this.competitionMaxSteps,this.thinkingConfig.depth);
+      }
+      const assistantCatalog=this.taskCompetitionCatalog(taskId);
+      const workerTools=browserTurn?this.taskTools(taskId):this.assistantTools(taskId);
+      const execution=this.runtime.runTask(taskId,worker=>runCoordinationWorker(this.runtime,this.taskCoordination(taskId),workerTools,taskId,goal,worker,
         {allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+          ...(browserTurn?{assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId)}:{}),
           ...(assistantCatalog?{toolCatalog:assistantCatalog}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})}),

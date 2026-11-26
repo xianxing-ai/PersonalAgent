@@ -745,6 +745,16 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return this.selectTaskPage(input);
   }
 
+  /** Includes incomplete turns so a newer cancellation or change of subject is never skipped. */
+  previousConversationTaskId(conversationId:string,beforeTaskId?:string):string|undefined {
+    const id=requireText(conversationId,'conversationId');
+    const cutoff=beforeTaskId===undefined?this.snapshotSequence()+1:
+      (this.db.prepare("SELECT sequence FROM task_events WHERE type='task.created' AND task_id=?").get(beforeTaskId) as {sequence:number}|undefined)?.sequence;
+    if(cutoff===undefined)return undefined;
+    return (this.db.prepare("SELECT t.task_id FROM tasks t JOIN task_events e ON e.task_id=t.task_id AND e.type='task.created' WHERE t.conversation_id=? AND e.sequence<? ORDER BY e.sequence DESC LIMIT 1")
+      .get(id,cutoff) as {task_id:string}|undefined)?.task_id;
+  }
+
   /** Latest task that stored this checkpoint field. Callers still have to check the binding. */
   findLatestCheckpointValue(checkpointKey: string, jsonField: string, value: string): string | undefined {
     if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,40}$/.test(jsonField)) throw new RuntimeError('INVALID_ARGUMENT', 'checkpoint field is invalid');
@@ -1364,7 +1374,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             if (previous.state === 'confirmed') {
               const saved = this.loadCheckpoint(request.taskId, 'tool-result-' + runId) as {result: unknown};
               data = {runId, state: 'confirmed', result: saved.result, evidenceRefs: [runId]};
-            } else if (previous.state === 'failed') {
+            } else if (previous.state === 'failed' || (previous.state === 'unknown' && previous.executionStarted === false && previous.policyDecision === 'deny')) {
               throw new RuntimeError('EXTERNAL_FAILURE', 'Previous tool attempt failed; it will not be repeated automatically');
             } else {
               this.transitionTask(request.taskId, 'waiting_reconciliation');
@@ -1398,19 +1408,24 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             data = {runId, state: 'confirmed', result, evidenceRefs: [runId]};
             this.emit('tool.completed', {runId, state: 'confirmed', evidenceRefs: [runId]}, request.taskId);
           } catch (error) {
-            const errorCode = error instanceof ProtocolError ? error.code : 'EXTERNAL_FAILURE';
-            if (isToolNotStartedError(error)) record.executionStarted = false;
+            const notStarted = isToolNotStartedError(error);
+            if (notStarted) record.executionStarted = false;
+            // A prior unknown can prevent this call from starting. Report the
+            // conflict on this run without attributing the prior write to it.
+            const failure = notStarted && error.code === 'RESULT_UNKNOWN'
+              ? new ProtocolError('REVISION_CONFLICT',error.message) : error;
+            const errorCode = failure instanceof ProtocolError ? failure.code : 'EXTERNAL_FAILURE';
             if (!record.executionStarted) record.policyDecision = 'deny';
             this.saveToolExecution({...record, state: errorCode === 'RESULT_UNKNOWN' ? 'unknown' : 'failed', errorCode, finishedAt: this.timestamp()});
-            if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') {
+            if (failure instanceof ProtocolError && failure.code === 'RESULT_UNKNOWN') {
               this.transitionTask(request.taskId, 'waiting_reconciliation', {
-                error: {code: 'RESULT_UNKNOWN', message: error.message, retryable: false}
+                error: {code: 'RESULT_UNKNOWN', message: failure.message, retryable: false}
               });
               data = {runId, state: 'unknown', evidenceRefs: [runId]};
               this.emit('tool.completed', {runId, state: 'unknown', evidenceRefs: [runId]}, request.taskId);
               break;
             }
-            throw error;
+            throw failure;
           } finally {
             this.activeToolExecutions.delete(activeIdentity);
           }

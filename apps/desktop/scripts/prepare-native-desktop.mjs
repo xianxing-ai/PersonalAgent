@@ -11,7 +11,7 @@ export async function prepareNativeDesktopBeforeStart({platform=process.platform
     return {prepared:true};
   }catch(error){
     const detail=computerControlFailure(error);
-    stderr.write(`电脑控制组件尚未准备成功 [${detail.code}; stage=${detail.stage}]：${detail.message}\n应用内电脑操控设置可重试，其它功能仍可使用。\n`);
+    stderr.write(`电脑控制组件尚未准备成功 [${detail.code}; stage=${detail.stage}]：${detail.message}\n桌面程序将在启动时检查组件。\n`);
     return {prepared:false,failure:detail};
   }
 }

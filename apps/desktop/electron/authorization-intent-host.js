@@ -6,7 +6,7 @@ export const AUTHORIZATION_INTENT_ACTIONS=Object.freeze([
   'memory.save','memory.erase','memory.withdraw','memory.consume','experience.activate',
   'skill.install','skill.enable','skill.uninstall','skill.run','plugin.install','plugin.enable','plugin.uninstall','reference.catalog','reference.source',
   'knowledge.session','knowledge.configure','knowledge.read','knowledge.catalog','workflow.enable','workflow.delete','facts.erase','feeds.classify',
-  'mail.review.configure','computer.observation.configure','computer.observation.export','model.egress','model.egress.secret',
+  'mail.review.configure','computer.observation.configure','computer.observation.export','browser.source','model.egress','model.egress.secret',
   'remoteMcp.configure','knowledge.pair','voice.capture','developer.export','harness.export','workflow.export',
 ]);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -50,6 +50,11 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
   }
   return {
     readConfirmedDecision,
+    readQuestionConversation(taskId){
+      const entry=[...pending.values()].find(item=>item.taskId===taskId);
+      if(closed||!entry||entry.application!==getApplication()||entry.signal.aborted||now()>=Date.parse(entry.deadline))return;
+      return entry.egressReview?.conversationId??entry.assistantConversation;
+    },
     readEgressReview(taskId){
       const entry=[...pending.values()].find(item=>item.taskId===taskId&&item.egressReview);
       if(closed||!entry||entry.application!==getApplication()||entry.signal.aborted||now()>=Date.parse(entry.deadline))return;
@@ -93,11 +98,12 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
       const current=()=>getApplication()===application&&!signal.aborted&&now()<Date.parse(deadline)
         &&isCurrent()&&digest(payload)===payloadDigest&&digest(scope)===scopeDigest;
       const entry={application,action,arguments:args,summary,forceAsk:forceAsk===true,deadline,signal,current,executed:false,taskId:undefined,operation,parent,
-        egressReview:isEgressAction?Object.freeze({...egressReview}):undefined};
+        egressReview:isEgressAction?Object.freeze({...egressReview}):undefined,
+        assistantConversation:action==='browser.source'&&typeof scope?.taskId==='string'?application.readAssistantToolConversation?.(scope.taskId):undefined};
       if(action==='harness.export')entry.decisionDeadline=new Date(Math.min(Date.parse(deadline),now()+180000)).toISOString();
       pending.set(commandId,entry);
       try{
-        if(!entry.egressReview)openConversation();
+        if(!entry.egressReview&&!entry.assistantConversation)openConversation();
         const prepared=application.submitHostToolTask({commandId,toolName:descriptor.name,toolVersion:descriptor.version,arguments:args,deadline});
         entry.taskId=prepared.task.taskId;
         const abort=()=>{try{application.runtime.requestCancel(entry.taskId,'原授权操作已取消');}catch{}};

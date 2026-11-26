@@ -1,4 +1,6 @@
 import {createHash, createHmac, randomUUID, timingSafeEqual} from 'node:crypto';
+import {isIP} from 'node:net';
+import {domainToASCII} from 'node:url';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
 import type {DutyCursor} from '@personal-agent/github';
@@ -14,6 +16,9 @@ export const RUNNER_HOST_LIST = 'runner.host.list';
 export const RUNNER_HOST_CONFIRM = 'runner.host.confirm';
 export const RUNNER_HOST_TEST = 'runner.host.test';
 export const RUNNER_HOST_JOBS = 'runner.host.jobs';
+export const RUNNER_VPS_STATUS = 'runner.vps.status';
+export const RUNNER_VPS_EXEC = 'runner.vps.exec';
+export const RUNNER_VPS_DESKTOP = 'runner.vps.desktop';
 export const RUNNER_TOOL_VERSION = '1.0.0';
 const REGISTRY_KEY = 'remote-runner-registry:v1';
 const HOST_PREFIX = 'remote-runner-host:';
@@ -50,7 +55,7 @@ export interface RemoteRunnerTransport {
   connect(host: RemoteHostRecord, auth: {privateKey: string; runnerToken: string; hostKey: string}): Promise<RemoteRunnerSession>;
 }
 export interface RemoteJobRequest {
-  kind: 'developer-duty' | 'async-subagent' | 'cloud-persistent';
+  kind: 'developer-duty' | 'async-subagent' | 'cloud-persistent' | 'vps-ops';
   /** Persistent sessions never select a replacement host or fall back to the device. */
   hostId?: string;
   idempotencyKey: string;
@@ -112,6 +117,19 @@ export function reconcileDutyCursor(local: DutyCursor | undefined, remote: {repo
 }
 
 const HOST_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+function hostAddress(value: unknown): string {
+  if (typeof value !== 'string') fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  const address = value.trim();
+  const ip = address.startsWith('[') && address.endsWith(']') ? address.slice(1, -1) : address;
+  if (!ip.includes('%') && (isIP(ip) === 6 || (ip === address && isIP(ip) === 4))) return ip;
+  if (!/^[\p{L}\p{N}\p{M}.-]+$/u.test(address)) fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  const ascii = domainToASCII(address);
+  const labels = ascii.replace(/\.$/, '').split('.');
+  if (!ascii || ascii.length > 253 || isIP(ascii) || labels.some(label => !/^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label))) {
+    fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  }
+  return ascii;
+}
 const REPO = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 function publicHost(input: unknown, secrets: {keyRef: string; tokenRef: string}): Omit<RemoteHostRecord, 'id' | 'version'> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_ARGUMENT', 'Remote host is invalid');
@@ -119,7 +137,7 @@ function publicHost(input: unknown, secrets: {keyRef: string; tokenRef: string})
   const allowed = ['name', 'address', 'port', 'user', 'provider', 'os', 'arch', 'limits', 'repos', 'hostKeyFingerprint', 'privateKey', 'runnerToken', 'hostKey', 'enabled'];
   if (Object.keys(raw).some(key => !allowed.includes(key))) fail('INVALID_ARGUMENT', 'Remote host has unknown fields');
   if (typeof raw.name !== 'string' || !HOST_NAME.test(raw.name)) fail('INVALID_ARGUMENT', 'Remote host name is invalid');
-  if (typeof raw.address !== 'string' || !raw.address.trim() || raw.address.length > 253) fail('INVALID_ARGUMENT', 'Remote host address is invalid');
+  const address = hostAddress(raw.address);
   if (!Number.isInteger(raw.port) || (raw.port as number) < 1 || (raw.port as number) > 65535) fail('INVALID_ARGUMENT', 'SSH port is invalid');
   if (typeof raw.user !== 'string' || !/^[a-z_][a-z0-9_-]{0,31}$/.test(raw.user)) fail('INVALID_ARGUMENT', 'SSH user is invalid');
   if (raw.provider !== 'huawei-ecs' && raw.provider !== 'vps' && raw.provider !== 'other') fail('INVALID_ARGUMENT', 'Provider label is invalid');
@@ -139,7 +157,7 @@ function publicHost(input: unknown, secrets: {keyRef: string; tokenRef: string})
   if (typeof raw.hostKey !== 'string' || !raw.hostKey.trim()) fail('INVALID_ARGUMENT', 'Host key material is required to pin it');
   if (createHash('sha256').update(raw.hostKey).digest('hex') !== raw.hostKeyFingerprint) fail('UNAUTHORIZED', 'Host key does not match the pinned fingerprint');
   if (typeof raw.enabled !== 'boolean') fail('INVALID_ARGUMENT', 'enabled must be boolean');
-  return {name: raw.name, address: raw.address.trim(), port: raw.port as number, user: raw.user, provider: raw.provider,
+  return {name: raw.name, address, port: raw.port as number, user: raw.user, provider: raw.provider,
     os: raw.os, arch: raw.arch, limits: {maxConcurrent: limits.maxConcurrent as number, maxJobsPerMinute: limits.maxJobsPerMinute as number},
     repos: [...raw.repos as string[]], hostKeyFingerprint: raw.hostKeyFingerprint, keyRef: secrets.keyRef, tokenRef: secrets.tokenRef, enabled: raw.enabled};
 }
@@ -164,6 +182,7 @@ export function createRemoteRunnerService(options: {
   propose(kind: 'add' | 'update' | 'remove' | 'enable' | 'disable', input: unknown): {state: 'pending_confirmation'; proposalId: string; digest: string; effect: 'none'; summary: string};
   confirm(proposalId: string, digest: string): RemoteHostRecord | {removed: true; id: string};
   test(hostId: string): Promise<Record<string, unknown>>;
+  vpsStatus(hostId: string): Promise<Record<string, unknown>>;
   jobs(): Array<Record<string, unknown>>;
   submit(job: RemoteJobRequest): Promise<RemoteJobResult>;
 } {
@@ -255,17 +274,19 @@ export function createRemoteRunnerService(options: {
     return record;
   };
   const connect = async (host: RemoteHostRecord) => {
+    const address = hostAddress(host.address);
     const privateKey = options.secrets.get(host.keyRef);
     const runnerToken = options.secrets.get(host.tokenRef);
     const hostKey = options.secrets.get(`runner-hostkey:${host.id}`);
     if (!privateKey || !runnerToken || !hostKey) fail('UNAUTHORIZED', 'Remote host secrets are unavailable');
     if (createHash('sha256').update(hostKey).digest('hex') !== host.hostKeyFingerprint) fail('UNAUTHORIZED', 'Pinned host key is unavailable');
-    return {token: runnerToken, session: await options.transport.connect(host, {privateKey, runnerToken, hostKey})};
+    return {address, token: runnerToken, session: await options.transport.connect({...host, address}, {privateKey, runnerToken, hostKey})};
   };
   const submit = async (job: RemoteJobRequest): Promise<RemoteJobResult> => {
-    if (job.kind !== 'developer-duty' && job.kind !== 'async-subagent' && job.kind !== 'cloud-persistent') fail('INVALID_ARGUMENT', 'Job kind is not allowlisted');
-    if(job.kind==='cloud-persistent'&&(!job.hostId||job.hostId!==(job.payload.owner as {hostId?:string}|undefined)?.hostId))
-      fail('INVALID_ARGUMENT','A cloud session requires its fixed original host');
+    if (job.kind !== 'developer-duty' && job.kind !== 'async-subagent' && job.kind !== 'cloud-persistent' && job.kind !== 'vps-ops') fail('INVALID_ARGUMENT', 'Job kind is not allowlisted');
+    if (job.kind === 'cloud-persistent' && (!job.hostId || job.hostId !== (job.payload.owner as {hostId?: string} | undefined)?.hostId))
+      fail('INVALID_ARGUMENT', 'A cloud session requires its fixed original host');
+    if (job.kind === 'vps-ops' && !job.hostId) fail('INVALID_ARGUMENT', 'A VPS operation requires its target hostId');
     if (job.payload.action === 'merge') fail('SCOPE_DENIED', 'Merge stays forbidden');
     if (!job.idempotencyKey || !job.taskId) fail('INVALID_ARGUMENT', 'Job identity is required');
     const requestDigest = createHash('sha256').update(canonical({kind: job.kind, taskId: job.taskId, repo: job.repo ?? null, payload: job.payload,
@@ -302,11 +323,15 @@ export function createRemoteRunnerService(options: {
     let reason = 'no healthy remote host';
     for (const host of eligible) {
       const health = runtime().loadCheckpoint(owner().taskId, `remote-runner-health:${host.id}`) as {at?: number} | undefined;
-      if (health?.at && now() - health.at > 120_000) {reason = `${host.name} heartbeat is stale`; continue;}
+      if (job.kind !== 'vps-ops' && health?.at && now() - health.at > 120_000) {reason = `${host.name} heartbeat is stale`; continue;}
       let connected: Awaited<ReturnType<typeof connect>>;
       try { connected = await connect(host); }
-      catch {
-        reason = `${host.name} connection could not be prepared`;
+      catch (error) {
+        const detail = redactRunnerText(error instanceof Error ? error.message : '', [
+          options.secrets.get(host.tokenRef),
+          options.secrets.get(host.keyRef),
+        ].filter((item): item is string => typeof item === 'string'));
+        reason = detail ? `${host.name} connection could not be prepared: ${detail}` : `${host.name} connection could not be prepared`;
         runtime().saveCheckpoint(owner().taskId, `remote-runner-health:${host.id}`, {at: now(), state: 'down'});
         continue;
       }
@@ -368,9 +393,9 @@ export function createRemoteRunnerService(options: {
       } finally {connected.session.close();}
     }
     assertActive();
-    if(job.kind==='cloud-persistent')return persist({accepted:false,location:'remote',...(job.hostId?{hostId:job.hostId}:{}),
-      reason:'Fixed cloud Runtime host is unavailable; no fallback or resubmission',
-      receipt:{v:1,jobId:message.id,idempotencyKey:message.idempotencyKey,kind:message.kind,state:'rejected',redo:false},redo:false});
+    if (job.kind === 'cloud-persistent' || job.kind === 'vps-ops') return persist({accepted: false, location: 'remote', ...(job.hostId ? {hostId: job.hostId} : {}),
+      reason: job.kind === 'cloud-persistent' ? 'Fixed cloud Runtime host is unavailable; no fallback or resubmission' : reason,
+      receipt: {v: 1, jobId: message.id, idempotencyKey: message.idempotencyKey, kind: message.kind, state: 'rejected', redo: false}, redo: false});
     persist({...pending, location: 'local', reason});
     let localReceipt: Record<string, unknown>;
     try {localReceipt = options.localExecute ? await options.localExecute(job) : {state: 'failed', error: reason, verification: 'fixture'};}
@@ -392,12 +417,78 @@ export function createRemoteRunnerService(options: {
     audit({action: 'test', hostId, state: response.state});
     return {hostId, state: response.state, heartbeatAt: response.heartbeatAt};
   };
+  const vpsStatus = async (hostId: string) => {
+    const host = readHost(hostId);
+    if (!host) fail('NOT_FOUND', 'Remote host does not exist');
+    if (!host.enabled) fail('INVALID_ARGUMENT', 'Remote host is disabled');
+    const {address, token, session} = await connect(host);
+    const message = {v: 1, id: ids(), idempotencyKey: `vps-status-${host.id}-${now()}`, kind: 'vps-ops', payload: {action: 'status'}, sentAt: new Date(now()).toISOString()};
+    const signed = {...message, signature: signRunnerJob(message, token)};
+    const sealed = canonical(signed);
+    let response: Record<string, unknown>;
+    try {
+      response = await session.exec(signed, {
+        deadline: new Date(now() + 30_000).toISOString(),
+        assertBeforeSend(actual) {
+          if (!readHost(host.id)?.enabled || canonical(actual) !== sealed) {
+            fail('UNAUTHORIZED', 'Fixed VPS status query binding changed');
+          }
+        },
+      });
+    } finally { session.close(); }
+    runtime().saveCheckpoint(owner().taskId, `remote-runner-health:${host.id}`, {at: now(), state: response.state === 'succeeded' ? 'ok' : 'down'});
+    audit({action: 'vps-status', hostId, state: response.state});
+    return {
+      hostId,
+      hostName: host.name,
+      address,
+      port: host.port,
+      user: host.user,
+      state: response.state,
+      receipt: response,
+    };
+  };
   const mainOnly = (context: ToolContext) => {
     if (runtime().getTask(context.taskId).conversationId?.startsWith('desktop-subtask:')) fail('INVALID_ARGUMENT', 'Remote hosts are defined from the main conversation');
   };
-  const descriptor = (name: string, presence: boolean, input: {[k: string]: unknown}, read = false): RegisteredTool['descriptor'] => ({
+  const resolveVpsHost = (requestedHostId?: string): RemoteHostRecord => {
+    const enabledHosts = hosts().filter(host => host.enabled);
+    if (!enabledHosts.length) fail('NOT_FOUND', '没有可用的已启用 VPS 主机，请先在“VPS 电脑”面板登记并启用主机');
+    if (requestedHostId !== undefined && requestedHostId !== '') {
+      const matched = enabledHosts.find(host => host.id === requestedHostId || host.name === requestedHostId);
+      if (!matched) fail('NOT_FOUND', `未找到已启用的 VPS 主机：${requestedHostId}`);
+      return matched;
+    }
+    const single = enabledHosts[0];
+    if (enabledHosts.length === 1 && single) return single;
+    fail('INVALID_ARGUMENT', `当前已启用 ${enabledHosts.length} 台 VPS 主机，请指定 hostId 或主机名（${enabledHosts.map(item => item.name).join(', ')}）`);
+  };
+  const runVpsTool = async (op: 'status' | 'exec' | 'desktop', requestedHostId: string | undefined, payload: Record<string, unknown>, context: ToolContext) => {
+    mainOnly(context);
+    const target = resolveVpsHost(requestedHostId);
+    const initialEpoch = runtime().readExecutionEpoch(context.taskId);
+    const assertCurrent = () => {
+      runtime().assertExecutionEpoch(context.taskId, initialEpoch);
+      const currentTask = runtime().getTask(context.taskId);
+      if (context.signal?.aborted || currentTask.cancelRequested || ['cancelled', 'failed', 'succeeded'].includes(currentTask.state)) {
+        fail('UNAUTHORIZED', 'Original task execution state is no longer active');
+      }
+    };
+    const res = await submit({
+      kind: 'vps-ops',
+      hostId: target.id,
+      idempotencyKey: `vps-${op}:${context.taskId}:${context.runId}`,
+      taskId: context.taskId,
+      signal: context.signal,
+      deadline: context.deadline,
+      assertCurrent,
+      payload,
+    });
+    return {hostId: target.id, hostName: target.name, ...res};
+  };
+  const descriptor = (name: string, presence: boolean, input: {[k: string]: unknown}, sideEffect: RegisteredTool['descriptor']['sideEffect'] = 'local_write'): RegisteredTool['descriptor'] => ({
     name, version: RUNNER_TOOL_VERSION, inputSchema: input, outputSchema: {type: 'object', additionalProperties: true},
-    sideEffect: read ? 'read' : 'local_write', requiredScopes: ['agent:delegate'], idempotencySupport: false, recoverySupport: true, requiresPresence: presence});
+    sideEffect, requiredScopes: ['agent:delegate'], idempotencySupport: false, recoverySupport: true, requiresPresence: presence});
   const object = (properties: Record<string, unknown>, required: string[]) => ({type: 'object', additionalProperties: false, properties, required});
   const hostSchema = object({name: {type: 'string'}, address: {type: 'string'}, port: {type: 'integer'}, user: {type: 'string'},
     provider: {type: 'string', enum: ['huawei-ecs', 'vps', 'other']}, os: {type: 'string'}, arch: {type: 'string', enum: ['x86_64', 'aarch64']},
@@ -405,7 +496,7 @@ export function createRemoteRunnerService(options: {
     repos: {type: 'array', items: {type: 'string'}}, hostKeyFingerprint: {type: 'string'}, privateKey: {type: 'string'}, runnerToken: {type: 'string'},
     hostKey: {type: 'string'}, enabled: {type: 'boolean'}}, ['name', 'address', 'port', 'user', 'provider', 'os', 'arch', 'limits', 'repos', 'hostKeyFingerprint', 'privateKey', 'runnerToken', 'hostKey', 'enabled']);
   const tools: RegisteredTool[] = [
-    {descriptor: descriptor(RUNNER_HOST_LIST, false, object({}, []), true), execute: async (_input, context) => {mainOnly(context); return {hosts: hosts().map(({keyRef: _key, tokenRef: _token, ...host}) => host)};}},
+    {descriptor: descriptor(RUNNER_HOST_LIST, false, object({}, []), 'read'), execute: async (_input, context) => {mainOnly(context); return {hosts: hosts().map(({keyRef: _key, tokenRef: _token, ...host}) => host)};}},
     {descriptor: descriptor(RUNNER_HOST_ADD, false, object({host: hostSchema}, ['host'])), execute: async (input, context) => {mainOnly(context); return propose('add', (input as {host?: unknown}).host);}},
     {descriptor: descriptor(RUNNER_HOST_UPDATE, false, object({id: {type: 'string'}, host: hostSchema}, ['id', 'host'])), execute: async (input, context) => {mainOnly(context); const raw = input as {id?: string; host?: unknown}; return propose('update', {...raw.host as object, id: raw.id});}},
     {descriptor: descriptor(RUNNER_HOST_REMOVE, false, object({id: {type: 'string'}}, ['id'])), execute: async (input, context) => {mainOnly(context); return propose('remove', input);}},
@@ -420,9 +511,47 @@ export function createRemoteRunnerService(options: {
         return {state: 'confirmed' as const, record: confirm(String(raw.proposalId), String(raw.digest))};
       }},
     {descriptor: descriptor(RUNNER_HOST_TEST, false, object({id: {type: 'string'}}, ['id'])), execute: async (input, context) => {mainOnly(context); return test(String((input as {id?: string}).id ?? ''));}},
-    {descriptor: descriptor(RUNNER_HOST_JOBS, false, object({}, []), true), execute: async (_input, context) => {mainOnly(context); return {jobs: runtime().listCheckpointKeys(owner().taskId).filter(key => key.startsWith(JOB_PREFIX)).map(key => runtime().loadCheckpoint(owner().taskId, key))};}},
+    {descriptor: descriptor(RUNNER_HOST_JOBS, false, object({}, []), 'read'), execute: async (_input, context) => {mainOnly(context); return {jobs: runtime().listCheckpointKeys(owner().taskId).filter(key => key.startsWith(JOB_PREFIX)).map(key => runtime().loadCheckpoint(owner().taskId, key))};}},
+    {descriptor: descriptor(RUNNER_VPS_STATUS, false, object({hostId: {type: 'string'}}, []), 'read'),
+      execute: async (input, context) => runVpsTool('status', (input as {hostId?: string})?.hostId, {action: 'status'}, context)},
+    {descriptor: descriptor(RUNNER_VPS_EXEC, true, object({
+      hostId: {type: 'string'},
+      target: {type: 'string', enum: ['host', 'desktop']},
+      command: {type: 'array', items: {type: 'string'}, minItems: 1, maxItems: 32},
+      cwd: {type: 'string'},
+      timeoutMs: {type: 'integer'},
+    }, ['command']), 'external_write'),
+      execute: async (input, context) => {
+        const raw = input as {hostId?: string; target?: string; command?: string[]; cwd?: string; timeoutMs?: number};
+        return runVpsTool('exec', raw?.hostId, {
+          action: 'exec',
+          ...(raw?.target ? {target: raw.target} : {}),
+          command: raw?.command ?? [],
+          ...(raw?.cwd ? {cwd: raw.cwd} : {}),
+          ...(raw?.timeoutMs !== undefined ? {timeoutMs: raw.timeoutMs} : {}),
+        }, context);
+      }},
+    {descriptor: descriptor(RUNNER_VPS_DESKTOP, true, object({
+      hostId: {type: 'string'},
+      desktopAction: {type: 'string', enum: ['status', 'start', 'stop', 'restart', 'open_url', 'exec']},
+      url: {type: 'string'},
+      command: {type: 'array', items: {type: 'string'}, minItems: 1, maxItems: 32},
+      cwd: {type: 'string'},
+      timeoutMs: {type: 'integer'},
+    }, ['desktopAction']), 'external_write'),
+      execute: async (input, context) => {
+        const raw = input as {hostId?: string; desktopAction?: string; url?: string; command?: string[]; cwd?: string; timeoutMs?: number};
+        return runVpsTool('desktop', raw?.hostId, {
+          action: 'desktop',
+          desktopAction: raw?.desktopAction ?? 'status',
+          ...(raw?.url !== undefined ? {url: raw.url} : {}),
+          ...(raw?.command !== undefined ? {command: raw.command} : {}),
+          ...(raw?.cwd !== undefined ? {cwd: raw.cwd} : {}),
+          ...(raw?.timeoutMs !== undefined ? {timeoutMs: raw.timeoutMs} : {}),
+        }, context);
+      }},
   ];
-  return {tools, list: hosts, propose, confirm, test, jobs() {return runtime().listCheckpointKeys(owner().taskId).filter(key => key.startsWith(JOB_PREFIX)).map(key => runtime().loadCheckpoint(owner().taskId, key) as Record<string, unknown>);}, submit};
+  return {tools, list: hosts, propose, confirm, test, vpsStatus, jobs() {return runtime().listCheckpointKeys(owner().taskId).filter(key => key.startsWith(JOB_PREFIX)).map(key => runtime().loadCheckpoint(owner().taskId, key) as Record<string, unknown>);}, submit};
 }
 
 export function createLoopbackRunnerTransport(handle: (job: Record<string, unknown>, token: string) => Promise<Record<string, unknown>>): RemoteRunnerTransport {

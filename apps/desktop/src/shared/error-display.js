@@ -69,7 +69,7 @@ export function errorDisplay(error, stage='renderer') {
   const providerStatus=/^(?:Model endpoint returned HTTP |Pangu request failed with HTTP )([45]\d\d)$/.exec(raw)?.[1];
   const status=gateway?.[3]??previous?.[4]??cloud?.[2]??providerStatus??(Number.isInteger(suppliedStatus)&&suppliedStatus>=400&&suppliedStatus<=599?String(suppliedStatus):undefined);
   const statusReason=status==='401'?'服务认证失败；请在设置中检查凭据':status==='403'?'服务拒绝访问；请检查账号权限'
-    :status==='429'?'服务请求频率或配额受限；请检查配额与限流设置':status&&Number(status)>=500?'上游服务内部异常；请检查服务状态':undefined;
+    :status==='429'?'服务请求频率或配额受限；请检查配额与限流设置':status&&Number(status)>=500?`上游服务返回 HTTP ${status}，请查看服务状态`:undefined;
   const previousText=previous?(previous.index===0?raw.slice(previous[0].length):raw.slice(0,previous.index).trim()):'';
   const publicMessage=publicErrorMessages.has(raw)?raw:publicErrorMessages.has(previousText)?previousText:undefined;
   const keyword=gateway?.[4]??previous?.[5]??inputValidation?.[1];

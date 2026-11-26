@@ -1,4 +1,5 @@
 /** One answer block for the panel, the workspace and an assistant thread. */
+import {browserExcerptReply} from './result-text.js';
 
 export const DISPATCH_ACK = '已收到，已派发子智能体在后台处理；你可以继续和我聊天，完成后我会把结果发给你。';
 
@@ -179,7 +180,8 @@ function formatStepDuration(durationMs) {
 export function answerCardHtml(task, live, escape) {
   const reasoning = live?.reasoning ?? '';
   const streamed = stripProfileMetadata(live?.answer ?? '');
-  const settled = typeof task?.resultSummary === 'string' && task.resultSummary.trim() ? stripProfileMetadata(task.resultSummary) : '';
+  const excerpt = task?.deviceReplyKind === 'browser-excerpt' && typeof task.resultSummary === 'string' ? task.resultSummary : '';
+  const settled = excerpt || (typeof task?.resultSummary === 'string' && task.resultSummary.trim() ? stripProfileMetadata(task.resultSummary) : '');
   const answer = settled || streamed;
   const steps = live?.steps?.length ? live.steps : [];
   const summary = stripProfileMetadata(live?.summary ?? '');
@@ -202,7 +204,7 @@ export function answerCardHtml(task, live, escape) {
   }).join('')}</div>` : '';
   const body = answer ? `<div class="assistant-message">${escape(answer)}</div>` : (task?.error?.message ? `<div class="assistant-error">${escape(task.error.message)}</div>` : '');
   const back = summary ? `<p class="child-summary">结果已回到主对话：${escape(summary)}</p>` : '';
-  return `<section class="answer-card" data-answer-for="${escape(task?.taskId ?? '')}" data-live="${isActive ? 'true' : 'false'}">${thinking}${tools}${body}${back}</section>`;
+  return `<section class="answer-card" data-answer-for="${escape(task?.taskId ?? '')}" data-live="${isActive ? 'true' : 'false'}"${excerpt ? ' data-browser-excerpt' : ''}>${thinking}${tools}${body}${back}</section>`;
 }
 
 export function syncAnswerCardDisclosures(card, live) {
@@ -490,6 +492,7 @@ export function createDelegatedDeliveryTracker(limit = 12) {
       deliveries.length = 0;
     },
     observe(timeline, childrenByParent, mainChatRepliesFn) {
+      const visibleExcerpts = new Set();
       for (let i = 0; i < (timeline?.length ?? 0); i++) {
         const entry = timeline[i];
         if (entry?.kind !== 'task') continue;
@@ -499,6 +502,8 @@ export function createDelegatedDeliveryTracker(limit = 12) {
           continue;
         }
         const children = childrenByParent?.get?.(task.taskId) ?? [];
+        const excerpt = browserExcerptReply(task, children);
+        if (excerpt) visibleExcerpts.add(task.taskId);
         const delegated = children.length > 0 || task.backgroundDelegation === true;
         const done = traceDoneStates.has(task.state);
         if (!done && delegated) {
@@ -515,6 +520,7 @@ export function createDelegatedDeliveryTracker(limit = 12) {
               title: (task.userMessage || '后台任务').trim().slice(0, 60),
               state: task.state,
               reply,
+              ...(excerpt ? {browserExcerpt: true} : {}),
             };
             const existingIndex = deliveries.findIndex(item => item.taskId === task.taskId);
             if (existingIndex >= 0) deliveries.splice(existingIndex, 1);
@@ -522,6 +528,9 @@ export function createDelegatedDeliveryTracker(limit = 12) {
             if (deliveries.length > limit) deliveries.splice(0, deliveries.length - limit);
           }
         }
+      }
+      for (let i = deliveries.length - 1; i >= 0; i--) {
+        if (deliveries[i].browserExcerpt && !visibleExcerpts.has(deliveries[i].taskId)) deliveries.splice(i, 1);
       }
     },
     list() {

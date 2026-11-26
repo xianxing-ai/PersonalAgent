@@ -185,26 +185,26 @@ async function run(){
     assert.equal(await app.evaluate(({app})=>app.getPath('userData')),profile);
     assert.equal(await app.evaluate(()=>process.env.PA_RUNTIME_PROFILE),'huawei_ict_agentarts');
     const orb=await pageFor(app,'orb');await invoke(orb,'orb.open');
-    const panel=await pageFor(app,'panel');await invoke(panel,'admin.open',{page:'computer'});
+    const panel=await pageFor(app,'panel');await invoke(panel,'admin.open',{page:'authorizations'});
     admin=await pageFor(app,'admin');admin.setDefaultTimeout(15000);panel.setDefaultTimeout(15000);
-    await admin.locator('[data-page="computer"]').click();
-    const controls=admin.locator('.computer-controls');await controls.waitFor({state:'visible'});
+    await admin.locator('[data-admin-mode-btn="pro"]').click();
+    assert.equal(await admin.locator('[data-page="computer"]').count(),0);
+    const controls=admin.locator('section.sheet').filter({has:admin.getByRole('heading',{name:'本机权限',exact:true})});await controls.waitFor({state:'visible'});
     assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().some(window=>window.isVisible()&&window.webContents.getURL().includes('mode=admin'))),true);
     const initial=await poll(()=>snapshot(admin),data=>data.fake===false&&data.fakeModel===false&&data.privateMemory?.available===true,'real Competition Runtime');
     assert.equal(initial.computerControl.provider?.source,'windows-native');
     record('real-main-preload-ipc-renderer-competition-runtime');
-    const enabled=controls.locator('[data-computer="enabled"]'),exports=controls.locator('[data-computer="export"]');
-    const prepare=controls.locator('[data-computer-action="prepare"]'),stop=controls.locator('[data-computer-action="stop"]');
-    const feedback=controls.locator('[data-computer="feedback"]');
+    const enabled=controls.locator('[name="enabled"]'),exports=controls.locator('[name="allowObservationExport"]');
+    const feedback=controls.locator('[role="status"]');
     // Match Main's real prepare deadline (120s), including its confirmed cleanup.
     const idle=()=>poll(()=>controls.getAttribute('aria-busy'),value=>value==='false','control action readback',130000);
     const readControl=async()=> (await snapshot(admin)).computerControl;
 
     await selectPolicy(admin,'default-read-only');
     if(await exports.isChecked()){await exports.click();await idle();}
-    await prepare.click();await idle();
+    await invoke(admin,'computer.control.prepare',{});await idle();
     await poll(readControl,value=>value.providerAvailable===true,'real native broker prepared');
-    record('real-prepare-button-native-broker');
+    record('real-host-native-broker-prepared');
 
     // A stale decision revision must fail, then the still-current real card may be allowed.
     await exports.click();
@@ -246,13 +246,12 @@ async function run(){
     assert.equal(after,before,'full access must not add an approval card');
     record('full-access-respects-explicit-deny-and-allows-with-zero-extra-cards');
 
-    await prepare.click();await idle();await poll(readControl,value=>value.available===true,'native broker ready after stop/start');
-    await controls.locator('[data-computer="text"]').fill('本次冒烟只检查控制入口，不提交模型任务。');
+    await invoke(admin,'computer.control.prepare',{});await idle();await poll(readControl,value=>value.available===true,'native broker ready after stop/start');
+    assert.equal(await controls.locator('textarea,button[type="submit"]').count(),0);
     await capture(admin,'01-computer-ready.png');
-    await stop.click();await idle();
+    await invoke(panel,'computer.control.stop',{});await idle();
     await poll(readControl,value=>value.input?.busy===false&&!['blocked','unknown'].includes(value.state)&&value.providerAvailable===false,'confirmed stop');
-    assert.equal(await controls.locator('[data-computer="text"]').inputValue(),'本次冒烟只检查控制入口，不提交模型任务。');
-    await capture(admin,'02-computer-stopped.png');record('real-stop-button-and-draft-preservation');
+    await capture(admin,'02-computer-stopped.png');record('real-host-stop-confirmed');
 
     // Real fs failure in this runner-owned profile; no handler or Runtime is stubbed.
     assert.equal(fs.existsSync(faultDirectory),false);fs.mkdirSync(faultDirectory);
@@ -265,6 +264,7 @@ async function run(){
     fs.rmdirSync(faultDirectory);
     await enabled.click();await idle();assert.equal((await readControl()).enabled,false);
 
+    await admin.locator('[data-page="models"]').click();
     const vision=await checkVisionSettings({app,admin,panel,profile,record,capture});
     assert.equal(digest(path.join(profile,'agentarts-config.json')),plannerConfiguration,'vision configuration must not replace default AgentArts planning configuration');
     // Restart this isolated product to test the production restore path, not a fixture decoder.
@@ -272,11 +272,12 @@ async function run(){
     app=await _electron.launch({executablePath:executable,args:[desktop],env,timeout:30000});
     await app.firstWindow();assert.equal(await app.evaluate(({app})=>app.getPath('userData')),profile);
     const restoredOrb=await pageFor(app,'orb');await invoke(restoredOrb,'orb.open');
-    const restoredPanel=await pageFor(app,'panel');await invoke(restoredPanel,'admin.open',{page:'computer'});
+    const restoredPanel=await pageFor(app,'panel');await invoke(restoredPanel,'admin.open',{page:'models'});
     admin=await pageFor(app,'admin');admin.setDefaultTimeout(15000);
     const restored=await poll(()=>snapshot(admin),data=>Boolean(data.computerControl?.vision?.revision),'restored vision configuration');vision.noSecrets(restored);
     for(const name of ['revision','source','baseUrl','model','enabled','keyConfigured','configured'])
       assert.equal(restored.computerControl.vision[name],vision.expected[name],`restored vision ${name}`);
+    await admin.locator('[data-admin-mode-btn="pro"]').click();
     const restoredVision=admin.locator('.computer-vision-controls');await restoredVision.waitFor({state:'visible'});
     assert.equal(await restoredVision.locator('[data-vision="apiKey"]').inputValue(),'');
     assert.equal(await restoredVision.locator('[data-vision="source"]').inputValue(),'openai-compatible');

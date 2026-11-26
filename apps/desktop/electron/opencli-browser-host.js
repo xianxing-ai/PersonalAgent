@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {ProtocolError,ToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
-import {assertPublicBrowserUrl,isPublicBrowserAddress} from './browser-control-host.js';
+import {assertPublicBrowserUrl,FAKE_IP_DIAGNOSTIC,isFakeIpAddress,isPublicBrowserAddress} from './browser-control-host.js';
 
 const require=createRequire(import.meta.url),VERSION='1.8.6',PREFIX='browser.connected.';
 export const OPENCLI_EXTENSION_GUIDE='现有浏览器扩展未连接。请在 Chrome 或 Edge 安装并启用 OpenCLI Browser Bridge，保持至少一个浏览器窗口运行，然后在本页点击「检测现有浏览器扩展」。应用不会自动安装或提权安装扩展；安装 npm 依赖不等于扩展已启用。固定依赖 @jackwener/opencli@1.8.6。';
@@ -32,9 +32,12 @@ const specifications=[
 
 export async function probeOpenCliExtension({signal,timeoutMs=12000,execFileImpl=execFile,resolveCli=()=>require.resolve('@jackwener/opencli')}={}) {
   let cli;try{cli=resolveCli();}catch{fail('UNSUPPORTED_CAPABILITY',OPENCLI_EXTENSION_GUIDE);}
-  await new Promise((resolve,reject)=>execFileImpl(process.execPath,[cli,'doctor'],{
+  const stdout=await new Promise((resolve,reject)=>execFileImpl(process.execPath,[cli,'doctor'],{
     windowsHide:true,timeout:timeoutMs,maxBuffer:64*1024,signal,env:{...process.env,ELECTRON_RUN_AS_NODE:'1',NO_UPDATE_NOTIFIER:'1'},
-  },error=>error?reject(new ProtocolError('UNSUPPORTED_CAPABILITY',OPENCLI_EXTENSION_GUIDE)):resolve()));
+  },(error,output)=>error?reject(new ProtocolError('UNSUPPORTED_CAPABILITY',OPENCLI_EXTENSION_GUIDE)):resolve(String(output??''))));
+  if(!/\[OK\]\s+Daemon:\s+running/i.test(stdout)
+    ||!/\[(?:OK|WARN)\]\s+Extension:\s+connected\b/i.test(stdout)
+    ||/\[FAIL\]\s+Connectivity:/i.test(stdout))fail('UNSUPPORTED_CAPABILITY',OPENCLI_EXTENSION_GUIDE);
 }
 
 /** Official public Page API; no arbitrary CLI, eval, cookie, upload or CDP tool is exposed to the model. */
@@ -122,17 +125,20 @@ export function operateOpenCliControl(origin,marker,ref,expected,kind,text) {
 }
 
 /** Public URL admission plus an independent second DNS lookup, matching browser.* dual DNS. */
-export async function assertOpenCliPublicUrl(input,{dnsLookup=lookup,expectedOrigin}={}) {
-  const url=await assertPublicBrowserUrl(input,{dnsLookup});
+export async function assertOpenCliPublicUrl(input,{dnsLookup=lookup,expectedOrigin,allowFakeIpProxy=false}={}) {
+  const url=await assertPublicBrowserUrl(input,{dnsLookup,allowFakeIpProxy});
   if(expectedOrigin&&url.origin!==expectedOrigin)fail('UNAUTHORIZED','浏览器授权网站身份不一致');
   const host=url.hostname.replace(/^\[|\]$/g,'');
   // A second lookup is deliberate: navigation and later actions may re-resolve DNS.
   const addresses=isIP(host)?[{address:host}]:await dnsLookup(host,{all:true,verbatim:true});
-  if(!addresses.length||addresses.some(item=>!isPublicBrowserAddress(item.address)))fail('UNAUTHORIZED','浏览器连接不能访问本机或私有网络地址');
+  const allowedAddress=address=>isPublicBrowserAddress(address)||(allowFakeIpProxy&&!isIP(host)&&isFakeIpAddress(address));
+  if(!addresses.length||addresses.some(item=>!allowedAddress(item.address)))
+    fail('UNAUTHORIZED',addresses.some(item=>isFakeIpAddress(item.address))?FAKE_IP_DIAGNOSTIC:'浏览器连接不能访问本机或私有网络地址');
   return url;
 }
 
-export function createOpenCliBrowserHost({authorize,readTask,createPage=createOpenCliPage,resolve=lookup,probe=probeOpenCliExtension,onUpdate=()=>{},now=Date.now}={}) {
+export function createOpenCliBrowserHost({authorize,readTask,createPage=createOpenCliPage,resolve=lookup,probe=probeOpenCliExtension,allowFakeIpProxy=false,onUpdate=()=>{},now=Date.now}={}) {
+  const fakeIp=Boolean(allowFakeIpProxy);
   const sessions=new Map(),receipts=new Map();let application,closed=false,stopped=false,blocked=false,busy,available=false;
   let extension={state:'unknown',available:false,reason:'尚未检查 OpenCLI Browser Bridge 扩展连接。',guide:OPENCLI_EXTENSION_GUIDE};
   const active=scope=>{
@@ -160,11 +166,11 @@ export function createOpenCliBrowserHost({authorize,readTask,createPage=createOp
   }
   async function observe(session,scope,state='observed',fieldVerified) {
     await permit(scope,'observe');
-    await assertOpenCliPublicUrl(session.origin,{dnsLookup:resolve,expectedOrigin:session.origin});active(scope);
+    await assertOpenCliPublicUrl(session.origin,{dnsLookup:resolve,expectedOrigin:session.origin,allowFakeIpProxy:fakeIp});active(scope);
     const data=await session.page.evaluate(projectOpenCliPage,session.origin,session.marker);active(scope);
     if(!data||data.rejected||typeof data.url!=='string'||new URL(data.url).origin!==session.origin)fail('TARGET_STALE','浏览器已离开本任务授权网站，请停止并重新选择目标');
     // Live page URL is re-admitted with dual DNS before exporting controls.
-    await assertOpenCliPublicUrl(data.url,{dnsLookup:resolve,expectedOrigin:session.origin});active(scope);
+    await assertOpenCliPublicUrl(data.url,{dnsLookup:resolve,expectedOrigin:session.origin,allowFakeIpProxy:fakeIp});active(scope);
     const result={source:'opencli',state,...data,targetRef:randomUUID(),expiresAt:new Date(Math.min(now()+30000,Date.parse(scope.deadline))).toISOString(),
       goalVerified:false,...(fieldVerified===undefined?{}:{fieldVerified})};
     validateToolValue(output,result);session.observation=result;return result;
@@ -177,7 +183,7 @@ export function createOpenCliBrowserHost({authorize,readTask,createPage=createOp
       await permit(scope,'execute');let session=sessions.get(scope.taskId),result;
       if(kind==='open') {
         if(session)fail('REVISION_CONFLICT','本任务已有浏览器标签，请先观察原标签');
-        const url=await assertOpenCliPublicUrl(args.url,{dnsLookup:resolve});await permit(scope,'execute');
+        const url=await assertOpenCliPublicUrl(args.url,{dnsLookup:resolve,allowFakeIpProxy:fakeIp});await permit(scope,'execute');
         const page=await createPage('personal-agent-'+scope.taskId,scope.signal,scope.deadline);
         try{active(scope);}catch(error){page.dispose?.();throw error;}
         session={page,origin:url.origin,marker:'data-pa-'+randomUUID(),observation:undefined};
@@ -209,7 +215,7 @@ export function createOpenCliBrowserHost({authorize,readTask,createPage=createOp
           if(kind==='type'&&(!['input','textarea'].includes(control.tag)||!['','text','search','email','url','tel','textarea'].includes(control.type)))
             fail('UNAUTHORIZED','该控件不是允许的普通文本输入框');
           if(kind==='click'&&control.href&&new URL(control.href).origin!==session.origin)fail('UNAUTHORIZED','链接超出本任务授权网站');
-          await assertOpenCliPublicUrl(session.origin,{dnsLookup:resolve,expectedOrigin:session.origin});active(scope);
+          await assertOpenCliPublicUrl(session.origin,{dnsLookup:resolve,expectedOrigin:session.origin,allowFakeIpProxy:fakeIp});active(scope);
           if(await session.page.evaluate(checkOpenCliControl,session.origin,session.marker,args.ref,control)!==true)fail('TARGET_STALE','控件已变化，请重新观察');
           await permit(scope,'execute');attempt(scope,args,kind);session.observation=undefined;dispatched=true;
           const written=await session.page.evaluate(operateOpenCliControl,session.origin,session.marker,args.ref,control,kind,args.text);

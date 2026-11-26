@@ -11,7 +11,9 @@ test('settings search supports capability aliases, case and combined words',()=>
  assert.equal(matchesSettingSearch('pets','桌面宠物','悬浮球 orb'),true);
  assert.equal(matchesSettingSearch('notifications','通知','安静时段 风险'),true);
  assert.equal(matchesSettingSearch('appearance','外观','深色 动效'),true);
- assert.equal(matchesSettingSearch('computer','电脑操控','浏览器 视觉'),true);
+ assert.equal(matchesSettingSearch('connections','连接与提醒','浏览器 VPS'),true);
+ assert.equal(matchesSettingSearch('models','模型','视觉'),true);
+ assert.equal(matchesSettingSearch('authorizations','安全与权限','电脑 工人'),true);
  assert.equal(matchesSettingSearch('tasks','任务监控','证据'),true);
  assert.equal(matchesSettingSearch('tasks','任务监控','日历'),false);
  assert.equal(matchesSettingSearch('settings','常规','  '),true);

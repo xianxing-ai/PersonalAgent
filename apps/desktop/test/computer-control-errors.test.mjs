@@ -110,7 +110,7 @@ test('host and UI redact the same fragments and already redacted failures keep t
     const snapshot = {state:'unavailable', enabled:true, available:false, providerAvailable:false,
       reason:'Read failed', waitingConfirmation:false, observationExportAllowed:false, failure};
     controls.render(snapshot);
-    const field = root.querySelector('[data-computer="failure"]');
+    const field = root.querySelector('[role="status"]');
     assert.equal(field.textContent.includes(secret), false, fragment);
     assert.ok(field.textContent.endsWith(projected.message), fragment);
     controls.render({...snapshot, failure:projected});

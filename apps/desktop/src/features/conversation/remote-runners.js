@@ -1,29 +1,239 @@
 /** Remote runner panel. Secrets never enter the DOM. */
+function validConnectionAddress(address) {
+  if (typeof address !== 'string' || address.length > 253) return false;
+  try {
+    if (address.includes(':')) return /^[a-f\d:.]+$/i.test(address) && Boolean(new URL(`http://[${address}]/`).hostname);
+    return address.replace(/\.$/, '').split('.').every(label => /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label))
+      && new URL(`http://${address}/`).hostname === address.toLowerCase();
+  } catch { return false; }
+}
+
 export function mountRemoteRunners(root, invoke) {
   const section = document.createElement('section');
   section.className = 'remote-runners';
   section.setAttribute('aria-label', '远端执行器');
   const title = document.createElement('h2');
   title.textContent = '远端执行器';
+  const toolbar = document.createElement('div');
+  toolbar.className = 'rr-toolbar';
+  const toggleFormButton = document.createElement('button');
+  toggleFormButton.type = 'button';
+  toggleFormButton.className = 'btn btn-primary btn-sm';
+  toggleFormButton.textContent = '添加 VPS / 云电脑';
+  const refreshListButton = document.createElement('button');
+  refreshListButton.type = 'button';
+  refreshListButton.className = 'btn btn-sm rr-refresh-btn';
+  refreshListButton.textContent = '刷新列表';
   const status = document.createElement('p');
   status.className = 'remote-runners-status';
-  const list = document.createElement('ul');
+  status.setAttribute('role', 'status');
+  toolbar.append(toggleFormButton, refreshListButton, status);
   const cloudStatus = document.createElement('p');
+  cloudStatus.className = 'rr-cloud-status';
   cloudStatus.setAttribute('role', 'status');
-  section.append(title, status, cloudStatus, list);
+  const vpsNoteHost = document.createElement('div');
+  vpsNoteHost.className = 'rr-vps-host';
+  const formHost = document.createElement('div');
+  const list = document.createElement('ul');
+  list.className = 'rr-host-list';
+  section.append(title, toolbar, cloudStatus, vpsNoteHost, formHost, list);
   root.append(section);
   let closed = false;
   let busy = false, generation = 0;
+  let formOpen = false;
   let cloudButtons = [];
   const uncertain = new Map();
   const sessionKey = session => `${session.sourceTaskId}:${session.commandId}`;
-  function text(tag, value) {
+  function text(tag, value, className = '') {
     const node = document.createElement(tag);
+    if (className) node.className = className;
     node.textContent = value;
     return node;
   }
+  function showVpsMessage(message, tunnelCmd = '') {
+    if (closed) return;
+    if (!message && !tunnelCmd) {
+      vpsNoteHost.replaceChildren();
+      return;
+    }
+    const box = document.createElement('div');
+    box.className = 'rr-vps-result';
+    box.setAttribute('role', 'status');
+    const summaryEl = text('p', message, 'rr-vps-summary');
+    box.append(summaryEl);
+    if (tunnelCmd) {
+      const cmdWrap = document.createElement('div');
+      cmdWrap.className = 'rr-tunnel-row';
+      const cmdCode = text('code', tunnelCmd, 'rr-tunnel-cmd');
+      const copyBtn = text('button', '复制隧道命令', 'btn btn-sm');
+      copyBtn.type = 'button';
+      const copyStatus = text('span', '', 'rr-copy-hint');
+      copyBtn.onclick = async () => {
+        if (closed) return;
+        try {
+          if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
+            await navigator.clipboard.writeText(tunnelCmd);
+            if (!closed) copyStatus.textContent = '已复制隧道命令';
+          } else {
+            copyStatus.textContent = '当前环境不支持自动复制，请手动选中上方命令';
+          }
+        } catch {
+          if (!closed) copyStatus.textContent = '复制未成功，请手动选中上方命令';
+        }
+      };
+      cmdWrap.append(cmdCode, copyBtn, copyStatus);
+      box.append(cmdWrap);
+    }
+    vpsNoteHost.replaceChildren(box);
+  }
+  function makeControl(labelText, ariaLabel, {tag = 'input', type = 'text', value = '', placeholder = '', options, wide = false} = {}) {
+    const wrapper = document.createElement('label');
+    wrapper.className = wide ? 'rr-field rr-field-wide' : 'rr-field';
+    const heading = text('span', labelText, 'rr-field-label');
+    const control = document.createElement(tag);
+    if (tag === 'input') control.type = type;
+    if (tag === 'textarea') control.rows = 4;
+    if (Array.isArray(options)) {
+      for (const [optValue, optLabel] of options) {
+        const opt = text('option', optLabel);
+        opt.value = optValue;
+        control.append(opt);
+      }
+    }
+    if (placeholder) control.placeholder = placeholder;
+    control.value = value;
+    control.setAttribute('aria-label', ariaLabel);
+    wrapper.append(heading, control);
+    return {wrapper, control};
+  }
+  function makeGroup(headingText, ...children) {
+    const group = document.createElement('div');
+    group.className = 'rr-form-group';
+    const grid = document.createElement('div');
+    grid.className = 'rr-form-grid';
+    grid.append(...children);
+    group.append(text('h4', headingText, 'rr-form-heading'), grid);
+    return group;
+  }
+  toggleFormButton.onclick = () => {
+    if (closed) return;
+    formOpen = !formOpen;
+    renderForm();
+  };
+  refreshListButton.onclick = () => {
+    if (!closed) void refresh();
+  };
+  function renderForm() {
+    if (!formOpen) {
+      toggleFormButton.className = 'btn btn-primary btn-sm';
+      toggleFormButton.textContent = '添加 VPS / 云电脑';
+      formHost.replaceChildren();
+      return;
+    }
+    toggleFormButton.className = 'btn btn-sm';
+    toggleFormButton.textContent = '收起添加表单';
+    const form = document.createElement('div');
+    form.className = 'remote-runners-form';
+    form.setAttribute('aria-label', '添加 VPS 表单');
+    const formStatus = text('p', '私钥与执行器令牌仅通过本机安全存储加密保存，不会回显到界面或发给大模型。', 'rr-form-status');
+    formStatus.setAttribute('role', 'status');
+    const nameField = makeControl('主机名称（小写字母/数字/短横线）', '主机名称', {value: 'my-vps', placeholder: '例如 huawei-vps'});
+    const addressField = makeControl('VPS IP 或域名', '主机地址', {placeholder: '例如 120.46.x.x'});
+    const portField = makeControl('SSH 端口', 'SSH 端口', {type: 'number', value: '22'});
+    const userField = makeControl('SSH 用户名', 'SSH 用户名', {value: 'root', placeholder: '例如 root 或 ubuntu'});
+    const providerField = makeControl('云服务商', '服务商', {tag: 'select', value: 'vps', options: [['vps', 'VPS 云主机'], ['huawei-ecs', '华为云 ECS'], ['other', '其他 Linux']]});
+    const osField = makeControl('操作系统', '系统', {tag: 'select', value: 'ubuntu', options: [['ubuntu', 'Ubuntu'], ['debian', 'Debian'], ['openeuler', 'openEuler'], ['other', '其他']]});
+    const archField = makeControl('CPU 架构', '架构', {tag: 'select', value: 'x86_64', options: [['x86_64', 'x86_64 (通用)'], ['aarch64', 'aarch64 (ARM)']]});
+    const hostKeyField = makeControl('SSH 主机公钥', '主机公钥', {placeholder: '点击“探测主机公钥”自动填入，或手动粘贴 ssh-ed25519 ...', wide: true});
+    const fingerprintField = makeControl('SHA-256 指纹（可留空由公钥自动计算）', '公钥指纹', {placeholder: '64 位十六进制指纹', wide: true});
+    const keyField = makeControl('SSH 私钥（保存后自动清空输入框）', 'SSH 私钥', {tag: 'textarea', placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----', wide: true});
+    const tokenField = makeControl('执行器令牌 RUNNER_TOKEN（保存后自动清空输入框）', '执行器令牌', {type: 'password', placeholder: 'VPS /etc/personal-agent-runner/token 中的令牌', wide: true});
+
+    const probeBtn = text('button', '探测主机公钥', 'btn btn-sm');
+    probeBtn.type = 'button';
+    probeBtn.onclick = async () => {
+      if (closed || probeBtn.disabled) return;
+      const address = addressField.control.value.trim();
+      const port = Number(portField.control.value || 22);
+      if (!address) { formStatus.textContent = '请先输入 VPS 的 IP 或域名。'; return; }
+      probeBtn.disabled = true;
+      formStatus.textContent = `正在探测 ${address}:${port} 的 SSH 主机公钥...`;
+      try {
+        const probed = await invoke('runner.hosts.probeKey', {address, port});
+        if (closed) return;
+        hostKeyField.control.value = probed?.hostKey ?? '';
+        fingerprintField.control.value = probed?.hostKeyFingerprint ?? '';
+        formStatus.textContent = `已读取 ${probed?.keyType ?? 'SSH'} 主机公钥，请核对指纹：${String(probed?.hostKeyFingerprint ?? '').slice(0, 16)}...`;
+      } catch (error) {
+        if (!closed) formStatus.textContent = `探测失败：${error?.message || '无法连接 SSH 端口'}`;
+      } finally {
+        if (!closed) probeBtn.disabled = false;
+      }
+    };
+
+    const saveBtn = text('button', '保存并启用 VPS', 'btn btn-primary btn-sm');
+    saveBtn.type = 'button';
+    saveBtn.onclick = async () => {
+      if (closed || saveBtn.disabled) return;
+      saveBtn.disabled = true;
+      const payload = {
+        name: nameField.control.value.trim(),
+        address: addressField.control.value.trim(),
+        port: Number(portField.control.value || 22),
+        user: userField.control.value.trim(),
+        provider: providerField.control.value || 'vps',
+        os: osField.control.value || 'ubuntu',
+        arch: archField.control.value || 'x86_64',
+        hostKey: hostKeyField.control.value.trim(),
+        hostKeyFingerprint: fingerprintField.control.value.trim(),
+        privateKey: keyField.control.value,
+        runnerToken: tokenField.control.value.trim(),
+        enabled: true,
+      };
+      try {
+        await invoke('runner.hosts.add', payload);
+        if (closed) return;
+        formOpen = false;
+        renderForm();
+        showVpsMessage(`已登记主机 ${payload.name}（${payload.user}@${payload.address}:${payload.port}）。建议点击“测试连接”和“云电脑状态”确认可用。`);
+        await refresh();
+      } catch (error) {
+        if (!closed) formStatus.textContent = `保存失败：${error?.message || '请检查输入字段'}`;
+      } finally {
+        keyField.control.value = '';
+        tokenField.control.value = '';
+        if (!closed) saveBtn.disabled = false;
+      }
+    };
+
+    const cancelBtn = text('button', '取消', 'btn btn-sm');
+    cancelBtn.type = 'button';
+    cancelBtn.onclick = () => {
+      keyField.control.value = '';
+      tokenField.control.value = '';
+      formOpen = false;
+      renderForm();
+    };
+
+    const probeRow = document.createElement('div');
+    probeRow.className = 'rr-field rr-field-wide';
+    probeRow.append(probeBtn);
+
+    const actions = document.createElement('div');
+    actions.className = 'rr-form-actions';
+    actions.append(saveBtn, cancelBtn);
+
+    form.append(
+      makeGroup('1. 连接与主机信息', nameField.wrapper, addressField.wrapper, portField.wrapper, userField.wrapper, providerField.wrapper, osField.wrapper, archField.wrapper),
+      makeGroup('2. 锁定主机公钥（防劫持）', probeRow, hostKeyField.wrapper, fingerprintField.wrapper),
+      makeGroup('3. 加密凭据（仅存本机）', keyField.wrapper, tokenField.wrapper),
+      formStatus,
+      actions,
+    );
+    formHost.replaceChildren(form);
+  }
   function cloudButton(label, action, disabled = false) {
-    const button = text('button', label);
+    const button = text('button', label, 'btn btn-sm');
     button.type = 'button';
     button.disabled = busy || disabled;
     button.onclick = () => {if (!closed && !button.disabled && !busy) return action();};
@@ -51,6 +261,7 @@ export function mountRemoteRunners(root, invoke) {
   }
   function cloudPanel(snapshot) {
     const panel = document.createElement('section');
+    panel.className = 'rr-cloud-panel';
     panel.setAttribute('aria-label', '云持续会话');
     panel.append(text('h3', '云持续会话'), text('p', '按原任务目标新建独立云会话，不迁移已有会话。配置不代表真实验收通过。'));
     const sources = Array.isArray(snapshot.sourceTasks) ? snapshot.sourceTasks : [];
@@ -150,17 +361,68 @@ export function mountRemoteRunners(root, invoke) {
   }
   function row(host, cloud) {
     const item = document.createElement('li');
-    const label = document.createElement('span');
-    label.textContent = `${host.name} · ${host.user}@${host.address}:${host.port} · ${host.provider} · ${host.enabled ? '启用' : '停用'} · ${host.health ?? '未检测'}`;
-    const test = document.createElement('button');
-    test.type = 'button';
-    test.textContent = '测试连接';
-    test.onclick = () => invoke('runner.hosts.test', {id: host.id}).then(refresh).catch(() => {status.textContent = '连接测试没有完成';});
-    const disable = document.createElement('button');
-    disable.type = 'button';
-    disable.textContent = host.enabled ? '停用' : '启用';
-    disable.onclick = () => invoke(host.enabled ? 'runner.hosts.disable' : 'runner.hosts.enable', {id: host.id}).then(refresh).catch(() => {status.textContent = '状态没有更新';});
-    item.append(label, test, disable);
+    item.className = 'rr-host-card';
+    const head = document.createElement('div');
+    head.className = 'rr-host-head';
+    const nameEl = text('strong', host.name, 'rr-host-name');
+    const stateBadge = text('span', host.enabled ? '已启用' : '已停用', 'rr-badge');
+    stateBadge.setAttribute('data-tone', host.enabled ? 'ready' : 'off');
+    head.append(nameEl, stateBadge);
+    const meta = text('p', `${host.user}@${host.address}:${host.port} · ${host.provider ?? 'vps'} · ${host.arch ?? 'x86_64'} · ${host.health ?? '未检测'}`, 'rr-host-meta');
+    const actions = document.createElement('div');
+    actions.className = 'rr-host-actions';
+    const testBtn = text('button', '测试连接', 'btn btn-sm');
+    testBtn.type = 'button';
+    testBtn.onclick = () => invoke('runner.hosts.test', {id: host.id}).then(refresh)
+      .catch(error => {status.textContent = error?.message ? `连接测试失败：${String(error.message).slice(0, 140)}` : '连接测试没有完成';});
+    const disableBtn = text('button', host.enabled ? '停用' : '启用', 'btn btn-sm');
+    disableBtn.type = 'button';
+    disableBtn.onclick = () => invoke(host.enabled ? 'runner.hosts.disable' : 'runner.hosts.enable', {id: host.id}).then(refresh)
+      .catch(error => {status.textContent = error?.message ? `状态没有更新：${String(error.message).slice(0, 140)}` : '状态没有更新';});
+    const vpsCheck = text('button', '云电脑状态', 'btn btn-sm');
+    vpsCheck.type = 'button';
+    vpsCheck.disabled = !host.enabled;
+    vpsCheck.onclick = async () => {
+      if (closed || vpsCheck.disabled) return;
+      vpsCheck.disabled = true;
+      showVpsMessage(`正在查询 ${host.name} 状态...`);
+      try {
+        const res = await invoke('runner.hosts.vpsStatus', {id: host.id});
+        if (closed) return;
+        const receipt = res?.receipt ?? {};
+        const desktop = receipt.desktop ?? {};
+        const summary = typeof receipt.summary === 'string' && receipt.summary ? receipt.summary : `${host.name} 状态：${desktop.status ?? res?.state ?? 'unknown'}`;
+        if (res?.hostId !== host.id) { showVpsMessage('云电脑状态返回的主机与所选主机不一致。'); return; }
+        const {httpsPort} = desktop;
+        if (res.state !== 'succeeded' || desktop.available !== true || desktop.status !== 'running'
+          || !Number.isInteger(httpsPort) || httpsPort < 1 || httpsPort > 65535) {
+          showVpsMessage(summary);
+          return;
+        }
+        const {user, address, port} = res;
+        if (!validConnectionAddress(address)
+          || typeof user !== 'string' || !/^[a-z_][a-z0-9_-]{0,31}$/.test(user)
+          || !Number.isInteger(port) || port < 1 || port > 65535) {
+          showVpsMessage(`${summary} · 请检查设置中的主机地址、用户名和端口。`);
+          return;
+        }
+        const portArg = port !== 22 ? `-p ${port} ` : '';
+        const tunnelCmd = `ssh ${portArg}-N -L ${httpsPort}:127.0.0.1:${httpsPort} ${user}@${address}`;
+        showVpsMessage(`${summary} · 本机浏览器打开 https://127.0.0.1:${httpsPort}`, tunnelCmd);
+      } catch (error) {
+        if (!closed) showVpsMessage(`云电脑状态查询失败：${error?.message || '请检查连接与安装状态'}`);
+      } finally {
+        if (!closed) vpsCheck.disabled = !host.enabled;
+      }
+    };
+    const removeBtn = text('button', '移除主机', 'btn btn-sm btn-danger');
+    removeBtn.type = 'button';
+    removeBtn.onclick = () => invoke('runner.hosts.remove', {id: host.id}).then(() => {
+      if (!closed) showVpsMessage('');
+      return refresh();
+    }).catch(error => {status.textContent = error?.message ? `移除失败：${String(error.message).slice(0, 140)}` : '移除主机失败';});
+    actions.append(testBtn, vpsCheck, disableBtn, removeBtn);
+    item.append(head, meta, actions);
     if (host.enabled && cloud?.state === 'configured_not_verified' && cloud.hostId === host.id) item.append(cloudPanel(cloud));
     return item;
   }

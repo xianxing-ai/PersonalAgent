@@ -13,7 +13,8 @@ import {mountUsageBudget} from './usage-budget.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
 import {mountProactiveTaskControls} from '../../app/proactive-task-controls.js';
-import {mountComputerControls} from '../../app/computer-controls.js';
+import {mountComputerControls,mountBrowserConnections} from '../../app/computer-controls.js';
+import {mountRemoteRunners} from '../conversation/remote-runners.js';
 import {mountComputerVisionControls} from '../../app/computer-vision-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
@@ -22,7 +23,6 @@ import {mountLayaControls} from '../../app/laya-controls.js';
 import {mountWorkspaceControls} from '../../app/workspace-controls.js';
 import {mountAgentArtsControls} from '../../app/agentarts-controls.js';
 import {mountFeedsControls} from '../../app/feeds-controls.js';
-import {mountNotepadControls} from '../../app/notepad-controls.js';
 import {mountTodoControls} from '../../app/todo-controls.js';
 import {mountGoalCloudControls} from '../../app/goal-cloud-controls.js';
 import {mountKnowledgeControls} from '../../app/knowledge-controls.js';
@@ -52,7 +52,7 @@ import {usageDashboardHtml} from './usage-dashboard.js';
 export const sections = {
   dashboard: '数据看板', settings: '常规与外观', activity: '活动', import: '导入', profile: '个人与用量', appearance: '外观详情', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
-  computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: '工作文件夹', workspace: '工作文件夹',
+  capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: '工作文件夹', workspace: '工作文件夹',
   tasks: '任务监控', authorizations: '安全与权限', models: 'AI 模型', memory: '记忆', archive: '已归档任务', overview: '概览', experiments: '实验性功能',
 };
 
@@ -71,7 +71,6 @@ const sectionSubtitles = {
   pets: '实时切换 8 种悬浮球形态并预览 6 种动态交互状态',
   models: '选择日常对话与子任务的默认模型',
   capabilities: '查看 28 图工作流目录、已安装技能与 Runtime 能力目录',
-  computer: '配置本机电脑操控、可选视觉模型与记事本执行边界',
   workspace: '选择这台电脑上用来读写与核对代码的工作文件夹',
   experiments: '管理默认启用的只读实验能力与预览选项',
   dashboard: '按日、周、月周期汇总已授权数据源的个人趋势',
@@ -112,7 +111,7 @@ const primaryPages = ['settings', 'connections', 'authorizations', 'usage'];
 const navGroups = [
   {id: 'foundation', label: '常用与外观', items: ['profile', 'settings', 'appearance', 'pets', 'shortcuts']},
   {id: 'core', label: 'AI 与语音', items: ['models', 'voice', 'usage', 'workspace', 'experiments']},
-  {id: 'capabilities', label: '连接与能力', items: ['connections', 'capabilities', 'computer', 'memory']},
+  {id: 'capabilities', label: '连接与能力', items: ['connections', 'capabilities', 'memory']},
   {id: 'safety', label: '安全与提醒', items: ['authorizations', 'notifications', 'briefing']},
   {id: 'telemetry', label: '观测与记录', items: ['dashboard', 'tasks', 'activity']},
 ];
@@ -127,7 +126,7 @@ const writeAdminProMode = value => {
   catch {}
 };
 const groupForPage = page => navGroups.find(group => group.items.includes(page));
-const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
+const pageAliases = {computer:'authorizations', worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', vps:'connections', overview:'usage'};
 const canonicalPage = page => pageAliases[page] ?? page;
 
 const iconPaths = {
@@ -144,7 +143,7 @@ const iconPaths = {
   shortcuts: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M11 9h.01M15 9h.01M7 13h.01M11 13h6M7 17h10"/>',
   usage: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10m3-8.5c-.6-1-1.6-1.5-3-1.5-1.7 0-3 1-3 2.3 0 3.7 6 1.7 6 5.4 0 1.3-1.3 2.3-3 2.3-1.4 0-2.4-.5-3-1.5"/>',
   analytics: '<path d="M4 19V9m5 10V5m6 14v-7m5 7V3"/>', account: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
-  computer: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>', capabilities: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
+  capabilities: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
   browser: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>', hooks: '<path d="M8 4v8a4 4 0 1 0 8 0V7"/><path d="m13 7 3-3 3 3"/>',
   connections: '<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4m-6.6 6 6.6 3.4"/>', git: '<circle cx="6" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="6" cy="20" r="2"/><path d="M6 6v12m0-8c4 0 4-2 10-2"/>',
   environment: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 2 2-2 2m5 0h5"/>', worktrees: '<path d="M5 4v14m0-8h8a4 4 0 0 0 4-4V4m-4 14h6"/><circle cx="5" cy="4" r="2"/><circle cx="5" cy="20" r="2"/><circle cx="19" cy="18" r="2"/><circle cx="17" cy="4" r="2"/>',
@@ -287,14 +286,15 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,githubControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls,mailSourceControls;
+  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,githubControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls,mailSourceControls;
   window.addEventListener('unload',()=>mailSourceControls?.dispose(),{once:true});
   let installedSkillsControls,pluginCatalogControls,activityControls,sisControls,notificationControls,riskAutonomyControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
   window.addEventListener('unload',()=>authorizationSettingsControls?.dispose(),{once:true});
-  window.addEventListener('unload',()=>{computerControls?.dispose();computerVisionControls?.dispose();},{once:true});
+  let browserConnections, vpsRoot, vpsControls, connectionsVisible = false;
+  window.addEventListener('unload',()=>{computerControls?.dispose();computerVisionControls?.dispose();browserConnections?.dispose();vpsControls?.dispose();},{once:true});
   const showPage = mountPageMotion(root.querySelector('.main'));
 
   function capabilityTable(data) {
@@ -472,7 +472,6 @@ export function mountAdmin(root, invoke, escape) {
       usage: ['使用情况和计费', '每日和每月估算上限。', [['当前用量', '由用量设置显示', '待接入']]],
       analytics: ['分析', '查看任务成功率、耗时和能力调用趋势。', [['任务分析', '分析模块尚未接入真实聚合数据', '待接入'], ['模型延迟', data.model?.latencyMs == null ? '尚无真实连接测试结果' : `${data.model.latencyMs} ms`, 'models'], ['连接健康', capabilitySummary(data, 'health'), 'connections']]],
       account: ['账户', '管理本地身份与外部服务连接。', [['Synstar 账户', '当前版本使用本地桌面身份', '本地'], ['外部账户', '通过连接器单独授权，不共享密钥', 'connections'], ['订阅', 'Synstar 尚未提供订阅系统', '不可用']]],
-      computer: ['电脑操控', '管理 Windows 桌面操作能力与安全边界。', [['电脑操作', 'Windows Host 模块尚未完成真实接入', '待接入'], ['执行策略', '串行操作，同一资源写入加锁', '受控'], ['授权', '副作用操作必须经过 Runtime 校验', 'authorizations']]],
       browser: ['浏览器', '管理网页读取、导航与浏览器自动化连接。', [['浏览器后端', '浏览器连接器尚未接入桌面 Runtime', '未连接'], ['站点权限', '按连接器和任务单独授权', 'authorizations'], ['下载', '不会在未授权时创建文件', '受控']]],
       hooks: ['钩子', '配置任务生命周期中的受控扩展点。', [['任务开始', 'Hook 契约尚未发布', '待接入'], ['工具调用前', '策略网关始终先于外部执行', '固定'], ['任务完成', '只根据 Runtime 最终状态触发', '固定']]],
       git: ['Git', '管理仓库状态、分支与协作能力。', [['Git 集成', 'Git 连接器尚未接入 Runtime', '未连接'], ['默认分支策略', '不会自行覆盖他人分支或未提交改动', '安全'], ['凭据', '不在前端保存 Git 凭据', '隔离']]],
@@ -636,16 +635,33 @@ export function mountAdmin(root, invoke, escape) {
     wakeControls?.render(data.wakePreference, data.wake);wakeControls?.show(section==='voice');
     if(section==='usage'||section==='profile') usageBudgetControls??=mountUsageBudget(root.querySelector('.main'),invoke);
     usageBudgetControls?.update(data.usageBudget);usageBudgetControls?.show(section==='usage'||section==='profile');
-    if (section==='computer') computerControls ??= mountComputerControls(root.querySelector('.main'),invoke);
-    computerControls?.render(data.computerControl);computerControls?.show(section==='computer');
-    if(section==='computer')computerVisionControls??=mountComputerVisionControls(root.querySelector('.main'),invoke);
-    computerVisionControls?.render(data.computerControl?.vision);computerVisionControls?.show(section==='computer');
-    if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
-    proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
-    if (section==='computer') proactiveWorkflowControls ??= mountProactiveWorkflowControls(root.querySelector('.main'),invoke,{settings:true});
-    proactiveWorkflowControls?.render(data.proactiveWorkflow);proactiveWorkflowControls?.show(section==='computer');
-    if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
-    notepadControls?.render(data.notepad);notepadControls?.show(section==='computer');
+    if (section==='authorizations') computerControls ??= mountComputerControls(main,invoke);
+    computerControls?.render(data.computerControl);computerControls?.show(section==='authorizations');
+    if (section==='connections') {
+      browserConnections ??= mountBrowserConnections(main,invoke);
+      if (!vpsControls) {
+        vpsRoot = document.createElement('section');
+        vpsRoot.className = 'sheet vps-runner-sheet';
+        vpsRoot.setAttribute('aria-label','VPS 与云电脑');
+        const heading = document.createElement('h2');
+        heading.textContent = 'VPS 与云电脑';
+        vpsRoot.append(heading);
+        main.append(vpsRoot);
+        vpsControls = mountRemoteRunners(vpsRoot,invoke);
+      }
+      if (!connectionsVisible) {
+        connectionsVisible = true;
+        void vpsControls.refresh();
+      }
+    } else { connectionsVisible = false; }
+    browserConnections?.render(data.computerControl);browserConnections?.show(connectionsVisible);
+    if (vpsRoot) vpsRoot.hidden = !connectionsVisible;
+    if (section==='models') computerVisionControls ??= markProMounted(main, () => mountComputerVisionControls(main,invoke));
+    computerVisionControls?.render(data.computerControl?.vision);computerVisionControls?.show(section==='models');
+    if (section==='notifications') proactiveControls ??= mountProactiveControls(main,invoke,{settings:true});
+    proactiveControls?.render(data.proactive);proactiveControls?.show(section==='notifications');
+    if (section==='activity') proactiveWorkflowControls ??= mountProactiveWorkflowControls(main,invoke,{settings:true});
+    proactiveWorkflowControls?.render(data.proactiveWorkflow);proactiveWorkflowControls?.show(section==='activity');
     if (section==='connections' && data.proactiveTasks) proactiveTaskControls ??= markProMounted(main, () => mountProactiveTaskControls(root.querySelector('.main'),invoke));
     proactiveTaskControls?.render(data.proactiveTasks);proactiveTaskControls?.show(section==='connections');
     if (section==='connections' && data.mail) mailControls ??= mountMailControls(root.querySelector('.main'),invoke);
@@ -718,7 +734,7 @@ export function mountAdmin(root, invoke, escape) {
     if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
     if(modelApiRoot)modelApiRoot.hidden=section!=='models';
     const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts', experiments: 'experiments'};
-    const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
+    const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'analytics', 'account', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     // Commit navigation only after its body and mounted controls are ready. A
     // highlighted sidebar alone must never acknowledge a half-rendered page.
     const commitPage = () => {
@@ -797,7 +813,7 @@ export function mountAdmin(root, invoke, escape) {
       content = petsPage(data);
     } else if (section === 'memory') {
       content = memoryPage(data);
-    } else if (section === 'computer' || section === 'activity' || section === 'briefing') {
+    } else if (section === 'activity' || section === 'briefing') {
       content = '';
     } else if (featureSections.includes(section)) {
       content = featurePage(data, section);

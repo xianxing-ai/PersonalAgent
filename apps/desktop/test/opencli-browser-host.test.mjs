@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
-import {assertOpenCliPublicUrl,createOpenCliBrowserHost,OPENCLI_EXTENSION_GUIDE,projectOpenCliPage,checkOpenCliControl,operateOpenCliControl} from '../electron/opencli-browser-host.js';
+import {assertOpenCliPublicUrl,createOpenCliBrowserHost,OPENCLI_EXTENSION_GUIDE,probeOpenCliExtension,projectOpenCliPage,checkOpenCliControl,operateOpenCliControl} from '../electron/opencli-browser-host.js';
 
 function fixture({resolve,pageEvaluate,probe}={}) {
   let allowed=true,valid=true,value='',failAfterWrite=false,identity=true,sequence=0,writes=0,opens=0,disposed=0,mode='input';
@@ -164,4 +164,28 @@ test('extension probe reports fixed install guidance without opening a tab',asyn
   assert.equal(failing.snapshot().extension.state,'unavailable');
   assert.equal(failing.snapshot().guide,OPENCLI_EXTENSION_GUIDE);await failing.close();
   await missing.host.close();
+});
+
+test('probeOpenCliExtension rejects exit-0 doctor output when extension is disconnected and passes only when connected',async()=>{
+  await assert.rejects(probeOpenCliExtension({resolveCli:()=>'cli.js',execFileImpl:(_bin,_args,_opts,cb)=>{
+    cb(null,'[OK] Daemon: running on port 19825 (v1.8.6)\n[MISSING] Extension: not connected\n[FAIL] Connectivity: failed (Browser Bridge extension not connected)\n');
+  }}),{code:'UNSUPPORTED_CAPABILITY',message:OPENCLI_EXTENSION_GUIDE});
+  await probeOpenCliExtension({resolveCli:()=>'cli.js',execFileImpl:(_bin,_args,_opts,cb)=>{
+    cb(null,'[OK] Daemon: running on port 19825 (v1.8.6)\n[OK] Extension: connected (v1.8.6)\n[OK] Connectivity: connected in 0.2s\n');
+  }});
+});
+
+test('assertOpenCliPublicUrl identifies Fake-IP 198.18.0.0/15 with clear proxy guidance',async()=>{
+  await assert.rejects(assertOpenCliPublicUrl('https://example.com/',{dnsLookup:async()=>[{address:'198.18.1.132'}]}),
+    error=>error.code==='UNAUTHORIZED'&&error.message.includes('Fake-IP'));
+  let round=0;
+  await assert.rejects(assertOpenCliPublicUrl('https://example.com/',{dnsLookup:async()=>[{address:++round===1?'93.184.216.34':'198.18.1.132'}]}),
+    error=>error.code==='UNAUTHORIZED'&&error.message.includes('Fake-IP'));
+});
+
+test('assertOpenCliPublicUrl allows Fake-IP domain resolution when allowFakeIpProxy is enabled while rejecting literal IPs and private answers',async()=>{
+  const fakeDns=async()=>[{address:'198.18.1.132'}];
+  assert.equal((await assertOpenCliPublicUrl('https://example.com/',{dnsLookup:fakeDns,allowFakeIpProxy:true})).hostname,'example.com');
+  await assert.rejects(assertOpenCliPublicUrl('http://198.18.1.132/',{dnsLookup:fakeDns,allowFakeIpProxy:true}),{code:'UNAUTHORIZED'});
+  await assert.rejects(assertOpenCliPublicUrl('https://example.com/',{dnsLookup:async()=>[{address:'127.0.0.1'}],allowFakeIpProxy:true}),{code:'UNAUTHORIZED'});
 });

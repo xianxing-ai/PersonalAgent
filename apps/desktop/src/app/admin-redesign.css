@@ -930,7 +930,7 @@
 }
 
 /* ---------------- Controls, Inputs, Buttons, Keycaps, Switches ---------------- */
-.admin .main :is(.btn, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+.admin .main :where(.btn, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
   border: 1px solid var(--adm-border-strong);
   border-radius: 10px;
   background-color: var(--adm-control);
@@ -1001,6 +1001,12 @@
   background: var(--adm-danger);
   border-color: transparent;
   color: #ffffff;
+}
+
+.admin .main .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .admin .value-pill,

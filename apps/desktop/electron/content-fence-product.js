@@ -1,4 +1,5 @@
 import {ProtocolError} from '@personal-agent/contracts';
+import {isDeepStrictEqual} from 'node:util';
 import {
   externalEffectDecision,
   externalKindForTool,
@@ -13,7 +14,7 @@ import {
  * Competition startup checks the fence before ToolGateway consumes Policy grants,
  * and fences external tool results without tainting tasks on local read-only tools.
  */
-export function createContentFenceProduct({readGoal} = {}) {
+export function createContentFenceProduct({readGoal,restrictBrowserRead,restrictBrowserPreparation,browserPreparationStage} = {}) {
   const sources = [];
   const seen = new Map();
   let blocked = null;
@@ -21,9 +22,26 @@ export function createContentFenceProduct({readGoal} = {}) {
     try { return readGoal?.(taskId) ?? ''; }
     catch { return ''; }
   };
-  const beforeAuthorize = ({taskId, toolName, sideEffect}) => {
+  const beforeAuthorize = scope => {
+    const {taskId,toolName,toolVersion,sideEffect}=scope;
+    if(toolName==='browser.prepare'){
+      if(toolVersion==='1.0.0'&&restrictBrowserPreparation?.(scope)===true)return;
+      throw new ProtocolError('SCOPE_DENIED','此控件与原用户指定的商品、住宿条件或操作步骤不一致。');
+    }
     const effect = guardedEffectForTool(toolName ?? '', sideEffect);
     if (!effect || !taskId || seen.get(taskId)?.external !== true) return;
+    // The Playwright host pins the original run, document and control, and enforces a GET-only navigation
+    // or the original media element's play method. A descriptor called "click" alone grants nothing.
+    if(toolName==='browser.click'&&toolVersion==='1.0.0'){
+      if(restrictBrowserRead?.(scope)===true)return;
+      if(scope.arguments?.mediaAction==='play'){
+        const reason='请确认原用户请求了播放，且该音视频仍在刚观察到的页面中。';
+        blocked={effect,reason,at:new Date().toISOString()};
+        throw new ProtocolError('SCOPE_DENIED',reason);
+      }
+    }
+    if(['browser.click','browser.type','browser.press','browser.select','browser.download'].includes(toolName)&&browserPreparationStage?.(taskId))
+      throw new ProtocolError('SCOPE_DENIED','本次只允许在受限网页控件上执行用户指定的查询或准备步骤。');
     const decision = externalEffectDecision({effect, userGoal: goalFor(taskId), sawExternal: true});
     if (decision.allowed) return;
     blocked = {effect, reason: decision.reason, at: new Date().toISOString()};
@@ -45,8 +63,12 @@ export function createContentFenceProduct({readGoal} = {}) {
           const name = tool.descriptor?.name ?? '';
           const sideEffect = tool.descriptor?.sideEffect;
           const taskId = context?.taskId;
-          beforeAuthorize({taskId, toolName: name, sideEffect});
+          beforeAuthorize({...context,toolName:name,toolVersion:tool.descriptor?.version,sideEffect,arguments:input});
           const result = await tool.execute(input, context);
+          // This exact trusted empty-session response has no page, URL, text, or controls.
+          // It does not add an external source or clear a previous one.
+          if(name==='browser.observe'&&tool.descriptor?.version==='1.0.0'&&
+            isDeepStrictEqual(result,{source:'playwright',state:'no_page',nextTool:'browser.open',goalVerified:false}))return result;
           if (taskId && !isLocalReadOnlyTool(name, sideEffect)) {
             const kind = externalKindForTool(name);
             const fenced = fenceExternalValue(result, tool.descriptor?.outputSchema, {kind, ref: name});

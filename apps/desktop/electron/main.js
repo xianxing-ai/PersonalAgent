@@ -295,8 +295,16 @@ let panel;
 let draftQuitPreflight;
 let admin;
 let workspace;
+const browserPanes=new WeakMap();
+function releaseBrowserPane(window,paneId){
+  const pane=browserPanes.get(window);
+  if(!pane||paneId!==undefined&&pane.id!==paneId)return;
+  browserPanes.delete(window);
+  browserControlHost?.releaseWorkspaceView(pane.conversationId);
+}
 let workspaceChildActivity;
 let workspaceChildWatch;
+let workspaceAssistantConversation;
 let taskActivitySequence=0;
 const subagentWindows=new Map();
 // Each child conversation owns a renderer process. Keeping every one alive across turns is what
@@ -541,6 +549,14 @@ let developerDeploymentFailure='';
 let toolPresenceHost,windowsControlHost,windowsControlClosing,computerControlLaya;
 let computerControlLease;
 let computerControlConfig,browserControlHost,openCliBrowserHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
+// Capture only a real human browser request in its own conversation. Model,
+// peer and background messages do not acquire the user's open page.
+function browserChatSubmission(conversationId,text) {
+  if(!browserControlHost||!runtimeApplication?.browserConversationIntent(conversationId,text))return;
+  const page=browserControlHost.captureChatPage(conversationId);
+  return taskId=>browserControlHost.bindChatTask(conversationId,taskId,page);
+}
+let computerPreparation,computerPreparationFailure;
 let browserControlClosed=false;
 let computerLaunch;
 const computerTasks=new Set();
@@ -952,6 +968,16 @@ function cachedChildToolActivity(runtime, task, childApprovals) {
   if (childToolActivityCache.size > 64) childToolActivityCache.delete(childToolActivityCache.keys().next().value);
   return activity;
 }
+function localChildReplyAllowed(parent,child){
+  return parent&&child&&!parent.bodyWithheld&&!parent.outputTruncated&&!conversationDelivery.stopped(parent)
+    &&!child.bodyWithheld&&!child.outputTruncated&&!conversationDelivery.stopped(child)
+    &&child.conversationId==='desktop-subtask:'+parent.taskId;
+}
+function localWorkerReplyText(task,deviceReply){
+  if(deviceReply?.kind==='browser-excerpt')return deviceReply.text;
+  if(task.state!=='succeeded'||deviceReply?.kind==='withheld')return '';
+  return deviceReply?.kind==='notepad'?deviceReply.text:resultText(task.resultSummary,taskResultMetadata(task));
+}
 function compactSubagentTasks(children,visibleParents,surface){
   const runtime=runtimeApplication?.runtime;
   const recent=surface==='panel'?[]:children.slice(0,8);
@@ -973,11 +999,12 @@ function compactSubagentTasks(children,visibleParents,surface){
     const task=safeDesktopTask(runtime.getTask(child.taskId));
     const {goal,resultSummary,error,latestMessageTaskId,...identity}=child;
     const parent=visibleParents.get(child.parentTaskId);
-    const canReply=surface&&parent&&!parent.bodyWithheld&&!parent.outputTruncated&&!conversationDelivery.stopped(parent)
-      &&!task.bodyWithheld&&!task.outputTruncated&&!conversationDelivery.stopped(task)
-      &&task.conversationId===`desktop-subtask:${parent.taskId}`;
-    const finalReply=canReply&&task.state==='succeeded'?resultText(task.resultSummary,taskResultMetadata(task)):'';
-    if(surface==='panel')return {parentTaskId:child.parentTaskId,taskId:child.taskId,state:task.state,...(child.role?{role:child.role}:{}),...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),...(finalReply?{finalReply}:{})};
+    const canReply=surface&&localChildReplyAllowed(parent,task);
+    const deviceReply=canReply&&['succeeded','failed','waiting_reconciliation'].includes(task.state)
+      ?runtimeApplication.readDeviceWorkerReply(parent.taskId,task.taskId):undefined;
+    const finalReply=canReply?localWorkerReplyText(task,deviceReply):'';
+    const replyFields=finalReply?{finalReply,...(deviceReply?{replyForDeviceTask:true,deviceReplyKind:deviceReply.kind}:{})}:{};
+    if(surface==='panel')return {parentTaskId:child.parentTaskId,taskId:child.taskId,state:task.state,...(child.role?{role:child.role}:{}),...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),...replyFields};
     let preview=finalReply||(canReply&&task.state==='failed'?'执行异常':'');
     if(canReply&&latestMessageTaskId){
       const latest=safeDesktopTask(runtime.getTask(latestMessageTaskId));
@@ -988,7 +1015,7 @@ function compactSubagentTasks(children,visibleParents,surface){
       }
     }
     return {...identity,...(canReply&&goal?{goal}:{}),...projectChildProgress(task,8),
-      ...(finalReply?{finalReply}:{}),...(preview?{preview:preview.slice(0,140)}:{}),
+      ...replyFields,...(preview?{preview:preview.slice(0,140)}:{}),
       ...(index<recent.length&&!task.bodyWithheld?{toolActivity:cachedChildToolActivity(runtime,task,byChild.get(task.taskId))}:{})};
   });
 }
@@ -999,7 +1026,13 @@ function conversationProjection(surface) {
   const activeConversationId=surface?conversations?.activeConversationId(surface):undefined;
   const pendingApprovalIds=new Set();
   if(surface)for(const approval of approvals.values())if(approval.state==='pending')pendingApprovalIds.add(approval.approvalId);
-  const rawQuestions=authorizationQuestionHost?.snapshot(activeConversationId)??[];
+  const rawQuestions=surface==='workspace'&&workspaceAssistantConversation?[]:authorizationQuestionHost?.snapshot(activeConversationId)??[];
+  const assistantAuthorization=surface==='workspace'&&workspaceAssistantConversation
+    ?{conversationId:workspaceAssistantConversation,questions:(authorizationQuestionHost?.snapshot(workspaceAssistantConversation)??[])
+      .filter(item=>item.state==='pending').map(question=>{
+        const review=authorizationIntentHost?.readEgressReview(question.taskId);
+        return review?.conversationId===workspaceAssistantConversation?{...question,egressReview:review.payload}:question;
+      })}:null;
   const authorizationQuestions=(surface?rawQuestions.filter(question=>question.state==='pending'
     ||(typeof question.sourceApprovalId==='string'&&pendingApprovalIds.has(question.sourceApprovalId))):rawQuestions).map(question=>{
     if(!activeConversationId||question.state!=='pending')return question;
@@ -1050,6 +1083,7 @@ function conversationProjection(surface) {
     surfaceBusy:foreground.length>0,
     conversation: surface ?? 'all',
     authorizationQuestions,
+    ...(surface==='workspace'?{assistantAuthorization}:{}),
     workflowQuestions:!runtimeClosed&&surface?readBusinessWorkflowQuestions({application:runtimeApplication,
       hosts:[f01Workflow?.questions,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
     authorizationSandbox:sandboxSelected,
@@ -1205,14 +1239,42 @@ function computerControlSnapshot(surface){
   const recoveryOwned=!surface||recoveryTaskId&&conversationToolAccess?.resolveConversation(recoveryTaskId)===conversations?.activeConversationId(surface);
   const input=computerControlLease?.snapshot()??{state:'unavailable',busy:false,writeBlocked:true};
   if(current.state==='blocked'||browserControlHost?.snapshot().state==='blocked'||openCliBrowserHost?.snapshot().state==='blocked')Object.assign(input,{state:'blocked',writeBlocked:true});
-  return {...publicStatus,...(owned&&active?{activeTaskId:active}:{}),...(recoveryOwned&&recoveryTaskId?{recoveryTaskId}:{}),waitingConfirmation:owned&&current.waitingConfirmation===true,
+  return {...publicStatus,preferenceRevision:preference?.revision,
+    observationPreference:preference?.observationExportConfigured?preference.allowObservationExport:current.observationExportAllowed,
+    ...(computerPreparationFailure?{failure:computerPreparationFailure,reason:computerPreparationFailure.message}:{}),
+    ...(owned&&active?{activeTaskId:active}:{}),...(recoveryOwned&&recoveryTaskId?{recoveryTaskId}:{}),waitingConfirmation:owned&&current.waitingConfirmation===true,
     ...(owned&&current.waitingConfirmation&&reviewAction?{reviewAction}:{}),
     input,browser:{...(browserControlHost?.snapshot()??{state:'unavailable',available:false}),connected:openCliBrowserHost?.snapshot()},vision:computerVisionHost?.snapshot()??computerVisionConfig?.snapshot(),
     ...(computerPreparing?{state:'preparing',reason:'正在准备电脑组件；可以立即停止。'}:{})};
 }
 
+function prepareComputerControl(scope) {
+  if (computerPreparation) return computerPreparation;
+  if (process.platform !== 'win32' || !computerControlConfig?.snapshot().enabled || !windowsControlHost) return;
+  const owned = new AbortController();
+  const context = {signal:scope?AbortSignal.any([owned.signal,scope.signal]):owned.signal,
+    deadline:new Date(Math.min(Date.now()+120000,scope?Date.parse(scope.deadline):Infinity)).toISOString()};
+  computerPreparing = owned;
+  computerPreparationFailure = undefined;
+  computerPreparation = Promise.resolve().then(async () => {
+    const component = {electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath};
+    if (!process.env.PA_WINDOWS_CONTROL_PYTHON && !existsSync(nativeDesktopExecutable(component))) {
+      await prepareNativeDesktopComponent({...component,...context});
+    }
+    if (!context.signal.aborted && computerControlConfig.snapshot().enabled) await windowsControlHost.start(context);
+  }).catch(error => {
+    if (!context.signal.aborted) computerPreparationFailure = computerControlFailure(error,'component_start');
+  }).finally(() => {
+    computerPreparing = undefined;
+    computerPreparation = undefined;
+    publish();
+  });
+  return computerPreparation;
+}
+
 async function stopComputerControl(){
   computerPreparing?.abort();
+  await computerPreparation;
   if(computerLaunch){computerLaunch.stopped=true;conversationDelivery.interruptPending(computerLaunch.conversationId);}
   const activeTasks=[...new Set([...computerTasks,...(windowsControlHost?.activeTasks?.()??[]),...(browserControlHost?.activeTasks?.()??[]),...(openCliBrowserHost?.activeTasks?.()??[])])]
     .filter(taskId=>{try{return !terminalTaskStates.has(runtimeApplication.runtime.getTask(taskId).state);}catch{return false;}});
@@ -1855,7 +1917,13 @@ async function openWorkspace() {
   bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
   const window=workspace;
-  const clearWatch=()=>{if(workspace===window){workspaceChildActivity=undefined;workspaceChildWatch=undefined;}};
+  const suspendBrowserView=()=>browserControlHost?.suspendWorkspaceView(browserPanes.get(window)?.conversationId);
+  const releaseBrowserView=()=>releaseBrowserPane(window);
+  window.on('hide',suspendBrowserView);
+  window.on('minimize',suspendBrowserView);
+  window.on('closed',releaseBrowserView);
+  window.webContents.on('render-process-gone',releaseBrowserView);
+  const clearWatch=()=>{if(workspace===window){workspaceChildActivity=undefined;workspaceChildWatch=undefined;workspaceAssistantConversation=undefined;}};
   window.webContents.on('did-start-navigation',(_event,_url,_inPlace,mainFrame)=>{if(mainFrame)clearWatch();});
   window.webContents.on('render-process-gone',clearWatch);
   window.on('closed',()=>{if(workspace===window){clearWatch();workspace=undefined;}});
@@ -2649,12 +2717,15 @@ async function initializeInstalledSkills() {
   }
 }
 
+function resolveDesktopToolConversation(taskId){
+  return runtimeApplication?.readAssistantToolConversation?.(taskId)??conversationToolAccess?.resolveConversation(taskId);
+}
 function initializeAuthorizationHosts(runtimeModule){
   authorizationQuestionHost?.close();
   authorizationQuestionHost=createDesktopAuthorizationQuestionHost({createQuestions:options=>new runtimeModule.AuthorizationQuestions(options),
     getApplication:()=>runtimeApplication,namespace:desktopHost.userNamespace,
-    resolveConversation:taskId=>authorizationIntentHost?.readEgressReview(taskId)?.conversationId
-      ??conversationToolAccess?.resolveConversation(taskId)
+    resolveConversation:taskId=>authorizationIntentHost?.readQuestionConversation(taskId)
+      ??resolveDesktopToolConversation(taskId)
       ??connectorWatchHost?.resolveUserConversation(taskId)
       ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
@@ -2676,6 +2747,7 @@ function initializeAuthorizationHosts(runtimeModule){
       item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
         ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
       )&&request.toolName!=='workspace.node_check'?'workspace-write':selected.ref,
+    describeBrowserClick:source=>browserControlHost?.describeClickForApproval(source),
     describeExecution:(request,profile)=>nativeExecutionHost?.describeExecution(request,profile)
       ??{required:false,available:false,backend:'unavailable',enforced:false,reason:'本次为应用内工具；外部进程隔离未就绪'}});
   authorizationIntentHost?.close();
@@ -2699,7 +2771,7 @@ function authorizeAgentArtsEgress(scope) {
   if(!owner||!authorizationIntentHost||!conversationToolAccess)return false;
   const binding=resolveEgressReviewConversation({
     taskId:scope.taskId,
-    resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+    resolveConversation:resolveDesktopToolConversation,
     readTask:taskId=>owner.runtime.getTask(taskId),
     readToolConversation:taskId=>owner.readToolConversation(taskId),
     activePanelConversationId:()=>conversations?.activeConversationId('panel'),
@@ -2711,7 +2783,7 @@ function authorizeAgentArtsEgress(scope) {
     summary:`允许本任务向已配置云端地址 ${scope.destination} 发送非敏感对话内容`,
     deadline:scope.deadline,signal:scope.signal,
     isCurrent:()=>owner===runtimeApplication&&isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
-      resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      resolveConversation:resolveDesktopToolConversation,
       readTask:taskId=>owner.runtime.getTask(taskId),
       readToolConversation:taskId=>owner.readToolConversation(taskId),
       activePanelConversationId:()=>conversations?.activeConversationId('panel'),
@@ -2726,7 +2798,7 @@ function authorizeSecretAgentArtsEgress(scope) {
   const binding=scope.taskId!==undefined
     ?resolveEgressReviewConversation({
       taskId:scope.taskId,
-      resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      resolveConversation:resolveDesktopToolConversation,
       readTask:taskId=>owner.runtime.getTask(taskId),
       readToolConversation:taskId=>owner.readToolConversation(taskId),
       activePanelConversationId:()=>panelId,
@@ -2745,7 +2817,7 @@ function authorizeSecretAgentArtsEgress(scope) {
     isCurrent:()=>owner===runtimeApplication&&(binding.directPanel
       ?conversations?.activeConversationId('panel')===binding.conversationId
       :isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
-        resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        resolveConversation:resolveDesktopToolConversation,
         readTask:taskId=>owner.runtime.getTask(taskId),
         readToolConversation:taskId=>owner.readToolConversation(taskId),
         activePanelConversationId:()=>conversations?.activeConversationId('panel'),
@@ -3001,7 +3073,8 @@ async function initializeRuntime() {
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
       if(!syntheticMvp){
-        computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
+        computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime,
+          readInSeparateBrowser:(record,scope,input)=>browserControlHost?.restrictClickToIndependentRead(record,scope,input)===true});
         toolPresenceHost=createToolPresenceHost({
           isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
@@ -3038,18 +3111,23 @@ async function initializeRuntime() {
           providerOptions:compatibilityPython?{}:{executable:nativeDesktopExecutable({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath}),
             artifactDirectory:path.join(app.getPath('userData'),'computer-artifacts'),selectControl:input=>computerControlLaya.select(input)}});
         windowsControlHost.configure({enabled:computerPreference.enabled,allowObservationExport:computerPreference.allowObservationExport||process.env.PA_WINDOWS_CONTROL_EXPORT==='1'});
-        if(process.platform==='win32'&&computerPreference.enabled){
-          await windowsControlHost.start({deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
-        }
+        await prepareComputerControl();
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
           downloadDirectory:path.join(app.getPath('downloads'),'Synstar'),
+          allowExplicitBrowserOpen:({taskId,url})=>runtimeApplication?.browserWorkerExplicitlyOpens(taskId,url)===true,
+          onWorkspaceDiagnostic:receipt=>desktopHost.logBrowserDiagnostic(receipt),
+          isFullAccess:()=>readDesktopEgressPolicy().mode==='full-access',
+          allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
-          isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
-          authorizePresence:async scope=>{
-            if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
-            return windowsControlHost.hasPresence(scope.taskId);
-          },onUpdate:publish});
+          authorizationQuestions:authorizationQuestionPort,resolveConversation:resolveDesktopToolConversation,
+          confirmSource:({from,to,scope,toolName,isCurrent})=>confirmApplicationAuthorization('browser.source',
+            {from,to,toolName},{scope:{taskId:scope.taskId,runId:scope.runId,from,to},deadline:scope.deadline,signal:scope.signal,isCurrent,
+              summary:`允许本次浏览器操作从 ${from} 转到 ${to} 吗？`}),onUpdate:()=>{
+            publish();
+            if(workspace&&!workspace.isDestroyed())workspace.webContents.send('desktop:browser-workspace-change');
+          }});
         openCliBrowserHost=createOpenCliBrowserHost({
+          allowFakeIpProxy:process.env.PA_BROWSER_DISABLE_FAKE_IP_PROXY!=='1',
           readTask:taskId=>{try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}},
           authorize:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
@@ -3756,6 +3834,17 @@ async function initializeRuntime() {
       });
       contentFence=createContentFenceProduct({readGoal:taskId=>{
         try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
+      },restrictBrowserRead:scope=>{
+        const args=scope.arguments;
+        if(!args||typeof args!=='object'||Array.isArray(args))return false;
+        const kind=args.mediaAction==='play'?'play':args.mediaAction===undefined?'link':undefined;
+        return !!kind&&runtimeApplication.requestedBrowserRead(scope.taskId,kind,args)
+          &&browserControlHost?.restrictChatBrowserRead(scope,args)===true;
+      },browserPreparationStage:taskId=>runtimeApplication.browserPreparationStage(taskId),
+      restrictBrowserPreparation:scope=>{
+        const args=scope.arguments,control=browserControlHost?.describeChatPreparation(scope,args);
+        return !!control&&runtimeApplication.requestedBrowserPreparation(scope.taskId,scope.runId,args,control)
+          &&browserControlHost.restrictChatPreparation(scope,args)===true;
       }});
       conversationTools=contentFence.wrapTools(conversationTools);
       conversationTools=permissionAudit.observeTools(conversationTools);
@@ -3821,6 +3910,16 @@ async function initializeRuntime() {
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
         frontDeskUserTurns: true,
+        prepareDesktopWorker:async scope=>{
+          if (!computerControlConfig?.snapshot().enabled) throw new ProtocolError('UNAUTHORIZED','请在安全与权限中允许工人操作本机');
+          if (!windowsControlHost?.snapshot().providerAvailable) await prepareComputerControl(scope);
+          if (scope.signal.aborted) throw new ProtocolError('CANCELLED','电脑任务已取消');
+          if (Date.now()>=Date.parse(scope.deadline)) throw new ProtocolError('TIMEOUT','准备电脑组件时任务已到期');
+          const status=computerControlSnapshot();
+          if (!status.enabled) throw new ProtocolError('UNAUTHORIZED','工人操作本机的权限已关闭');
+          if (status.input.writeBlocked) throw new ProtocolError('RESULT_UNKNOWN','上次电脑操作的结果需要在原任务中核实');
+          if (!status.providerAvailable) throw new ProtocolError('UNSUPPORTED_CAPABILITY',status.reason||'Windows 电脑组件未就绪');
+        },
         getToolsForSubtask:(subtask,worker,tools)=>f28Workflow?.getToolsForSubtask(subtask,worker,tools)??tools,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
@@ -4055,6 +4154,7 @@ async function initializeRuntime() {
           if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
           if(phase==='preflight'&&(windowsControlHost?.requiresToolPresence(proposal?.toolName)||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
           await computerVisionHost?.prepareExport(scope);
+          await browserControlHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
           await feedsHost?.prepareExport?.(scope);
           const ghTools=typeof githubConversationTools!=='undefined'?githubConversationTools:undefined;
@@ -4838,6 +4938,46 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
+  if (name === 'browser.workspace.open') {
+    if ((sender !== admin && sender !== workspace) || payload != null)
+      throw new ProtocolError('UNAUTHORIZED','请从工作台或连接设置打开内置浏览器');
+    await openWorkspace();
+    const contents=workspace.webContents;
+    const open=()=>{if(!contents.isDestroyed())contents.send('desktop:browser-workspace-open');};
+    if(contents.isLoadingMainFrame()||!contents.getURL())contents.once('did-finish-load',open);
+    else open();
+    return {opened:true};
+  }
+  if (name === 'browser.workspace.action') {
+    if(sender!==workspace || !browserControlHost || !competitionMode)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请在已连接运行时的工作台使用内置浏览器');
+    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>!['action','payload','assistantId','paneId'].includes(key))
+      ||typeof payload.paneId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.paneId))
+      throw new ProtocolError('INVALID_ARGUMENT','浏览器请求格式无效');
+    const operation=payload.action, args=payload.payload??{};
+    if(!args||typeof args!=='object'||Array.isArray(args))throw new ProtocolError('INVALID_ARGUMENT','浏览器参数无效');
+    const assistantId=payload.assistantId;
+    if(assistantId!==undefined&&(typeof assistantId!=='string'||!assistantId.trim()||assistantId.length>128))
+      throw new ProtocolError('INVALID_ARGUMENT','请选择当前助手');
+    if(operation==='release'){releaseBrowserPane(sender,payload.paneId);return {released:true};}
+    if(!sender.isVisible()||sender.isMinimized())throw new ProtocolError('UNAUTHORIZED','请先展开工作台');
+    if(!['state','preview','frame','media','open','back','forward','reload','close','click','type','select','press','scroll'].includes(operation))
+      throw new ProtocolError('INVALID_ARGUMENT','未知的浏览器操作');
+    // The pane ID identifies a mounted view only. Runtime/Main chooses the owning
+    // conversation and remembers it so a delayed release cannot target its successor.
+    const conversationId=assistantId?runtimeApplication.runtime.getAssistant(assistantId).conversationId:conversations.activeConversationId('workspace');
+    const previous=browserPanes.get(sender);
+    if((operation==='media'||operation==='frame')&&previous?.id!==payload.paneId)
+      throw new ProtocolError('REVISION_CONFLICT','请先展开当前对话的浏览器');
+    if(previous?.id===payload.paneId&&previous.conversationId!==conversationId)
+      throw new ProtocolError('REVISION_CONFLICT','工作台对话已切换，请使用当前对话的浏览器');
+    if(previous?.id!==payload.paneId){
+      releaseBrowserPane(sender);
+      browserPanes.set(sender,{id:payload.paneId,conversationId});
+    }
+    const scope={conversationId,signal:AbortSignal.timeout(30_000),deadline:new Date(Date.now()+30_000).toISOString()};
+    return browserControlHost.workspace(operation,args,scope);
+  }
   if (name === 'operator.brake') {
     if (sender !== panel && sender !== workspace) throw Error('请从桌面切换总暂停');
     if (typeof operatorBrake === 'undefined') throw Error('总暂停尚未装配');
@@ -4941,7 +5081,8 @@ async function action(event, name, payload) {
   if(name==='authorization.question.respond'){
     if(sender!==panel&&sender!==workspace&&sender!==admin||!authorizationQuestionHost)throw Error('当前对话授权卡不可用');
     const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
-    const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
+    const conversationId=sender===admin?question?.conversationId:sender===workspace&&workspaceAssistantConversation
+      ?workspaceAssistantConversation:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
     const result=authorizationQuestionHost.respond(payload,conversationId);
     if(payload?.decision==='deny'||result?.decision==='deny'||result?.state==='denied'){
@@ -5018,46 +5159,50 @@ async function action(event, name, payload) {
     publish();return result;
   }
   if (name === 'notepad.start' || name === 'notepad.cancel') {
-    if ((sender !== admin && sender !== workspace) || !notepadHost || notepadClosing) throw Error('请从电脑操控设置操作记事本');
+    if ((sender !== admin && sender !== workspace) || !notepadHost || notepadClosing) throw Error('原记事本操作不可用');
     return name === 'notepad.start' ? notepadHost.start(payload) : notepadHost.cancel();
   }
   if(name==='computer.vision.configure'){
-    if(sender!==admin||!computerVisionConfig)throw new ProtocolError('UNAUTHORIZED','请从电脑操作设置管理可选视觉模型');
+    if(sender!==admin||!computerVisionConfig)throw new ProtocolError('UNAUTHORIZED','请从 AI 模型设置管理视觉模型');
     computerVisionConfig.configure(payload);publish();return {computerControl:computerControlSnapshot()};
   }
   if(name.startsWith('computer.control.')){
     if(![admin,panel,workspace].includes(sender)||!computerControlConfig||!windowsControlHost||!runtimeApplication)
-      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请从电脑操控设置或当前对话使用已连接的Runtime');
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','本机电脑组件尚未连接 Runtime');
     if(!['computer.control.stop','computer.control.confirm'].includes(name)&&sender!==admin)
-      throw new ProtocolError('UNAUTHORIZED','请从电脑操控设置管理组件');
+      throw new ProtocolError('UNAUTHORIZED','请从安全与权限管理本机权限');
     if(name==='computer.control.stop'){
       if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','停止不接受额外参数');
       return stopComputerControl();
     }
     if(name==='computer.control.configure'){
       const previous=computerControlConfig.snapshot();
+      let preserveObservationPreference=false;
+      if(payload && Object.hasOwn(payload,'expectedRevision')){
+        const keys=Object.keys(payload).filter(key=>key!=='expectedRevision');
+        if(keys.length!==1||!['enabled','allowObservationExport'].includes(keys[0])||typeof payload[keys[0]]!=='boolean')
+          throw new ProtocolError('INVALID_ARGUMENT','请选择一项本机权限');
+        if(payload.expectedRevision!==previous.revision)throw new ProtocolError('REVISION_CONFLICT','本机权限已变化，请按当前设置重试');
+        preserveObservationPreference=keys[0]==='enabled';
+        payload={enabled:previous.enabled,allowObservationExport:previous.allowObservationExport,[keys[0]]:payload[keys[0]]};
+      }
       if(payload?.allowObservationExport===true&&!previous.allowObservationExport&&!authorizationQuestionHost.automaticallyApproves()){
         const allowed=await confirmApplicationAuthorization('computer.observation.configure',payload,{scope:{purpose:'target-window-observation'},
           summary:'允许当前任务模型接收本次选定窗口的界面文字；截图默认只保存在本机。',isCurrent:()=>computerControlConfig.snapshot().revision===previous.revision});
         if(!allowed)throw new ProtocolError('UNAUTHORIZED','电脑观察出口尚未允许');
       }
       if(computerControlConfig.snapshot().revision!==previous.revision)throw new ProtocolError('REVISION_CONFLICT','等待授权期间电脑设置已变化，请查看当前设置');
-      computerControlConfig.configure(payload);windowsControlHost.configure(payload);
-      if(!payload.enabled||previous.allowObservationExport&&!payload.allowObservationExport)await stopComputerControl();
+      const revokedObservation=windowsControlHost.snapshot().observationExportAllowed&&!preserveObservationPreference&&!payload.allowObservationExport;
+      computerControlConfig.configure(payload,{preserveObservationPreference});windowsControlHost.configure(payload);
+      if(!payload.enabled||revokedObservation)await stopComputerControl();
+      if(payload.enabled&&!windowsControlHost.snapshot().providerAvailable)await prepareComputerControl();
       publish();return {computerControl:computerControlSnapshot()};
     }
     if(name==='computer.control.prepare'){
       if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','组件准备不接受额外参数');
-      if(computerPreparing)throw new ProtocolError('REVISION_CONFLICT','电脑组件正在准备');
       if(!computerControlConfig.snapshot().enabled)throw new ProtocolError('UNAUTHORIZED','请先启用电脑控制');
-      const owned=new AbortController();computerPreparing=owned;publish();
-      try{
-        const context={signal:owned.signal,deadline:new Date(Date.now()+120000).toISOString()};
-        if(!process.env.PA_WINDOWS_CONTROL_PYTHON)await prepareNativeDesktopComponent({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath,...context});
-        await windowsControlHost.start(context);openCliBrowserHost?.start();
-        if(openCliBrowserHost)await openCliBrowserHost.probeExtension({signal:owned.signal}).catch(()=>{});
-        return {computerControl:computerControlSnapshot()};
-      }finally{if(computerPreparing===owned)computerPreparing=undefined;publish();}
+      await prepareComputerControl();
+      return {computerControl:computerControlSnapshot()};
     }
     if(name==='computer.control.probeConnectedBrowser'){
       if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','扩展检测不接受额外参数');
@@ -5138,12 +5283,49 @@ async function action(event, name, payload) {
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
     return openSubagentConversation(payload,sender===admin?undefined:sender===workspace?'workspace':'panel');
   }
-  if(name==='runner.hosts.list'||name==='runner.hosts.test'||name==='runner.hosts.disable'||name==='runner.hosts.enable'){
+  if(name==='runner.hosts.list'||name==='runner.hosts.test'||name==='runner.hosts.vpsStatus'||name==='runner.hosts.probeKey'||name==='runner.hosts.add'||name==='runner.hosts.remove'||name==='runner.hosts.disable'||name==='runner.hosts.enable'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话查看远端执行器');
     if(!remoteRunnerHost)throw Error('远端执行器尚未装配');
     if(name==='runner.hosts.list')return {hosts:remoteRunnerHost.service.list(), jobs:remoteRunnerHost.service.jobs()};
     if(name==='runner.hosts.test')return remoteRunnerHost.service.test(payload?.id);
-    const drafted=remoteRunnerHost.service.propose(name==='runner.hosts.disable'?'disable':'enable', {id:payload?.id});
+    if(name==='runner.hosts.vpsStatus')return remoteRunnerHost.service.vpsStatus(payload?.id);
+    if(name==='runner.hosts.probeKey')return remoteRunnerHost.probeHostKey({address:payload?.address, port:payload?.port??22});
+    if(name==='runner.hosts.add'){
+      if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('远端主机配置格式无效');
+      const allowedKeys=['name','address','port','user','provider','os','arch','limits','repos','hostKey','hostKeyFingerprint','privateKey','runnerToken','enabled'];
+      if(Object.keys(payload).some(key=>!allowedKeys.includes(key)))throw Error('远端主机配置包含未支持字段');
+      const hostKey=typeof payload.hostKey==='string'?payload.hostKey.trim():'';
+      if(!hostKey)throw Error('请先探测或填写 VPS 主机公钥');
+      const computedFingerprint=createHash('sha256').update(hostKey).digest('hex');
+      const givenFingerprint=typeof payload.hostKeyFingerprint==='string'&&payload.hostKeyFingerprint.trim()
+        ?payload.hostKeyFingerprint.trim().toLowerCase():computedFingerprint;
+      const rawPrivateKey=typeof payload.privateKey==='string'?payload.privateKey.replace(/\r\n/g,'\n'):'';
+      const privateKey=rawPrivateKey&&!rawPrivateKey.endsWith('\n')?`${rawPrivateKey}\n`:rawPrivateKey;
+      const limits=payload.limits&&typeof payload.limits==='object'&&!Array.isArray(payload.limits)
+        ?{maxConcurrent:Number(payload.limits.maxConcurrent??2), maxJobsPerMinute:Number(payload.limits.maxJobsPerMinute??20)}
+        :{maxConcurrent:2, maxJobsPerMinute:20};
+      const normalized={
+        name:typeof payload.name==='string'?payload.name.trim():'',
+        address:typeof payload.address==='string'?payload.address.trim():'',
+        port:Number(payload.port??22),
+        user:typeof payload.user==='string'?payload.user.trim():'',
+        provider:payload.provider||'vps',
+        os:payload.os||'ubuntu',
+        arch:payload.arch||'x86_64',
+        limits,
+        repos:Array.isArray(payload.repos)?payload.repos:[],
+        hostKey,
+        hostKeyFingerprint:givenFingerprint,
+        privateKey,
+        runnerToken:typeof payload.runnerToken==='string'?payload.runnerToken.trim():'',
+        enabled:payload.enabled!==false,
+      };
+      const drafted=remoteRunnerHost.service.propose('add', normalized);
+      const {keyRef:_k, tokenRef:_t, ...publicRecord}=remoteRunnerHost.service.confirm(drafted.proposalId, drafted.digest);
+      return {state:'confirmed', record:publicRecord};
+    }
+    const op=name==='runner.hosts.remove'?'remove':name==='runner.hosts.disable'?'disable':'enable';
+    const drafted=remoteRunnerHost.service.propose(op, {id:payload?.id});
     return remoteRunnerHost.service.confirm(drafted.proposalId, drafted.digest);
   }
   if(name==='asyncSubagents.list'||name==='asyncSubagents.instruct'||name==='asyncSubagents.stop'||name==='asyncSubagents.pause'||name==='asyncSubagents.resume'||name==='asyncSubagents.redirect'||name==='asyncSubagents.handoff'||name==='asyncSubagents.emergencyStop'){
@@ -5191,13 +5373,39 @@ async function action(event, name, payload) {
     target.webContents.send('desktop:open-assistant', {assistantId});
     return {opened: true, assistantId};
   }
+  if(name==='assistant.view'){
+    if(sender!==workspace)throw Error('请从工作台切换助手对话');
+    const clean=requirePlainRecord(payload,['assistantId'],'切换助手对话参数无效');
+    const id=clean.assistantId===null?null:requireCleanText(clean.assistantId,'请选择一个助手',128);
+    const conversationId=id===null?undefined:runtimeApplication.runtime.getAssistant(id).conversationId;
+    if(workspaceAssistantConversation!==conversationId){
+      workspaceAssistantConversation=conversationId;publish(['approvals']);
+    }
+    return {conversationId:conversationId??null};
+  }
   if (name === 'assistant.thread') {
     if (sender !== panel && sender !== workspace) throw Error('请从对话里查看助手');
     const clean = requirePlainRecord(payload, ['assistantId'], '读取助手对话参数无效');
     const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
     if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
     const thread = runtimeApplication.readAssistantThread(assistantId);
-    publish();
+    const runtime=runtimeApplication.runtime;
+    const turns=new Map(thread.turns.map(turn=>[turn.taskId,turn]));
+    for(const worker of thread.workers) {
+      const deviceReply=runtimeApplication.readDeviceWorkerReply(worker.parentTaskId,worker.taskId);
+      if(!deviceReply)continue;
+      delete worker.resultSummary;
+      const turn=turns.get(worker.parentTaskId);
+      if(!turn||deviceReply.kind==='withheld')continue;
+      const parent=safeDesktopTask(runtime.getTask(turn.taskId)),child=safeDesktopTask(runtime.getTask(worker.taskId));
+      if(parent.conversationId!==thread.assistant.conversationId||!localChildReplyAllowed(parent,child))continue;
+      const answer=localWorkerReplyText(child,deviceReply);
+      if(answer){
+        turn.replyText=answer;
+        if(deviceReply.kind==='browser-excerpt')turn.deviceReplyKind=deviceReply.kind;
+        worker.resultSummary=answer.slice(0,280);
+      }
+    }
     return thread;
   }
   if (name === 'assistant.submit') {
@@ -5207,7 +5415,9 @@ async function action(event, name, payload) {
     const text = requireCleanText(clean.text, '请写下要发给助手的话');
     const requestId = requireCleanText(clean.requestId, '请求标识无效', 128).trim();
     if (assistantId !== clean.assistantId || requestId !== clean.requestId) throw Error('给助手发消息参数无效');
+    const bindBrowser=browserChatSubmission(runtimeApplication.runtime.getAssistant(assistantId).conversationId,text);
     const result = runtimeApplication.submitAssistantMessage({assistantId, text, requestId});
+    bindBrowser?.(result.acceptedTaskId);
     publish();
     return result;
   }
@@ -5316,7 +5526,9 @@ async function action(event, name, payload) {
     const text = requireCleanText(clean.text, '请写下要交付的内容');
     const requestId = requireCleanText(clean.requestId, '请求标识无效', 128).trim();
     if (assistantId !== clean.assistantId || requestId !== clean.requestId) throw Error('内部群聊发送参数无效');
+    const bindBrowser=browserChatSubmission(runtimeApplication.runtime.getAssistant(assistantId).conversationId,text);
     const result = runtimeApplication.submitAssistantMessage({assistantId, text, requestId});
+    bindBrowser?.(result.acceptedTaskId);
     publish();
     return result;
   }
@@ -6465,9 +6677,11 @@ async function action(event, name, payload) {
     const goal = skillRun?prepared.publicGoal:text.trim();
     if(!skillRun)usageBudgetProduct?.noteUserSubmit();
     if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(conversationId, goal);
+    const bindBrowser=skillRun?undefined:browserChatSubmission(conversationId,goal);
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode,contextCompaction:Boolean(harnessContextHost?.runtimeHooks),
       ...(competitionMode?{competitionTimeoutMs:readCompetitionExecutionPolicy().taskTimeoutMs}:{})});
     deliveryRequest.taskId=result.taskId;
+    if(!deliveryRequest.interrupted)bindBrowser?.(result.taskId);
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
     if(!skillRun)recordExplicitUserTurn(result.taskId,conversationId);
@@ -6699,7 +6913,7 @@ async function chooseNativePublicSkillSource(input) {
   if (publicSkillSources.has(key)) return readNativePublicSkillSource({...input,sourceRef:'public-reference'});
   const workspaceBinding=codingWorkspace?.readWorkspaceBinding();
   if (!workspaceBinding || input.signal.aborted || Date.now() >= Date.parse(input.deadline)) return undefined;
-  openAdmin('computer');const originAdmin=admin,originApplication=runtimeApplication;
+  openAdmin('workspace');const originAdmin=admin,originApplication=runtimeApplication;
   const selection=await dialog.showOpenDialog(originAdmin,{title:'选择本任务的公开参考资料',defaultPath:workspaceBinding.rootPath,
     properties:['openFile'],filters:[{name:'公开文本资料',extensions:['md','txt']}]});
   const current=()=>admin === originAdmin && !originAdmin.isDestroyed() && runtimeApplication === originApplication
@@ -7239,6 +7453,7 @@ app.whenReady().then(async () => {
     }
     if(windowsControlHost&&!windowsControlClosed){
       event.preventDefault();
+      computerPreparing?.abort();
       windowsControlClosing??=windowsControlHost.close().then(()=>{windowsControlClosed=true;app.quit();})
         .catch(()=>{windowsControlClosing=undefined;reportQuitFailure('电脑控制进程停止尚未确认');});
       return;

@@ -4,6 +4,8 @@ import type {CoordinationPort, CoordinationToolProposalResult} from '@personal-a
 import type {SubtaskDefinition} from '@personal-agent/agents';
 import {SUBAGENT_DISPATCH_TOOL_NAME, SUBAGENT_DISPATCH_TOOL_VERSION, readRuntimeSubagentBinding} from './subagent-host.js';
 import type {TaskRuntime} from '../index.js';
+import {assertNotepadChildrenComplete,assertNotepadWorkerComplete} from './notepad-worker.js';
+import {assertBrowserWorkerComplete} from './browser-worker.js';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {isDeepStrictEqual} from 'node:util';
 
@@ -52,8 +54,11 @@ export function userTaskDelegationProposal(binding: UserTaskDelegation): Coordin
 
 /** A fluent cloud summary cannot replace the original required child's execution outcome. */
 export function assertUserTaskDelegationComplete(runtime:TaskRuntime,taskId:string):void {
+  // Approval resume may enter this common completion path for the worker itself.
+  assertNotepadWorkerComplete(runtime,taskId);
+  assertBrowserWorkerComplete(runtime,taskId);
   const binding=readUserTaskDelegation(runtime,taskId);
-  if(!binding)return;
+  if(!binding){assertNotepadChildrenComplete(runtime,taskId);return;}
   const child=runtime.findTaskByIdempotencyKey(`subagent-dispatch-${taskId}-${binding.subtask.subtaskId}`);
   const parent=child?runtime.loadCheckpoint(child.taskId,'subtask-parent') as {parentTaskId?:string;subtaskId?:string}|undefined:undefined;
   if(!child||child.conversationId!==`desktop-subtask:${taskId}`||parent?.parentTaskId!==taskId
@@ -61,6 +66,8 @@ export function assertUserTaskDelegationComplete(runtime:TaskRuntime,taskId:stri
     throw new ProtocolError('UNAUTHORIZED','Original required delegated execution is unavailable');
   if(child.state!=='succeeded')throw new ProtocolError(child.state==='cancelled'?'CANCELLED':child.error?.code??'EXTERNAL_FAILURE',
     '任务执行未完成；请查看子任务错误及已确认的操作记录，再决定如何继续。');
+  assertNotepadWorkerComplete(runtime,child.taskId);
+  assertBrowserWorkerComplete(runtime,child.taskId);
 }
 
 /** Enforced both before requesting approval and by the actual Gateway policy boundary. */

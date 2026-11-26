@@ -240,8 +240,9 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
           .map(item=>({ref:item.ref as string,role:item.role as string,name:item.name as string,patterns:[...(item.patterns as string[])]}));
         targets.set(snapshot.targetRef,{taskId:context.taskId,windowRef:snapshot.windowRef,windowRect,expiresAt,digest:hash(canonical(snapshot)),
           windowTitle:typeof snapshot.window.title==='string'?snapshot.window.title.slice(0,256):'',controls,truncated:snapshot.truncated!==false});windows.set(snapshot.windowRef,{taskId:context.taskId,expiresAt});
-        const verified=write&&object(value.verification)&&value.verification.state==='verified';
-        return {source:'windows-native',state:verified?'verified':write?'action_observed':'observed',goalVerified:verified&&name!=='launch_app',
+        const verification = object(value.verification) ? value.verification : undefined;
+        const verified = write && verification?.state === 'verified';
+        return {source:'windows-native',state:verified?'verified':write?'action_observed':'observed',goalVerified:verified&&(name!=='launch_app'||verification?.kind==='app_launched'),
           snapshot:{...snapshot,expiresAt:new Date(expiresAt).toISOString()},...(write&&object(value.verification)?{verification:value.verification}:{})};
       }catch(error){
         if(isToolNotStartedError(error))throw error;
@@ -304,6 +305,13 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
       const epoch=++generation;state='connecting';controller=new AbortController();const linked={...context,signal:AbortSignal.any([context.signal,controller.signal])};
       try{await transport.start(linked);active(linked,now);if(generation!==epoch)throw new ProtocolError('CANCELLED','电脑组件启动已被停止');state='ready';}
       catch(error){if(generation===epoch)state='unavailable';throw error;}},
+    async releaseStoppedInput(){
+      if(!transport||state!=='blocked'||ongoing.size)throw new ProtocolError('REVISION_CONFLICT','电脑输入仍在执行');
+      const epoch=++generation;
+      await transport.stop();
+      if(epoch!==generation||state!=='blocked'||ongoing.size)throw new ProtocolError('REVISION_CONFLICT','电脑输入状态已变化');
+      state='stopped';
+    },
     async stop(){++generation;controller.abort();targets.clear();windows.clear();artifacts.clear();
       try{await transport?.stop();if(!['blocked','disposed'].includes(state))state='stopped';}
       catch(error){state='blocked';throw error;}},

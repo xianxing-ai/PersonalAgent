@@ -70,7 +70,23 @@ export function readReconciliationStatus(application,task,now=Date.now) {
         // This record is necessary for the original Runtime action, not proof
         // that its remaining deadline/children/cache/export guards will pass.
         if(records.some(record=>record.executionStarted===true&&record.policyDecision==='allow'&&record.state==='confirmed'
-          &&['subagent.dispatch','coding.repair.workflow'].includes(record.toolName)))status.actionLabel='按已有回执尝试结束';
+          &&['subagent.dispatch','coding.repair.workflow'].includes(record.toolName))) {
+          const children=application.readSubagentTasks?.(task.taskId)??[];
+          if(children.some(child=>!['failed','cancelled','succeeded'].includes(child.state)))
+            status.blockedReason='工人任务尚未结束，当前只有派工回执。';
+          else if(!task.cancelRequested&&status.deadlineExpired===false)
+            status.blockedReason='原任务仍在期限内，暂时无法按回执结束。';
+          else status.actionLabel='按已有回执尝试结束';
+        }
+        else if(records.some(record=>record.toolName==='computer.desktop.launch_app'&&record.policyDecision==='deny'&&record.executionStarted===false))
+          status.blockedReason='本次记事本操作在发送到 Windows 前被拦下。请查看原操作记录。';
+        else if(records.some(record=>record.toolName==='computer.desktop.launch_app'&&record.policyDecision==='allow'&&record.executionStarted===true&&record.state==='unknown')) {
+          const phase=/\[notepad=(window|editor|new_window|write|readback); native=([A-Z_]+)\]/.exec(task.error?.message??'');
+          const steps={window:'等待记事本窗口就绪',editor:'确认可写的空白编辑区',new_window:'新建独立的空白窗口',write:'写入文字',readback:'读回文字'};
+          status.blockedReason=phase
+            ?`记事本在“${steps[phase[1]]}”时中断。${phase[2]==='USER_TAKEOVER'?'检测到其他鼠标或键盘输入。':''}${['write','readback'].includes(phase[1])?'请核对窗口中的文字。':'这次尚未发送文字。'}`
+            :'Windows 已收到记事本操作，原回执未确认写入。请核对窗口中的文字。';
+        }
         else status.blockedReason='当前没有该操作的自动核查入口。';
       }
     }
