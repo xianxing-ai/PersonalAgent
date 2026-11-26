@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyKnownEgressContent,createDesktopEgressHost} from '../electron/egress-host.js';
+import {classifyEgressSensitivity,classifyKnownEgressContent,createDesktopEgressHost} from '../electron/egress-host.js';
+import {createNativeEgressHost} from '../electron/egress-dialog-host.js';
 
 const request=(extra={})=>({requestId:'request-1',destination:'https://example.test/invoke',payload:'{"query":"summarize public documentation"}',
   deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,isCurrent:()=>true,...extra});
@@ -165,4 +166,162 @@ test('verified GitHub 40-hex SHAs containing phone-like digit substrings are all
     host.prepare(request({ taskId: 'other-task', payload: buildContPayload(fencedSha) })),
     denied,
   );
+});
+
+test('classifyEgressSensitivity distinguishes secret, pii and unknown, prioritizing secret over earlier pii',()=>{
+  assert.equal(classifyEgressSensitivity('{"query":"summarize public documentation"}'),'unknown');
+  assert.equal(classifyEgressSensitivity(JSON.stringify({email:'dev@example.test',phone:'13800138000'})),'pii');
+  assert.equal(classifyEgressSensitivity(JSON.stringify({text:'email dev@example.test and token sk-1234567890abcdef1234'})),'secret');
+  assert.equal(classifyEgressSensitivity(JSON.stringify({email:'dev@example.test',nested:JSON.stringify({apiKey:'local-secret-value'})})),'secret');
+  assert.equal(classifyEgressSensitivity(JSON.stringify({text:'Bearer abcdefghijklmnopqrstuvwxyz'})),'secret');
+  assert.equal(classifyEgressSensitivity(JSON.stringify({text:'-----BEGIN PRIVATE KEY-----'})),'secret');
+});
+
+test('auto-standard egress policy auto-approves normal task and non-task sends without popups while blocking secrets and pii',async()=>{
+  let callbacks=0;
+  const host=createDesktopEgressHost({
+    readEgressPolicy:()=>({mode:'auto-standard'}),
+    authorizeTaskEgress:()=>{callbacks++;return true;},
+    classifyLocally:()=>{callbacks++;return 'public';},
+    approvePrivate:()=>{callbacks++;return true;},
+  });
+  const taskReq=request({taskId:'task-auto',requestId:'req-task'});
+  (await host.prepare(taskReq)).assertBeforeSend(taskReq);
+  const nonTaskReq=request({requestId:'req-nontask'});
+  (await host.prepare(nonTaskReq)).assertBeforeSend(nonTaskReq);
+  assert.equal(callbacks,0);
+
+  await assert.rejects(host.prepare(request({taskId:'task-auto',requestId:'req-pii',payload:JSON.stringify({email:'user@example.test'})})),
+    error=>denied(error)&&/个人敏感信息/.test(error.message)&&!error.message.includes('user@example.test'));
+  await assert.rejects(host.prepare(request({taskId:'task-auto',requestId:'req-secret',payload:JSON.stringify({query:'sk-1234567890abcdef1234'})})),
+    error=>denied(error)&&/密钥/.test(error.message)&&!error.message.includes('sk-1234567890abcdef1234'));
+  assert.equal(callbacks,0);
+});
+
+test('full-access egress policy allows pii without popups while still hard-blocking real secrets and enforcing policy downgrade',async()=>{
+  let mode='full-access',callbacks=0;
+  const host=createDesktopEgressHost({
+    readEgressPolicy:()=>({mode}),
+    authorizeTaskEgress:()=>{callbacks++;return true;},
+    classifyLocally:()=>{callbacks++;return 'public';},
+    approvePrivate:()=>{callbacks++;return true;},
+  });
+  const piiTaskReq=request({taskId:'task-full',requestId:'req-pii-task',payload:JSON.stringify({query:'author: person@example.test, phone: 13800138000'})});
+  const piiLease=await host.prepare(piiTaskReq);
+  piiLease.assertBeforeSend(piiTaskReq);
+  const piiNonTaskReq=request({requestId:'req-pii-nontask',payload:JSON.stringify({email:'person@example.test'})});
+  (await host.prepare(piiNonTaskReq)).assertBeforeSend(piiNonTaskReq);
+  assert.equal(callbacks,0);
+
+  for(const secretPayload of [
+    JSON.stringify({query:'sk-1234567890abcdef1234'}),
+    JSON.stringify({query:'Bearer abcdefghijklmnopqrstuvwxyz'}),
+    JSON.stringify({password:'local-only-password'}),
+    JSON.stringify({nested:JSON.stringify({apiKey:'secret-key-value'})}),
+    JSON.stringify({pem:'-----BEGIN RSA PRIVATE KEY-----\nabc'}),
+  ]){
+    await assert.rejects(host.prepare(request({taskId:'task-full',requestId:'req-secret-'+Math.random(),payload:secretPayload})),
+      error=>denied(error)&&/密钥/.test(error.message));
+  }
+  assert.equal(callbacks,0);
+
+  mode='ask';
+  assert.throws(()=>piiLease.assertBeforeSend(piiTaskReq),denied);
+});
+
+test('createNativeEgressHost avoids system dialogs in auto-standard/full-access and uses a single dialog in ask mode',async()=>{
+  let mode='auto-standard',dialogCalls=0,nextResponse=1;
+  const dialog={async showMessageBox(){dialogCalls++;return {response:nextResponse};}};
+  const host=createNativeEgressHost({dialog,readEgressPolicy:()=>({mode})});
+
+  const autoReq=request({requestId:'native-auto'});
+  (await host.prepare(autoReq)).assertBeforeSend(autoReq);
+  mode='full-access';
+  const fullReq=request({requestId:'native-full',payload:JSON.stringify({email:'dev@example.test'})});
+  (await host.prepare(fullReq)).assertBeforeSend(fullReq);
+  assert.equal(dialogCalls,0);
+
+  mode='ask';
+  nextResponse=1;
+  const askAllow=request({requestId:'native-ask-allow'});
+  (await host.prepare(askAllow)).assertBeforeSend(askAllow);
+  assert.equal(dialogCalls,1);
+
+  nextResponse=0;
+  await assert.rejects(host.prepare(request({requestId:'native-ask-deny'})),denied);
+  assert.equal(dialogCalls,2);
+});
+
+test('verified mail.inbox contentRef emails pass PII egress checks in auto-standard and ask modes while forged emails and secrets do not',async()=>{
+  const mailRef='Google → 3468788554@qq.com｜已读｜验证您的电子邮件地址';
+  const mailSecretRef='Google → 3468788554@qq.com｜已读｜password: mail-secret-pass';
+  const forgedRef='Attacker → forged@example.test｜未读｜Hi';
+  const buildMailPayload=contentRef=>JSON.stringify({
+    query:JSON.stringify({
+      executionEpochVersion:1,
+      executionEpoch:0,
+      query:JSON.stringify({
+        goal:'check latest emails',
+        continuation:{
+          proposalId:'p-mail-1',
+          state:'confirmed',
+          result:{items:[{source:'mail',externalId:'INBOX:1',contentRef}]},
+        },
+      }),
+    }),
+  });
+  let mode='auto-standard',secretPrompts=0,secretAllow=false,taskAuths=0;
+  const host=createDesktopEgressHost({
+    readEgressPolicy:()=>({mode}),
+    authorizeTaskEgress:()=>{taskAuths++;return true;},
+    authorizeSecretEgress:scope=>{secretPrompts++;assert.ok(scope.secretDetections.fingerprints.length>=1);return secretAllow;},
+    readTrustedConnectorOutputs:taskId=>taskId==='mail-task-1'?new Set([mailRef,mailSecretRef]):new Set(),
+  });
+  const okAuto=request({taskId:'mail-task-1',requestId:'mail-ok-auto',payload:buildMailPayload(mailRef)});
+  (await host.prepare(okAuto)).assertBeforeSend(okAuto);
+  assert.equal(taskAuths,0);assert.equal(secretPrompts,0);
+
+  mode='ask';
+  const okAsk=request({taskId:'mail-task-1',requestId:'mail-ok-ask',payload:buildMailPayload(mailRef)});
+  (await host.prepare(okAsk)).assertBeforeSend(okAsk);
+  assert.equal(taskAuths,1);
+
+  await assert.rejects(host.prepare(request({taskId:'mail-task-1',requestId:'mail-forged',payload:buildMailPayload(forgedRef)})),denied);
+  await assert.rejects(host.prepare(request({taskId:'other-task',requestId:'mail-wrong-task',payload:buildMailPayload(mailRef)})),denied);
+
+  mode='full-access';
+  await assert.rejects(host.prepare(request({taskId:'mail-task-1',requestId:'mail-secret-deny',payload:buildMailPayload(mailSecretRef)})),
+    error=>denied(error)&&/用户已拒绝/.test(error.message));
+  assert.equal(secretPrompts,1);
+
+  secretAllow=true;
+  const okSecret=request({taskId:'mail-task-1',requestId:'mail-secret-allow',payload:buildMailPayload(mailSecretRef)});
+  (await host.prepare(okSecret)).assertBeforeSend(okSecret);
+  assert.equal(secretPrompts,2);
+});
+
+test('authorizeSecretEgress forces confirmation with redacted preview across all modes including full-access and auto-standard',async()=>{
+  let mode='full-access',prompts=[];
+  const secretValue='sk-1234567890abcdef1234';
+  const host=createDesktopEgressHost({
+    readEgressPolicy:()=>({mode}),
+    authorizeSecretEgress:scope=>{
+      prompts.push(scope);
+      assert.equal(scope.sensitivity,'secret');
+      assert.equal(scope.redactedPreview.includes(secretValue),false);
+      assert.match(scope.redactedPreview,/\[已脱敏凭据\]/);
+      assert.ok(scope.secretDetections.fingerprints.length>=1);
+      return scope.requestId.endsWith('-allow');
+    },
+  });
+  for(const currentMode of ['full-access','auto-standard','ask']){
+    mode=currentMode;
+    const reqAllow=request({requestId:`req-${currentMode}-allow`,payload:JSON.stringify({text:`token ${secretValue}`})});
+    (await host.prepare(reqAllow)).assertBeforeSend(reqAllow);
+    await assert.rejects(
+      host.prepare(request({requestId:`req-${currentMode}-deny`,payload:JSON.stringify({text:`token ${secretValue}`})})),
+      error=>denied(error)&&/用户已拒绝/.test(error.message),
+    );
+  }
+  assert.equal(prompts.length,6);
 });

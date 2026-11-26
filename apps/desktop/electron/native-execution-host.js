@@ -5,6 +5,19 @@ import {ProtocolError} from '@personal-agent/contracts';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const blocked=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前外部进程隔离后端或原授权不可用，未降级为普通进程');};
+const REASON_CLOSED='外部进程隔离宿主已关闭';
+const REASON_UNCONFIGURED='尚未配置可信工作区或 Node 路径；仅在执行外部命令时需要，应用内工具不受影响';
+const REASON_UNVERIFIED='已配置工作区与 Node，首次执行外部命令时将自动校验 Windows 进程沙箱；应用内工具无需此项';
+const REASON_HELPER_FAILED='Windows 进程沙箱辅助程序构建或完整性校验失败，外部命令已保持拒绝（未降级为普通进程）';
+const REASON_PSEC_UNSUPPORTED='当前 Windows 环境不支持 PSEC/AppContainer 隔离 API，受限外部命令已保持拒绝（未降级为普通进程）';
+const REASON_PROBE_FAILED='Windows 进程隔离自检未通过，外部命令已保持拒绝（未降级为普通进程）';
+const REASON_STALE='工作区配置或沙箱辅助程序已变化，需要重新校验后才允许外部命令';
+const psecApiUnavailable=result=>result?.backend==='windows-psec'&&result.enforced===false&&result.outcome==='unavailable'
+  &&result.stopped===true&&/^native-create-environment:(?:-2146233067|-2146233052|-2146233053|50|120)$/u.test(result.reason??'');
+const classifyProbeFailure=receipt=>receipt?.available===false&&receipt?.enforced===false
+  &&receipt?.results?.baseline?.backend==='none'&&receipt.results.baseline.outcome==='exited'&&receipt.results.baseline.exitCode===0
+  &&receipt.results.baseline.stopped===true&&['readOnly','workspaceWrite','cancel'].every(key=>psecApiUnavailable(receipt.results[key]))
+  ?REASON_PSEC_UNSUPPORTED:REASON_PROBE_FAILED;
 const external=name=>['workspace.run_allowed_command','workspace.node_check','workspace.npm_build','workspace.npm_test',
   'workspace.git_diff_check','workspace.f19_regression_command','workspace.f21_mcp_probe','workspace.f26_release','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
 const identity=value=>{const target=realpathSync.native(value),stat=statSync(target,{bigint:true});
@@ -13,16 +26,27 @@ const identity=value=>{const target=realpathSync.native(value),stat=statSync(tar
 /** Main-only composition. Policy permissions and real external-process isolation are separate facts. */
 export function createDesktopNativeExecutionHost({coding,question,getApplication,readConfiguration,ensureHelper,probeRootPath,
   systemRoot,localAppData,now=Date.now,onUpdate=()=>{}}){
-  let verified,pending,closed=false;
+  let verified,pending,lastFailure,closed=false;
   const runs=new Map();
   function configuration(){
     const value=readConfiguration();
     if(!value?.rootPath||!value.nodeExecutable||!value.bindingId)blocked();
     return {...value,identity:digest([value.bindingId,identity(value.rootPath),identity(value.nodeExecutable)])};
   }
+  function readSafeConfigIdentity(){
+    try{return configuration().identity;}catch{return undefined;}
+  }
   function current(){
     try{return Boolean(!closed&&verified?.available&&configuration().identity===verified.configuration.identity
       &&digest(coding.readWindowsNativeHelperAttestation(verified.pins.helperPath))===digest(verified.pins));}catch{return false;}
+  }
+  function unavailableReason(){
+    if(closed)return REASON_CLOSED;
+    const configIdentity=readSafeConfigIdentity();
+    if(!configIdentity)return REASON_UNCONFIGURED;
+    if(verified)return REASON_STALE;
+    if(lastFailure&&lastFailure.configIdentity===configIdentity)return lastFailure.reason;
+    return REASON_UNVERIFIED;
   }
   function isF20Trial(scope) {
     if(scope?.toolName!=='coding.repair.trial')return false;
@@ -38,11 +62,31 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     const config=configuration();
     if(!current()){
       if(!pending)pending=(async()=>{
-        const helperPath=await ensureHelper();
-        const pins=coding.readWindowsNativeHelperAttestation(helperPath);
-        const receipt=await coding.verifyWindowsNativeSandbox(pins,{probeRootPath,nodeExecutable:config.nodeExecutable,
-          systemRoot,signal:scope.signal});
-        if(!receipt.available||!receipt.enforced||scope.signal.aborted||configuration().identity!==config.identity)blocked();
+        let helperPath,pins;
+        try{
+          helperPath=await ensureHelper();
+          pins=coding.readWindowsNativeHelperAttestation(helperPath);
+        }catch{
+          lastFailure={configIdentity:config.identity,reason:REASON_HELPER_FAILED};
+          onUpdate();blocked();
+        }
+        let receipt;
+        try{
+          receipt=await coding.verifyWindowsNativeSandbox(pins,{probeRootPath,nodeExecutable:config.nodeExecutable,
+            systemRoot,signal:scope.signal});
+        }catch{
+          lastFailure={configIdentity:config.identity,reason:REASON_PROBE_FAILED};
+          onUpdate();blocked();
+        }
+        if(!receipt?.available||!receipt?.enforced){
+          lastFailure={configIdentity:config.identity,reason:classifyProbeFailure(receipt)};
+          onUpdate();blocked();
+        }
+        if(scope.signal.aborted||configuration().identity!==config.identity){
+          lastFailure={configIdentity:config.identity,reason:REASON_STALE};
+          onUpdate();blocked();
+        }
+        lastFailure=undefined;
         verified={available:true,configuration:config,pins,bindingDigest:digest([config.identity,pins,receipt.helperSha256])};
         onUpdate();
       })().finally(()=>{pending=undefined;});
@@ -59,10 +103,11 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
         :'外部命令在已验证 Windows 进程边界内执行；仅选定工作区与固定工具路径，默认禁止网络'}],assertCurrent:()=>current()});
   }
   function describeExecution(request,profile){
+    const ready=current();
     const required=Boolean(request?.requirements.some(item=>item.requirementId==='native-execution'))||external(request?.toolName)||isF20Trial(request);
-    return {required,available:current(),backend:profile.mode==='full-access'?'none':'windows-psec',
-      enforced:profile.mode!=='full-access'&&current(),...(verified?.bindingDigest?{bindingDigest:verified.bindingDigest}:{}),
-      ...(!current()?{reason:'外部进程需已配置工作区、可信 Node 和通过实际检查的 Windows helper；应用内工具不需要这些配置'}:{})};
+    return {required,available:ready,backend:profile.mode==='full-access'?'none':'windows-psec',
+      enforced:profile.mode!=='full-access'&&ready,...(ready&&verified?.bindingDigest?{bindingDigest:verified.bindingDigest}:{}),
+      ...(!ready?{reason:unavailableReason()}:{})};
   }
   function assertBinding(binding){
     const entry=runs.get(JSON.stringify([binding.taskId,binding.runId]));
@@ -211,6 +256,6 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       return Object.freeze({taskId,runId,sourceDigest,backend:'none',enforced:false,stopped:true,exitCode:record.exitCode,auditDigest:digest(record)});
     }catch{return undefined;}
   }
-  return {prepare,describeExecution,createCommandTool,readOriginalCommandStopState,readOriginalF21Probe,readOriginalF26Release,close(){closed=true;runs.clear();verified=undefined;},
+  return {prepare,describeExecution,createCommandTool,readOriginalCommandStopState,readOriginalF21Probe,readOriginalF26Release,close(){closed=true;runs.clear();verified=undefined;lastFailure=undefined;},
     environment:()=>({SystemRoot:systemRoot,LOCALAPPDATA:localAppData})};
 }

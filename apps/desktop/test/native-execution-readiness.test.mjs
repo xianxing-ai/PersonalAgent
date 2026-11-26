@@ -140,3 +140,61 @@ test('F20 native stop observation survives host restart and rejects foreign rece
     assert.equal(await host.readOriginalCommandStopState(request),'unknown');assert.equal(probes,1);
   }finally{host.close();rmSync(directory,{recursive:true,force:true});}
 });
+
+test('native execution host reports specific safe Chinese diagnostics for unconfigured, unverified, helper failure, PSEC unsupported, and closed states',async()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),'pa-native-diag-'));
+  const scope={taskId:'diag-task',runId:'diag-run',toolName:'workspace.npm_test',argumentsDigest:'a'.repeat(64),
+    deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal};
+  const profile={mode:'workspace-write'};
+  try{
+    let configured=false,helperShouldThrow=false,probeReceipt=undefined;
+    const host=createDesktopNativeExecutionHost({
+      coding:{
+        readWindowsNativeHelperAttestation:helperPath=>({helperPath,helperSha256:'b'.repeat(64)}),
+        verifyWindowsNativeSandbox:async()=>probeReceipt,
+      },
+      question:{prepare(){},readExecutionPolicy:()=>({ref:'diag',revision:1,mode:'workspace-write'}),currentRequirement(){}},
+      getApplication:()=>({readAuthorizationQuestionInvocation:()=>({})}),
+      readConfiguration:()=>configured?{rootPath:directory,nodeExecutable:process.execPath,bindingId:'diag-binding'}:undefined,
+      ensureHelper:async()=>{if(helperShouldThrow)throw Error('simulated-helper-build-failure');return process.execPath;},
+      probeRootPath:directory,systemRoot:path.dirname(process.execPath),localAppData:directory,
+    });
+
+    // 1. Unconfigured
+    const unconfigured=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},profile);
+    assert.equal(unconfigured.available,false);
+    assert.equal(unconfigured.reason,'尚未配置可信工作区或 Node 路径；仅在执行外部命令时需要，应用内工具不受影响');
+    assert.deepEqual(JSON.parse(JSON.stringify(unconfigured)),unconfigured);
+
+    // 2. Configured, unverified
+    configured=true;
+    const unverified=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},profile);
+    assert.equal(unverified.available,false);
+    assert.equal(unverified.reason,'已配置工作区与 Node，首次执行外部命令时将自动校验 Windows 进程沙箱；应用内工具无需此项');
+
+    // 3. Helper build / attestation failure
+    helperShouldThrow=true;
+    await assert.rejects(host.prepare(scope),{code:'UNSUPPORTED_CAPABILITY',message:'当前外部进程隔离后端或原授权不可用，未降级为普通进程'});
+    const helperFailed=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},profile);
+    assert.equal(helperFailed.available,false);
+    assert.equal(helperFailed.reason,'Windows 进程沙箱辅助程序构建或完整性校验失败，外部命令已保持拒绝（未降级为普通进程）');
+
+    // 4. PSEC API unsupported (baseline passed, create-environment failed)
+    helperShouldThrow=false;
+    const unavailable={backend:'windows-psec',enforced:false,outcome:'unavailable',exitCode:null,stopped:true,reason:'native-create-environment:-2146233052'};
+    probeReceipt={backend:'windows-psec',available:false,enforced:false,results:{
+      baseline:{backend:'none',enforced:false,outcome:'exited',exitCode:0,stopped:true},
+      readOnly:unavailable,workspaceWrite:unavailable,cancel:unavailable,
+    }};
+    await assert.rejects(host.prepare(scope),{code:'UNSUPPORTED_CAPABILITY',message:'当前外部进程隔离后端或原授权不可用，未降级为普通进程'});
+    const psecUnsupported=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},profile);
+    assert.equal(psecUnsupported.available,false);
+    assert.equal(psecUnsupported.reason,'当前 Windows 环境不支持 PSEC/AppContainer 隔离 API，受限外部命令已保持拒绝（未降级为普通进程）');
+
+    // 5. Closed
+    host.close();
+    const afterClose=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},profile);
+    assert.equal(afterClose.available,false);
+    assert.equal(afterClose.reason,'外部进程隔离宿主已关闭');
+  }finally{rmSync(directory,{recursive:true,force:true});}
+});

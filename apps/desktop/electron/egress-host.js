@@ -1,31 +1,143 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 
-const fail=(code='UNAUTHORIZED')=>{throw Object.assign(new Error('本次出机内容未通过本机分类与原范围确认'),{code});};
+const fail=(code='UNAUTHORIZED',message='本次出机内容未通过本机分类与原范围确认')=>{throw Object.assign(new Error(message),{code});};
 const digest=value=>createHash('sha256').update(value).digest('hex');
-const forbiddenField=/^(?:password|passwd|api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|refresh[_-]?token|authorization|private[_-]?key|verification[_-]?code|otp|full[_-]?name|first[_-]?name|last[_-]?name|phone|mobile|email|postal[_-]?address|home[_-]?address|passport|id[_-]?number|bank[_-]?account|credit[_-]?card|姓名|电话|手机|邮箱|住址|证件号|密码|口令|验证码|私钥|精确位置|健康信息|金融标识)$/iu;
-const forbiddenText=/(?:-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{16,}|\bBearer\s+[A-Za-z0-9_.~+/-]{8,}|[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-9])?\.[A-Z]{2,}|(?<!\d)1[3-9]\d{9}(?!\d)|(?<!\d)[1-9]\d{16}[\dX](?!\d)|(?:password|passwd|api[_ -]?key|secret[_ -]?key|access[_ -]?token|密码|口令|验证码)\s*[:=]\s*["']?[^\s"',;}]{3,})/iu;
+const secretField=/^(?:password|passwd|api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|refresh[_-]?token|authorization|private[_-]?key|verification[_-]?code|otp|密码|口令|验证码|私钥)$/iu;
+const piiField=/^(?:full[_-]?name|first[_-]?name|last[_-]?name|phone|mobile|email|postal[_-]?address|home[_-]?address|passport|id[_-]?number|bank[_-]?account|credit[_-]?card|姓名|电话|手机|邮箱|住址|证件号|精确位置|健康信息|金融标识)$/iu;
+const secretText=/(?:-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{16,}|\bBearer\s+[A-Za-z0-9_.~+/-]{8,}|(?:password|passwd|api[_ -]?key|secret[_ -]?key|access[_ -]?token|密码|口令|验证码)\s*[:=]\s*["']?[^\s"',;}]{3,})/iu;
+const piiText=/(?:[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-9])?\.[A-Z]{2,}|(?<!\d)1[3-9]\d{9}(?!\d)|(?<!\d)[1-9]\d{16}[\dX](?!\d))/iu;
+
+function classifySecretCategory(hint) {
+  if(/-----BEGIN|private|私钥/iu.test(hint))return '私钥';
+  if(/password|passwd|密码|口令/iu.test(hint))return '密码/口令';
+  if(/verification|otp|验证码/iu.test(hint))return '验证码';
+  return '密钥/令牌';
+}
+
+/** Collect safe Chinese categories and SHA-256 secret fingerprints without returning raw secret values. */
+export function extractSecretDetections(payload) {
+  if(typeof payload!=='string'||Buffer.byteLength(payload,'utf8')>2*1024*1024)return {categories:[],fingerprints:[]};
+  const categories=new Set(),fingerprints=new Set();
+  const inspect=(value,depth=0)=>{
+    if(depth>24)return;
+    if(typeof value==='string'){
+      const globalSecret=new RegExp(secretText.source,'giu');
+      for(const match of value.matchAll(globalSecret)){
+        categories.add(classifySecretCategory(match[0]));
+        fingerprints.add(digest('text:'+match[0].trim()));
+      }
+      try{
+        const decoded=JSON.parse(value);
+        if(decoded!==value)inspect(decoded,depth+1);
+      }catch{}
+      return;
+    }
+    if(Array.isArray(value)){for(const item of value)inspect(item,depth+1);return;}
+    if(value&&typeof value==='object'){
+      for(const [key,item] of Object.entries(value)){
+        if(item!==null&&item!==undefined&&typeof item!=='object'&&String(item).trim()!==''&&secretField.test(key)){
+          categories.add(classifySecretCategory(key));
+          fingerprints.add(digest('field:'+key.toLowerCase()+':'+String(item).trim()));
+        }
+        inspect(item,depth+1);
+      }
+    }
+  };
+  inspect(payload);
+  if(fingerprints.size===0&&classifyEgressSensitivity(payload)==='secret'){
+    categories.add('密钥/凭据');
+    fingerprints.add(digest('payload:'+digest(payload)));
+  }
+  return {categories:[...categories],fingerprints:[...fingerprints].sort()};
+}
+
+/** Redact detected secret substrings/fields while leaving safe surrounding context visible for user confirmation. */
+export function redactSecretPreview(payload,maxLength=2000) {
+  if(typeof payload!=='string')return '';
+  const globalSecret=()=>new RegExp(secretText.source,'giu');
+  const scrubString=text=>{
+    try{
+      const decoded=JSON.parse(text);
+      if(decoded&&typeof decoded==='object')return JSON.stringify(scrub(decoded));
+    }catch{}
+    return text.replace(globalSecret(),'[已脱敏凭据]');
+  };
+  const scrub=(value,depth=0)=>{
+    if(depth>16)return value;
+    if(typeof value==='string')return scrubString(value);
+    if(Array.isArray(value))return value.map(item=>scrub(item,depth+1));
+    if(value&&typeof value==='object'){
+      const copy={};
+      for(const [key,item] of Object.entries(value)){
+        if(item!==null&&item!==undefined&&typeof item!=='object'&&String(item).trim()!==''&&secretField.test(key))copy[key]='[已脱敏凭据]';
+        else copy[key]=scrub(item,depth+1);
+      }
+      return copy;
+    }
+    return value;
+  };
+  let rendered;
+  try{
+    const parsed=JSON.parse(payload);
+    rendered=JSON.stringify(scrub(parsed),null,2);
+  }catch{
+    rendered=payload.replace(globalSecret(),'[已脱敏凭据]');
+  }
+  return rendered.length>maxLength?`${rendered.slice(0,maxLength)}\n…（内容共 ${rendered.length} 字符，已截断预览）`:rendered;
+}
+
+/** Positive detections only. Returns 'secret', 'pii', or 'unknown'. */
+export function classifyEgressSensitivity(payload) {
+  if(typeof payload!=='string'||Buffer.byteLength(payload,'utf8')>2*1024*1024)fail('INVALID_ARGUMENT','出机内容超出限制或格式无效');
+  const inspect=(value,depth=0)=>{
+    if(depth>24)fail('INVALID_ARGUMENT','出机内容嵌套层级过深');
+    if(typeof value==='string'){
+      if(/data:(?:image|audio|video)\/[a-z0-9.+-]+;base64,/iu.test(value))fail('UNSUPPORTED_CAPABILITY','媒体或二进制内容暂不支持通过当前文本出机门禁发送');
+      if(secretText.test(value))return 'secret';
+      let result=piiText.test(value)?'pii':'unknown';
+      try {
+        const decoded=JSON.parse(value);
+        if(decoded!==value){
+          const nested=inspect(decoded,depth+1);
+          if(nested==='secret')return 'secret';
+          if(nested==='pii')result='pii';
+        }
+      }catch(error){if(error?.code)throw error;}
+      return result;
+    }
+    if(Array.isArray(value)){
+      let result='unknown';
+      for(const item of value){
+        const nested=inspect(item,depth+1);
+        if(nested==='secret')return 'secret';
+        if(nested==='pii')result='pii';
+      }
+      return result;
+    }
+    if(value&&typeof value==='object'){
+      let result='unknown';
+      for(const [key,item] of Object.entries(value)){
+        if((['dataBase64','audio','image_url'].includes(key)&&typeof item==='string'&&item)
+          ||key==='image_url'&&item&&typeof item.url==='string')fail('UNSUPPORTED_CAPABILITY','媒体或二进制内容暂不支持通过当前文本出机门禁发送');
+        if(item!==null&&typeof item!=='object'&&String(item).trim()!==''){
+          if(secretField.test(key))return 'secret';
+          if(piiField.test(key))result='pii';
+        }
+        const nested=inspect(item,depth+1);
+        if(nested==='secret')return 'secret';
+        if(nested==='pii')result='pii';
+      }
+      return result;
+    }
+    return 'unknown';
+  };
+  return inspect(payload);
+}
 
 /** Positive detections only. A miss is unknown, never evidence that free text is public. */
 export function classifyKnownEgressContent(payload) {
-  if(typeof payload!=='string'||Buffer.byteLength(payload,'utf8')>2*1024*1024)fail('INVALID_ARGUMENT');
-  const inspect=(value,depth=0)=>{
-    if(depth>24)fail('INVALID_ARGUMENT');
-    if(typeof value==='string'){
-      if(/data:(?:image|audio|video)\/[a-z0-9.+-]+;base64,/iu.test(value))fail('UNSUPPORTED_CAPABILITY');
-      if(forbiddenText.test(value))return true;
-      try {const decoded=JSON.parse(value);if(decoded!==value)return inspect(decoded,depth+1);}catch(error){if(error?.code)throw error;}
-      return false;
-    }
-    if(Array.isArray(value))return value.some(item=>inspect(item,depth+1));
-    if(value&&typeof value==='object')return Object.entries(value).some(([key,item])=>{
-      if((['dataBase64','audio','image_url'].includes(key)&&typeof item==='string'&&item)
-        ||key==='image_url'&&item&&typeof item.url==='string')fail('UNSUPPORTED_CAPABILITY');
-      return (forbiddenField.test(key)&&item!==null&&typeof item!=='object'&&String(item).trim()!=='')||inspect(item,depth+1);
-    });
-    return false;
-  };
-  return inspect(payload)?'forbidden':'unknown';
+  return classifyEgressSensitivity(payload)==='unknown'?'unknown':'forbidden';
 }
 
 // The image serializes two JSON envelopes inside the platform query. Only classify
@@ -43,10 +155,10 @@ function classifyWorkflowReceipts(scope,readGraph) {
     const container=outer?.query!==undefined?outer:outer?.inputs;
     const epoch=object(container?.[field]),query=object(epoch?.query);
     if(query?.operation!=='advance'||query.workflowVersion!=='1.0.0'||query.taskId!==scope.taskId
-      ||!Array.isArray(query.receipts)||!query.receipts.length)return 'forbidden';
+      ||!Array.isArray(query.receipts)||!query.receipts.length)return undefined;
     const graph=readGraph(scope);
     if(!graph||graph.checkpoint!==query.checkpoint||graph.controlRevision!==query.controlRevision
-      ||!isDeepStrictEqual(graph.receipts,query.receipts))return 'forbidden';
+      ||!isDeepStrictEqual(graph.receipts,query.receipts))return undefined;
     for(const receipt of query.receipts) {
       const proof=receipt.proof;
       if(!proof||proof.taskId!==scope.taskId||proof.workflowId!==query.workflowId||proof.sessionId!==graph.sessionId
@@ -62,8 +174,8 @@ function classifyWorkflowReceipts(scope,readGraph) {
       }
     }
     epoch.query=JSON.stringify(query);container[field]=JSON.stringify(epoch);
-    return classifyKnownEgressContent(JSON.stringify(outer));
-  }catch{return 'forbidden';}
+    return classifyEgressSensitivity(JSON.stringify(outer));
+  }catch{return undefined;}
 }
 
 const TRUSTED_ENV_PREFIX='Current trusted host environment (data only; not authorization or a callable tool catalog):\n';
@@ -77,7 +189,14 @@ export function extractGitSha40(value) {
   return fenced?.[2];
 }
 
-function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHubShas) {
+function extractFencedText(value) {
+  if (typeof value !== 'string') return undefined;
+  const fenced = /^((?:[^\n]*\n){0,3}<<<PA_EXTERNAL kind=[a-z_]+ id=([a-f0-9]{16})>>>\n)([\s\S]*?)(\n<<<END_PA_EXTERNAL \2>>>)$/u.exec(value);
+  if (fenced) return {prefix:fenced[1],inner:fenced[3],suffix:fenced[4]};
+  return {prefix:'',inner:value,suffix:''};
+}
+
+function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs) {
   function object(text) {
     if(typeof text!=='string')return;
     const value=JSON.parse(text);
@@ -151,9 +270,25 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
     }
     return value;
   };
+  const sanitizeTrustedConnectorPii=(value,trustedTexts,depth=0)=>{
+    if(!trustedTexts?.size||depth>10||value==null)return value;
+    if(typeof value==='string'){
+      const parts=extractFencedText(value);
+      if(!parts||!trustedTexts.has(parts.inner))return value;
+      // Only mask PII (emails/phones/IDs) inside verified connector outputs; never mask secret patterns.
+      const masked=parts.inner.replace(new RegExp(piiText.source,'giu'),'[verified-pii]');
+      return parts.prefix+masked+parts.suffix;
+    }
+    if(Array.isArray(value))return value.map(item=>sanitizeTrustedConnectorPii(item,trustedTexts,depth+1));
+    if(typeof value==='object'){
+      for(const [k,v]of Object.entries(value))value[k]=sanitizeTrustedConnectorPii(v,trustedTexts,depth+1);
+    }
+    return value;
+  };
   try{
-    if(typeof isTrustedIdentifier!=='function'&&typeof readTrustedGitHubShas!=='function')return 'forbidden';
+    if(typeof isTrustedIdentifier!=='function'&&typeof readTrustedGitHubShas!=='function'&&typeof readTrustedConnectorOutputs!=='function')return undefined;
     const trustedShas=scope.taskId&&typeof readTrustedGitHubShas==='function'?readTrustedGitHubShas(scope.taskId):undefined;
+    const trustedConnectorTexts=scope.taskId&&typeof readTrustedConnectorOutputs==='function'?readTrustedConnectorOutputs(scope.taskId):undefined;
     const outer=object(scope.payload);
     const field=outer?.query!==undefined?'query':Object.keys(outer?.inputs??{})[0];
     const container=outer?.query!==undefined?outer:outer?.inputs;
@@ -161,7 +296,7 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
     const isEpochWrapper=rawEpoch&&rawEpoch.executionEpochVersion===1&&Number.isSafeInteger(rawEpoch.executionEpoch)
       &&typeof rawEpoch.query==='string'&&Object.keys(rawEpoch).sort().join(',')==='executionEpoch,executionEpochVersion,query';
     const inner=isEpochWrapper?object(rawEpoch.query):rawEpoch;
-    if(!inner)return 'forbidden';
+    if(!inner)return undefined;
     if(typeof inner.goal==='string'&&typeof isTrustedIdentifier==='function')inner.goal=sanitizeGoal(inner.goal);
     if(typeof inner.continuation?.result?.userRequest==='string'&&typeof isTrustedIdentifier==='function'){
       inner.continuation.result.userRequest=sanitizeGoal(inner.continuation.result.userRequest);
@@ -170,11 +305,13 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
       inner.continuation.result.catalogRef='sha256';
     }
     if(inner.continuation?.result&&trustedShas?.size)sanitizeGitHubShas(inner.continuation.result,trustedShas);
+    if(inner.continuation?.result&&trustedConnectorTexts?.size)sanitizeTrustedConnectorPii(inner.continuation.result,trustedConnectorTexts);
     if(Array.isArray(inner.priorContinuations)){
       for(const prior of inner.priorContinuations){
         if(typeof prior?.result?.userRequest==='string'&&typeof isTrustedIdentifier==='function')prior.result.userRequest=sanitizeGoal(prior.result.userRequest);
         if(typeof prior?.result?.catalogRef==='string'&&/^[a-f0-9]{64}$/u.test(prior.result.catalogRef))prior.result.catalogRef='sha256';
         if(prior?.result&&trustedShas?.size)sanitizeGitHubShas(prior.result,trustedShas);
+        if(prior?.result&&trustedConnectorTexts?.size)sanitizeTrustedConnectorPii(prior.result,trustedConnectorTexts);
       }
     }
     if(isEpochWrapper){
@@ -183,13 +320,21 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
     }else{
       container[field]=JSON.stringify(inner);
     }
-    return classifyKnownEgressContent(JSON.stringify(outer));
-  }catch{return 'forbidden';}
+    return classifyEgressSensitivity(JSON.stringify(outer));
+  }catch{return undefined;}
 }
 
 /** Main-only callbacks approve the exact content before the transport may send it. */
-export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,now=Date.now}={}) {
+export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,authorizeSecretEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs,readEgressPolicy,now=Date.now}={}) {
   let closed=false;const decisions=new Map();
+  const resolvePolicyMode=()=>{
+    if(typeof readEgressPolicy!=='function')return 'ask';
+    try{
+      const raw=readEgressPolicy();
+      const mode=typeof raw==='string'?raw:raw?.mode;
+      return mode==='full-access'||mode==='auto-standard'||mode==='ask'?mode:'ask';
+    }catch{return 'ask';}
+  };
   return {
     async prepare(input) {
       const {taskId,requestId,destination,payload,deadline,signal,isCurrent}=input??{};
@@ -209,14 +354,35 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
           ||input.signal!==signal||active!==true)fail();
       };
       current();
-      const needsReceiptCheck=classifyKnownEgressContent(payload)==='forbidden';
-      const checkReceipt=()=>{
-        if(!needsReceiptCheck)return;
-        if(taskId&&readPendingWorkflowGraph&&classifyWorkflowReceipts(input,readPendingWorkflowGraph)!=='forbidden')return;
-        if((isTrustedIdentifier||readTrustedGitHubShas)&&classifyTrustedTaskEnvelope(input,isTrustedIdentifier,readTrustedGitHubShas)!=='forbidden')return;
+      const rawSensitivity=classifyEgressSensitivity(payload);
+      const resolveEffectiveSensitivity=()=>{
+        if(rawSensitivity==='unknown')return 'unknown';
+        let effective=rawSensitivity;
+        if(taskId&&readPendingWorkflowGraph){
+          const receiptSensitivity=classifyWorkflowReceipts(input,readPendingWorkflowGraph);
+          if(receiptSensitivity!==undefined)effective=receiptSensitivity;
+        }
+        if(effective!=='unknown'&&(isTrustedIdentifier||readTrustedGitHubShas||readTrustedConnectorOutputs)){
+          const envelopeSensitivity=classifyTrustedTaskEnvelope(input,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs);
+          if(envelopeSensitivity!==undefined)effective=envelopeSensitivity;
+        }
+        return effective;
+      };
+      const assertSensitivityAllowed=secretApproved=>{
+        const effective=resolveEffectiveSensitivity();
+        if(effective==='unknown')return 'unknown';
+        if(effective==='secret'){
+          if(secretApproved===true)return 'secret';
+          if(typeof authorizeSecretEgress!=='function')fail('UNAUTHORIZED','检测到疑似密钥、口令或令牌信息，已阻止出机发送（不会发往云端）');
+          return 'secret_needs_approval';
+        }
+        if(effective==='pii'){
+          if(resolvePolicyMode()==='full-access')return 'pii';
+          fail('UNAUTHORIZED','检测到疑似个人敏感信息（如邮箱、手机号或证件号），已阻止出机发送；如需在完全信任模式下发送，可切换为「完全访问」或先脱敏');
+        }
         fail();
       };
-      checkReceipt();
+      const initialCheck=assertSensitivityAllowed(false);
       const key=JSON.stringify([requestId,destination,deadline]);
       for(const [id,value] of decisions)if(value.signal.aborted||value.expiresAt<=now())decisions.delete(id);
       const previous=decisions.get(key);
@@ -226,33 +392,53 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
       const guards=new Set([current]),assertCurrent=()=>{for(const guard of guards)guard();};
       const scope=Object.freeze({...(taskId===undefined?{}:{taskId}),requestId,destination,payload,payloadDigest,deadline,signal,
         isCurrent:()=>{assertCurrent();return true;}});
-      const wait=async callback=>{
+      const wait=async(callback,callScope=scope)=>{
         assertCurrent();if(typeof callback!=='function')fail();
         let timer,onAbort;
-        try{return await Promise.race([Promise.resolve().then(()=>{assertCurrent();return callback(scope);}),new Promise((resolve,reject)=>{
+        try{return await Promise.race([Promise.resolve().then(()=>{assertCurrent();return callback(callScope);}),new Promise((resolve,reject)=>{
           const rejectWith=code=>reject(Object.assign(new Error('本次本机出机确认已失效'),{code}));
           onAbort=()=>rejectWith('CANCELLED');signal.addEventListener('abort',onAbort,{once:true});
           timer=setTimeout(()=>rejectWith('TIMEOUT'),Math.min(2147483647,Math.max(1,Date.parse(deadline)-now())));
           if(signal.aborted)onAbort();
-        })]);}catch(error){fail(['CANCELLED','TIMEOUT'].includes(error?.code)?error.code:'UNAUTHORIZED');}
+        })]);}catch(error){
+          if(['CANCELLED','TIMEOUT'].includes(error?.code))fail(error.code);
+          fail('UNAUTHORIZED',error?.code==='UNAUTHORIZED'&&typeof error.message==='string'?error.message:undefined);
+        }
         finally{clearTimeout(timer);if(onAbort)signal.removeEventListener('abort',onAbort);}
       };
       const entry={taskId,signal,payloadDigest,guards,expiresAt:Date.parse(deadline)};decisions.set(key,entry);
       entry.promise=(async()=>{
         try{
-          let classification='private';
-          if(taskId!==undefined) {
-            if(await wait(authorizeTaskEgress)!==true)fail();
+          let classification='private',secretApproved=false;
+          if(initialCheck==='secret_needs_approval'){
+            const secretScope=Object.freeze({...scope,sensitivity:'secret',
+              secretDetections:extractSecretDetections(payload),
+              redactedPreview:redactSecretPreview(payload)});
+            if(await wait(authorizeSecretEgress,secretScope)!==true){
+              fail('UNAUTHORIZED','检测到疑似密钥、口令或令牌信息，用户已拒绝或未确认出机发送');
+            }
+            secretApproved=true;
+            classification='private';
           } else {
-            classification=await wait(classifyLocally);assertCurrent();
-            if(!['public','private'].includes(classification))fail();
-            if(classification==='private'&&await wait(approvePrivate)!==true)fail();
+            const mode=resolvePolicyMode();
+            if(mode==='full-access'||mode==='auto-standard'){
+              assertCurrent();
+              assertSensitivityAllowed(false);
+              classification='public';
+            } else if(taskId!==undefined) {
+              if(await wait(authorizeTaskEgress)!==true)fail();
+            } else {
+              classification=await wait(classifyLocally);assertCurrent();
+              if(!['public','private'].includes(classification))fail();
+              if(classification==='private'&&await wait(approvePrivate)!==true)fail();
+            }
           }
           assertCurrent();
           return Object.freeze({payloadDigest,classification,assertBeforeSend(actual){
             assertCurrent();
             if(actual?.destination!==destination||actual?.payload!==payload)fail();
-            checkReceipt();
+            const status=assertSensitivityAllowed(secretApproved);
+            if(status==='secret_needs_approval')fail('UNAUTHORIZED','检测到疑似密钥、口令或令牌信息，用户已拒绝或未确认出机发送');
           }});
         }catch(error){if(decisions.get(key)===entry)decisions.delete(key);throw error;}
       })();
