@@ -30,15 +30,18 @@ const specs=[
   ['screenshot',object({targetRef},['targetRef']),true,'保存当前页面视口截图为本地受控产物，仅返回元数据。此结果不代表模型已收到图像。'],
   ['close',object(),false,'关闭应用自己启动的浏览器；不关闭用户其他浏览器。'],
 ];
+// DOM reads below retain the smaller raw bounds. Allow room on the wire for the
+// trusted Desktop content fence that adds the web source before Gateway validation.
+const webText=maxLength=>({type:'string',maxLength:maxLength+256});
 const resultSchema=object({source:{const:'playwright'},state:{enum:['observed','action_observed','downloaded','closed']},
-  targetRef,observedAt:{type:'string'},expiresAt:{type:'string'},url:{type:'string',maxLength:4096},title:{type:'string',maxLength:300},
-  text:{type:'string',maxLength:MAX_TEXT},controls:{type:'array',maxItems:MAX_CONTROLS,items:{type:'object'}},
+  targetRef,observedAt:{type:'string'},expiresAt:{type:'string'},url:{type:'string',maxLength:4096},title:webText(300),
+  text:webText(MAX_TEXT),controls:{type:'array',maxItems:MAX_CONTROLS,items:{type:'object'}},
   truncated:{type:'boolean'},freshObservationRequired:{const:true},goalVerified:{const:false},errorCode:{type:'string',maxLength:100},
   artifact:{type:'object'}},['source','state','goalVerified']);
 const label={type:'string',maxLength:200},short={type:'string',maxLength:128},flag={type:'boolean'};
 const projectionSchema={...resultSchema,properties:{...resultSchema.properties,
-  controls:{type:'array',maxItems:MAX_CONTROLS,items:object({ref,role:short,name:label,tag:short,inputType:short,disabled:flag,
-    downloadable:flag,paused:flag,ended:flag,value:{type:'string',maxLength:500},options:{type:'array',maxItems:40,items:object({label,value:label},['label','value'])}})},
+  controls:{type:'array',maxItems:MAX_CONTROLS,items:object({ref,role:webText(128),name:label,tag:short,inputType:webText(128),disabled:flag,
+    downloadable:flag,paused:flag,ended:flag,value:webText(500),options:{type:'array',maxItems:40,items:object({label:webText(200),value:webText(200)},['label','value'])}})},
   artifact:object({artifactId:short,name:{type:'string',maxLength:300},mimeType:short,byteLength:{type:'integer'},sha256:short,imageDeliveredToModel:flag})}};
 const PAGE_EXPORT='browser-page-export';
 const trustedErrors=new WeakSet();
@@ -348,6 +351,17 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       ||record?.taskId!==scope.taskId||record.toolName!==toolName||record.toolVersion!==VERSION
       ||record.policyDecision!=='allow'||!record.executionStarted||record.state!=='started'
       ||!runtime.matchesToolExecutionInput(record,{arguments:args,scopeRef:scope.authorizationRef}))fail('UNAUTHORIZED','浏览器调用与原 Runtime 执行不一致');
+  }
+  function matchesConfirmedResult(saved,result){
+    const {taskId,runId,authorizationRef}=saved.scope,runtime=application.runtime;
+    const record=runtime.readToolExecutions(taskId).find(item=>item.evidenceId===runId);
+    if(!record||record.taskId!==taskId||record.toolName!==saved.toolName||record.toolVersion!==VERSION||
+      record.policyDecision!=='allow'||!record.executionStarted||record.state!=='confirmed'||
+      !runtime.matchesToolExecutionInput(record,{arguments:saved.args,scopeRef:authorizationRef}))return false;
+    // The Runtime checkpoint is the exact, source-fenced Gateway result from this
+    // invocation. Its strings intentionally differ from the raw Playwright DOM.
+    const confirmed=runtime.loadCheckpoint(taskId,'tool-result-'+runId)?.result;
+    return !!confirmed&&toolArgumentsDigest(confirmed)===toolArgumentsDigest(result);
   }
   async function permit(scope,args,toolName,origin,phase='access') {
     active(scope);
@@ -998,7 +1012,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,publicDescription:tool.descriptor.inputSchema.description,
       publicEnumPaths:['/key','/direction','/mediaAction'],available:scope=>!closed&&!blocked&&!scope.signal?.aborted&&now()<Date.parse(scope.deadline)
         &&(state!=='unavailable'||['browser.open','browser.close'].includes(tool.descriptor.name))})),
-    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:'controlled-browser-dom-v2',
+    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:'controlled-browser-dom-v3',
       accepts({taskId,proposalId,signal,phase,projection}) {
         if(closed||signal?.aborted)return false;
         if(phase==='preflight')return true;
@@ -1009,7 +1023,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       },
       async project({taskId,proposalId,result,signal}) {
         const saved=exportScopes.get(authorizationQuestions?exportKey(taskId,proposalId):taskId);if(!saved||signal?.aborted||closed)fail('UNAUTHORIZED','浏览器观察出口已过期');
-        if(saved.toolName!==tool.descriptor.name||saved.resultDigest!==sha(JSON.stringify(result)))fail('UNAUTHORIZED','浏览器出口不匹配原结果');
+        if(saved.toolName!==tool.descriptor.name||
+          !(authorizationQuestions?matchesConfirmedResult(saved,result):saved.resultDigest===sha(JSON.stringify(result))))
+          fail('UNAUTHORIZED','浏览器出口不匹配原任务已确认的工具结果');
         if(result?.state!=='closed'){
           if(saved.generation!==generation||saved.expiresAt<=now())fail('UNAUTHORIZED','原浏览器观察已经失效');
           active(saved.scope);await permit({...saved.scope,signal},saved.args,saved.toolName,saved.origin,'export');
