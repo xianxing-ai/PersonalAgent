@@ -34,75 +34,8 @@ const ordinaryExternalTools=new Set(['calendar.create','calendar.update','calend
 const desktopWrites=new Set(['activate','click','type','set_value','invoke','select','focus','scroll','move','drag','shortcut','press']
   .map(name=>'computer.desktop.'+name));
 const credentialField=/(?:password|passwd|secret|token|credential|api[_-]?key|authorization|private[_-]?key|access[_-]?key)/iu;
-const secretText=/(?:-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{16,}|\bBearer\s+[A-Za-z0-9_.~+/-]{8,}|(?:password|passwd|api[_ -]?key|secret[_ -]?key|access[_ -]?token|密码|口令|验证码)\s*[:=]\s*["']?[^\s"',;}]{3,})/iu;
-function classifyCredentialHint(hint) {
-  if(/-----BEGIN|private|私钥/iu.test(hint))return '私钥';
-  if(/password|passwd|密码|口令/iu.test(hint))return '密码/口令';
-  if(/verification|otp|验证码/iu.test(hint))return '验证码';
-  return '密钥/令牌';
-}
 function containsCredential(value) {
   return value!==null&&typeof value==='object'&&Object.entries(value).some(([name,item])=>credentialField.test(name)||containsCredential(item));
-}
-export function detectSecretsInText(text) {
-  if(typeof text!=='string')return undefined;
-  const globalSecret=new RegExp(secretText.source,'giu');
-  const categories=new Set(),fingerprints=new Set();
-  for(const match of text.matchAll(globalSecret)){
-    categories.add(classifyCredentialHint(match[0]));
-    fingerprints.add(digest({kind:'text',match:match[0].trim()}));
-  }
-  return fingerprints.size?{categories:[...categories],fingerprints:[...fingerprints].sort()}:undefined;
-}
-function collectArgumentSecrets(value,categories,fingerprints,depth=0) {
-  if(depth>24)throw new ProtocolError('UNAUTHORIZED','无法安全校验本次操作参数，未获允许');
-  if(typeof value==='string'){
-    const detected=detectSecretsInText(value);
-    if(detected){
-      for(const category of detected.categories)categories.add(category);
-      for(const fp of detected.fingerprints)fingerprints.add(fp);
-    }
-    return;
-  }
-  if(Array.isArray(value)){
-    for(const item of value)collectArgumentSecrets(item,categories,fingerprints,depth+1);
-    return;
-  }
-  if(value&&typeof value==='object'){
-    for(const [name,item]of Object.entries(value)){
-      if(credentialField.test(name)){
-        categories.add(classifyCredentialHint(name));
-        const normalized=item===null||item===undefined||typeof item==='object'?'':String(item).trim();
-        fingerprints.add(digest({kind:'field',field:name.toLowerCase(),value:normalized}));
-      }
-      collectArgumentSecrets(item,categories,fingerprints,depth+1);
-    }
-  }
-}
-export function detectSecretsInArguments(source,{requireValidArgs=false}={}) {
-  const args=source?.arguments;
-  if(args===undefined){
-    if(requireValidArgs&&requiresContentConfirmation(source))throw new ProtocolError('UNAUTHORIZED','无法安全校验本次操作参数，未获允许');
-    return undefined;
-  }
-  if(args===null||typeof args!=='object'||Array.isArray(args)){
-    if(requireValidArgs)throw new ProtocolError('UNAUTHORIZED','无法安全校验本次操作参数，未获允许');
-    return undefined;
-  }
-  const categories=new Set(),fingerprints=new Set();
-  collectArgumentSecrets(args,categories,fingerprints,0);
-  return fingerprints.size?{categories:[...categories],fingerprints:[...fingerprints].sort()}:undefined;
-}
-export function assertNoSecretsInText(text) {
-  if(detectSecretsInText(text)) {
-    throw new ProtocolError('UNAUTHORIZED','检测到操作内容中包含疑似密钥或凭据信息，已阻止自动放行');
-  }
-}
-export function assertNoCredentialsInArguments(source) {
-  const detected=detectSecretsInArguments(source,{requireValidArgs:true});
-  if(detected) {
-    throw new ProtocolError('UNAUTHORIZED','检测到操作参数中包含疑似密钥、口令或凭据信息，已阻止执行');
-  }
 }
 export function requiresContentConfirmation(source) {
   return source.toolName==='workflow.host.f23_n04'||Object.hasOwn(contentFields,source.toolName)||desktopWrites.has(source.toolName)

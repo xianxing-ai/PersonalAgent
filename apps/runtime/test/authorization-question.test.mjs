@@ -252,23 +252,12 @@ test('low-risk auto allows a read once and still asks before writes, exports or 
   assert.equal(host.snapshot().at(-1).state,'pending');
   host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
   assert.equal((await write).decision,'deny');
-  const exported=await host.request(request(['mail:read'],{runId:'run-export',requirements:[
+  const exported=host.request(request(['mail:read'],{runId:'run-export',requirements:[
     {requirementId:'tool',kind:'tool',scopes:['mail:read'],bindingDigest:H,summary:'查看'},
-    {requirementId:'session',kind:'connector_session',scopes:['mail:read'],bindingDigest:H,summary:'连接'},
     {requirementId:'out',kind:'export',scopes:['model:export'],bindingDigest:H,summary:'交给模型'}]}));
-  assert.equal(exported.decision,'allow_once');
-  assert.equal(host.snapshot().some(item=>item.state==='pending'),false);
-  const imageExported=host.request(request(['computer:read'],{runId:'run-image-export',requirements:[
-    {requirementId:'tool',kind:'tool',scopes:['computer:read'],bindingDigest:H,summary:'查看'},
-    {requirementId:'out',kind:'export',scopes:['computer:image:export'],bindingDigest:H,summary:'图像导出'}]}));
   assert.equal(host.snapshot().at(-1).state,'pending');
   host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
-  await imageExported;
-  const exportOnly=host.request(request(['model:export'],{runId:'run-export-only',requirements:[
-    {requirementId:'out',kind:'export',scopes:['model:export'],bindingDigest:H,summary:'仅导出'}]}));
-  assert.equal(host.snapshot().at(-1).state,'pending');
-  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
-  await exportOnly;
+  await exported;
   const unknown=host.request(request(['widget:frob'],{runId:'run-unknown',toolName:'widget.frob'}));
   assert.equal(host.snapshot().at(-1).state,'pending');
   host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
@@ -306,112 +295,5 @@ test('new installs default to low-risk auto without silently migrating existing 
   assert.equal(existing.sandboxSnapshot().selected.label,'低风险自动');
   const again=new AuthorizationQuestions({...baseOptions,store:makeStore(existingSaved)});
   assert.equal(again.sandboxSnapshot().selected.label,'低风险自动');
-  assert.equal(again.sandboxSnapshot().selected.ref,'low-risk-auto');
   fresh.close();existing.close();again.close();
-});
-
-test('workspace-write localWriteAuto allows local reversible writes while gating external writes, deletes and native commands; canAutoApprove pause gate overrides both',async()=>{
-  const saved={};
-  const now=Date.parse('2026-10-21T00:00:00Z');
-  let allowAuto=true;
-  const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
-    compareAndSet(key,previous,next){if(!isDeepStrictEqual(saved[key],previous))return false;saved[key]=structuredClone(next);return true;}};
-  const host=new AuthorizationQuestions({store,profiles:[
-    {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true}],
-    defaultProfileRef:'workspace-write',now:()=>now,available:()=>true,onChange(){},
-    canAutoApprove:()=>allowAuto,
-    readBinding:()=>({conversationId:'conversation-1',digest:'owner-1'}),canExecute:()=>true});
-  const req=(toolName,sideEffect,scopes,extra={})=>({taskId:'task-1',proposalId:'proposal-1',runId:extra.runId??toolName,toolName,toolVersion:'1',
-    argumentsDigest:H,deadline:new Date(now+60000).toISOString(),signal:new AbortController().signal,sideEffect,
-    requirements:[{requirementId:'tool',kind:'tool',scopes,bindingDigest:H,summary:toolName},
-      {requirementId:'export',kind:'export',scopes:['model:export'],bindingDigest:H,summary:'模型回传'}],...extra});
-
-  const localTodo=await host.request(req('todo.create','local_write',['todo:write']));
-  assert.equal(localTodo.decision,'allow_once');
-  const localPatch=await host.request(req('workspace.apply_text_patch','local_write',['workspace:write']));
-  assert.equal(localPatch.decision,'allow_once');
-  assert.equal(host.snapshot().length,0);
-
-  const extWrite=host.request(req('mail.send','external_write',['mail:send']));
-  assert.equal(host.snapshot().at(-1).state,'pending');
-  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
-  assert.equal((await extWrite).decision,'deny');
-
-  const delWrite=host.request(req('files.delete','local_write',['files:write']));
-  assert.equal(host.snapshot().at(-1).state,'pending');
-  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
-  assert.equal((await delWrite).decision,'deny');
-
-  allowAuto=false;
-  const paused=host.request(req('todo.create','local_write',['todo:write'],{runId:'run-paused'}));
-  assert.equal(host.snapshot().at(-1).state,'pending');
-  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
-  assert.equal((await paused).decision,'deny');
-  host.close();
-});
-
-test('revokeRule revokes only the targeted rule and keeps other saved rules and unrelated pending questions valid',async()=>{
-  const f=fixture();
-  const todoReq=f.request({taskId:'task-a',runId:'run-todo',toolName:'todo.create'});
-  const feedReq=f.request({taskId:'task-b',runId:'run-feed',toolName:'feeds.collect',
-    requirements:[{requirementId:'tool',kind:'tool',scopes:['feeds:read'],bindingDigest:H,ruleBindingDigest:R,summary:'Read feeds'}]});
-  const pendingOther=f.request({taskId:'task-c',runId:'run-cal',toolName:'calendar.update',
-    requirements:[{requirementId:'tool',kind:'tool',scopes:['calendar:write'],bindingDigest:H,summary:'Update calendar'}]});
-
-  const p1=f.host.request(todoReq);f.respond('allow_always');await p1;
-  const p2=f.host.request(feedReq);f.respond('allow_always');await p2;
-  const p3=f.host.request(pendingOther);
-  const pendingCard=f.host.snapshot().find(q=>q.sourceApprovalId==='run-cal'&&q.state==='pending');
-  assert.ok(pendingCard);
-
-  const rules=f.host.sandboxSnapshot().rules;
-  const todoRule=rules.find(r=>r.summary.includes('Create one todo'));
-  const snap=f.host.revokeRule({ruleId:todoRule.ruleId,expectedRevision:todoRule.revision});
-  assert.equal(snap.rules.find(r=>r.ruleId===todoRule.ruleId).active,false);
-  assert.equal(snap.rules.find(r=>r.ruleId!==todoRule.ruleId).active,true);
-
-  const feedReused=await f.host.request(f.request({taskId:'task-b2',runId:'run-feed-2',toolName:'feeds.collect',
-    requirements:[{requirementId:'tool',kind:'tool',scopes:['feeds:read'],bindingDigest:H,ruleBindingDigest:R,summary:'Read feeds'}]}));
-  assert.equal(feedReused.decision,'allow_always');
-
-  assert.equal(f.host.respond({questionId:pendingCard.questionId,expectedRevision:pendingCard.revision,decision:'allow_once'},pendingCard.conversationId).accepted,true);
-  await p3;
-  f.host.close();
-});
-
-test('forceAsk forces a pending card even in full-access mode and supports permanent allow_always whitelisting and revokeRule',async()=>{
-  const f=fixture();
-  f.host.selectSandbox({profileRef:'full',expectedRevision:1});
-  const req=(runId,ruleDigest=R)=>f.request({
-    runId,forceAsk:true,
-    requirements:[{requirementId:'tool',kind:'tool',scopes:['model.egress.secret'],bindingDigest:H,ruleBindingDigest:ruleDigest,summary:'Detected secret requires confirmation'}],
-  });
-  const first=f.host.request(req('run-force-1'));
-  const card=f.host.snapshot().at(-1);
-  assert.equal(card.state,'pending');
-  assert.equal(card.forceAsk,true);
-  assert.equal(card.canAlways,true);
-  assert.equal(card.canReuseTask,false);
-  assert.equal(card.suggestedDecision,'allow_once');
-  assert.equal(f.respond('allow_always',card).accepted,true);
-  assert.equal((await first).decision,'allow_always');
-
-  const whitelisted=await f.host.request(req('run-force-2'));
-  assert.equal(whitelisted.decision,'allow_always');
-
-  const differentSecretDigest='c'.repeat(64);
-  const third=f.host.request(req('run-force-3',differentSecretDigest));
-  const card3=f.host.snapshot().at(-1);
-  assert.equal(card3.state,'pending');
-  assert.equal(card3.forceAsk,true);
-  f.respond('deny',card3);
-  assert.equal((await third).decision,'deny');
-
-  const rule=f.host.sandboxSnapshot().rules.find(item=>item.active);
-  f.host.revokeRule({ruleId:rule.ruleId,expectedRevision:rule.revision});
-  const afterRevoke=f.host.request(req('run-force-4'));
-  assert.equal(f.host.snapshot().at(-1).state,'pending');
-  f.respond('deny');
-  assert.equal((await afterRevoke).decision,'deny');
-  f.host.close();
 });

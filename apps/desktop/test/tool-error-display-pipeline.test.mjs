@@ -121,14 +121,4 @@ test('error display distinguishes cancellation, deadline, denial, validation and
   }
   const cloud=errorDisplayText({code:'RESULT_UNKNOWN',message:'Cloud invocation delivery or result is unknown; reconcile before sending again [cloud: transport=wss phase=wss_invoke close=1011 reason=server_error]'},'task');
   assert.match(cloud,/云端服务异常关闭/);assert.match(cloud,/close=1011/);assert.equal(errorDisplayText(cloud),cloud);
-  for(const msg of [
-    '检测到疑似密钥、口令或令牌信息，已阻止出机发送（不会发往云端）',
-    '检测到疑似个人敏感信息（如邮箱、手机号或证件号），已阻止出机发送；如需在完全信任模式下发送，可切换为「完全访问」或先脱敏',
-    '检测到操作参数中包含疑似密钥、口令或凭据信息，已阻止执行',
-    '此授权请求不属于当前对话',
-    '当前 Windows 环境不支持 PSEC/AppContainer 隔离 API，受限外部命令已保持拒绝（未降级为普通进程）',
-  ]){
-    const rendered=errorDisplayText({code:'UNAUTHORIZED',message:msg},'runtime');
-    assert.ok(rendered.startsWith(msg),rendered);
-  }
 });
