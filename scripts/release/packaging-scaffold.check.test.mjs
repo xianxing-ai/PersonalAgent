@@ -36,6 +36,7 @@ function createFixture({
       productName: 'Synstar',
       directories: { output: 'release' },
       win: {
+        requestedExecutionLevel: 'asInvoker',
         target: ['nsis'],
       },
       nsis: {
@@ -43,7 +44,7 @@ function createFixture({
         perMachine: false,
         allowToChangeInstallationDirectory: true,
         deleteAppDataOnUninstall: false,
-        requestedExecutionLevel: 'asInvoker',
+        allowElevation: false,
       },
     },
   };
@@ -85,7 +86,7 @@ function createFixture({
   perMachine: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
-  requestedExecutionLevel: asInvoker`;
+  allowElevation: false`;
 
     const yamlContent = `appId: com.personalagent.desktop
 productName: Synstar
@@ -95,6 +96,7 @@ files:
 ${files.map((f) => `  - "${f}"`).join('\n')}
 asar: true
 win:
+  requestedExecutionLevel: asInvoker
   target:
     - target: nsis
       arch:

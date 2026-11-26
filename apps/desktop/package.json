@@ -79,6 +79,7 @@
       "output": "release"
     },
     "win": {
+      "requestedExecutionLevel": "asInvoker",
       "target": [
         "nsis"
       ]
@@ -88,7 +89,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
-      "requestedExecutionLevel": "asInvoker"
+      "allowElevation": false
     }
   }
 }
