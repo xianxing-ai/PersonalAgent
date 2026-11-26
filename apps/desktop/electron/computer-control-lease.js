@@ -11,9 +11,10 @@ export {isWrite as isComputerControlWrite};
 // Only new, explicitly GET/HEAD-restricted browser invocations receive this
 // trusted checkpoint. Historical uncertain writes retain their original guard.
 function readOnlyNavigation(runtime,record){
-  if(!['browser.open','browser.click'].includes(record.toolName))return false;
+  if(!['browser.open','browser.click','browser.scroll'].includes(record.toolName))return false;
   const attempt=runtime.loadCheckpoint?.(record.taskId,'browser-control-attempt:'+record.evidenceId);
-  return (record.toolName==='browser.open'?attempt?.readOnlyNavigation===true:attempt?.restrictedRead===true)&&attempt.taskId===record.taskId&&attempt.runId===record.evidenceId
+  const marker={'browser.open':'readOnlyNavigation','browser.click':'restrictedRead','browser.scroll':'readOnlyScroll'}[record.toolName];
+  return attempt?.[marker]===true&&attempt.taskId===record.taskId&&attempt.runId===record.evidenceId
     &&attempt.toolName===record.toolName&&attempt.toolVersion===record.toolVersion;
 }
 export {readOnlyNavigation as isReadOnlyBrowserReceipt};
@@ -88,7 +89,8 @@ export function createComputerControlLease({getRuntime,readInSeparateBrowser,now
     if(!controlled(tool?.descriptor?.name??''))return tool;
     if(wrappers.has(tool))return wrappers.get(tool);
     const wrapped={...tool,descriptor:tool.descriptor,async execute(input,context){
-      const write=isWrite(tool.descriptor.name)&&!(tool.descriptor.name==='browser.open'&&tool.descriptor.sideEffect==='read');let source;
+      const trustedRead=['browser.open','browser.scroll'].includes(tool.descriptor.name)&&tool.descriptor.sideEffect==='read';
+      const write=isWrite(tool.descriptor.name)&&!trustedRead;let source;
       try{
         check(context);
         if(active)fail('REVISION_CONFLICT','另一个电脑控制引擎正在执行；本次尚未调用设备');
