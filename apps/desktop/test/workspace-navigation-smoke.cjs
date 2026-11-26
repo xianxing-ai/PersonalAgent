@@ -81,7 +81,38 @@ async function run() {
     await input.waitFor();
     await assertPage('home');
     assert.equal(await input.inputValue(), draft);
-    console.log('PASS: four visible navigation labels, exclusive active page, separate settings window and retained draft');
+    await app.evaluate(({BrowserWindow}) => {
+      const win = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('mode=workspace'));
+      win.unmaximize();
+      win.setContentSize(760, 540);
+    });
+    await drawer.waitFor();
+    const cardsToggle = workspace.locator('.cc-connectors-toggle');
+    const cards = workspace.locator('.cc-context');
+    for (const [id, name] of [['tasks','任务记录'], ['memory','知识与记忆']]) {
+      await cardsToggle.click();
+      await cards.waitFor();
+      await drawer.click();
+      assert.equal(await cards.isVisible(), false);
+      assert.equal(await cardsToggle.getAttribute('aria-expanded'), 'false');
+      assert.ok(await button('工作台').evaluate(node => node === document.activeElement));
+      await button(name).focus();
+      await workspace.keyboard.press('Enter');
+      await assertPage(id);
+      assert.equal(await drawer.getAttribute('aria-expanded'), 'false');
+      const heading = workspace.getByRole('heading', {name, exact:true});
+      assert.ok(await heading.evaluate(node => node === document.activeElement));
+      assert.equal(await cardsToggle.isVisible(), false);
+      await workspace.keyboard.press('Tab');
+      assert.ok(await workspace.getByRole('button', {name:'返回对话'}).evaluate(node => node === document.activeElement));
+      await drawer.click();
+      await button('工作台').click();
+      await assertPage('home');
+      assert.equal(await drawer.getAttribute('aria-expanded'), 'false');
+      assert.ok(await input.evaluate(node => node === document.activeElement));
+      assert.equal(await input.inputValue(), draft);
+    }
+    console.log('PASS: navigation labels and states, separate settings, compact drawers, keyboard focus and retained draft');
   } finally {
     await closeDesktop(app);
     try {
