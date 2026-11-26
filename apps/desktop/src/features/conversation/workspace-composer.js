@@ -13,7 +13,6 @@ export function mountWorkspaceComposer(root,invoke,report){
     if(owner!==next){owner=next;generation++;pending=false;}
     snapshot=value;
     const active=foregroundTask(),stoppable=stoppableTask();
-    send.hidden=!input.value.trim();
     send.disabled=pending||Boolean(active)||!input.value.trim();
     stop.disabled=(!stoppable&&!pending)||stoppable?.state==='cancelling';
     stop.textContent=stoppable?.state==='cancelling'?'正在停止…':'停止';

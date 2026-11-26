@@ -99,7 +99,12 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   side.querySelector('.cc-team h2').textContent='工人';side.querySelector('.cc-team-hint').innerHTML='<p>主对话只处理日程、订阅和天气。邮件、知识库和其他连接器交给助手自己的工人。工人可插话复用，不必一句话一个。</p>';side.querySelector('.cc-trust').hidden=true;
   const team=side.querySelector('.cc-team');team.querySelector('h2').textContent='工人';team.prepend(leadButton);rail.querySelector('.cc-thread-scroll').append(team);
   const internal=document.createElement('section');internal.className='cc-internal-chat';internal.setAttribute('aria-label','内部群聊');
-  internal.innerHTML=`<header><h2>内部群聊</h2><span>主对话 ↔ 助手</span></header><div class="cc-internal-list" data-internal-list></div><form class="cc-internal-compose" data-internal-compose><label>交给助手<select class="cc-assistant-picker" name="assistantId" required><button type="button"><selectedcontent></selectedcontent></button></select></label><textarea name="text" maxlength="2000" required placeholder="在后台交付工作，例如：处理邮件并回贴结论"></textarea><button type="submit">交付</button><p class="cc-internal-status" role="status"></p></form>`;
+  internal.innerHTML=`<header><h2>内部群聊</h2></header><div class="cc-internal-list" data-internal-list></div>
+    <form class="cc-internal-compose" data-internal-compose>
+      <textarea name="text" maxlength="2000" required aria-label="交付内容" placeholder="写下要交给助手的工作…"></textarea>
+      <label>交给<select class="cc-assistant-picker" aria-label="交给助手" name="assistantId" required><button type="button"><selectedcontent></selectedcontent></button></select></label>
+      <button type="submit">交付</button><p class="cc-internal-status" role="status"></p>
+    </form>`;
   side.querySelector('.cc-activity')?.before(internal);
   const internalList=internal.querySelector('[data-internal-list]');
   const internalForm=internal.querySelector('[data-internal-compose]');
@@ -114,7 +119,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
           const to=item.toAssistantId==='front-desk'?'主对话':(assistants.find(a=>a.assistantId===item.toAssistantId)?.displayName||item.toAssistantId);
           return `<article><strong>${escape(from)} → ${escape(to)}</strong><p>${escape(item.body||'')}</p><small>${escape(item.createdAt?new Date(item.createdAt).toLocaleString():'')}</small></article>`;
         }).join('')
-      : '<p class="cc-internal-empty">还没有内部消息。主对话可用 assistant.message 或这里交付给助手。</p>';
+      : '<p class="cc-internal-empty">暂无内部消息</p>';
   };
   internalForm.onsubmit=async event=>{
     event.preventDefault();
@@ -366,6 +371,6 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
     }
     const activeChild=inline.selected;
     if(activeChild)inline.update(state.children.find(child=>child.taskId===activeChild.taskId&&child.parentTaskId===activeChild.parentTaskId)??null);
-    const nextActivity=JSON.stringify(state.activity);if(nextActivity!==activitySignature){activitySignature=nextActivity;side.querySelector('.cc-activity-list').innerHTML=state.activity.length?state.activity.map(task=>`<button type="button" data-activity-task="${escape(task.taskId)}"><span class="cc-activity-dot" data-state="${escape(task.state)}"></span><span><strong>${escape(task.userMessage||'历史任务')}</strong><small>${escape(stateNames[task.state]??task.state)}</small></span>${centerIcon('arrow')}</button>`).join(''):'<div class="cc-activity-empty"><span>⌁</span><strong>新的进展，会留在这里。</strong><p>发送第一条消息，开始积累你的工作记录。</p></div>';}
+    const nextActivity=JSON.stringify(state.activity);if(nextActivity!==activitySignature){activitySignature=nextActivity;side.querySelector('.cc-activity-list').innerHTML=state.activity.length?state.activity.map(task=>`<button type="button" data-activity-task="${escape(task.taskId)}"><span class="cc-activity-dot" data-state="${escape(task.state)}"></span><span><strong>${escape(task.userMessage||'历史任务')}</strong><small>${escape(stateNames[task.state]??task.state)}</small></span>${centerIcon('arrow')}</button>`).join(''):'<p class="cc-activity-empty">暂无活动记录</p>';}
   }};
 }
