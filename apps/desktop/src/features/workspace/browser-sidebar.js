@@ -43,12 +43,13 @@ export function mountWorkspaceBrowserSidebar(shell, bar, invoke, report) {
       if (disposed || container.hidden || current !== presentation) return;
       if (!pane) {
         const assistantId = shell.dataset.browserAssistantId || undefined;
+        const paneId = window.crypto.randomUUID();
         const host = document.createElement('div');
         container.replaceChildren(host);
         pane = mountBrowserPane(host, {
           call(action, payload) {
             return invoke('browser.workspace.action', {
-              action, ...(payload === undefined ? {} : {payload}), ...(assistantId ? {assistantId} : {}),
+              action, paneId, ...(payload === undefined ? {} : {payload}), ...(assistantId ? {assistantId} : {}),
             });
           },
           onState(listener) {

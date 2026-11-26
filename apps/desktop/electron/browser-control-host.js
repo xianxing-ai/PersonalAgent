@@ -242,6 +242,7 @@ export function createBrowserControlHost(options={}) {
     },
     captureChatPage:id=>sessions.get(id)?.captureChatPage(id),
     bindChatTask:(id,taskId,token)=>sessions.get(id)?.bindChatTask(id,taskId,token)??false,
+    suspendWorkspaceView:id=>sessions.get(id)?.suspendWorkspaceView(),
     releaseWorkspaceView(id=visible){sessions.get(id)?.releaseWorkspaceView(id);if(id===visible)visible=undefined;},
     bind(app){
       if(application===app)return;
@@ -280,7 +281,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   let session=new AbortController(),networkError,lastFailure,downloadSession,expectedDownload;
   let workspaceOwned=false,pendingHandoff,handoffTask,waitingWorkers=0;
   let pageConversation,pageOrigin,documentEpoch=0,presented,mediaPlayback;
-  let localRead,workspaceVisibility=0;
+  let localRead,workspaceVisibility=0,previewSuspended=false;
   const targets=new Map(),artifacts=new Map(),exportScopes=new Map(),exportRequests=new Map();
   const exportKey=(taskId,id)=>JSON.stringify([taskId,id]);
   const profile=path.join(userDataPath,'controlled-browser-profile'),artifactRoot=path.join(userDataPath,'controlled-browser-artifacts');
@@ -315,7 +316,10 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     if(!page||closed||blocked||!workspaceOwned||pendingHandoff||handoffTask)return false;
     const current=new URL(page.url()).origin;
     if(presented?.page===page&&presented.origin===current)return true;
-    return !!localRead&&localRead.page===page&&localRead.expires>now()&&localRead.origin===url.origin&&current===url.origin;
+    return !previewSuspended&&!!localRead&&localRead.page===page&&localRead.expires>now()&&localRead.origin===url.origin&&current===url.origin;
+  }
+  function suspendWorkspaceView(){
+    previewSuspended=true;localRead=undefined;
   }
   function playingSource(url){
     return mediaPlayback&&mediaPlayback.page===page&&!page.isClosed()&&mediaPlayback.document===page.url()
@@ -882,6 +886,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(action==='state'||action==='preview')return {state:'stopped',connected:false,busy:false,url:'',title:'',canGoBack:false,canGoForward:false,presenting:false};
       fail('REVISION_CONFLICT','浏览器仍在另一段对话中使用，请先在原对话关闭页面');
     }
+    previewSuspended=false;
     if(action==='state')return workspaceState();
     if(busy||waitingWorkers)fail('REVISION_CONFLICT','浏览器正在处理另一项操作，请稍后再试');
     const owned=new AbortController();
@@ -932,7 +937,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(networkError)fail(networkError,'网页请求已被来源策略拦截，请检查目标网址');
       const preview=await workspacePage.preview(ownedPage,check,timeout);
       if(preview.url)pageOrigin=new URL(preview.url).origin;
-      if(workspaceOwned&&!handoffTask&&!pendingHandoff&&preview.url)
+      if(!previewSuspended&&workspaceOwned&&!handoffTask&&!pendingHandoff&&preview.url)
         localRead={page:ownedPage,origin:new URL(preview.url).origin,expires:now()+30_000};
       check();return {...workspaceState(),...preview,busy:false};
     }catch(error){
@@ -1024,7 +1029,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(needsRecovery??!unfinishedBrowserWrites(value.runtime).next().done){blocked=true;state='blocked';}
       publish();
     },
-    snapshot,workspace,bindWorkspaceHandoff,releaseWorkspaceView,captureChatPage,bindChatTask,
+    snapshot,workspace,bindWorkspaceHandoff,suspendWorkspaceView,releaseWorkspaceView,captureChatPage,bindChatTask,
     activeTasks:()=>activeOperation?.scope.taskId?[activeOperation.scope.taskId]:[],
     async start(scope) {await launch(scope);return snapshot();},
     async stop() {session.abort();await disposeContext();return snapshot();},

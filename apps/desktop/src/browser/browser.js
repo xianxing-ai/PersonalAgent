@@ -87,7 +87,10 @@ export function mountBrowserPane(host, bridge) {
   let editingAddress = false;
   let shown = false;
   let disposed = false;
+  let presentingRequest = false;
+  let poll;
   let release = Promise.resolve();
+  const inForeground = () => shown && !disposed && !document.hidden && document.hasFocus();
 
   function message(error) {
     const raw = typeof error?.message === 'string' ? error.message : '';
@@ -108,6 +111,8 @@ export function mountBrowserPane(host, bridge) {
       (control.tag !== 'input' && (control.editable === true || control.role === 'textbox'));
   }
   function controlKind(control) {
+    if (control.tag === 'video') return '视频';
+    if (control.tag === 'audio') return '音频';
     if (control.tag === 'select') return '选择框';
     if (editable(control)) return '输入框';
     if (control.role === 'link' || control.tag === 'a') return '链接';
@@ -116,6 +121,10 @@ export function mountBrowserPane(host, bridge) {
     return '按钮';
   }
   function controlLabel(control) {
+    if (['video', 'audio'].includes(control.tag)) {
+      const action = control.ended ? '重新播放' : control.paused ? '播放' : '暂停';
+      return action + (control.name ? ' · ' + control.name : controlKind(control));
+    }
     return control.name || controlKind(control);
   }
   function selectedControl(ref) {
@@ -196,7 +205,9 @@ export function mountBrowserPane(host, bridge) {
     if (!value || typeof value.connected !== 'boolean') throw Error('浏览器返回了无效的页面状态。');
     const prior = screen;
     const oldUrl = page.url;
+    const wasPresenting = page.presenting;
     page = value;
+    if (wasPresenting !== page.presenting) updatePolling();
     if (!page.connected || oldUrl !== page.url || page.viewId !== screen?.viewId) screen = undefined;
     if (validScreen(value)) { screen = value; observedAt = Date.now(); }
     if (prior?.image !== screen?.image) {
@@ -223,15 +234,15 @@ export function mountBrowserPane(host, bridge) {
   function openDialog() {
     return root.querySelector('dialog[open]');
   }
-  async function sync(passive = false, force = false) {
-    if (!shown || document.hidden || disposed || running || refreshing || (passive && openDialog())) return;
+  async function sync(passive = false, force = false, manual = false) {
+    if (!inForeground() || presentingRequest || running || refreshing || (passive && openDialog())) return;
     refreshing = (async () => {
       const summary = await bridge.call('state', {});
-      if (running || !shown || document.hidden || disposed) return;
+      if (running || !inForeground()) return;
       apply(summary, true);
-      if (summary.connected && summary.url && !summary.busy && (force || (!screen && !passiveError))) {
+      if (summary.connected && summary.url && !summary.busy && (!summary.presenting || manual) && (force || (!screen && !passiveError))) {
         const value = await bridge.call('preview', {});
-        if (running || !shown || document.hidden || disposed) return;
+        if (running || !inForeground()) return;
         apply(value, true);
       }
       if (force || screen) {
@@ -241,7 +252,7 @@ export function mountBrowserPane(host, bridge) {
     })();
     try { await refreshing; }
     catch (error) {
-      if (!running && shown && !document.hidden && !disposed) {
+      if (!running && inForeground()) {
         showError(message(error));
         passiveError = true;
       }
@@ -249,12 +260,17 @@ export function mountBrowserPane(host, bridge) {
   }
   function scheduleSync(delay = 160) {
     clearTimeout(timer);
+    if (!inForeground() || presentingRequest) return;
     timer = setTimeout(() => { void sync(true); }, delay);
   }
 
   async function perform(action, payload = {}, options = {}) {
     if (disposed || !shown || document.hidden || running) return false;
     running = true;
+    if (action === 'present') {
+      presentingRequest = true;
+      pausePolling();
+    }
     notice = '';
     showError('');
     updateChrome();
@@ -269,7 +285,7 @@ export function mountBrowserPane(host, bridge) {
       }
       const value = await bridge.call(action, payload);
       if (disposed) return false;
-      if (shown && !document.hidden) apply(value);
+      if (shown && (!document.hidden || action === 'present')) apply(value);
       if (action === 'present' && value.presenting === true)
         notice = '实时窗口已打开，可在网页播放器中播放声音和视频。';
       passiveError = false;
@@ -282,6 +298,10 @@ export function mountBrowserPane(host, bridge) {
       return false;
     } finally {
       running = false;
+      if (action === 'present') {
+        presentingRequest = false;
+        updatePolling();
+      }
       if (!disposed) updateChrome();
     }
   }
@@ -343,7 +363,7 @@ export function mountBrowserPane(host, bridge) {
   });
   $('clear-error').addEventListener('click', () => showError(''));
   for (const action of ['back', 'forward', 'reload']) $(action).addEventListener('click', () => { void perform(action); });
-  $('sync').addEventListener('click', () => { void sync(false, true); });
+  $('sync').addEventListener('click', () => { void sync(false, true, true); });
   $('present').addEventListener('click', () => { void perform('present'); });
   $('dismiss').addEventListener('click', () => bridge.dismiss());
   $('up').addEventListener('click', () => { void scrollRemote('up'); });
@@ -445,9 +465,16 @@ export function mountBrowserPane(host, bridge) {
   });
 
   const offState = bridge.onState?.(() => { if (shown && !refreshing && !running) scheduleSync(); });
-  let poll;
-  function suspend() {
+  function pausePolling() {
     clearTimeout(timer); clearTimeout(wheelTimer); clearInterval(poll); wheelDelta = 0;
+    poll = undefined;
+  }
+  function updatePolling() {
+    if (!inForeground() || presentingRequest || page.presenting) { pausePolling(); return; }
+    if (poll === undefined) poll = setInterval(() => { if (page.connected && !passiveError) void sync(true, true); }, 3500);
+  }
+  function releasePane() {
+    pausePolling();
     for (const dialog of root.querySelectorAll('dialog[open]')) dialog.close();
     screen = undefined;
     $('capture').removeAttribute('href');
@@ -458,16 +485,17 @@ export function mountBrowserPane(host, bridge) {
   async function resume() {
     await release;
     if (refreshing) await refreshing.catch(() => {});
-    if (!shown || document.hidden || disposed) return;
-    clearInterval(poll);
-    poll = setInterval(() => { if (page.connected && !passiveError) void sync(true, true); }, 3500);
+    if (!inForeground() || presentingRequest) return;
+    updatePolling();
     await sync(false, true);
   }
   function onVisibility() {
     if (!shown || disposed) return;
-    if (document.hidden) suspend(); else void resume();
+    if (!inForeground()) pausePolling(); else void resume();
   }
   document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('blur', pausePolling);
+  window.addEventListener('focus', onVisibility);
   return {
     onShow() {
       if (disposed) return;
@@ -478,12 +506,14 @@ export function mountBrowserPane(host, bridge) {
     onHide() {
       if (!shown) return;
       shown = false;
-      suspend();
+      releasePane();
     },
     dispose() {
       this.onHide();
       disposed = true;
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', pausePolling);
+      window.removeEventListener('focus', onVisibility);
       offState?.();
       host.remove();
     }

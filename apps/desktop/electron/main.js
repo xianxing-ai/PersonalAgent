@@ -295,6 +295,13 @@ let panel;
 let draftQuitPreflight;
 let admin;
 let workspace;
+const browserPanes=new WeakMap();
+function releaseBrowserPane(window,paneId){
+  const pane=browserPanes.get(window);
+  if(!pane||paneId!==undefined&&pane.id!==paneId)return;
+  browserPanes.delete(window);
+  browserControlHost?.releaseWorkspaceView(pane.conversationId);
+}
 let workspaceChildActivity;
 let workspaceChildWatch;
 let taskActivitySequence=0;
@@ -1897,9 +1904,10 @@ async function openWorkspace() {
   bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
   const window=workspace;
-  const releaseBrowserView=()=>browserControlHost?.releaseWorkspaceView?.();
-  window.on('hide',releaseBrowserView);
-  window.on('minimize',releaseBrowserView);
+  const suspendBrowserView=()=>browserControlHost?.suspendWorkspaceView(browserPanes.get(window)?.conversationId);
+  const releaseBrowserView=()=>releaseBrowserPane(window);
+  window.on('hide',suspendBrowserView);
+  window.on('minimize',suspendBrowserView);
   window.on('closed',releaseBrowserView);
   window.webContents.on('render-process-gone',releaseBrowserView);
   const clearWatch=()=>{if(workspace===window){workspaceChildActivity=undefined;workspaceChildWatch=undefined;}};
@@ -4911,19 +4919,29 @@ async function action(event, name, payload) {
   if (name === 'browser.workspace.action') {
     if(sender!==workspace || !browserControlHost || !competitionMode)
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','请在已连接运行时的工作台使用内置浏览器');
-    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>!['action','payload','assistantId'].includes(key)))
+    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>!['action','payload','assistantId','paneId'].includes(key))
+      ||typeof payload.paneId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.paneId))
       throw new ProtocolError('INVALID_ARGUMENT','浏览器请求格式无效');
     const operation=payload.action, args=payload.payload??{};
     if(!args||typeof args!=='object'||Array.isArray(args))throw new ProtocolError('INVALID_ARGUMENT','浏览器参数无效');
     const assistantId=payload.assistantId;
     if(assistantId!==undefined&&(typeof assistantId!=='string'||!assistantId.trim()||assistantId.length>128))
       throw new ProtocolError('INVALID_ARGUMENT','请选择当前助手');
-    const conversationId=assistantId?runtimeApplication.runtime.getAssistant(assistantId).conversationId:conversations.activeConversationId('workspace');
-    const scope={conversationId,signal:AbortSignal.timeout(30_000),deadline:new Date(Date.now()+30_000).toISOString()};
-    if(operation==='release'){browserControlHost.releaseWorkspaceView(conversationId);return {released:true};}
+    if(operation==='release'){releaseBrowserPane(sender,payload.paneId);return {released:true};}
     if(!sender.isVisible()||sender.isMinimized())throw new ProtocolError('UNAUTHORIZED','请先展开工作台');
     if(!['state','preview','open','back','forward','reload','close','click','type','select','press','scroll','present'].includes(operation))
       throw new ProtocolError('INVALID_ARGUMENT','未知的浏览器操作');
+    // The pane ID identifies a mounted view only. Runtime/Main chooses the owning
+    // conversation and remembers it so a delayed release cannot target its successor.
+    const conversationId=assistantId?runtimeApplication.runtime.getAssistant(assistantId).conversationId:conversations.activeConversationId('workspace');
+    const previous=browserPanes.get(sender);
+    if(previous?.id===payload.paneId&&previous.conversationId!==conversationId)
+      throw new ProtocolError('REVISION_CONFLICT','工作台对话已切换，请使用当前对话的浏览器');
+    if(previous?.id!==payload.paneId){
+      releaseBrowserPane(sender);
+      browserPanes.set(sender,{id:payload.paneId,conversationId});
+    }
+    const scope={conversationId,signal:AbortSignal.timeout(30_000),deadline:new Date(Date.now()+30_000).toISOString()};
     return browserControlHost.workspace(operation,args,scope);
   }
   if (name === 'operator.brake') {
