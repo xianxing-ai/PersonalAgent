@@ -63,9 +63,13 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   const shell=root.querySelector('.workspace'),bar=root.querySelector('.workspace-titlebar'),main=root.querySelector('.workspace-main'),layout=root.querySelector('.workspace-layout');
   shell.classList.add('command-center');
   const rail=document.createElement('aside');rail.className='cc-rail';rail.setAttribute('aria-label','主导航');
-  rail.innerHTML=`<div class="cc-brand"><span class="cc-brand-orb" aria-hidden="true"></span><strong>Synstar</strong><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div><nav>${[['home','工作台'],['tasks','任务记录'],['memory','知识与记忆']].map(([id,label])=>`<button type="button" data-cc-nav="${id}" ${id==='home'?'aria-current="page"':''} title="${label}">${centerIcon(id)}<span>${label}</span></button>`).join('')}<button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置与偏好</span></button></nav>`;
+  const pages = [['home', '工作台', '工作台'], ['tasks', '任务', '任务记录'], ['memory', '知识', '知识与记忆']];
+  rail.innerHTML=`<div class="cc-brand"><span class="cc-brand-orb" aria-hidden="true"></span><strong>Synstar</strong><button type="button" class="cc-history-toggle" aria-label="对话历史" title="对话历史">${centerIcon('search')}</button><button type="button" class="cc-new-chat" aria-label="新对话" title="新对话">${centerIcon('plus')}</button></div><div class="cc-thread-scroll"></div><div class="cc-rail-spacer"></div>
+    <nav aria-label="工作台导航">
+      ${pages.map(([id, label, name]) => `<button type="button" data-cc-nav="${id}" aria-label="${name}" title="${name}">${centerIcon(id)}<span>${label}</span></button>`).join('')}
+      <button type="button" class="cc-settings" aria-label="设置与偏好" title="设置与偏好">${centerIcon('settings')}<span>设置</span></button>
+    </nav>`;
   shell.prepend(rail);
-  for(const button of rail.querySelectorAll('button')){const label=button.querySelector('span')?.textContent;if(label){button.setAttribute('aria-label',label);button.title=label;}}
   bar.querySelector('.workspace-app-title').textContent='工作台';
   const search=rail.querySelector('.cc-history-toggle');
   const themeButton=document.createElement('button');themeButton.type='button';themeButton.className='cc-theme-toggle';themeButton.setAttribute('aria-label','切换黑白主题');themeButton.title='切换黑白主题';themeButton.textContent='◐';themeButton.onclick=async()=>{const {saveTheme}=await import('../../ui/preferences.js');saveTheme(document.documentElement.dataset.theme==='light'?'dark':'light');};bar.querySelector('.window-controls').before(themeButton);
@@ -175,7 +179,20 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
   local.innerHTML='<header><h2 data-cc-local-title></h2><button type="button" data-cc-local-back>返回对话</button></header><div data-cc-local-body></div>';
   main.append(local);
   let localView='home',lastData={};
-  const showHome=()=>{localView='home';local.hidden=true;hero.hidden=false;layout.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav==='home'?'page':'false');};
+  const pageButtons = rail.querySelectorAll('[data-cc-nav]');
+  function setPage(page) {
+    localView = page;
+    const home = page === 'home';
+    local.hidden = home;
+    hero.hidden = !home;
+    layout.hidden = !home;
+    for (const button of pageButtons) {
+      if (button.dataset.ccNav === page) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    }
+  }
+  const showHome = () => setPage('home');
+  showHome();
   const paintLocal=data=>{
     const body=local.querySelector('[data-cc-local-body]');
     local.querySelector('[data-cc-local-title]').textContent=localView==='memory'?'知识与记忆':'任务记录';
@@ -194,7 +211,7 @@ export function mountCommandCenter(root,{sessionRoot,assistantRoster,switchConve
     if(status){status.textContent=statusText;return;}
     body.innerHTML=`<div class="cc-local-actions"><button type="button" data-cc-admin-page="memory">私人记忆与知识源设置</button><button type="button" data-cc-watch-check>查看知识关注</button><button type="button" data-cc-cognition-check>查看认知提议与回执</button></div><p data-cc-memory-status>${escape(statusText)}</p><form class="cc-local-search"><label>查找笔记<input name="query" type="search" maxlength="200" placeholder="输入要找的内容"></label><button type="submit">查找</button></form><div data-cc-memory-result></div><div data-cc-watch-result></div><div data-cc-cognition-result></div>`;
   };
-  const showLocal=key=>{setHistoryOpen(false);localView=key;hero.hidden=true;layout.hidden=true;local.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav===key?'page':'false');paintLocal(lastData);closeSidebar();};
+  const showLocal=key=>{setHistoryOpen(false);setPage(key);paintLocal(lastData);closeSidebar();};
   local.querySelector('[data-cc-local-back]').onclick=()=>{showHome();input.focus();};
   let catalogReq=0,watchReq=0,cognitionReq=0;
   const loadCognition=async(button,feedback='')=>{
