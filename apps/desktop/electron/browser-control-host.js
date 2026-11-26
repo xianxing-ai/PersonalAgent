@@ -246,6 +246,24 @@ export function createBrowserControlHost(options={}) {
       if(!parent||parent!==application.runtime.loadCheckpoint(record.taskId,'subtask-parent')?.parentTaskId||owner(parent)!==prior)return false;
       return sessions.get(next)?.restrictClickToRead(scope,input)===true;
     },
+    restrictChatBrowserRead(scope,args){
+      if(closed||!application||scope?.toolName!=='browser.click'||scope.toolVersion!==VERSION||!scope.taskId||!scope.runId
+        ||scope.signal?.aborted||!args||args.mediaAction!==undefined&&args.mediaAction!=='play')return false;
+      try{
+        const key=owner(scope.taskId),host=sessions.get(key);
+        if(typeof key!=='string'||key==='default'||!host)return false;
+        const runtime=application.runtime,parent=runtime.loadCheckpoint(scope.taskId,'browser-worker-scope:v1')?.parentTaskId;
+        if(parent){
+          if(runtime.loadCheckpoint(scope.taskId,'subtask-parent')?.parentTaskId!==parent||owner(parent)!==key)return false;
+        }else if(!runtime.loadCheckpoint(scope.taskId,'browser-user-task:v1'))return false;
+        // This Runtime port can validate the pending proposal before approval
+        // and the saved invocation afterwards. execute() also requires the live grant.
+        const original=application.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);
+        if(!original||original.runId!==scope.runId||original.toolName!==scope.toolName||original.toolVersion!==VERSION
+          ||original.deadline!==scope.deadline||original.argumentsDigest!==toolArgumentsDigest(args))return false;
+        return host.restrictClickToRead(scope,args,key);
+      }catch{return false;}
+    },
     competitionToolAvailability:template.competitionToolAvailability.map((item,i)=>({...item,available:scope=>{
       const key=owner(scope.taskId);return !closed&&!!key&&(sessions.get(key)??template).competitionToolAvailability[i].available(scope);
     }})),
@@ -308,18 +326,24 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
   let localRead,workspaceVisibility=0,previewSuspended=false;
   const targets=new Map(),artifacts=new Map(),exportScopes=new Map(),exportRequests=new Map();
   const restrictedReads=new Map();
-  function restrictClickToRead(scope,args){
+  function restrictClickToRead(scope,args,chat){
+    if(closed||blocked||scope.signal?.aborted||!(now()<Date.parse(scope.deadline))||
+      chat&&(chat!==pageConversation||workspaceOwned&&!belongsToHandoff(scope.taskId)))return false;
     const view=targets.get(args.targetRef),field=view?.controls.find(item=>item.ref===args.ref);
     if(!field||view.taskId!==scope.taskId||view.expiresAt<=now()||view.page!==page||!page||page.isClosed()||
       view.url!==page.url()||view.generation!==generation)return false;
     let kind;
-    if(['video','audio'].includes(field.tag)&&['play','pause'].includes(args.mediaAction))
+    if(['video','audio'].includes(field.tag)&&field.mediaSource&&['play','pause'].includes(args.mediaAction))
       kind='media';
-    else if(!args.mediaAction&&field.tag==='a'&&!field.downloadAttribute&&/^https?:/iu.test(field.downloadUrl))
+    else if(!args.mediaAction&&field.tag==='a'&&!field.downloadAttribute&&/^https?:/iu.test(field.downloadUrl)){
+      let url;try{url=new URL(field.downloadUrl);}catch{return false;}
+      if(url.username||url.password||url.href.length>4096)return false;
       kind='link';
-    else return false;
+    }else return false;
     for(const [key,entry] of restrictedReads)if(entry.expires<=now())restrictedReads.delete(key);
-    restrictedReads.set(exportKey(scope.taskId,scope.runId),{kind,digest:toolArgumentsDigest(args),expires:Date.parse(scope.deadline)});
+    const identity=exportKey(scope.taskId,scope.runId),digest=toolArgumentsDigest(args),prior=restrictedReads.get(identity);
+    if(prior&&(prior.kind!==kind||prior.digest!==digest))return false;
+    restrictedReads.set(identity,{kind,digest,expires:Date.parse(scope.deadline)});
     return true;
   }
   const exportKey=(taskId,id)=>JSON.stringify([taskId,id]);
@@ -801,11 +825,14 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         const type=el.tagName.toLowerCase(),role=el.getAttribute('role')??(type==='a'?'link':type==='select'?'combobox':type==='button'?'button':['input','textarea'].includes(type)?'textbox':type);
         const name=(el.getAttribute('aria-label')??el.labels?.[0]?.innerText??el.getAttribute('placeholder')??el.innerText??'').trim().slice(0,200);
         const box=localView?el.getBoundingClientRect():undefined;
+        const media=type==='video'||type==='audio';
+        const source=media?(el.currentSrc||el.src||el.querySelector('source[src]')?.src||''):'';
         return {ref,role,name,tag:type,inputType:el.getAttribute('type')??'',disabled:Boolean(el.disabled),
           ...(box?{bounds:{x:box.x,y:box.y,width:box.width,height:box.height},focused:document.activeElement===el,
             editable:el.isContentEditable,...(type==='select'?{multiple:el.multiple}:{})}:{}),
           ...(type==='a'?{downloadUrl:el.href,downloadAttribute:el.hasAttribute('download')}:{}),
-          ...(['video','audio'].includes(type)?{paused:el.paused===true,ended:el.ended===true}:{}),
+          ...(media?{paused:el.paused===true,ended:el.ended===true,
+            mediaSource:source.length<=4096&&/^(?:https?:|blob:)/iu.test(source)?source:''}:{}),
           ...(type==='select'?{options:[...el.options].slice(0,40).map(o=>({value:o.value.slice(0,200),label:o.label.slice(0,200),
             ...(localView?{selected:o.selected,disabled:o.disabled||!!o.closest('optgroup[disabled]')}:{})}))}:{}),
           ...(!localView&&['input','textarea'].includes(type)?{value:String(el.value??'').slice(0,500)}:{})};
@@ -865,7 +892,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     const safeUrl=new URL(url);safeUrl.search='';safeUrl.hash='';
     return {source:'playwright',state:action?'action_observed':'observed',targetRef:id,observedAt:new Date(now()).toISOString(),
       expiresAt:new Date(expiresAt).toISOString(),url:safeUrl.href,...data,
-      controls:data.controls.map(({downloadUrl,downloadAttribute,...control})=>({...control,...(downloadUrl?{downloadable:/^https?:/.test(downloadUrl)}:{})})),goalVerified:false};
+      controls:data.controls.map(({downloadUrl,downloadAttribute,mediaSource,...control})=>({...control,...(downloadUrl?{downloadable:/^https?:/.test(downloadUrl)}:{})})),goalVerified:false};
   }
   function currentTarget(scope,args,toolName) {
     const value=targets.get(args.targetRef);
@@ -1042,19 +1069,29 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
               currentTarget(scope,args,toolName);
             }
           }
+          if(restrictedRead==='link'){
+            const unchanged=await selected.locator.evaluate((element,href)=>
+              element instanceof HTMLAnchorElement&&!element.hasAttribute('download')&&element.href===href,selected.type.href);
+            if(!unchanged)fail('REVISION_CONFLICT','原只读链接已经改变，请重新观察');
+          }
+          if(restrictedRead)currentTarget(scope,args,toolName);
           targets.delete(args.targetRef);dispatched=true;
           const timeout=Math.max(1,Date.parse(scope.deadline)-now());
           if(name==='click'){
             if(args.mediaAction){
               if(args.mediaAction==='play'&&startMinimized)await revealPage(seen.page,()=>{
                 active(scope);
-                if(page!==seen.page||page.url()!==seen.url||generation!==seen.generation)fail('REVISION_CONFLICT','原媒体页面已变化');
+                if(page!==seen.page||page.url()!==seen.url||generation!==seen.generation||restrictedRead&&seen.expiresAt<=now())
+                  fail('REVISION_CONFLICT','原媒体页面已变化或观察已过期，请重新观察');
               });
-              const media=await selected.locator.evaluate(async(element,action)=>{
+              const originalMedia=restrictedRead==='media'?seen.controls.find(field=>field.ref===args.ref):undefined;
+              const media=await selected.locator.evaluate(async(element,{action,source,tag})=>{
                 if(!(element instanceof HTMLMediaElement))throw Error('Media unavailable');
+                if(tag&&(element.tagName.toLowerCase()!==tag||!source||
+                  (element.currentSrc||element.src||element.querySelector('source[src]')?.src||'')!==source))throw Error('Media source changed');
                 if(action==='play')await element.play();else element.pause();
                 return {source:element.paused?'':element.currentSrc,tag:element.tagName.toLowerCase(),paused:element.paused,ended:element.ended};
-              },args.mediaAction);
+              },{action:args.mediaAction,source:originalMedia?.mediaSource,tag:originalMedia?.tag});
               active(scope);mediaPlayback=undefined;
               const source=media.source;
               playback={action:args.mediaAction,tag:media.tag,paused:media.paused,ended:media.ended};
