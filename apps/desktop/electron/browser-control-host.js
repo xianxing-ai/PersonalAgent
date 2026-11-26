@@ -123,6 +123,20 @@ const browserReasons={ENOENT:'浏览器组件文件不存在，请准备浏览�
   ERR_MODULE_NOT_FOUND:'浏览器组件依赖缺失，请完整安装应用',ERR_PACKAGE_PATH_NOT_EXPORTED:'浏览器组件版本不兼容，请更新完整应用',
   EADDRINUSE:'浏览器回环代理端口被占用',EADDRNOTAVAIL:'浏览器代理无法绑定本机回环地址',
   ENOTFOUND:'公共网页地址无法解析',ECONNREFUSED:'网页或浏览器代理拒绝连接',ECONNRESET:'浏览器连接被中断',ETIMEDOUT:'浏览器连接超时'};
+function driverReason(error){
+  const message=Object.getOwnPropertyDescriptor(error??{},'message')?.value;
+  if(typeof message!=='string')return;
+  const code=message.match(/\bnet::(ERR_[A-Z0-9_]{1,48})\b/u)?.[1];
+  if(code)return code;
+  if(/Execution context was destroyed|because of a navigation/i.test(message))return 'DOCUMENT_CHANGED';
+  if(/Target page, context or browser has been closed|Target closed/i.test(message))return 'TARGET_CLOSED';
+  if(/waiting for fonts|document\.fonts\.ready/i.test(message))return 'FONTS_PENDING';
+  if(/[Tt]imeout \d+ms exceeded|timed out/i.test(message))return 'DEADLINE';
+  if(/Cannot take screenshot|Unable to capture screenshot|Page\.captureScreenshot/i.test(message))return 'CAPTURE_FAILED';
+  if(/Protocol error/i.test(message))return 'DRIVER_PROTOCOL';
+  if(/ReferenceError:/u.test(message))return 'PAGE_REFERENCE';
+  if(/TypeError:/u.test(message))return 'PAGE_TYPE';
+}
 function safeFailure(error,stage) {
   const failure=computerControlFailure(error,stage);
   if(trustedErrors.has(error))return {...failure,message:error.message};
@@ -132,7 +146,7 @@ function safeFailure(error,stage) {
   if(stage==='start')try {
     const message=Object.getOwnPropertyDescriptor(error,'message');
     if(typeof message?.value==='string'&&/Executable doesn't exist|Please run the following command to download new browsers/.test(message.value))
-      return {...failure,code:'UNSUPPORTED_CAPABILITY',message:'未找到可启动的浏览器，请准备浏览器组件或安装 Edge'};
+      return {...failure,code:'UNSUPPORTED_CAPABILITY',message:'未找到应用专用浏览器，请修复 Synstar 浏览器组件'};
     if(typeof message?.value==='string'&&/No usable sandbox|Chromium sandboxing failed|Running as root without --no-sandbox/i.test(message.value))
       return {...failure,code:'UNSUPPORTED_CAPABILITY',message:'当前环境无法启动带沙箱的 Chromium 浏览器，请检查本机浏览器和系统沙箱配置'};
   }catch{}
@@ -400,7 +414,7 @@ function* unfinishedBrowserWrites(runtime,includeNavigations=true){
     beforeSequence=batch.nextBeforeSequence;
   }while(beforeSequence!==undefined);
 }
-function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePresence,attempts,onUpdate=()=>{},now=Date.now,
+function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePresence,attempts,onUpdate=()=>{},onWorkspaceDiagnostic,allowExplicitBrowserOpen,now=Date.now,
   playwright:injectedPlaywright,dnsLookup=lookup,testOnlyAllowedOrigins=[],allowFakeIpProxy=false,downloadDirectory,maxDownloadBytes=10_485_760,
   authorizeWorkflowTarget,authorizationQuestions,confirmSource,needsRecovery,resolveConversation}={}) {
   if(typeof userDataPath!=='string'||!path.isAbsolute(userDataPath)||(typeof authorizePresence!=='function'&&!authorizationQuestions)
@@ -877,10 +891,9 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       if(before!==documentEpoch)response=documents.get(withoutFragment(ownedPage.url()));
       if(!response){
         if(networkError)fail(networkError,'目标网页的主文档请求已被拦截');
-        const detail=Object.getOwnPropertyDescriptor(error,'message')?.value;
-        const code=typeof detail==='string'?detail.match(/\bnet::(ERR_[A-Z0-9_]+)\b/u)?.[1]:undefined;
+        const code=driverReason(error);operation.driverReason=code;
         fail(code==='ERR_NAME_NOT_RESOLVED'?'NOT_FOUND':code==='ERR_TIMED_OUT'?'TIMEOUT':'EXTERNAL_FAILURE',
-          '未取得目标网页的主文档响应'+(code?'（'+code+'）':''));
+          '未取得目标网页的主文档响应');
       }
     }finally{ownedPage.off('response',onResponse);}
     current();
@@ -1099,7 +1112,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     session=new AbortController();state=blocked?'blocked':'stopped';publish();
   }
   async function execute(name,args,scope,read) {
-    const toolName='browser.'+name;let dispatched=false,recorded=false,owned=false,downloadPending,originalElement,failureStage=read?'read':'preflight';
+    const toolName='browser.'+name;let dispatched=false,recorded=false,owned=false,downloadPending,originalElement,freshNavigation=false,failureStage=read?'read':'preflight';
     const identity=exportKey(scope.taskId,scope.runId),restriction=restrictedReads.get(identity);
     if(name==='prepare'&&restriction?.kind!=='prepare')throw new ToolNotStartedError('UNAUTHORIZED','缺少原用户与当前网页准备操作的精确绑定');
     if(restriction&&(name!==(restriction.kind==='prepare'?'prepare':'click')||restriction.targetRef!==args.targetRef||restriction.digest!==toolArgumentsDigest(args)
@@ -1120,8 +1133,14 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       const conversation=resolveConversation?resolveConversation(scope.taskId):application.readToolConversation?.(scope.taskId)??application.runtime.getTask(scope.taskId).conversationId;
       if(authorizationQuestions&&pageConversation&&conversation!==pageConversation&&!belongsToHandoff(scope.taskId))
         fail('UNAUTHORIZED','当前页属于另一段对话');
-      if(workspaceOwned&&page&&!page.isClosed()&&!belongsToHandoff(scope.taskId))
-        fail('UNAUTHORIZED','聊天提交后网页已变更或由另一项任务使用，请在当前聊天重新发出浏览请求');
+      if(workspaceOwned&&page&&!page.isClosed()&&!belongsToHandoff(scope.taskId)){
+        const free=(!pendingHandoff||pendingHandoff.expires<=now())&&
+          (!handoffTask||['succeeded','failed','cancelled'].includes(application.runtime.getTask(handoffTask).state))&&
+          ![...restrictedReads.values()].some(item=>item.expires>now());
+        freshNavigation=free&&!!authorizationQuestions&&name==='open'&&conversation===pageConversation&&
+          allowExplicitBrowserOpen?.({taskId:scope.taskId,url:args.url})===true;
+        if(!freshNavigation)fail('UNAUTHORIZED','聊天提交后网页已变更或由另一项任务使用，请在当前聊天重新发出浏览请求');
+      }
       if(name==='observe'&&authorizationQuestions){
         if(noDocument())return {...noPage};
         if(exportRequests.get(exportKey(scope.taskId,scope.runId))?.statusOnly)
@@ -1138,6 +1157,11 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         if(name==='open') {
           const url=await assertPublicBrowserUrl(args.url,networkOptions);
           activeOperation.origins.clear();activeOperation.origins.add(url.origin);await permit(scope,args,toolName,url.origin);
+          if(freshNavigation){
+            // Reset this conversation's browser before navigation: even a
+            // failed or same-document GET cannot disclose the previous DOM.
+            await disposeContext(false);original(scope,args,toolName);
+          }
           if(!page||page.isClosed()){workspaceOwned=false;handoffTask=undefined;}
           failureStage='start';await launch(scope);failureStage='preflight';
           await recordAttempt(scope,args,toolName,()=>{recorded=true;});dispatched=true;
@@ -1332,6 +1356,10 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
       });
     } catch(error) {
       lastFailure=safeFailure(error,dispatched||recorded?'execute':failureStage);
+      if(name==='open')try{
+        onWorkspaceDiagnostic?.({action:'worker_open',stage:owned?(activeOperation?.navigationStage??lastFailure.stage):lastFailure.stage,
+          code:lastFailure.code,reason:activeOperation?.driverReason??driverReason(error),httpStatus:activeOperation?.httpStatus});
+      }catch{}
       if(name==='prepare'&&!dispatched)throw new ToolNotStartedError(lastFailure.code,lastFailure.message);
       if(owned&&['select_option','set_date'].includes(activeOperation?.preparationAction)){
         clearTargets();throw browserError(lastFailure.code,lastFailure.message);
@@ -1405,7 +1433,7 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     let release;
     const finished=new Promise(resolve=>{release=resolve;});
     const readOnlyScroll=action==='scroll'&&!!authorizationQuestions;
-    const operation={scope,workspace:true,passive,visibility,readOnlyNavigation:action==='open'&&!!authorizationQuestions,
+    const operation={scope,workspace:true,passive,visibility,stage:'action',readOnlyNavigation:action==='open'&&!!authorizationQuestions,
       readOnlyScroll,readOnlyObservation:readOnlyScroll,origins:new Set(),finished};
     const check=()=>{active(scope);if(activeOperation!==operation||workspaceVisibility!==visibility)fail('CANCELLED','工作台请求已结束');};
     const timeout=()=>Math.max(1,Date.parse(scope.deadline)-now());
@@ -1417,12 +1445,14 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
     try{
       if(action==='close'){await disposeContext(false);return {...workspaceState(),busy:false};}
       if(action==='open'){
-        await assertPublicBrowserUrl(args.url,networkOptions);check();await launch(scope);pageConversation=conversationId;
+        operation.stage='resolve';await assertPublicBrowserUrl(args.url,networkOptions);check();
+        operation.stage='start';await launch(scope);pageConversation=conversationId;
       }
       check();
       if(!page||page.isClosed())fail('UNSUPPORTED_CAPABILITY','请先打开公共网页');
       const ownedPage=page;
       if(action!=='preview'&&action!=='present'){
+        operation.stage='navigate';
         const handoff=await workspacePage.operate(ownedPage,action,args,operation,check,timeout);
         check();if(action==='handoff'){
           workspaceOwned=true;handoffTask=undefined;localRead=undefined;clearTargets();++generation;
@@ -1431,18 +1461,23 @@ function createBrowserSession({userDataPath,isFullAccess=()=>false,authorizePres
         }
       }
       if(networkError)fail(networkError,'网页请求已被来源策略拦截，请检查目标网址');
-      const preview=await workspacePage.preview(ownedPage,check,timeout);
+      operation.stage='preview';
+      const preview=await workspacePage.preview(ownedPage,check,timeout,stage=>{operation.stage=stage;});
       if(preview.url)pageOrigin=new URL(preview.url).origin;
       if(!previewSuspended&&workspaceOwned&&!handoffTask&&!pendingHandoff&&preview.url)
         localRead={page:ownedPage,origin:new URL(preview.url).origin,expires:now()+30_000};
       check();return {...workspaceState(),...preview,busy:false};
     }catch(error){
-      const failure=safeFailure(error,'workspace');
+      const stage=operation.stage==='navigate'?(operation.navigationStage??'navigate'):operation.stage;
+      const failure=safeFailure(error,stage);
+      const reason=operation.driverReason??driverReason(error);
+      try{onWorkspaceDiagnostic?.({action,stage,code:failure.code,...(reason?{reason}:{}),
+        ...(Number.isInteger(operation.httpStatus)?{httpStatus:operation.httpStatus}:{})});}catch{}
       if(trustedErrors.has(error))throw error;
       if(networkError)throw browserError(networkError,'网页请求已被来源策略拦截，请检查目标网址');
       if(scope.signal.aborted)throw browserError('CANCELLED','当前浏览器操作已停止');
       // A driver error may echo the typed text, a selector, a URL query or a profile path.
-      const detail=browserReasons[failure.code]??'浏览器未完成这次操作，请刷新预览查看当前页面';
+      const detail=browserReasons[failure.code]??(stage.startsWith('preview')?'网页预览未能显示，请刷新预览。':'网页未能打开，请重试。');
       throw browserError(failure.code,detail);
     }finally{
       clearTimeout(timer);scope.signal.removeEventListener('abort',interrupt);

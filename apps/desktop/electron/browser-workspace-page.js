@@ -76,11 +76,12 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,na
     if(!same&&view===original)view=undefined;
     return {state:'frame',url:url.href,...image,...(same&&view===original?{viewId:original.id}:{})};
   }
-  async function preview(page,check,timeout) {
+  async function preview(page,check,timeout,stage=()=>{}) {
     if(!visibleUrl(page?.url()))return state(page);
     const documentRevision=revision;
     const url=await checkUrl(page.url());
     check();
+    stage('preview_controls');
     const doc=await readDocument(page,attribute,true);
     if(!doc||typeof doc.title!=='string'||doc.title.length>300||!Array.isArray(doc.controls)||doc.controls.length>100)
       fail('INVALID_ARGUMENT','网页控件数据无效');
@@ -98,7 +99,9 @@ export function createBrowserWorkspacePage({checkUrl,readDocument,findControl,na
         ...(Array.isArray(item.options)?{options:item.options.slice(0,40).filter(o=>typeof o?.value==='string'&&typeof o?.label==='string')
           .map(o=>({value:o.value.slice(0,200),label:o.label.slice(0,200),selected:o.selected===true,disabled:o.disabled===true}))}:{})});
     }
+    stage('preview_history');
     const history=await historyOf(page);
+    stage('preview_frame');
     const image=await capture(page,check,timeout);
     check();
     if(revision!==documentRevision||page.url()!==url.href)fail('REVISION_CONFLICT','网页在截图期间已变化，请刷新预览');
