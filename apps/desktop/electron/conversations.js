@@ -18,6 +18,8 @@ export class Conversations {
     this.migrationUncertain=false;
     this.turns = new Map();
     this.messages = new Map();
+    this.recentActivityTimes = undefined;
+    this.recentWorkspaceSessions = undefined;
     this.messageRevision = 0;
     this.displayMessageIndex = undefined;
     this.preferences = new Map();
@@ -87,7 +89,33 @@ export class Conversations {
       if(copy.surface==='workspace')return {...copy,legacyHistory:true};
       return copy.id==='desktop-panel'&&copy.title==='原面板对话'?{...copy,title:'主对话'}:copy;
     });
-    return {activeId,sessions,draft:this.session(activeId).draft};
+    const snapshot={activeId,sessions,draft:this.session(activeId).draft};
+    if(surface==='workspace')snapshot.recentSessions=this.recentSessions(sessions);
+    return snapshot;
+  }
+  recentSessions(visibleSessions) {
+    if (!this.recentActivityTimes) {
+      this.recentActivityTimes = new Map();
+      for (const turn of this.turns.values()) {
+        if (typeof turn.goal === 'string' && turn.goal.trim()) this.recordSessionActivity(turn.conversationId ?? taskSurfaceId(turn.surface), turn.createdAt);
+      }
+      for (const message of this.messages.values()) this.recordSessionActivity(message.conversationId, message.createdAt);
+    }
+    if (!this.recentWorkspaceSessions) {
+      const entries = visibleSessions.filter(session => !session.archived && this.recentActivityTimes.has(session.id))
+        .sort((a,b) => this.recentActivityTimes.get(b.id) - this.recentActivityTimes.get(a.id) || a.id.localeCompare(b.id))
+        .slice(0,3)
+        .map(({id,title}) => ({id, title, lastActivityAt:new Date(this.recentActivityTimes.get(id)).toISOString()}));
+      this.recentWorkspaceSessions = entries;
+    }
+    return this.recentWorkspaceSessions.map(entry => ({...entry}));
+  }
+  recordSessionActivity(id, createdAt) {
+    if (!this.recentActivityTimes || typeof createdAt !== 'string') return;
+    const time = Date.parse(createdAt);
+    if (!Number.isFinite(time) || time <= (this.recentActivityTimes.get(id) ?? -Infinity)) return;
+    this.recentActivityTimes.set(id,time);
+    this.recentWorkspaceSessions = undefined;
   }
   prohibitions(id){return this.session(id).prohibitions??{revision:0,items:[]};}
   setProhibitions(surface,id,{expectedRevision,items}){
@@ -98,7 +126,10 @@ export class Conversations {
     const value={...prior,prohibitions},sessions=new Map(this.sessions);sessions.set(id,value);
     this.saveSessions(sessions,this.activeSessions,[{kind:'sessions',id,value}]);return structuredClone(prohibitions);
   }
-  saveSessions(sessions,activeSessions=this.activeSessions,changes){this.save(this.turns,this.messages,this.preferences,sessions,activeSessions,changes);this.sessions=sessions;this.activeSessions=activeSessions;}
+  saveSessions(sessions,activeSessions=this.activeSessions,changes){
+    this.save(this.turns,this.messages,this.preferences,sessions,activeSessions,changes);
+    this.sessions=sessions;this.activeSessions=activeSessions;this.recentWorkspaceSessions=undefined;
+  }
   create(surface,title='新对话'){
     this.assertSurface(surface);const owner=this.sharedMain?'panel':surface;
     const value=this.validateSession({id:'desktop-'+owner+':'+randomUUID(),surface:owner,title,archived:false,createdAt:new Date().toISOString(),draft:''});
@@ -171,6 +202,11 @@ export class Conversations {
     this.save(turns,this.messages,this.preferences,this.sessions,this.activeSessions,
       [{kind:'turns',id:taskId,value:turns.get(taskId)}]);
     this.turns = turns;
+    if (previous) {
+      // A replacement can remove the previous newest timestamp or its only nonempty goal.
+      this.recentActivityTimes = undefined;
+      this.recentWorkspaceSessions = undefined;
+    } else if (typeof goal === 'string' && goal.trim()) this.recordSessionActivity(conversationId, turns.get(taskId).createdAt);
   }
   validateLiveMessage(message) {
     if (!message || typeof message !== 'object' || Array.isArray(message) ||
@@ -208,6 +244,7 @@ export class Conversations {
     const previousMessages=this.messages;
     this.messages = messages;
     this.advanceMessageDisplayIndex(valid,previousMessages);
+    this.recordSessionActivity(valid.conversationId,valid.createdAt);
     this.messageRevision++;
     return {...valid};
   }

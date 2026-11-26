@@ -232,8 +232,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const nativeReasoning=mountModelThinkingPicker(preferences,invoke,report,{readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
   composer.beforeSubmit=async()=>{await nativeReasoning.flush();return sessionControls.flush();};
   composer.onAccepted=token=>sessionControls.submitted(token);
-  const center=mountCommandCenter(root,{sessionRoot,preferences,input:draftInput,invoke,report,escape,onThreadChange:returnToMain});
-  root.querySelector('.cc-thread-scroll').append(assistantRoster);
+  const center=mountCommandCenter(root,{sessionRoot,assistantRoster,switchConversation:sessionControls.switchTo,preferences,input:draftInput,invoke,report,escape,onThreadChange:returnToMain});
   root.querySelector('.cc-rail').append(prohibitionsRoot);
   const goalControl=createGoalControl(invoke,()=>draftInput.value);
   goalControl.button.className='cc-goals';

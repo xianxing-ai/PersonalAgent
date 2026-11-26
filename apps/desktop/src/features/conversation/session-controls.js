@@ -45,7 +45,8 @@ export function mountSessionControls(root,input,invoke,report,{singleMain=false,
     catch(error){status.textContent=error.message;select.value=active;report(error);return false;}
     finally{if(archiving)input.readOnly=previousReadOnly;busy=false;box.setAttribute('aria-busy','false');}
   }
-  select.onchange=()=>action('conversation.switch',{conversationId:select.value});
+  const switchTo=conversationId=>action('conversation.switch',{conversationId});
+  select.onchange=()=>switchTo(select.value);
   box.querySelector('[data-session-new]').onclick=()=>action('conversation.new');
   box.querySelector('[data-session-rename]').onclick=async()=>{const version=titleRevision;if(await action('conversation.rename',{conversationId:active,title:title.value.trim()})&&version===titleRevision)titleDirty=false;};
   box.querySelector('[data-session-archive]').onclick=()=>action('conversation.archive',{conversationId:active});
@@ -78,7 +79,7 @@ export function mountSessionControls(root,input,invoke,report,{singleMain=false,
     dictationQueues.set(id,pending);
     try{await pending;}finally{if(dictationQueues.get(id)===pending)dictationQueues.delete(id);}
   }
-  return {update,capture,appendDictation,async flush(token=capture()){clearTimeout(timer);timer=undefined;if(token.conversationId){drafts.set(token.conversationId,token.text);await saveDraft(token.conversationId);}return token;},async submitted(token){
+  return {update,capture,switchTo,appendDictation,async flush(token=capture()){clearTimeout(timer);timer=undefined;if(token.conversationId){drafts.set(token.conversationId,token.text);await saveDraft(token.conversationId);}return token;},async submitted(token){
     if(!token?.conversationId||(versions.get(token.conversationId)??0)!==token.revision||drafts.get(token.conversationId)!==token.text)return;
     drafts.set(token.conversationId,'');
     if(active===token.conversationId&&input.value===token.text){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));}
