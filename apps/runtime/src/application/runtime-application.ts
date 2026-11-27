@@ -68,7 +68,7 @@ import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import {ASSISTANT_MODEL_UNAVAILABLE, optionalAssistantModelId} from '../assistant-roster.js';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
-import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt,
+import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt,readInjectedGoalSuffix,
   readCompetitionCloudRequestIdentity} from './coordination.js';
 import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, readReviewedLocalRepairReceipt,readStoredRepairCandidate, reconcileCommittedLocalRepair, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
 import type {LocalRepairHostOptions, SubmitLocalRepairRequest, ReviewedLocalRepairReceiptInput} from './local-repair.js';
@@ -2940,6 +2940,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private async executeCoordination(port:CoordinationPort, request:CoordinationRequest) {
+    const injectedGoalSuffix=readInjectedGoalSuffix(request);
+    if(injectedGoalSuffix)request=Object.freeze({...request,goal:request.goal.slice(0,-injectedGoalSuffix.length)});
     this.runtime.assertExecutionEpoch(request.taskId,request.executionEpoch!);
     const teacherScope=this.teacherScopeFor(request),leaseKey=teacherScope?.leaseKey??request.taskId,
       checkpointKey=teacherScope?.checkpointKey??COMPETITION_CONTEXT_CHECKPOINT;
@@ -3000,7 +3002,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       try {
         this.assertContextHooksAvailable(request.taskId);
         const strategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT?experienceText:'';
-        const goal=this.appendPromptPreferences(request.taskId, request.goal, request.goal+strategy);
+        const goal=this.appendPromptPreferences(request.taskId, request.goal, request.goal+strategy+injectedGoalSuffix);
+        if(injectedGoalSuffix)measureCompiledGoal(goal);
         const withStrategy=this.fitContinuationRequest(goal===request.goal?request:Object.freeze({...request,goal}));
         if(!strategy)this.experienceSendPolicies.delete(request.taskId);
         this.assertInputActive(withStrategy);
@@ -3131,10 +3134,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         preparedGoal:prepared,compiledGoal:goal,messages:context,
         privateBinding:this.readPrivateTaskBinding(task.taskId),
         ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{}),...(sourceMap?{sourceMap}:{})},hooks.goalTokenBudget);
-      let sendGoal=withEnvironment(goal,hostRequestContext);
-      let sendBudget=hostRequestContext===undefined?undefined:measureCompiledGoal(sendGoal,hooks.goalTokenBudget);
+      let sendGoal=withEnvironment(goal,hostRequestContext)+injectedGoalSuffix;
+      let sendBudget=hostRequestContext===undefined&&!injectedGoalSuffix?undefined:measureCompiledGoal(sendGoal,hooks.goalTokenBudget);
       if(capabilities&&hostRequestContext!==undefined) {
-        const candidate=withEnvironment(goal,hostRequestContext+'\n'+capabilities);
+        const candidate=withEnvironment(goal,hostRequestContext+'\n'+capabilities)+injectedGoalSuffix;
         try {const budget=measureCompiledGoal(candidate,hooks.goalTokenBudget);sendGoal=candidate;sendBudget=budget;}
         catch { /* Optional diagnostics cannot evict the original approved task or history. */ }
       }

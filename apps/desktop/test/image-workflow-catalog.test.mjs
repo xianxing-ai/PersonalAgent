@@ -52,7 +52,7 @@ test('input cannot select private source, remote image operation, task or proof;
     await assert.rejects(f.host.tools[0].execute({},f.context),{code:'UNAUTHORIZED'});
   }finally{f.host.close();}
 });
-test('original user-work child discovers the real read schema, executes through original Gateway and continues',async()=>{
+test('original user-work child discovers the real read schema, executes through original Gateway and continues with an injection',async()=>{
   let app;const host=createImageWorkflowCatalogHost({getApplication:()=>app}),read=host.tools[0],requests=[];
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(s,w,t)=>app.runDefaultSubagentWorker(s,w,t)});
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,tools:[dispatch,read],readConversationPreference:()=>({depth:2,fast:false}),
@@ -60,15 +60,18 @@ test('original user-work child discovers the real read schema, executes through 
     competitionToolAvailability:[...host.competitionToolAvailability,{toolName:'subagent.dispatch',toolVersion:'1.0.0',publicEnumPaths:['/subtasks/*/role'],available:()=>true}],
     competitionToolExports:[...host.competitionToolExports,{toolName:'subagent.dispatch',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-summary',accepts:()=>true,project:({result})=>result}],
     coordination:{execute:syntheticCoordinationExecution(async request=>{requests.push(request);if(app.runtime.getTask(request.taskId).conversationId==='original-ui')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
-      if(request.continuation){assert.equal(request.continuation.result.designNodeCount,185);assert.equal(request.continuation.result.workflows[0].workflowId,'F20');assert.equal(request.continuation.result.workflows[0].state,'unavailable');return {kind:'text',text:'F20 design exists; graph entry unavailable',verification:'unverified'};}
+      if(request.continuation){assert.equal(request.continuation.result.designNodeCount,185);assert.equal(request.continuation.result.workflows[0].workflowId,'F20');assert.equal(request.continuation.result.workflows[0].state,'unavailable');assert.match(request.goal,/请用一句话总结 F17/);return {kind:'text',text:'F20 design exists; graph entry unavailable',verification:'unverified'};}
       const catalog=request.availableTools.find(t=>t.name===read.descriptor.name);assert.deepEqual(catalog.inputSchema.properties.workflowId.enum,Array.from({length:28},(_,i)=>'F'+String(i+1).padStart(2,'0')));
+      app.runtime.injectUserMessage(request.taskId,'请用一句话总结 F17','user','catalog-interruption');
       return {kind:'tool_proposal',proposalId:'read-image-design',toolName:read.descriptor.name,toolVersion:read.descriptor.version,arguments:{workflowId:'F20'},verification:'unverified'};})}});
   const client=new Client(app);await client.connect();try{const task=await client.call('task.submit',{goal:'Read public F20 design and real graph entry gaps',conversationId:'original-ui'},{idempotencyKey:'image-catalog'});
     for(let i=0;i<500&&!['succeeded','failed'].includes(app.runtime.getTask(task.taskId).state);i++)await new Promise(r=>setTimeout(r,5));
     assert.equal(app.runtime.getTask(task.taskId).state,'succeeded',JSON.stringify(app.runtime.getTask(task.taskId).error));
     const [child]=app.readSubagentTasks(task.taskId);assert.equal(child.state,'succeeded');assert.equal(app.runtime.listApprovals({taskId:child.taskId}).items.length,0);
     assert.equal(app.runtime.readToolExecutions(child.taskId).filter(run=>run.toolName===read.descriptor.name&&run.state==='confirmed').length,1);
-    assert.equal(requests.filter(r=>r.taskId===child.taskId).length,2);
+    const childRequests=requests.filter(r=>r.taskId===child.taskId);
+    assert.equal(childRequests.length,2);
+    assert.match(childRequests[1].goal,/请用一句话总结 F17/);
   }finally{host.close();app.close();}
 });
 
