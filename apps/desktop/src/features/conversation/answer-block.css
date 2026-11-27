@@ -70,7 +70,7 @@
 .trace-step-verb.is-shimmer,
 .trace-step-target.is-shimmer,
 .cc-typing,
-.task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_approval"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
+.task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
   background:linear-gradient(90deg,#7c8596 0%,#7c8596 34%,#f4f7fc 50%,#7c8596 66%,#7c8596 100%) 130% 0/240% 100%;
   -webkit-background-clip:text;
   background-clip:text;
@@ -131,7 +131,7 @@
 :root[data-theme="light"] .trace-step-verb.is-shimmer,
 :root[data-theme="light"] .trace-step-target.is-shimmer,
 :root[data-theme="light"] .cc-typing,
-:root[data-theme="light"] .task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_approval"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
+:root[data-theme="light"] .task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
   background:linear-gradient(90deg,#64748b 0%,#64748b 34%,#0f172a 50%,#64748b 66%,#64748b 100%) 130% 0/240% 100%;
   -webkit-background-clip:text;
   background-clip:text;
@@ -146,7 +146,7 @@
 .panel .trace-step-list{padding:2px 9px 8px 10px}
 @media(prefers-reduced-motion:reduce){
   .trace-label.is-shimmer,.trace-step-verb.is-shimmer,.trace-step-target.is-shimmer,.cc-typing,
-  .task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_approval"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
+  .task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
     animation:none;background:none;-webkit-text-fill-color:currentColor;color:inherit;
   }
 }
@@ -154,6 +154,6 @@
 :root[data-calm="true"] .trace-step-verb.is-shimmer,
 :root[data-calm="true"] .trace-step-target.is-shimmer,
 :root[data-calm="true"] .cc-typing,
-:root[data-calm="true"] .task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_approval"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
+:root[data-calm="true"] .task-progress:is([data-state="planning"],[data-state="running"],[data-state="verifying"],[data-state="waiting_external"],[data-state="cancelling"]) strong{
   animation:none;background:none;-webkit-text-fill-color:currentColor;color:inherit;
 }

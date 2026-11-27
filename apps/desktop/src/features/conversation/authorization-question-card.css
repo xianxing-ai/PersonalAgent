@@ -2,6 +2,11 @@
 .authorization-question-list[hidden]{display:none}
 .authorization-question-card,.authorization-sandbox-panel{padding:16px 18px;border:1px solid var(--glass-border,color-mix(in srgb,currentColor 16%,transparent));border-radius:14px;background:var(--surface-2,color-mix(in srgb,currentColor 4%,transparent));box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 14%,transparent),0 8px 20px -16px rgba(0,0,0,.28);min-width:0;overflow-wrap:anywhere}
 .authorization-question-card p{margin:8px 0;line-height:1.58}
+.authorization-question-card:has(.authorization-question-primary:enabled){border-inline-start:3px solid var(--warn,#d79b3d)}
+@keyframes approval-arrival{0%,100%{outline-color:transparent}35%{outline-color:var(--warn,#d79b3d)}}
+@media(prefers-reduced-motion:no-preference){
+  :root:not([data-calm="true"]) .authorization-question-card[data-arriving="true"]{outline:2px solid transparent;outline-offset:-2px;animation:approval-arrival .85s ease-out 1}
+}
 .authorization-question-title{font-size:15px;margin:0 0 8px;font-weight:650;letter-spacing:-.01em;line-height:1.45}
 .authorization-question-summary{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;line-height:1.55}
 .authorization-question-details{margin-top:10px;font-size:13px}
@@ -18,7 +23,7 @@
 .authorization-question-egress{max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 .authorization-question-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .authorization-question-actions button,.authorization-sandbox-panel button{font:inherit;color:inherit;border:1px solid var(--glass-border,color-mix(in srgb,currentColor 20%,transparent));border-radius:9px;background:var(--surface-2,transparent);padding:8px 14px;min-height:36px;cursor:pointer;transition:background-color .16s ease,border-color .16s ease,transform .12s ease,box-shadow .16s ease}
-.authorization-question-actions .authorization-question-primary{background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);color:var(--accent-fg,#fff);font-weight:500}
+.authorization-question-actions .authorization-question-primary{background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);color:var(--accent-ink,#fff);font-weight:500}
 .authorization-question-actions button:hover:not(:disabled),.authorization-sandbox-panel button:hover:not(:disabled){background:var(--surface-3,color-mix(in srgb,currentColor 8%,transparent));border-color:var(--fg-2,color-mix(in srgb,currentColor 32%,transparent));box-shadow:0 2px 8px -4px rgba(0,0,0,.22)}
 .authorization-question-actions .authorization-question-primary:hover:not(:disabled){background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);filter:brightness(1.06);box-shadow:0 4px 12px -4px rgba(0,0,0,.3)}
 .authorization-question-actions button:active:not(:disabled),.authorization-sandbox-panel button:active:not(:disabled){transform:translateY(1px)}

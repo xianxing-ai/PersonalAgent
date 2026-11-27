@@ -211,6 +211,18 @@ test('traceBlockHtml renders shimmer sweep when active, compact file/tool logos,
   assert.doesNotMatch(liveHtml, /<script>x<\/script>/);
   assert.doesNotMatch(liveHtml, /style="/);
 
+  const waitingHtml = traceBlockHtml({...task, state: 'waiting_approval'}, store.get('t-shimmer'), [], escape);
+  assert.match(waitingHtml, /等待你的授权/);
+  assert.doesNotMatch(waitingHtml, /is-shimmer|正在思考/);
+  const waitingChild = [{taskId:'child',state:'waiting_approval'}];
+  const delegatedWait = traceBlockHtml(task, store.get('t-shimmer'), waitingChild, escape);
+  assert.match(delegatedWait, /子任务等待你的授权/);
+  assert.doesNotMatch(delegatedWait, /is-shimmer/);
+  const emptyTrace = traceBlockHtml(task, undefined, waitingChild, escape);
+  assert.match(emptyTrace, /子任务等待你的授权/);
+  assert.doesNotMatch(emptyTrace, /子智能体执行中|子智能体正在后台处理/);
+  assert.doesNotMatch(traceBlockHtml({...task,state:'cancelling',cancelRequested:true}, undefined, waitingChild, escape), /等待你的授权/);
+
   rememberActivity(store, {taskId: 't-shimmer', kind: 'tool_result', stepId: 's-js', resultSummary: '完成', durationMs: 12});
   const settledHtml = traceBlockHtml({...task, state: 'succeeded'}, store.get('t-shimmer'), [], escape);
   assert.match(settledHtml, /data-live="false"/);

@@ -130,7 +130,10 @@ export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},on
     const keys=new Set(current.map(key));for(const token of submissions.keys())if(!keys.has(token))submissions.delete(token);
     paint();
     const added=current.find(question=>pending(question,now())&&!previous.has(question.questionId));
-    if(added)onPending({questionId:added.questionId,element:[...root.querySelectorAll('[data-question-id]')]
-      .find(node=>node.dataset.questionId===added.questionId)});
+    if(added){
+      const element=[...root.querySelectorAll('[data-question-id]')].find(node=>node.dataset.questionId===added.questionId);
+      if(element)element.dataset.arriving='true';
+      onPending({questionId:added.questionId,element});
+    }
   },dispose(){closed=true;clearTimeout(timer);submissions.clear();settledRevisions.clear();root.removeEventListener('click',choose);root.replaceChildren();}};
 }
