@@ -234,9 +234,12 @@ switch ($req.op) {
     if ($null -ne $req.location) { $appt.Location = [string]$req.location }
     if ($null -ne $req.notes) { $appt.Details = [string]$req.notes }
     AwaitAct ($foundCal.SaveAppointmentAsync($appt))
-    $readback = AwaitOp ($foundCal.GetAppointmentAsync([string]$appt.LocalId)) ([Windows.ApplicationModel.Appointments.Appointment])
-    if ($null -eq $readback) { throw 'EVENT_READBACK_MISSING' }
-    Write-Result @{ event = (Project-Appointment $readback $true) }
+    try {
+      $readback = AwaitOp ($foundCal.GetAppointmentAsync([string]$appt.LocalId)) ([Windows.ApplicationModel.Appointments.Appointment])
+      if ($null -eq $readback) { throw 'EVENT_READBACK_MISSING' }
+      $event = Project-Appointment $readback $true
+    } catch { throw 'UPDATE_READBACK_UNKNOWN' }
+    Write-Result @{ event = $event }
     break
   }
   'cancelEvent' {

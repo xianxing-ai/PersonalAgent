@@ -1,5 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
-import {ProtocolError} from '@personal-agent/contracts';
+import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {MemoryQueryPort,FactVersion} from '@personal-agent/memory';
@@ -43,8 +43,9 @@ function createRuntimeMemoryQueryHost(binding:MemoryQueryHostBinding,options?:{
   const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:binding.workflowId,nodeId:binding.nodeId,
     hostToolName:binding.hostToolName,assertCurrent:options.assertCurrent,now:options.now});
   const read=async(scope:Scope,context:ToolContext)=>{
-    if(!requiredScopes.every(scopeName=>context.scopes.includes(scopeName)))failOwnedHost('SCOPE_DENIED','F04 memory scope required');
+    if(!requiredScopes.every(scopeName=>context.scopes.includes(scopeName)))failOwnedHost('SCOPE_DENIED',`${binding.workflowId} memory scope required`);
     const query=await options.resolveQuery(scope);
+    active(context);
     if(!plain(query)||!Number.isSafeInteger(query.limit)||query.limit<1||query.limit>100
       ||query.factId===undefined&&query.sourceRef===undefined
       ||query.factId!==undefined&&!text(query.factId)||query.sourceRef!==undefined&&!text(query.sourceRef))
@@ -92,7 +93,8 @@ export function createRuntimeF05JointRecallHost(options?:{
   now:()=>Date;
 }):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
   if(!options?.application?.runtime||typeof options.memory?.listCurrent!=='function'
-    ||options.knowledgeSearch?.descriptor?.name!=='knowledge.search'||typeof options.invokeKnowledgeSearch!=='function'
+    ||options.knowledgeSearch?.descriptor?.name!=='knowledge.search'||options.knowledgeSearch.descriptor.sideEffect!=='read'
+    ||typeof options.invokeKnowledgeSearch!=='function'
     ||!Array.isArray(options.requiredMemoryScopes)||!options.requiredMemoryScopes.length
     ||!Array.isArray(options.requiredKnowledgeScopes)||!options.requiredKnowledgeScopes.length
     ||typeof options.resolveMemoryQuery!=='function'||typeof options.resolveKnowledgeQuery!=='function'
@@ -121,6 +123,7 @@ export function createRuntimeF05JointRecallHost(options?:{
       failOwnedHost('EXTERNAL_FAILURE','F05 memory page differs from original query');
     const knowledgeHits=await options.invokeKnowledgeSearch({query:knowQuery.query,limit:knowQuery.limit},context);
     active(context);
+    validateToolValue(options.knowledgeSearch.descriptor.outputSchema,knowledgeHits);
     return {memory:{snapshot:memoryPage.snapshot,facts:structuredClone(memoryPage.facts),
         ...(memoryPage.nextCursor?{nextCursor:memoryPage.nextCursor}:{})},knowledge:knowledgeHits};
   };

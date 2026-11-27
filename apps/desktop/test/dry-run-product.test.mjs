@@ -251,6 +251,37 @@ test('cancelling preview stops before RuntimeApplication requests Policy authori
   }
 });
 
+test('calendar preview verifies provider-confirmed aliases and rejects wrong state and source', () => {
+  const preview = previewToolCall({name:'calendar.update',sideEffect:'external_write'}, {externalId:'local-1'});
+  const result = {state:'updated',uid:'local-1',item:{source:'calendar',externalId:'roaming-1'}};
+  assert.equal(verifyToolResult(result,preview).verified,true);
+  for (const [receipt,field] of [[{...result,state:'created'},'state'],
+    [{...result,item:{...result.item,source:'mail'}},'item.source'],[{...result,uid:'other'},'externalId']]) {
+    assert.equal(verifyToolResult(receipt,preview).mismatchedField,field);
+  }
+});
+
+test('one confirmed preview permits one original run and rejects changed arguments or cancellation', async () => {
+  const dryRun = createDryRunProduct();
+  const scope = {...context(),runId:'original-run'};
+  const input = {externalId:'evt'};
+  const request = {...scope,toolName:'calendar.update',sideEffect:'external_write',arguments:input};
+  const first = dryRun.beforeAuthorize(request);
+  dryRun.handleAction('dryRun.confirm',{id:dryRun.snapshot().pending[0].id});
+  await first;
+  await dryRun.beforeAuthorize(request);
+  await assert.rejects(dryRun.beforeAuthorize({...request,arguments:{externalId:'other'}}),{code:'UNAUTHORIZED'});
+  await assert.rejects(dryRun.beforeAuthorize({...request,signal:AbortSignal.abort()}),{code:'CANCELLED'});
+  let writes = 0;
+  const [update] = dryRun.wrapTools([tool('calendar.update','external_write',async () => {
+    writes++;
+    return {state:'updated',item:{source:'calendar',externalId:'evt'}};
+  })]);
+  await update.execute(input,scope);
+  assert.equal(writes,1);
+  assert.throws(()=>dryRun.assertAuthorized(request),{code:'UNAUTHORIZED'});
+});
+
 test('calendar.update and calendar.create write receipts bind verification to item UID, event title, and validFor window without colliding with status summary', async () => {
   const updateInput = {
     externalId: 'caldav-evt-42',

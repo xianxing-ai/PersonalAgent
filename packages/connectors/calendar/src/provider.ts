@@ -84,7 +84,8 @@ export interface CalendarEventUpdateInput {
 /** 可选事件写能力：提供商声明后，register() 才公布 calendar.create/update/cancel 工具。 */
 export interface CalendarEventWrites {
   createEvent(input: CalendarEventWriteInput, context?: CalendarReadContext): Promise<CalendarEventRecord>;
-  updateEvent(input: CalendarEventUpdateInput, context?: CalendarReadContext): Promise<CalendarEventRecord>;
+  /** A provider may confirm a requested alias on the same readback as the canonical externalId. */
+  updateEvent(input: CalendarEventUpdateInput, context?: CalendarReadContext): Promise<CalendarEventRecord & {verifiedRequestId?: string}>;
   cancelEvent(uid: string, context?: CalendarReadContext): Promise<{uid: string; state: 'cancelled' | 'already_absent'}>;
 }
 

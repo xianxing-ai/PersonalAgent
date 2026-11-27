@@ -135,7 +135,7 @@ const writeOutputSchema: ToolDescriptor['outputSchema'] = {
   additionalProperties: false,
   properties: {
     item: {$ref: `${PROTOCOL_ID}#/definitions/ConnectorItem`, description: 'create/update 与 cancel 命中资源时返回的读回记录。'},
-    uid: {type: 'string', description: '仅 cancel 且资源不存在时返回。'},
+    uid: {type: 'string', description: '取消回执的目标，或更新后经同一事件读回核实的请求标识别名。'},
     state: {type: 'string', enum: ['created', 'updated', 'cancelled', 'already_absent']},
     // 模型只看到回执本身（输出 schema 不随目录下发）。`cancelled` 在英文里既可指
     // “事件已取消”也可指“操作被取消”，实测会被读成后者（2026-10-22：取消已落盘，
@@ -221,8 +221,9 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         idempotencySupport: true, recoverySupport: true},
       execute: async (input: unknown, context) => {
         const raw = input as {externalId?: string; uid?: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string; expectedSequence?: number; ifMatch?: string};
+        const uid = resolveEventId(raw);
         const record = await writes.updateEvent({
-          uid: resolveEventId(raw),
+          uid,
           ...(raw.summary === undefined ? {} : {summary: raw.summary}),
           ...(raw.startUtc === undefined ? {} : {startUtc: raw.startUtc}),
           ...(raw.endUtc === undefined ? {} : {endUtc: raw.endUtc}),
@@ -231,7 +232,11 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
           ...(raw.expectedSequence === undefined ? {} : {expectedSequence: raw.expectedSequence}),
           ...(raw.ifMatch === undefined ? {} : {ifMatch: raw.ifMatch})},
           {signal: context.signal, deadline: context.deadline});
-        return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'updated', summary: '日程已更新，日历中已保存新内容。'};
+        if (record.externalId !== uid && record.verifiedRequestId !== uid) {
+          throw new ProtocolError('RESULT_UNKNOWN', 'Updated calendar event did not match the requested identity', false);
+        }
+        return {item: eventToItem(record, accountRef, new Date().toISOString()),
+          ...(record.externalId !== uid ? {uid} : {}), state: 'updated', summary: '日程已更新，日历中已保存新内容。'};
       },
     };
     const cancelTool: RegisteredTool = {

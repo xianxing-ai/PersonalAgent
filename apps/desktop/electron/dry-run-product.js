@@ -136,6 +136,7 @@ export function previewToolCall(descriptor, input) {
   const keys = Object.keys(record);
   const label = toolDisplayLabel(descriptor);
   const argumentsDigest = hashToolArguments(input);
+  const calendarEventId = descriptor.name === 'calendar.update' ? record.externalId ?? record.uid : undefined;
   let targetSummary;
   let contentSummary;
   const targetFields = {};
@@ -189,6 +190,7 @@ export function previewToolCall(descriptor, input) {
     effect: descriptor.sideEffect ?? 'write',
     argumentKeys: keys,
     argumentsDigest,
+    ...(typeof calendarEventId === 'string' ? {calendarEventDigest: hashToolArguments(calendarEventId)} : {}),
     ...(targetSummary ? {targetSummary} : {}),
     ...(contentSummary ? {contentSummary} : {}),
     targetFields,
@@ -224,6 +226,14 @@ export function verifyToolResult(result, preview) {
   }
   if (result.previewId !== undefined && String(result.previewId) !== String(preview.id)) {
     return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具返回的预览标识与试运行预览不一致'};
+  }
+  if (preview.toolName === 'calendar.update') {
+    const field = result.state !== 'updated' ? 'state'
+      : result.item?.source !== 'calendar' ? 'item.source'
+      : typeof result.item.externalId !== 'string' || !result.item.externalId ? 'item.externalId'
+      : hashToolArguments(result.uid ?? result.item.externalId) !== preview.calendarEventDigest ? 'externalId' : undefined;
+    if (field) return {ok:false, verified:false, targetMatched:false, identityMatched:false, mismatchedField:field,
+      scope:'tool_result', reason:`日历写入回执与试运行预览不一致（字段：${field}）`};
   }
   const matchedIdentityFields = [];
   if (result.toolName !== undefined) matchedIdentityFields.push('toolName');
@@ -330,9 +340,20 @@ export function createDryRunProduct({onUpdate} = {}) {
     async beforeAuthorize({taskId, runId, toolName, sideEffect, arguments: input, deadline, signal}) {
       const descriptor = {name: toolName, sideEffect};
       if (!isHighRiskTool(descriptor)) return;
-      const preview = await waitForPreview(descriptor, input, {taskId, runId, deadline, signal});
       const key = runKey(taskId, runId);
-      if (key) confirmedRuns.set(key, preview);
+      const confirmed = key ? confirmedRuns.get(key) : undefined;
+      if (confirmed) {
+        if (signal?.aborted || confirmed.signal?.aborted) throw new ProtocolError('CANCELLED', '试运行已取消，未执行');
+        if (confirmed.expiresAt <= Date.now() || Date.parse(deadline) <= Date.now()) {
+          throw new ProtocolError('TIMEOUT', '试运行已超过期限，未执行');
+        }
+        if (confirmed.toolName !== toolName || confirmed.argumentsDigest !== hashToolArguments(input)) {
+          throw new ProtocolError('UNAUTHORIZED', '试运行确认的参数与实际执行不一致');
+        }
+        return;
+      }
+      const preview = await waitForPreview(descriptor, input, {taskId, runId, deadline, signal});
+      if (key) confirmedRuns.set(key, {...preview, signal, expiresAt: Date.parse(deadline)});
     },
     assertAuthorized({taskId, runId, toolName, sideEffect, arguments: input, argumentsDigest}) {
       if (!isHighRiskTool({name: toolName, sideEffect})) return;

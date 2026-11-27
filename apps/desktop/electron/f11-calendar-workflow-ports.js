@@ -61,7 +61,8 @@ export function createF11CalendarWorkflowPorts({getApplication,bridge,todoHost,a
     if(!original||!isDeepStrictEqual(original.arguments,plan.update)||original.taskId!==receipt.taskId||original.runId!==receipt.runId)return false;
     const result=childResult(scope,'calendar.update',original),item=result?.item;
     return result?.state==='updated'&&item?.source==='calendar'
-      &&item.externalId===(plan.update.externalId??plan.update.uid)
+      &&typeof item.externalId==='string'&&item.externalId.length>0
+      &&(result.uid??item.externalId)===(plan.update.externalId??plan.update.uid)
       &&(!plan.update.startUtc||item.validFor?.split('/')[0]===plan.update.startUtc)
       &&(!plan.update.endUtc||item.validFor?.split('/')[1]===plan.update.endUtc);
   };

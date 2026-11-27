@@ -142,6 +142,10 @@ function createDefaultWindowsTransport(timeoutMs: number): WindowsCalendarTransp
             const stdout = Buffer.concat(out).toString('utf8').trim();
             const stderr = Buffer.concat(err).toString('utf8').trim();
             if (code !== 0) {
+              if (/UPDATE_READBACK_UNKNOWN/.test(stderr)) {
+                reject(new ProtocolError('RESULT_UNKNOWN', '系统日历已保存，未能读回更新结果', false));
+                return;
+              }
               if (/READ_ONLY_SYSTEM_CALENDAR/.test(stderr)) {
                 reject(new ProtocolError('UNAUTHORIZED', '系统外部只读日历中的事件不允许修改或删除', false));
                 return;
@@ -364,7 +368,7 @@ export class WindowsSystemCalendarProvider implements CalendarProvider {
     return toRecord(res.event, this.timeZone, new Date(this.now()).toISOString());
   }
 
-  private async updateEvent(input: CalendarEventUpdateInput, context?: CalendarReadContext): Promise<CalendarEventRecord> {
+  private async updateEvent(input: CalendarEventUpdateInput, context?: CalendarReadContext): Promise<CalendarEventRecord & {verifiedRequestId?: string}> {
     assertReadActive(context, this.now);
     if (typeof input?.uid !== 'string' || !input.uid.trim()) {
       throw new ProtocolError('INVALID_ARGUMENT', 'uid is required');
@@ -384,10 +388,17 @@ export class WindowsSystemCalendarProvider implements CalendarProvider {
       ...(input.expectedSequence !== undefined ? {expectedSequence: input.expectedSequence} : {}),
       ...(input.ifMatch !== undefined ? {ifMatch: input.ifMatch} : {}),
     }, context) as {event?: WindowsAppointmentRaw};
-    if (!res?.event) {
-      throw new ProtocolError('EXTERNAL_FAILURE', 'Windows system calendar did not return updated event readback', false);
+    const event = res?.event;
+    if (!event || (event.localId !== input.uid && event.roamingId !== input.uid)
+      || (input.summary !== undefined && event.subject !== input.summary)
+      || (input.startUtc !== undefined && Date.parse(event.startUtc) !== Date.parse(input.startUtc))
+      || (input.endUtc !== undefined && Date.parse(event.endUtc) !== Date.parse(input.endUtc))
+      || (input.location !== undefined && (event.location ?? '') !== input.location)
+      || (input.notes !== undefined && (event.details ?? '') !== input.notes)) {
+      throw new ProtocolError('RESULT_UNKNOWN', 'Windows calendar update could not be confirmed from the saved event', false);
     }
-    return toRecord(res.event, this.timeZone, new Date(this.now()).toISOString());
+    const record = toRecord(event, this.timeZone, new Date(this.now()).toISOString());
+    return record.externalId === input.uid ? record : {...record, verifiedRequestId: input.uid};
   }
 
   private async cancelEvent(uid: string, context?: CalendarReadContext): Promise<{uid: string; state: 'cancelled' | 'already_absent'}> {

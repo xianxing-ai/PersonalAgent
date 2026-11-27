@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
 import { ProtocolError } from '@personal-agent/contracts';
-import { CalendarService, WindowsSystemCalendarProvider } from '../dist/index.js';
+import { CalendarService, WindowsSystemCalendarProvider, register } from '../dist/index.js';
 
 function createFakeTransport() {
   const events = new Map();
@@ -199,6 +199,35 @@ test('WindowsSystemCalendarProvider: 非法时间窗、空白标题、非法游�
 });
 
 const runLiveWindows = process.platform === 'win32' && process.env.PA_CALENDAR_WINDOWS_LIVE === '1';
+
+test('Windows update binds either requested ID to the saved event and checks the changed fields', async () => {
+  const event = {localId: 'local-1', roamingId: 'roaming-1', calendarId:'calendar', subject:'新标题',
+    startUtc:'2026-11-21T01:00:00.000Z', endUtc:'2026-11-21T02:00:00.000Z',
+    location:'新地点', details:'新备注', changeNumber:2, cancelled:false};
+  const patch = {summary:event.subject, startUtc:event.startUtc, endUtc:event.endUtc,
+    location:event.location, notes:event.details};
+  let readback = event, writes = 0;
+  const provider = new WindowsSystemCalendarProvider({transport:{async run(request) {
+    assert.equal(request.op, 'updateEvent'); writes++; return {event:readback};
+  }}});
+  const tools = new Map();
+  const dispose = register({register(tool) { tools.set(tool.descriptor.name, tool); return () => {}; }}, {provider});
+  const update = tools.get('calendar.update');
+  try {
+    for (const uid of [event.localId, event.roamingId]) {
+      const receipt = await update.execute({externalId:uid, ...patch}, {});
+      assert.equal(receipt.item.externalId, event.roamingId);
+      assert.equal(receipt.uid, uid === event.localId ? uid : undefined);
+    }
+    const invalid = [{localId:'other-local',roamingId:'other-roaming'},{subject:'旧标题'},
+      {startUtc:event.endUtc},{endUtc:event.startUtc},{location:'旧地点'},{details:'旧备注'}];
+    for (const difference of invalid) {
+      readback = {...event, ...difference};
+      await assert.rejects(update.execute({externalId:event.localId, ...patch}, {}), {code:'RESULT_UNKNOWN'});
+    }
+    assert.equal(writes, 2 + invalid.length);
+  } finally { dispose(); }
+});
 
 test('live Windows WinRT read/write/update/cancel roundtrip (self-cleaning)', { skip: !runLiveWindows }, async () => {
   const testCalendarName = `PersonalAgent-Test-${Date.now()}`;
