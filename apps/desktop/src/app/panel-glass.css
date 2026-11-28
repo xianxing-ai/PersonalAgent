@@ -1,5 +1,7 @@
 /* One continuous native Acrylic surface; controls are gently raised lenses.
    The desktop is blurred by DWM, never copied into the renderer. */
+@property --light-x {syntax:"*";inherits:false;initial-value:12%}
+@property --light-y {syntax:"*";inherits:false;initial-value:0%}
 .panel {
   --panel-coat:rgba(20,24,30,.40);--panel-lens:rgba(232,241,255,.065);
   --panel-hover:rgba(232,241,255,.12);--panel-glint:rgba(240,247,255,.20);
@@ -21,7 +23,11 @@
 }
 .panel::before {
   content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;
-  background:radial-gradient(ellipse 330px 260px at var(--light-x,12%) var(--light-y,0%),rgba(218,237,255,.065),transparent 80%);
+}
+.panel>.panel-light {
+  position:absolute;left:-330px;top:-260px;width:660px;height:520px;z-index:-1;pointer-events:none;
+  background:radial-gradient(ellipse 330px 260px at 50% 50%,rgba(218,237,255,.065),transparent 80%);
+  transform:translate3d(50px,0,0);will-change:transform;contain:strict;
 }
 .panel>header {position:relative;padding:18px 20px 12px;gap:7px;border:0;background:transparent}
 .panel>header>.panel-drag-surface {position:absolute;inset:0;touch-action:none}
@@ -35,7 +41,10 @@
 .panel>div:has(>.conversation-sessions)>[data-session-status]:empty {display:none}
 .panel>div:has(>.conversation-sessions)>[data-session-status]:not(:empty) {margin:4px 22px}
 .panel .conversation-sessions {max-height:100px;overflow:auto;padding:8px 20px;border:0}
-.panel>.thread {padding:14px 24px 22px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.panel>.thread {position:relative;padding:14px 24px 22px;overscroll-behavior:contain;scrollbar-gutter:stable;will-change:scroll-position;contain:layout paint;transform:translateZ(0)}
+.panel>.conversation-rail {z-index:2;contain:layout style}
+.panel .turn {contain:layout style}
+.panel :is(.card,.glass,.glass-strong) {backdrop-filter:none;-webkit-backdrop-filter:none}
 .panel .thread>.who {font-size:10.5px;line-height:1.6;margin-bottom:14px;color:var(--muted)}
 .panel .thread>.bubble {background:transparent;border:0;box-shadow:none;text-align:left;font-size:27px;line-height:1.35;font-weight:600;letter-spacing:-.045em;padding:14px 0 22px}
 .panel .quick-start {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 24px}
@@ -96,8 +105,8 @@
 .panel :is(button,input,select,summary):focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
 @media(max-width:360px) {.panel>header {padding-inline:16px;gap:4px}.panel>.thread {padding-inline:19px}.panel .thread>.bubble {font-size:24px}.panel>.composer {margin-inline:10px;padding-inline:12px}.panel .composer-bar>.compact-entry {grid-row:1;grid-column:1;padding:0 8px}.panel .composer-bar>.goal-open {grid-column:2/5}.panel .quick-start {gap:7px}.panel .quick-start button {padding:10px}}
 @media(max-height:540px) {.panel>header {padding-block:12px 8px}.panel>.thread {padding-block:6px 12px}.panel .thread>.bubble {padding-top:4px}.panel .composer textarea {min-height:40px;max-height:18vh}.panel>.composer {padding-top:10px}.panel .wake-controls[open] {max-height:90px;overflow:auto}}
-@media(prefers-reduced-transparency:reduce) {.panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}.panel::before {display:none}}
-@media(prefers-reduced-motion:reduce) {.panel::before {display:none}.panel .composer-bar>:is(.goal-open,.compact-entry) {transition:none}}
-:root[data-calm="true"] .panel::before {display:none}
+@media(prefers-reduced-transparency:reduce) {.panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}.panel::before,.panel>.panel-light {display:none}}
+@media(prefers-reduced-motion:reduce) {.panel::before,.panel>.panel-light {display:none}.panel .composer-bar>:is(.goal-open,.compact-entry) {transition:none}}
+:root[data-calm="true"] :is(.panel::before,.panel>.panel-light) {display:none}
 :root[data-calm="true"] .panel .composer-bar>:is(.goal-open,.compact-entry) {transition:none}
-@media(forced-colors:active) {.panel,.panel>.composer,.panel .quick-start button,.panel .voice-runtime-controls,.panel :is(.bell-menu,.model-menu,.model-thinking-menu) {background:Canvas;color:CanvasText;box-shadow:none;border:1px solid CanvasText}.panel::before {display:none}.panel :is(button,input,select,textarea) {forced-color-adjust:auto}}
+@media(forced-colors:active) {.panel,.panel>.composer,.panel .quick-start button,.panel .voice-runtime-controls,.panel :is(.bell-menu,.model-menu,.model-thinking-menu) {background:Canvas;color:CanvasText;box-shadow:none;border:1px solid CanvasText}.panel::before,.panel>.panel-light {display:none}.panel :is(button,input,select,textarea) {forced-color-adjust:auto}}

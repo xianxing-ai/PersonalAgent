@@ -66,3 +66,45 @@ test('focus deliberately moved during replacement is preserved',t=>{
   f.rail.afterReplace=()=>{f.document.activeElement=external;};
   f.second.summary='第二轮更新';f.update();assert.equal(f.document.activeElement,external);
 });
+
+test('scrolling reuses cached turn offsets and mutates aria-current only when the active turn changes',t=>{
+  const f=fixture(t);
+  let scrollerReads=0,turnReads=0,attrWrites=0;
+  let scrollTop=0,scrollListener;
+  const container=f.document.createElement('main');
+  const turns=[0,320,680].map((offset,idx)=>({
+    dataset:{turn:`t-${idx}`},
+    querySelector:()=>({textContent:`轮次 ${idx}`}),
+    getBoundingClientRect:()=>{turnReads++;return {top:offset-scrollTop};},
+    scrollIntoView(){},
+  }));
+  const scroller={
+    get scrollTop(){return scrollTop;},
+    scrollHeight:1200,
+    clientHeight:400,
+    querySelectorAll:()=>turns,
+    getBoundingClientRect:()=>{scrollerReads++;return {top:0};},
+    addEventListener:(name,fn)=>{if(name==='scroll')scrollListener=fn;},
+  };
+  const update=mountConversationRail(container,scroller);
+  const rail=container.children[0];
+  update();
+  const buttons=rail.querySelectorAll('button');
+  for(const btn of buttons){
+    const orig=btn.setAttribute.bind(btn);
+    btn.setAttribute=(k,v)=>{attrWrites++;orig(k,v);};
+  }
+  const initialScrollerReads=scrollerReads,initialTurnReads=turnReads;
+  // Scrolling within the same turn must not re-measure layout or rewrite attributes.
+  for(const y of [20,60,120,200]){scrollTop=y;scrollListener();}
+  assert.equal(scrollerReads,initialScrollerReads);
+  assert.equal(turnReads,initialTurnReads);
+  assert.equal(attrWrites,0);
+  // Crossing into turn 1 updates only the previous and current buttons (2 writes, 0 layout reads).
+  scrollTop=300;scrollListener();
+  assert.equal(scrollerReads,initialScrollerReads);
+  assert.equal(turnReads,initialTurnReads);
+  assert.equal(attrWrites,2);
+  assert.equal(buttons[0].attributes.get('aria-current'),'false');
+  assert.equal(buttons[1].attributes.get('aria-current'),'true');
+});

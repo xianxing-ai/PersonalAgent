@@ -101,9 +101,9 @@
 .panel>.composer>.wake-controls {min-height:0;overflow:auto}
 .panel>.conversation-rail {position:static;inset:auto;grid-row:4;grid-column:1;align-self:stretch;justify-self:end;margin:8px 6px}
 .conversation-rail button {position:relative;display:flex;align-items:center;justify-content:center;flex:0 1 12px;min-height:3px;width:22px;padding:0;border:0;background:transparent;pointer-events:auto}
-.rail-dash {display:block;width:7px;height:2px;background:var(--fg);opacity:.23;transition:width .15s,opacity .15s}
-.conversation-rail button[aria-current="true"] .rail-dash {width:14px;opacity:.9}
-.conversation-rail button:hover .rail-dash,.conversation-rail button:focus-visible .rail-dash {width:16px;opacity:1}
+.rail-dash {display:block;width:16px;height:2px;background:var(--fg);opacity:.23;transform-origin:right center;transform:scaleX(.4375);transition:transform .15s,opacity .15s}
+.conversation-rail button[aria-current="true"] .rail-dash {transform:scaleX(.875);opacity:.9}
+.conversation-rail button:hover .rail-dash,.conversation-rail button:focus-visible .rail-dash {transform:scaleX(1);opacity:1}
 .rail-preview {display:none;position:absolute;right:29px;top:50%;transform:translateY(-50%);padding:10px 13px;width:max-content;max-width:min(260px,65vw);border-radius:10px;border:1px solid var(--glass-border);background:var(--glass-bg-strong);box-shadow:var(--shadow-2);color:var(--fg);font-size:12px;text-align:left;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
 .conversation-rail button:hover .rail-preview,.conversation-rail button:focus-visible .rail-preview {display:block}
 .focused-workspace {grid-template-columns:minmax(0,1fr);grid-template-rows:40px minmax(0,1fr)}

@@ -323,12 +323,16 @@ export class Orb {
     this._lastPaint = null;
     const loop = (t) => {
       if (!this.running) return;
-      const elapsed = t - (this._lastPaint ?? t - this._frameInterval);
-      if (elapsed + 0.1 < this._frameInterval) {
-        this._raf = requestAnimationFrame(loop);
-        return;
+      if (this._lastPaint !== null) {
+        const elapsed = t - this._lastPaint;
+        if (elapsed + 1.5 < this._frameInterval) {
+          this._raf = requestAnimationFrame(loop);
+          return;
+        }
+        this._lastPaint = elapsed > this._frameInterval * 2 ? t : this._lastPaint + this._frameInterval;
+      } else {
+        this._lastPaint = t;
       }
-      this._lastPaint = t;
       const dt = Math.min((t - (this._last ?? t)) / 1000, 0.05);
       this._last = t;
       this.time += dt;

@@ -1393,7 +1393,7 @@ function roundedRects(width, height, radius) {
 
 const appliedPanelShapes=new WeakMap();
 function applyShape(win, radius) {
-  const bounds = win.getBounds();
+  const bounds = win.getContentBounds?.() ?? win.getBounds();
   const zoom=win.webContents.getZoomFactor();
   const signature=[bounds.width,bounds.height,radius,zoom,screen.getDisplayMatching(bounds).scaleFactor].join('/');
   if(appliedPanelShapes.get(win)===signature)return;
@@ -1405,7 +1405,7 @@ function applyShape(win, radius) {
 
 const appliedOrbShapes=new WeakMap();
 function applyOrbShape(win) {
-  const bounds = win.getBounds();
+  const bounds = win.getContentBounds?.() ?? win.getBounds();
   const placement = desktopHost.settings.orbPlacement;
   const signature = [bounds.width, bounds.height, placement, screen.getDisplayMatching(bounds).scaleFactor].join('/');
   if (appliedOrbShapes.get(win) === signature) return;
@@ -5383,6 +5383,7 @@ async function action(event, name, payload) {
     stopOrbDrag(); moveOrbDrag();
     orbDragPoll = setInterval(moveOrbDrag, 16); return;
   }
+  if (name === 'orb.dragMove' && sender === orb) { if (dragging === true) moveOrbDrag(); return; }
   if (name === 'orb.dragEnd' && sender === orb) { orbDragRevision++; if (dragging === 'panel') return; moveOrbDrag(); dragging = false; stopOrbDrag(); desktopHost.snap(orb); away = Date.now() + 400; return; }
   if (name === 'panel.dragStart' && sender === panel) {
     if (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)) throw Error('拖动坐标无效');
