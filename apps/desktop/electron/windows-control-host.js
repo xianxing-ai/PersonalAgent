@@ -1,13 +1,19 @@
+import {createHash} from 'node:crypto';
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {computerControlFailure} from './computer-control-errors.js';
 
 const REQUEST_TOOL = 'computer.request_access';
-const PRESENCE_MISS = 'windows-desktop-presence-miss:v1';
+const PRESENCE_MISS_PREFIX = 'windows-desktop-presence-miss:v2:';
+const PRESENCE_RECONFIRMED_PREFIX = 'windows-desktop-presence-reconfirmed:v2:';
 const REQUEST_SCOPE = 'computer:desktop:request';
 const VERSION = '1.0.0';
 const RUN = /^[A-Za-z0-9_-]{1,128}$/;
 const runRef=value=>typeof value==='string'&&RUN.test(value);
+const STEP_ID = /^(?:action:[a-f0-9]{24}|run:[A-Za-z0-9_-]{1,128})$/;
+const stepMissId = (reviewAction, runId) => reviewAction
+  ? 'action:' + createHash('sha256').update(reviewAction).digest('hex').slice(0, 24)
+  : 'run:' + runId;
 const SHA = /^[a-f0-9]{64}$/;
 const controlName = name => /^computer\.desktop\.[a-z_]+$/.test(name);
 const requestOutput = {type:'object',properties:{state:{enum:['presence_confirmed','policy_allowed','not_present']},expiresAt:{type:'string'},
@@ -26,6 +32,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
   const lifecycle = new AbortController();
   const leases = new Map();
   const leaseSources = new Map();
+  const missedSteps = new Map();
   // Process-local renewal eligibility is rooted in a successful original request_access run.
   // It is not a Policy grant, target extension or permission for a new task.
   const policyPresenceSeeds = new Map();
@@ -277,8 +284,11 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
       validateToolValue(requestTool.descriptor.inputSchema,input);
       if(!context.authorizationRef || !context.scopes.includes(REQUEST_SCOPE))fail('UNAUTHORIZED','需要原任务的请求权限');
       const reviewAction=input.action?.replace(/[\p{Cc}\p{Cf}]+/gu,' ').trim();
+      const stepId=stepMissId(reviewAction,context.runId);
       const notPresent={state:'not_present',...(reviewAction?{skippedAction:reviewAction}:{}),authorizationGranted:false};
-      if(application.runtime.loadCheckpoint(context.taskId,PRESENCE_MISS))return notPresent;
+      const missKey=PRESENCE_MISS_PREFIX+stepId,reconfirmKey=PRESENCE_RECONFIRMED_PREFIX+stepId;
+      const recordedMiss=missedSteps.get(context.taskId)?.get(stepId)??application.runtime.loadCheckpoint(context.taskId,missKey);
+      if(recordedMiss&&!application.runtime.loadCheckpoint(context.taskId,reconfirmKey))return notPresent;
       const seed=reviewAction?undefined:policySeed(context);policyPresenceSeeds.delete(context.taskId);
       const wait=new AbortController();
       const timer=setTimeout(()=>wait.abort(),30_000);
@@ -287,7 +297,14 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
           requireGesture:Boolean(reviewAction),reviewAction});
       }catch(error){
         if(context.signal.aborted||(!wait.signal.aborted&&error?.code!=='UNSUPPORTED_CAPABILITY'))throw error;
-        application.runtime.saveCheckpointOnce(context.taskId,PRESENCE_MISS,{state:'not_present'});
+        const missedEntry={version:2,taskId:context.taskId,stepId,runId:context.runId,
+          ...(reviewAction?{reviewAction}:{}),deadline:context.deadline,
+          policyBinding:policyBinding(),conversationBinding:taskBinding(context.taskId),
+          missedAt:new Date(now()).toISOString(),state:'missed'};
+        application.runtime.saveCheckpointOnce(context.taskId,missKey,missedEntry);
+        if(!missedSteps.has(context.taskId))missedSteps.set(context.taskId,new Map());
+        missedSteps.get(context.taskId).set(stepId,missedEntry);
+        publish({});
         return notPresent;
       }finally{clearTimeout(timer);}
       if(seed&&leaseSources.get(context.taskId)==='full-access-policy') {
@@ -307,6 +324,53 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
     if(!state.available||state.state==='blocked'||!hasPresence(input.taskId)||result?.taskId!==input.taskId||result?.artifactId!==input.artifactId)
       fail('UNAUTHORIZED','截图读取期间原任务范围已变化');
     return result;
+  }
+  function isMissedStepValid(entry) {
+    if(closed||!enabled||!entry||entry.version!==2||!runRef(entry.taskId)||!STEP_ID.test(entry.stepId??''))return false;
+    if(state.state==='blocked'||provider?.health().state!=='ready')return false;
+    const runtime=application?.runtime;if(!runtime)return false;
+    try{
+      const task=runtime.getTask(entry.taskId);
+      if(!task||!['pending','running','waiting_approval','waiting_external'].includes(task.state)||task.cancelRequested)return false;
+      if(!Number.isFinite(Date.parse(entry.deadline))||now()>=Date.parse(entry.deadline))return false;
+      const runtimeDeadline=runtime.loadCheckpoint?.(entry.taskId,'application-deadline');
+      if(runtimeDeadline&&runtimeDeadline!==entry.deadline)return false;
+      if(taskBinding(entry.taskId)!==entry.conversationBinding)return false;
+      if(policyBinding()!==entry.policyBinding)return false;
+      if(runtime.loadCheckpoint?.(entry.taskId,PRESENCE_RECONFIRMED_PREFIX+entry.stepId))return false;
+      return true;
+    }catch{return false;}
+  }
+  function activeMissedConfirmation() {
+    for(const [tid,steps] of missedSteps){
+      for(const [sid,entry] of steps){
+        if(!isMissedStepValid(entry)){steps.delete(sid);continue;}
+        return {taskId:entry.taskId,stepId:entry.stepId,...(entry.reviewAction?{reviewAction:entry.reviewAction}:{}),missedAt:entry.missedAt};
+      }
+      if(!steps.size)missedSteps.delete(tid);
+    }
+    return undefined;
+  }
+  function reconfirmMissedStep(input) {
+    if(closed||!enabled||!input||typeof input!=='object'||Array.isArray(input)
+      ||!runRef(input.taskId)||!STEP_ID.test(input.stepId??'')
+      ||Object.keys(input).some(k=>!['taskId','stepId'].includes(k)))
+      fail('INVALID_ARGUMENT','无效的电脑步骤重确认参数');
+    const entry=missedSteps.get(input.taskId)?.get(input.stepId)
+      ??application?.runtime?.loadCheckpoint?.(input.taskId,PRESENCE_MISS_PREFIX+input.stepId);
+    if(!entry||!isMissedStepValid(entry)){
+      missedSteps.get(input.taskId)?.delete(input.stepId);
+      fail('UNAUTHORIZED','原步骤确认记录已过期、已失效或所属会话/策略已变化');
+    }
+    const reconfirmRecord={version:2,taskId:entry.taskId,stepId:entry.stepId,runId:entry.runId,
+      reconfirmedAt:new Date(now()).toISOString(),replayExecuted:false};
+    if(!application.runtime.saveCheckpointOnce(entry.taskId,PRESENCE_RECONFIRMED_PREFIX+entry.stepId,reconfirmRecord)){
+      fail('UNAUTHORIZED','此超时步骤已重新确认过');
+    }
+    missedSteps.get(entry.taskId)?.delete(entry.stepId);
+    if(missedSteps.get(entry.taskId)?.size===0)missedSteps.delete(entry.taskId);
+    publish({});
+    return {reconfirmed:true,taskId:entry.taskId,stepId:entry.stepId,replayExecuted:false};
   }
   return {
     bind(value){
@@ -328,11 +392,11 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
       if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['enabled','allowObservationExport'].includes(key))
         ||typeof input.enabled!=='boolean'||typeof input.allowObservationExport!=='boolean')fail('INVALID_ARGUMENT','电脑设置格式无效');
       enabled=input.enabled;exportChoice=input.allowObservationExport;
-      if(!enabled){leases.clear();leaseSources.clear();policyPresenceSeeds.clear();waiting?.cancel();}
+      if(!enabled){leases.clear();leaseSources.clear();policyPresenceSeeds.clear();missedSteps.clear();waiting?.cancel();}
       publish({});return this.snapshot();
     },
     async stop(){
-      leases.clear();leaseSources.clear();policyPresenceSeeds.clear();waiting?.cancel();
+      leases.clear();leaseSources.clear();policyPresenceSeeds.clear();missedSteps.clear();waiting?.cancel();
       try{if(typeof provider?.stop==='function')await provider.stop();else provider?.block();}
       catch(error){provider?.block();const failure=computerControlFailure(error,'input_stop');
         publish({state:'blocked',available:false,waitingConfirmation:false,failure,reason:`${failure.message}（${failure.code}，${failure.stage}）；停止未确认，禁止新的电脑操作。`});throw error;}
@@ -362,17 +426,19 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
         validateToolValue(tool.descriptor.outputSchema,result);
         return structuredClone(result);
       }}));},
-    preparePresence,refreshPolicyPresence,prepareToolPresence,requiresToolPresence,hasPresence,
+    preparePresence,refreshPolicyPresence,prepareToolPresence,requiresToolPresence,hasPresence,reconfirmMissedStep,
+    inspectOrdinaryEditTarget:input=>provider?.inspectOrdinaryEditTarget?.(input)??{eligible:false},
     readScreenshotArtifact:input=>readScreenshot('readScreenshotArtifact',input),
     readScreenshotArtifactMetadata:input=>readScreenshot('readScreenshotArtifactMetadata',input),
     activeTasks:()=>provider?.activeTasks?.()??[],
-    invalidatePresence(taskId){revokePolicyPresence(taskId);if(waiting?.taskId===taskId)waiting.cancel();},
+    invalidatePresence(taskId){revokePolicyPresence(taskId);missedSteps.delete(taskId);if(waiting?.taskId===taskId)waiting.cancel();},
     snapshot:()=>{
       const health=provider?.health()??{state:'unavailable'};
       const reference=currentRecovery(state.state==='blocked'||health.state==='blocked',state.state==='blocked'||health.state==='blocked');
       const providerAvailable=state.available&&health.state==='ready'&&!closed;
       const exportAllowed=observationExportAllowed();
       const prompt=presenceHost?.pendingPrompt?.();
+      const missedConfirmation=providerAvailable&&exportAllowed&&!prompt?activeMissedConfirmation():undefined;
       const {reviewAction:legacyReviewAction,...status}=state;
       const waitingConfirmation=typeof presenceHost?.pendingPrompt==='function'?Boolean(prompt):state.waitingConfirmation;
       const taskId=prompt?.taskId??state.taskId;
@@ -381,6 +447,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
       return {...status,taskId,waitingConfirmation,enabled,provider:health,providerAvailable,available:enabled&&providerAvailable&&exportAllowed,
         ...(prompt?{state:'waiting_confirmation'}:finishedWaiting?{state:'ready',reason:'电脑组件已就绪。'}:{}),
         ...(waitingConfirmation&&reviewAction?{reviewAction}:{}),
+        ...(missedConfirmation?{missedConfirmation}:{}),
         activeTaskId:waitingConfirmation?taskId:provider?.activeTasks?.()[0],
         ...(reference?{recoveryTaskId:reference.taskId,recoveryRunId:reference.runId}:{}),
         observationExportAllowed:exportAllowed,
@@ -391,6 +458,6 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
         ...(health.state==='blocked'?{state:'blocked',unavailableReason:'original_result_unknown',reason:'原电脑操作结果未知；请先在原任务核实，不会重新执行。'}:{}),
         presenceTasks:[...leases].filter(([taskId])=>hasPresence(taskId)).map(([taskId,expiry])=>({taskId,expiresAt:new Date(expiry).toISOString(),source:leaseSources.get(taskId)}))};
     },
-    async close(){closed=true;lifecycle.abort();waiting?.cancel();leases.clear();leaseSources.clear();policyPresenceSeeds.clear();publish({state:'disposed',available:false});await provider?.dispose();},
+    async close(){closed=true;lifecycle.abort();waiting?.cancel();leases.clear();leaseSources.clear();policyPresenceSeeds.clear();missedSteps.clear();publish({state:'disposed',available:false});await provider?.dispose();},
   };
 }

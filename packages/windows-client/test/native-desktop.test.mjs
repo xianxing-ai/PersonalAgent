@@ -3,7 +3,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile} from 'node:fs/promises';
 import {resolve, join} from 'node:path';
 import test from 'node:test';
-import {ProtocolError, ToolNotStartedError, validateContract, validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError, ToolNotStartedError, isToolNotStartedError, validateContract, validateToolValue} from '@personal-agent/contracts';
 import {createWindowsNativeDesktopControlHost, NATIVE_DESKTOP_VERSION} from '../dist/index.js';
 import {createDesktopWindowsControlHost} from '../../../apps/desktop/electron/windows-control-host.js';
 import {nativeDesktopResponseError} from '../dist/native-desktop-transport.js';
@@ -54,6 +54,7 @@ function fixture(t, options = {}) {
     authorizePresence:async input => options.authorizePresence ? options.authorizePresence(input) : presence,
     ...(options.artifactDirectory ? {artifactDirectory:options.artifactDirectory} : {}),
     ...(options.selectControl ? {selectControl:options.selectControl} : {}),
+    ...(options.readOrdinaryEditWindow ? {readOrdinaryEditWindow:options.readOrdinaryEditWindow} : {}),
   });
   const f = {host, calls, records, lifecycle, deviceWrites, snapshot, windowRef, evidence,
     setTime(value) {time = value;}, revoke() {presence = false;},
@@ -500,4 +501,58 @@ test('syntheticfixture: Desktop trusted reader forwards only while original task
   await assert.rejects(wrapper.readScreenshotArtifactMetadata(input),{code:'UNAUTHORIZED'});
   await assert.rejects(wrapper.readScreenshotArtifact(input),{code:'UNAUTHORIZED'});
   assert.equal(metadataReads,1);assert.equal(pixelReads,1);
+});
+
+test('#733 inspectOrdinaryEditTarget and readOrdinaryEditWindow gate ordinary same-window edits and refuse window/button/coordinate drift before dispatch',async t=>{
+  const windowA=randomUUID(),windowB=randomUUID();
+  const editControl=randomUUID(),docControl=randomUUID(),submitButton=randomUUID(),passwordBox=randomUUID();
+  let currentWindow=windowA,ordinaryGrantWindow=undefined;
+  const f=fixture(t,{
+    readOrdinaryEditWindow:()=>ordinaryGrantWindow,
+    async request(method,params){
+      if(method==='list_windows')return {windows:[{windowRef:currentWindow,title:'Form Window',processName:'App'}]};
+      const controls=currentWindow===windowA?[
+        {ref:editControl,role:'Edit',name:'Subject Input',enabled:true,patterns:['value','focus'],bounds:{left:10,top:10,width:200,height:30}},
+        {ref:docControl,role:'Document',name:'Body Editor',enabled:true,patterns:['value','focus'],bounds:{left:10,top:50,width:400,height:200}},
+        {ref:submitButton,role:'Button',name:'Submit Form',enabled:true,patterns:['invoke'],bounds:{left:10,top:260,width:80,height:30}},
+        {ref:passwordBox,role:'Edit',name:'Account Password',enabled:true,patterns:['value'],bounds:{left:10,top:300,width:200,height:30}},
+      ]:[
+        {ref:editControl,role:'Edit',name:'Other Window Input',enabled:true,patterns:['value','focus'],bounds:{left:10,top:10,width:200,height:30}},
+      ];
+      const snap={targetRef:randomUUID(),windowRef:currentWindow,observedAt:new Date(clock).toISOString(),
+        expiresAt:new Date(clock+30000).toISOString(),window:{title:'Form Window',processName:'App',bounds:{x:0,y:0,width:800,height:600},dpi:96},
+        controls,truncated:false};
+      return ['action','activate'].includes(method)?{snapshot:snap,verification:{state:'observed',kind:'syntheticfixture'}}:snap;
+    },
+  });
+  await f.host.start(context());
+  const obsA=await f.observe();
+  const tA=obsA.snapshot.targetRef;
+
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.focus',arguments:{targetRef:tA,controlRef:editControl}}).eligible,true);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.click',arguments:{targetRef:tA,controlRef:editControl}}).eligible,true);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.type',arguments:{targetRef:tA,controlRef:editControl,text:'hello'}}).eligible,true);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.set_value',arguments:{targetRef:tA,controlRef:docControl,text:'body'}}).eligible,true);
+
+  // Coordinate click, Enter submit, right/double click, buttons/invoke, sensitive names stay ineligible
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.click',arguments:{targetRef:tA,controlRef:editControl,loc:[20,20]}}).eligible,false);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.click',arguments:{targetRef:tA,controlRef:editControl,button:'right'}}).eligible,false);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.click',arguments:{targetRef:tA,controlRef:editControl,clicks:2}}).eligible,false);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.type',arguments:{targetRef:tA,controlRef:editControl,text:'hi',press_enter:true}}).eligible,false);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.click',arguments:{targetRef:tA,controlRef:submitButton}}).eligible,false);
+  assert.equal(f.host.inspectOrdinaryEditTarget({taskId:'native-task',toolName:'computer.desktop.type',arguments:{targetRef:tA,controlRef:passwordBox,text:'pw'}}).eligible,false);
+
+  // Approved ordinary edit sends ordinary_edit: true
+  ordinaryGrantWindow=windowA;
+  const typed=await f.execute('type',{targetRef:tA,controlRef:editControl,text:'hello'});
+  assert.equal(typed.state,'action_observed');
+  assert.equal(f.calls.at(-1).method,'action');
+  assert.equal(f.calls.at(-1).params.ordinary_edit,true);
+
+  // Mismatched window or button control rejects before dispatch (ToolNotStartedError)
+  const tA2=typed.snapshot.targetRef;
+  await assert.rejects(f.execute('click',{targetRef:tA2,controlRef:submitButton}),err=>isToolNotStartedError(err)&&err.code==='UNAUTHORIZED');
+  currentWindow=windowB;
+  const obsB=await f.observe();
+  await assert.rejects(f.execute('type',{targetRef:obsB.snapshot.targetRef,controlRef:editControl,text:'wrong window'}),err=>isToolNotStartedError(err)&&err.code==='UNAUTHORIZED');
 });

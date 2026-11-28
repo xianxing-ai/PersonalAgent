@@ -113,3 +113,125 @@ test('model.egress.secret with forceAsk forces a card in full-access and support
   assert.equal(differentSecret.allowed,false);
   assert.equal(differentSecret.card.forceAsk,true);
 });
+
+test('model.egress.pii asks in low-risk mode, reuses allow_task for same ownerTaskId+consentScope, and re-prompts on new PII scope',async t=>{
+  const f=await fixture(t);
+  const deadline=new Date(Date.now()+60000).toISOString();
+  const destination='https://example.test/runtimes/fixture/invocations';
+  const sendPii=(taskId,ownerTaskId,requestId,consentScope,fingerprints)=>f.intent.request({
+    action:'model.egress.pii',
+    payload:{taskId,requestId,payloadDigest:'d-'+requestId},
+    scope:{destination,piiFingerprints:fingerprints},
+    summary:`检测到个人敏感信息（邮箱地址），是否允许发送到 ${destination}？`,
+    deadline,
+    isCurrent:()=>true,
+    egressReview:{conversationId:'Synthetic original conversation',payload:'{"goal":"re***@qq.com"}',
+      ownerTaskId,destination,allowTaskReuse:true,consentScope},
+  });
+
+  // Parent task prompts once with suggestedDecision = allow_task
+  const parentRes=await f.decide(sendPii('parent-1','parent-1','req-p1','scope-email-1',['fp-email-1']),'allow_task');
+  assert.equal(parentRes.allowed,true);
+  assert.equal(parentRes.card.suggestedDecision,'allow_task');
+  assert.equal(parentRes.card.canAlways,true);
+
+  // Child subagent sharing ownerTaskId + consentScope reuses task consent without another pending card
+  const childAllowed=await sendPii('child-1','parent-1','req-p2','scope-email-1',['fp-email-1']);
+  assert.equal(childAllowed,true);
+  assert.equal(f.question.snapshot().filter(item=>item.state==='pending').length,0);
+
+  // A new unapproved PII fingerprint (new consentScope) must prompt again
+  const newScopeDenied=await f.decide(sendPii('child-1','parent-1','req-p3','scope-email-2',['fp-email-1','fp-phone-2']),'deny');
+  assert.equal(newScopeDenied.allowed,false);
+});
+
+test('Stage 4 unified policy: reversible UI configs auto-approve cleanly without focus hijack while installs/deletes/plans respect active mode and conversationId',async t=>{
+  const directory=await mkdtemp(join(tmpdir(),'pa-intent-stage4-'));
+  const opened=[];
+  let app,intent,question;
+  question=createDesktopAuthorizationQuestionHost({
+    createQuestions:options=>new AuthorizationQuestions(options),
+    getApplication:()=>app,
+    namespace:'stage4-policy',
+    resolveConversation:taskId=>intent?.readIntentConversation?.(taskId)??'panel-conv',
+    available:()=>true,
+    profiles:[
+      {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+      {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true},
+      {ref:'full-access',label:'完全访问',mode:'full-access',revision:1,available:true,fullAccessAutoContent:true},
+    ],
+    defaultProfileRef:'low-risk-auto',
+  });
+  intent=createDesktopAuthorizationIntentHost({
+    getApplication:()=>app,
+    question,
+    openConversation:info=>opened.push(info),
+  });
+  app=createRuntimeApplication({
+    path:join(directory,'runtime.sqlite'),
+    profile:'huawei_ict_agentarts',
+    hostUserNamespace:'stage4-policy',
+    tools:[intent.tool],
+    hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
+    requiresToolAuthorization:()=>true,
+    requestToolAuthorization:scope=>{intent.prepareQuestion(scope);return question.requestToolAuthorization(scope);},
+  });
+  t.after(async()=>{intent.close();question.close();app.close();await rm(directory,{recursive:true,force:true});});
+
+  const decide=async(promise,decision='allow_once')=>{
+    let card;const end=Date.now()+5000;
+    while(Date.now()<end&&!card){card=question.snapshot().find(item=>item.state==='pending');if(!card)await new Promise(resolve=>setTimeout(resolve,5));}
+    assert.ok(card);question.respond({questionId:card.questionId,expectedRevision:card.revision,decision},card.conversationId);
+    return {allowed:await promise,card};
+  };
+
+  // 1. Reversible config action under low-risk-auto: auto-approves, 0 pending cards, 0 openConversation calls.
+  assert.equal(question.asksEveryOperation(),false);
+  const enableOk=await intent.request({
+    action:'skill.enable',payload:{skillId:'demo-skill',enabled:true},scope:{skillId:'demo-skill'},
+    summary:'启用技能 demo-skill',isCurrent:()=>true,
+  });
+  assert.equal(enableOk,true);
+  assert.equal(opened.length,0);
+  assert.equal(question.snapshot().filter(q=>q.state==='pending').length,0);
+
+  // 2. Destructive / install / goal.plan.execute under low-risk-auto still prompt and route openConversation with conversationId.
+  const installRes=await decide(intent.request({
+    action:'skill.install',payload:{skillId:'demo-skill'},scope:{skillId:'demo-skill'},
+    summary:'安装技能 demo-skill',conversationId:'workspace-conv',isCurrent:()=>true,
+  }),'deny');
+  assert.equal(installRes.allowed,false);
+  assert.equal(installRes.card.conversationId,'workspace-conv');
+  assert.equal(opened.length,1);
+  assert.equal(opened[0].conversationId,'workspace-conv');
+
+  const planRes=await decide(intent.request({
+    action:'goal.plan.execute',payload:{planId:'plan-1',planRevision:1},scope:{planId:'plan-1',destination:'agentarts'},
+    summary:'将计划提交至 AgentArts 执行',conversationId:'workspace-conv',isCurrent:()=>true,
+  }),'allow_once');
+  assert.equal(planRes.allowed,true);
+  assert.equal(planRes.card.conversationId,'workspace-conv');
+  assert.equal(opened.length,2);
+  assert.equal(opened[1].conversationId,'workspace-conv');
+
+  // 3. Switching to default-read-only sets asksEveryOperation()=true and prompts even for skill.enable.
+  question.selectSandbox({profileRef:'default-read-only',expectedRevision:question.sandboxSnapshot().selected.revision});
+  assert.equal(question.asksEveryOperation(),true);
+  const manualEnable=await decide(intent.request({
+    action:'skill.enable',payload:{skillId:'demo-skill',enabled:false},scope:{skillId:'demo-skill'},
+    summary:'停用技能 demo-skill',isCurrent:()=>true,
+  }),'allow_once');
+  assert.equal(manualEnable.allowed,true);
+  assert.equal(opened.length,3);
+
+  // 4. Switching to full-access auto-approves goal.plan.execute cleanly without popping cards or focusing panel.
+  question.selectSandbox({profileRef:'full-access',expectedRevision:question.sandboxSnapshot().selected.revision});
+  assert.equal(question.asksEveryOperation(),false);
+  const fullPlanOk=await intent.request({
+    action:'goal.plan.execute',payload:{planId:'plan-2',planRevision:1},scope:{planId:'plan-2',destination:'agentarts'},
+    summary:'完全访问下执行计划',conversationId:'workspace-conv',isCurrent:()=>true,
+  });
+  assert.equal(fullPlanOk,true);
+  assert.equal(opened.length,3);
+});

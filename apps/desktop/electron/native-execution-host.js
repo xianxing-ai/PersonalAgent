@@ -4,7 +4,21 @@ import path from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const blocked=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前外部进程隔离后端或原授权不可用，未降级为普通进程');};
+const ERR_NATIVE_CLOSED='外部进程隔离宿主已关闭，命令尚未启动（未降级为普通进程）';
+const ERR_NATIVE_WORKSPACE_UNAVAILABLE='工作目录或 Node 路径不可用，命令尚未启动（未降级为普通进程）';
+const ERR_NATIVE_HELPER_FAILED='缺少 Windows 进程沙箱宿主组件或校验失败，命令尚未启动（未降级为普通进程）';
+const ERR_NATIVE_PSEC_UNSUPPORTED='当前 Windows 环境不支持 PSEC/AppContainer 隔离 API，命令尚未启动（未降级为普通进程）';
+const ERR_NATIVE_PROBE_FAILED='Windows 进程隔离自检未通过，命令尚未启动（未降级为普通进程）';
+const ERR_NATIVE_POLICY_CHANGED='工作区配置、权限策略或原授权已变化，命令尚未启动（未降级为普通进程）';
+export const NATIVE_PRELAUNCH_ERRORS=Object.freeze({
+  closed:ERR_NATIVE_CLOSED,
+  workspaceUnavailable:ERR_NATIVE_WORKSPACE_UNAVAILABLE,
+  helperFailed:ERR_NATIVE_HELPER_FAILED,
+  psecUnsupported:ERR_NATIVE_PSEC_UNSUPPORTED,
+  probeFailed:ERR_NATIVE_PROBE_FAILED,
+  policyChanged:ERR_NATIVE_POLICY_CHANGED,
+});
+const blocked=(message=ERR_NATIVE_POLICY_CHANGED)=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY',message);};
 const REASON_CLOSED='外部进程隔离宿主已关闭';
 const REASON_UNCONFIGURED='尚未配置可信工作区或 Node 路径；仅在执行外部命令时需要，应用内工具不受影响';
 const REASON_UNVERIFIED='已配置工作区与 Node，首次执行外部命令时将自动校验 Windows 进程沙箱；应用内工具无需此项';
@@ -22,6 +36,7 @@ const external=name=>['workspace.run_allowed_command','workspace.node_check','wo
   'workspace.git_diff_check','workspace.f19_regression_command','workspace.f21_mcp_probe','workspace.f26_release','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
 const identity=value=>{const target=realpathSync.native(value),stat=statSync(target,{bigint:true});
   return [target,String(stat.dev),String(stat.ino),String(stat.birthtimeNs)];};
+const safeIdentity=value=>{try{return identity(value);}catch{blocked(ERR_NATIVE_WORKSPACE_UNAVAILABLE);}};
 
 /** Main-only composition. Policy permissions and real external-process isolation are separate facts. */
 export function createDesktopNativeExecutionHost({coding,question,getApplication,readConfiguration,ensureHelper,probeRootPath,
@@ -29,9 +44,10 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   let verified,pending,lastFailure,closed=false;
   const runs=new Map();
   function configuration(){
+    if(closed)blocked(ERR_NATIVE_CLOSED);
     const value=readConfiguration();
-    if(!value?.rootPath||!value.nodeExecutable||!value.bindingId)blocked();
-    return {...value,identity:digest([value.bindingId,identity(value.rootPath),identity(value.nodeExecutable)])};
+    if(!value?.rootPath||!value.nodeExecutable||!value.bindingId)blocked(ERR_NATIVE_WORKSPACE_UNAVAILABLE);
+    return {...value,identity:digest([value.bindingId,safeIdentity(value.rootPath),safeIdentity(value.nodeExecutable)])};
   }
   function readSafeConfigIdentity(){
     try{return configuration().identity;}catch{return undefined;}
@@ -58,7 +74,8 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   }
   async function prepare(scope,{forTaskConsent=false}={}){
     if(!external(scope.toolName)&&!forTaskConsent&&!isF20Trial(scope))return;
-    const original=getApplication()?.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);if(!original)blocked();
+    if(closed)blocked(ERR_NATIVE_CLOSED);
+    const original=getApplication()?.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);if(!original)blocked(ERR_NATIVE_POLICY_CHANGED);
     const config=configuration();
     if(!current()){
       if(!pending)pending=(async()=>{
@@ -68,7 +85,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           pins=coding.readWindowsNativeHelperAttestation(helperPath);
         }catch{
           lastFailure={configIdentity:config.identity,reason:REASON_HELPER_FAILED};
-          onUpdate();blocked();
+          onUpdate();blocked(ERR_NATIVE_HELPER_FAILED);
         }
         let receipt;
         try{
@@ -76,15 +93,16 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
             systemRoot,signal:scope.signal});
         }catch{
           lastFailure={configIdentity:config.identity,reason:REASON_PROBE_FAILED};
-          onUpdate();blocked();
+          onUpdate();blocked(ERR_NATIVE_PROBE_FAILED);
         }
         if(!receipt?.available||!receipt?.enforced){
-          lastFailure={configIdentity:config.identity,reason:classifyProbeFailure(receipt)};
-          onUpdate();blocked();
+          const reason=classifyProbeFailure(receipt);
+          lastFailure={configIdentity:config.identity,reason};
+          onUpdate();blocked(reason===REASON_PSEC_UNSUPPORTED?ERR_NATIVE_PSEC_UNSUPPORTED:ERR_NATIVE_PROBE_FAILED);
         }
         if(scope.signal.aborted||configuration().identity!==config.identity){
           lastFailure={configIdentity:config.identity,reason:REASON_STALE};
-          onUpdate();blocked();
+          onUpdate();blocked(ERR_NATIVE_POLICY_CHANGED);
         }
         lastFailure=undefined;
         verified={available:true,configuration:config,pins,bindingDigest:digest([config.identity,pins,receipt.helperSha256])};
@@ -92,7 +110,13 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       })().finally(()=>{pending=undefined;});
       await pending;
     }
-    if(!current())blocked();
+    if(!current()){
+      if(closed)blocked(ERR_NATIVE_CLOSED);
+      if(lastFailure?.reason===REASON_HELPER_FAILED)blocked(ERR_NATIVE_HELPER_FAILED);
+      if(lastFailure?.reason===REASON_PSEC_UNSUPPORTED)blocked(ERR_NATIVE_PSEC_UNSUPPORTED);
+      if(lastFailure?.reason===REASON_PROBE_FAILED)blocked(ERR_NATIVE_PROBE_FAILED);
+      blocked(ERR_NATIVE_POLICY_CHANGED);
+    }
     runs.set(JSON.stringify([scope.taskId,scope.runId]),{...scope,configuration:verified.configuration.identity,
       bindingDigest:verified.bindingDigest});
     question.prepare(scope,{requirements:[{requirementId:'native-execution',kind:'tool',scopes:['workspace:execute'],
@@ -110,15 +134,16 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       ...(!ready?{reason:unavailableReason()}:{})};
   }
   function assertBinding(binding){
+    if(closed)blocked(ERR_NATIVE_CLOSED);
     const entry=runs.get(JSON.stringify([binding.taskId,binding.runId]));
     if(!current()||!entry||entry.signal.aborted||now()>=Date.parse(binding.deadline)
       ||Date.parse(binding.deadline)>Date.parse(entry.deadline)||entry.configuration!==verified.configuration.identity
       ||entry.bindingDigest!==verified.bindingDigest||binding.argumentsDigest!==entry.argumentsDigest
-      ||binding.authorizationRef!==entry.runId)blocked();
+      ||binding.authorizationRef!==entry.runId)blocked(closed?ERR_NATIVE_CLOSED:ERR_NATIVE_POLICY_CHANGED);
     const policy=question.readExecutionPolicy(entry);
-    if(policy.ref!==binding.sandboxRef||policy.revision!==binding.revision)blocked();
+    if(policy.ref!==binding.sandboxRef||policy.revision!==binding.revision)blocked(ERR_NATIVE_POLICY_CHANGED);
     const task=getApplication().runtime.getTask(binding.taskId);
-    if(task.state!=='running'||task.cancelRequested)blocked();
+    if(task.state!=='running'||task.cancelRequested)blocked(ERR_NATIVE_POLICY_CHANGED);
     question.currentRequirement(entry,'native-execution');
   }
   function createCommandTool(options){
@@ -132,7 +157,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     const readFixedBinding=readF19Binding??readF21Binding??readF26Binding,journal=readF26Binding?'f26-native-command:v1:':readF21Binding?'f21-native-command:v1:':'f19-native-command:v1:';
     if(!Array.isArray(trustedReadRoots)||trustedReadRoots.length>4)blocked();
     const supportRoots=trustedReadRoots.map(value=>{const target=realpathSync.native(value),relative=path.relative(root,target);
-      if(!statSync(target).isDirectory()||path.dirname(target)===target||relative!== '..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))blocked();
+      if(!statSync(target).isDirectory()||path.dirname(target)===target||relative!== '..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))blocked(ERR_NATIVE_WORKSPACE_UNAVAILABLE);
       return {path:target,identity:digest(identity(target))};});
     const fixedRecipes=options.recipes.map(recipe=>({executable:realpathSync.native(recipe.executable),args:[...(recipe.args??[])]}));
     const executables=[...new Set(fixedRecipes.map(recipe=>recipe.executable))];
@@ -141,7 +166,8 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       assertBinding(request);
       if(readFixedBinding){
         const original=getApplication().runtime.loadCheckpoint(request.taskId,journal+request.runId);
-        if(!original||digest(original.source)!==digest(readFixedBinding(request))||digest(identity(root))!==digest(rootIdentity))blocked();
+        if(!original||digest(original.source)!==digest(readFixedBinding(request)))blocked(ERR_NATIVE_POLICY_CHANGED);
+        if(digest(safeIdentity(root))!==digest(rootIdentity))blocked(ERR_NATIVE_WORKSPACE_UNAVAILABLE);
       }
     };
     const executor={async execute(request){
@@ -151,8 +177,9 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     }};
     return coding.createWorkspaceCommandTool({...commandOptions,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
       bind(context,executionDeadline){
-        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry||digest(identity(root))!==digest(rootIdentity)
-          ||supportRoots.some(value=>digest(identity(value.path))!==value.identity))blocked();
+        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry)blocked(ERR_NATIVE_POLICY_CHANGED);
+        if(digest(safeIdentity(root))!==digest(rootIdentity)||supportRoots.some(value=>digest(safeIdentity(value.path))!==value.identity))
+          blocked(ERR_NATIVE_WORKSPACE_UNAVAILABLE);
         const policy=question.readExecutionPolicy(entry);
         const binding={sandboxRef:policy.ref,revision:policy.revision,taskId:context.taskId,runId:context.runId,
           authorizationRef:context.authorizationRef,argumentsDigest:context.argumentsDigest,deadline:executionDeadline};

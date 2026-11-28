@@ -7,7 +7,10 @@ export function isDeletionOperation({toolName,arguments:args}) {
   return /(?:^|[.:_])(?:delete|remove|erase|purge|trash|unlink|rmdir|uninstall)(?:$|[.:_])/u.test(toolName)
     ||toolName==='calendar.cancel'||args?.permanent===true;
 }
-export function assertDeletionOperationSupported(source) {if(isDeletionOperation(source))unavailable();}
+export function assertDeletionOperationSupported(source,{calendarCancelApprovalGate=false}={}) {
+  if(source?.toolName==='calendar.cancel'&&calendarCancelApprovalGate===true&&source?.arguments?.permanent!==true)return;
+  if(isDeletionOperation(source))unavailable();
+}
 const waiting=()=>({state:'pending',phase:'deletion_user_turn',
   message:'本轮未删除。对象和版本已记为待决；请在同一对话的后续新用户回合知晓后，再次确认此对象与版本。'});
 const unknown=()=>({state:'pending',phase:'deletion_result_unknown',

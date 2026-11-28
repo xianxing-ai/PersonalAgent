@@ -2,7 +2,7 @@ import { ImapFlow } from 'imapflow';
 import { createHash } from 'node:crypto';
 import nodemailer from 'nodemailer';
 import type { SentMessageInfo, Transporter } from 'nodemailer';
-import { ProtocolError } from '@personal-agent/contracts';
+import { ProtocolError, ToolNotStartedError, isToolNotStartedError } from '@personal-agent/contracts';
 import type { ProtocolContracts } from '@personal-agent/contracts';
 import type {
   MailFetchInput,
@@ -206,13 +206,14 @@ export class QQMailProvider implements MailProvider {
   }
 
   async markSeen(_accountRef: string, input: MailMarkSeenInput, context?: MailOperationContext): Promise<{uid: number; seen: boolean}> {
-    guardMailWrite(context);
-    if (input.idempotencyKey.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
-    const client = await this.connect();
-    guardMailWrite(context);
-    const lock = await client.getMailboxLock(input.folder);
+    let lock: {release(): void} | undefined;
     let storeStarted = false;
     try {
+      guardMailWrite(context);
+      if (input.idempotencyKey.length === 0) throw new ToolNotStartedError('INVALID_ARGUMENT', 'idempotencyKey is required');
+      const client = await this.connect();
+      guardMailWrite(context);
+      lock = await client.getMailboxLock(input.folder);
       guardMailWrite(context);
       storeStarted = true;
       await client.messageFlagsAdd(String(input.uid), ['\\Seen'], {uid: true});
@@ -223,17 +224,20 @@ export class QQMailProvider implements MailProvider {
       return {uid: input.uid, seen: true};
     } catch (error) {
       if (storeStarted) throw new ProtocolError('RESULT_UNKNOWN', 'Mail seen write result unknown; reconcile before continuing', false);
-      if (error instanceof ProtocolError) throw error;
-      throw mapImapError(error);
+      throw notStartedError(error);
     } finally {
-      lock.release();
+      lock?.release();
     }
   }
 
   async send(_accountRef: string, input: MailSendInput & {idempotencyKey: string},context?:MailOperationContext): Promise<MailSendResult> {
     input={...input};
-    guardMailWrite(context);
-    if (input.idempotencyKey.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
+    try {
+      guardMailWrite(context);
+      if (input.idempotencyKey.length === 0) throw new ToolNotStartedError('INVALID_ARGUMENT', 'idempotencyKey is required');
+    } catch (error) {
+      throw notStartedError(error);
+    }
     // Provider 层同样单飞 + 输入绑定（goo122 2026-09-13 复审 P1）：在途 Promise 先登记再 await，
     // 并发同键只触发一次 sendMail；键换输入直接拒绝。持久化的最终责任在 Runtime，
     // 此表只覆盖进程内窗口（与 Service 层互为纵深，不互为替代）。
@@ -241,7 +245,7 @@ export class QQMailProvider implements MailProvider {
     const prior = this.sendInflight.get(input.idempotencyKey);
     if (prior !== undefined) {
       if (prior.fingerprint !== fingerprint) {
-        throw new ProtocolError('INVALID_ARGUMENT', `idempotencyKey "${input.idempotencyKey}" was used with different content at the provider; refusing`);
+        throw new ToolNotStartedError('INVALID_ARGUMENT', `idempotencyKey "${input.idempotencyKey}" was used with different content at the provider; refusing`);
       }
       return prior.inflight;
     }
@@ -253,24 +257,32 @@ export class QQMailProvider implements MailProvider {
   }
 
   private async sendViaTransporter(input: MailSendInput & {idempotencyKey: string},context?:MailOperationContext): Promise<MailSendResult> {
-    guardMailWrite(context);
-    const messageId = this.operationMessageId('send', input.idempotencyKey);
-    if(context?.beforeSend){
-      const prepared=await context.beforeSend(Object.freeze({idempotencyKey:input.idempotencyKey,messageId}));
+    let intentPersisted = false;
+    let messageId = '';
+    try {
       guardMailWrite(context);
-      if(prepared==='existing')return {state:'unknown',messageId,reason:'Original SMTP intent exists; reconcile without sending again'};
-      if(prepared!=='persisted')throw new ProtocolError('UNAUTHORIZED','Original SMTP identity was not persisted');
+      messageId = this.operationMessageId('send', input.idempotencyKey);
+      if(context?.beforeSend){
+        const prepared=await context.beforeSend(Object.freeze({idempotencyKey:input.idempotencyKey,messageId}));
+        intentPersisted = prepared === 'persisted' || prepared === 'existing';
+        guardMailWrite(context);
+        if(prepared==='existing')return {state:'unknown',messageId,reason:'Original SMTP intent exists; reconcile without sending again'};
+        if(prepared!=='persisted')throw new ToolNotStartedError('UNAUTHORIZED','Original SMTP identity was not persisted');
+      }
+      if (this.transporter === null) {
+        this.transporter = nodemailer.createTransport({
+          host: this.options.smtpHost,
+          port: this.options.smtpPort,
+          secure: true,
+          auth: {user: this.options.user, pass: this.options.authCode},
+          socketTimeout: Math.max(input.timeoutMs, 1_000),
+        });
+      }
+      guardMailWrite(context);
+    } catch (error) {
+      if (intentPersisted) throw error instanceof ProtocolError ? error : mapImapError(error);
+      throw notStartedError(error);
     }
-    if (this.transporter === null) {
-      this.transporter = nodemailer.createTransport({
-        host: this.options.smtpHost,
-        port: this.options.smtpPort,
-        secure: true,
-        auth: {user: this.options.user, pass: this.options.authCode},
-        socketTimeout: Math.max(input.timeoutMs, 1_000),
-      });
-    }
-    guardMailWrite(context);
     let result: MailSendResult;
     let abort:()=>void=()=>{};
     const cancelled=new Promise<never>((_resolve,reject)=>{abort=()=>reject(new Error('SMTP result unknown after cancellation'));
@@ -292,34 +304,41 @@ export class QQMailProvider implements MailProvider {
 
   async archive(_accountRef:string,input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
     input={...input};
-    guardMailWrite(context);
-    if(!input.idempotencyKey||!input.folder||!Number.isSafeInteger(input.uid)||input.uid<1
-      ||!Number.isSafeInteger(input.uidValidity)||input.uidValidity<1||!/^<[^<>\s]+>$/u.test(input.messageId))
-      throw new ProtocolError('INVALID_ARGUMENT','Archive requires the original folder, UID epoch and Message-ID');
+    try {
+      guardMailWrite(context);
+      if(!input.idempotencyKey||!input.folder||!Number.isSafeInteger(input.uid)||input.uid<1
+        ||!Number.isSafeInteger(input.uidValidity)||input.uidValidity<1||!/^<[^<>\s]+>$/u.test(input.messageId))
+        throw new ToolNotStartedError('INVALID_ARGUMENT','Archive requires the original folder, UID epoch and Message-ID');
+    } catch (error) {
+      throw notStartedError(error);
+    }
     const fingerprint=JSON.stringify([input.folder,input.uid,input.uidValidity,input.messageId]),prior=this.archiveInflight.get(input.idempotencyKey);
-    if(prior){if(prior.fingerprint!==fingerprint)throw new ProtocolError('INVALID_ARGUMENT','Archive key belongs to different input');return prior.result;}
+    if(prior){if(prior.fingerprint!==fingerprint)throw new ToolNotStartedError('INVALID_ARGUMENT','Archive key belongs to different input');return prior.result;}
     const result=this.moveToArchive(input,context);this.archiveInflight.set(input.idempotencyKey,{fingerprint,result});return result;
   }
 
   private async moveToArchive(input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
-    const folder=(await this.listFolders(undefined,context)).find(value=>value.role==='archive');guardMailWrite(context);
-    if(!folder||folder.path===input.folder)throw new ProtocolError('UNSUPPORTED_CAPABILITY','A distinct advertised Archive mailbox is required');
-    const client=await this.connect();guardMailWrite(context);
-    // imapflow otherwise emulates MOVE with COPY + EXPUNGE. Do not broaden an archive into that fallback.
-    if(!client.capabilities.has('MOVE')||!client.capabilities.has('UIDPLUS'))
-      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Verified archive requires native MOVE and UIDPLUS');
-    let lock:{release():void}|undefined=await client.getMailboxLock(input.folder),started=false;
+    let lock:{release():void}|undefined,started=false,intentPersisted=false;
     const actionId='mail-archive:'+input.idempotencyKey,unknown=():ProtocolContracts['connectorAction']=>({actionId,state:'unknown',externalId:input.messageId,evidenceRefs:[]});
     try {
+      const folder=(await this.listFolders(undefined,context)).find(value=>value.role==='archive');guardMailWrite(context);
+      if(!folder||folder.path===input.folder)throw new ToolNotStartedError('UNSUPPORTED_CAPABILITY','A distinct advertised Archive mailbox is required');
+      const client=await this.connect();guardMailWrite(context);
+      // imapflow otherwise emulates MOVE with COPY + EXPUNGE. Do not broaden an archive into that fallback.
+      if(!client.capabilities.has('MOVE')||!client.capabilities.has('UIDPLUS'))
+        throw new ToolNotStartedError('UNSUPPORTED_CAPABILITY','Verified archive requires native MOVE and UIDPLUS');
+      lock=await client.getMailboxLock(input.folder);
       guardMailWrite(context);
       if(!client.mailbox||Number(client.mailbox.uidValidity)!==input.uidValidity)
-        throw new ProtocolError('CURSOR_EXPIRED','Original mail UID epoch changed');
+        throw new ToolNotStartedError('CURSOR_EXPIRED','Original mail UID epoch changed');
       const original=await client.fetchOne(String(input.uid),{envelope:true},{uid:true});guardMailWrite(context);
-      if(!original||original.envelope?.messageId!==input.messageId)throw new ProtocolError('REVISION_CONFLICT','Original message identity changed');
+      if(!original||original.envelope?.messageId!==input.messageId)throw new ToolNotStartedError('REVISION_CONFLICT','Original message identity changed');
       if(context?.beforeArchive){
-        const prepared=await context.beforeArchive(Object.freeze({...input,destinationFolder:folder.path}));guardMailWrite(context);
+        const prepared=await context.beforeArchive(Object.freeze({...input,destinationFolder:folder.path}));
+        intentPersisted=prepared==='persisted'||prepared==='existing';
+        guardMailWrite(context);
         if(prepared==='existing')return unknown();
-        if(prepared!=='persisted')throw new ProtocolError('UNAUTHORIZED','Original archive identity was not persisted');
+        if(prepared!=='persisted')throw new ToolNotStartedError('UNAUTHORIZED','Original archive identity was not persisted');
       }
       started=true;
       const moved=await client.messageMove(String(input.uid),folder.path,{uid:true});
@@ -337,7 +356,11 @@ export class QQMailProvider implements MailProvider {
       const archived=await client.fetchOne(String(destinationUid),{envelope:true},{uid:true});
       if(!archived||archived.envelope?.messageId!==input.messageId)return unknown();
       return {actionId,state:'confirmed',externalId:folder.path+':'+destinationUid,evidenceRefs:[]};
-    }catch(error){if(started)return unknown();if(error instanceof ProtocolError)throw error;throw mapImapError(error);}
+    }catch(error){
+      if(started)return unknown();
+      if(intentPersisted){if(error instanceof ProtocolError)throw error;throw mapImapError(error);}
+      throw notStartedError(error);
+    }
     finally {lock?.release();}
   }
 
@@ -395,12 +418,16 @@ export class QQMailProvider implements MailProvider {
   }
 
   async saveDraft(_accountRef: string, input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): Promise<ProtocolContracts['connectorAction']> {
-    guardMailWrite(context);
-    if (!input.idempotencyKey) throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
+    try {
+      guardMailWrite(context);
+      if (!input.idempotencyKey) throw new ToolNotStartedError('INVALID_ARGUMENT', 'idempotencyKey is required');
+    } catch (error) {
+      throw notStartedError(error);
+    }
     const fingerprint = JSON.stringify([input.to, input.subject, input.text]);
     const prior = this.draftInflight.get(input.idempotencyKey);
     if (prior) {
-      if (prior.fingerprint !== fingerprint) throw new ProtocolError('INVALID_ARGUMENT', 'Draft key was used with different content');
+      if (prior.fingerprint !== fingerprint) throw new ToolNotStartedError('INVALID_ARGUMENT', 'Draft key was used with different content');
       return prior.inflight;
     }
     const inflight = this.appendDraft(input, context);
@@ -409,16 +436,17 @@ export class QQMailProvider implements MailProvider {
   }
 
   private async appendDraft(input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): Promise<ProtocolContracts['connectorAction']> {
-    const folder = (await this.listFolders(undefined, context)).find(entry => entry.role === 'drafts');
-    guardMailWrite(context);
-    if (!folder) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Mailbox does not advertise a Drafts folder');
-    const messageId = this.operationMessageId('draft', input.idempotencyKey);
-    const client = await this.connect();
-    guardMailWrite(context);
-    const lock = await client.getMailboxLock(folder.path);
     const actionId = `mail-draft:${input.idempotencyKey}`;
+    const messageId = this.operationMessageId('draft', input.idempotencyKey);
+    let lock: {release(): void} | undefined;
     let appendStarted = false;
     try {
+      const folder = (await this.listFolders(undefined, context)).find(entry => entry.role === 'drafts');
+      guardMailWrite(context);
+      if (!folder) throw new ToolNotStartedError('UNSUPPORTED_CAPABILITY', 'Mailbox does not advertise a Drafts folder');
+      const client = await this.connect();
+      guardMailWrite(context);
+      lock = await client.getMailboxLock(folder.path);
       guardMailWrite(context);
       const existing = await client.search({header: {'message-id': messageId}}, {uid: true});
       guardMailWrite(context);
@@ -430,14 +458,14 @@ export class QQMailProvider implements MailProvider {
           }
         }
         guardMailWrite(context);
-        throw new ProtocolError('EXTERNAL_FAILURE', 'Draft identity search could not be verified', false);
+        throw new ToolNotStartedError('EXTERNAL_FAILURE', 'Draft identity search could not be verified');
       }
       // streamTransport generates MIME in memory; it never connects to SMTP.
       const composer = nodemailer.createTransport({streamTransport: true, buffer: true, newline: 'windows'});
       const mime = await composer.sendMail({from: this.options.user, to: input.to,
         subject: input.subject, text: input.text, messageId});
       guardMailWrite(context);
-      if (!Buffer.isBuffer(mime.message)) throw new ProtocolError('EXTERNAL_FAILURE', 'Draft MIME was not buffered', false);
+      if (!Buffer.isBuffer(mime.message)) throw new ToolNotStartedError('EXTERNAL_FAILURE', 'Draft MIME was not buffered');
       guardMailWrite(context);
       appendStarted = true;
       const appended = await client.append(folder.path, mime.message, ['\\Draft']);
@@ -448,13 +476,10 @@ export class QQMailProvider implements MailProvider {
       }
       return {actionId, state: 'confirmed', externalId: `${folder.path}:${appended.uid}`, evidenceRefs: []};
     } catch (error) {
-      if (!appendStarted) {
-        if (error instanceof ProtocolError) throw error;
-        throw mapImapError(error);
-      }
+      if (!appendStarted) throw notStartedError(error);
       // APPEND may have succeeded before disconnection: do not reappend automatically.
       return {actionId, state: 'unknown', externalId: messageId, evidenceRefs: []};
-    } finally { lock.release(); }
+    } finally { lock?.release(); }
   }
 
   async dispose(): Promise<void> {
@@ -463,6 +488,13 @@ export class QQMailProvider implements MailProvider {
     this.transporter?.close();
     this.transporter = null;
   }
+}
+
+function notStartedError(error: unknown): ToolNotStartedError {
+  if (isToolNotStartedError(error)) return error;
+  if (error instanceof ProtocolError) return new ToolNotStartedError(error.code, error.message);
+  const mapped = mapImapError(error);
+  return new ToolNotStartedError(mapped.code, mapped.message);
 }
 
 function rejectAfter(ms: number): Promise<never> {

@@ -190,7 +190,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   };
   roster=mountAssistantRoster(assistantRoster,{invoke,escape,report,onOpen:id=>showAssistant(id).catch(report)});
   window.desktop?.onOpenAssistant?.(value=>{if(value?.assistantId)showAssistant(value.assistantId).catch(report);});
-  const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage,taskId=>invoke('computer.control.confirm',{taskId}));
+  const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage,taskId=>invoke('computer.control.confirm',{taskId}),
+    payload=>invoke('computer.control.reconfirm',payload));
   const updateRepair=mountFailureRepairCard(root.querySelector('#conversation-inspector'),root.querySelector('#inspector-content'),invoke);
   const briefingPanel=mountBriefingPanel(stage,invoke);
   const proactiveControls=mountProactiveControls(stage,invoke);
@@ -472,7 +473,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       root.querySelector('.cc-chat-heading').append(brakeButton);
     }
     applyOperatorBrake({button:brakeButton,status:brakeStatus,snapshot:data.operatorBrake});
-    updateProgress(data.computerControl?.waitingConfirmation?data.tasks:[],data.computerControl,
+    updateProgress((data.computerControl?.waitingConfirmation||data.computerControl?.missedConfirmation)?data.tasks:[],data.computerControl,
       {questions:data.authorizationQuestions,workflowQuestions:data.workflowQuestions,conversationId:data.conversationState?.activeId});
     updateRepair(data.tasks.filter(task=>task.taskId===inspected&&!task.outputTruncated));
     briefingPanel.render(data.dailyBriefing,{open:data.briefingOpen===true});
@@ -519,7 +520,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
               ?`<div class="assistant-message" role="status">${escape(awaiting)}，请查看下方授权卡。</div>`:delegated
               ?`<div class="assistant-message cc-dispatch-ack"${streamAttr}>${DISPATCH_ACK}</div>`
               :`<div class="assistant-message cc-typing"${streamAttr}>正在回复…</div>`;
-        const locateHtml=failure&&!task.resultSummary?`<div class="locate-block" data-locate-for="${escape(task.taskId)}"><button type="button" class="turn-action" data-locate-id="${escape(task.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';
+        const hasSourceFrames=Boolean(task.hasCommandDiagnostic)||(typeof failure==='string'&&/(?:\.[cm]?[jt]sx?:\d+|:\d+:\d+|\bat\s+\S+\s*\()/i.test(failure));
+        const locateHtml=failure&&!task.resultSummary?(hasSourceFrames?`<div class="locate-block" data-locate-for="${escape(task.taskId)}"><button type="button" class="turn-action" data-locate-id="${escape(task.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:replies.length&&task.state==='failed'?'<p class="notice">子任务已完成，收尾汇总时云端连接偶发异常（已完成的本机操作无需重复提交）。</p>':''):'';
         return `<article class="workspace-turn" data-turn="${escape(task.taskId)}">${task.conflictOnly?'':`<div class="user-message">${escape(task.userMessage||'历史对话')}</div>`}${traceHtml}${bubbles}${locateHtml}<div data-workspace-approvals="${escape(task.taskId)}"></div><div class="response-actions">${!task.conflictOnly?`<button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${replies.length?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??task.reconciliationStatus?.notice??(task.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${!task.conflictOnly&&task.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">${escape(task.reconciliationStatus.actionLabel)}</button>`:''}`:''}${conflictDecisionMarkup(task,escape,true)}</div></article>`;
       }).join('')+delegatedDeliveryHtml(deliveries,escape,'workspace');
       updateConversationTurns(conversation,turnsMarkup,{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});

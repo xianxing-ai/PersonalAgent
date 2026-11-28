@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {isToolNotStartedError} from '@personal-agent/contracts';
 import {QQMailProvider,register} from '../dist/index.js';
 
 // Explicit offline IMAP/SMTP fixtures: no account login, socket, or real recipient.
@@ -29,11 +30,22 @@ test('archive unknown never repeats MOVE and changed epoch/cancellation never st
     const f=fixture(config);assert.equal((await f.provider.archive('fixture',archiveInput)).state,'unknown');
     assert.equal((await f.provider.archive('fixture',archiveInput)).state,'unknown');assert.equal(f.moves(),1);
   }
-  const f=fixture();await assert.rejects(f.provider.archive('fixture',{...archiveInput,uidValidity:18}),{code:'CURSOR_EXPIRED'});
+  const f=fixture();await assert.rejects(f.provider.archive('fixture',{...archiveInput,uidValidity:18}),
+    error=>error.code==='CURSOR_EXPIRED'&&isToolNotStartedError(error));
   assert.equal(f.moves(),0);await assert.rejects(f.provider.archive('fixture',{...archiveInput,idempotencyKey:'cancelled'},
     {signal:AbortSignal.abort()}),{code:'CANCELLED'});assert.equal(f.moves(),0);
-  f.client.capabilities.delete('MOVE');await assert.rejects(f.provider.archive('fixture',{...archiveInput,idempotencyKey:'no-native-move'}),{code:'UNSUPPORTED_CAPABILITY'});
+  f.client.capabilities.delete('MOVE');await assert.rejects(f.provider.archive('fixture',{...archiveInput,idempotencyKey:'no-native-move'}),
+    error=>error.code==='UNSUPPORTED_CAPABILITY'&&isToolNotStartedError(error));
   assert.equal(f.moves(),0);
+  const noArchive=fixture();noArchive.client.list=async()=>[{path:'INBOX',specialUse:'\\Inbox'},{path:'Sent Messages',specialUse:'\\Sent'}];
+  await assert.rejects(noArchive.provider.archive('fixture',{...archiveInput,idempotencyKey:'no-archive-folder'}),
+    error=>error.code==='UNSUPPORTED_CAPABILITY'&&isToolNotStartedError(error));
+  assert.equal(noArchive.moves(),0);
+  const persisted=fixture();let current=true;
+  await assert.rejects(persisted.provider.archive('fixture',{...archiveInput,idempotencyKey:'persisted-then-revoked'},
+    {assertCurrent(){if(!current)throw new Error('source revoked');},beforeArchive(){current=false;return 'persisted';}}),
+    error=>!isToolNotStartedError(error));
+  assert.equal(persisted.moves(),0);
 });
 
 test('SMTP cancellation after dispatch retains original Message-ID and never sends again',async()=>{

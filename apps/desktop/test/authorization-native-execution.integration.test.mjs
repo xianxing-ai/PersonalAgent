@@ -20,11 +20,11 @@ async function until(read,label,timeout=30000){
   throw Error('Native authorization integration did not reach '+label);
 }
 
-function assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted}){
+function assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted,expectedMessage='当前外部进程隔离后端或原授权不可用，未降级为普通进程'}){
   const task=app.runtime.getTask(taskId),approval=app.runtime.getApproval(runId),records=app.runtime.readToolExecutions(taskId);
   assert.equal(task.state,'failed');assert.equal(task.error?.code,'UNSUPPORTED_CAPABILITY');
   assert.equal(preparationError?.code,'UNSUPPORTED_CAPABILITY');
-  assert.equal(task.error.message,'当前外部进程隔离后端或原授权不可用，未降级为普通进程');
+  assert.equal(task.error.message,expectedMessage);
   assert.equal(approval.state,'denied');assert.equal(approval.revision,2);
   assert.equal(approval.resolution?.actor,'system');assert.equal(approval.resolution?.reason,'stale');
   assert.equal(records.length,1);assert.equal(records[0].evidenceId,runId+'-question-invalidation');
@@ -90,10 +90,11 @@ test('an unavailable native probe preserves the safe cause through the actual au
   await until(()=>app.runtime.getTask(taskId).state==='failed','fake unavailable refusal');
   await until(()=>app.activeTaskCount===0,'fake unavailable worker');
   const runId='host-tool-'+taskId;
-  assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted});
+  const expectedPsecMessage='当前 Windows 环境不支持 PSEC/AppContainer 隔离 API，命令尚未启动（未降级为普通进程）';
+  assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted,expectedMessage:expectedPsecMessage});
   assert.equal(app.submitHostToolTask(input).task.taskId,taskId,'replay retains the same terminal task');
   assert.equal(authorizationCalls,1);assert.equal(probeCalls,1);assert.equal(toolExecutions,0);assert.equal(nativeExecutorCalls,0);
-  assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted});
+  assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted,expectedMessage:expectedPsecMessage});
 });
 
 // Real Runtime, Policy, ToolGateway, question service/host and native execution host.

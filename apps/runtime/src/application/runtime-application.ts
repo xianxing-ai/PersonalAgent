@@ -2006,7 +2006,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         validateToolValue(descriptor.inputSchema,saved.arguments);
         const anchor=this.runtime.loadCheckpoint(taskId,'authorization-question-binding:'+requestedRunId) as {proposalId?:string}|undefined;
         return {taskId,proposalId:anchor?.proposalId??(!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId),runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
-          sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
+          sideEffect:descriptor.sideEffect,inputSchema:structuredClone(descriptor.inputSchema),outputSchema:structuredClone(descriptor.outputSchema)};
       }
       if(loop.pending.toolName===CLOUD_SKILL_TOOL_NAME){
         const source=this.runtime.loadCheckpoint(taskId,'authorization-public-reference:'+loop.pending.proposalId) as
@@ -2021,7 +2021,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!descriptor)return undefined;
         return {taskId,proposalId:loop.pending.proposalId,runId:source.candidate.runId,toolName:descriptor.name,toolVersion:descriptor.version,
           arguments:structuredClone(source.candidate.arguments),argumentsDigest:toolArgumentsDigest(source.candidate.arguments),
-          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
+          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],sideEffect:descriptor.sideEffect,
+          inputSchema:structuredClone(descriptor.inputSchema),outputSchema:structuredClone(descriptor.outputSchema)};
       }
       const nested=this.resolveOriginalWorkerApproval(taskId,loop.pending);
       const runId=nested?.runId??`competition-tool-${taskId}-${loop.step}`;
@@ -2033,7 +2034,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       validateToolValue(descriptor.inputSchema,args);
       return {taskId,proposalId:loop.pending.proposalId,runId,toolName,toolVersion:descriptor.version,
         arguments:structuredClone(args),argumentsDigest:toolArgumentsDigest(args),deadline,scopes:[...descriptor.requiredScopes],
-        sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
+        sideEffect:descriptor.sideEffect,inputSchema:structuredClone(descriptor.inputSchema),outputSchema:structuredClone(descriptor.outputSchema)};
     }catch{return undefined;}
   }
 
@@ -6506,7 +6507,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           assistantId:item.assistantId,displayName:item.displayName,role:item.role,status:item.status,
         }))});
         // Host-owned hint: users speak naturally; do not ask for tool names or IDs.
-        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
+        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。主对话仅挂载轻量只读工具（如 calendar.events、weather.forecast、feeds.*）；凡涉及日历创建/修改/取消、邮件读写、待办、GitHub、知识库、文件/命令或当前工具表未列出的读写能力，必须直接调用 subagent.dispatch 派发工人执行（工人通过 capability.search 拥有完整工具与连接器目录），禁止因主对话目录未列出写工具而声称没有写入能力。`;
       }
       if(this.delegateUserTasks&&!manualCompaction&&!this.frontDeskTurn(taskId)) {
         const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;

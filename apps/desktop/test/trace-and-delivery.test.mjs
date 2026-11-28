@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   DISPATCH_ACK,
+  answerCardHtml,
   createDelegatedDeliveryTracker,
   delegatedDeliveryHtml,
   describeTraceStepLogo,
   describeTraceStepVerb,
+  liveFromTranscript,
   rememberActivity,
   replaceTraceBlock,
   syncTraceDisclosures,
@@ -249,4 +251,28 @@ test('mainChatReplies prefers parent model answer, suppresses failed child error
     error: {message: '云端已返回明确失败：外部服务执行失败；请检查服务状态 [stage=task; code=EXTERNAL_FAILURE] [cloud: transport=wss code=EXTERNAL_FAILURE]'},
   }, []);
   assert.deepEqual(modelUnavailable, ['外部服务执行失败；请检查服务状态']);
+});
+
+test('answerCardHtml and traceBlockHtml settle unclosed tool_call steps when task is failed instead of shimmering 执行中 forever', () => {
+  const transcript = {
+    segments: [
+      {kind: 'tool', stepId: 's1', toolName: 'capability.search', label: 'capability.search 已返回', resultSummary: '{"ok":true}', durationMs: 119},
+      {kind: 'tool', stepId: 's2', toolName: 'calendar.cancel', label: '正在调用 calendar.cancel'},
+    ],
+  };
+  const live = liveFromTranscript(transcript);
+  const failedTask = {taskId: 't-failed', state: 'failed', error: {message: '当前环境还不支持这一步。'}};
+  const cardHtml = answerCardHtml(failedTask, live, escape);
+  assert.doesNotMatch(cardHtml, /执行中|is-shimmer|正在调用 calendar\.cancel/);
+  assert.match(cardHtml, /失败/);
+  assert.match(cardHtml, /calendar\.cancel 未完成/);
+
+  const traceHtml = traceBlockHtml(failedTask, live, [], escape);
+  assert.doesNotMatch(traceHtml, /执行中|is-shimmer|正在调用 calendar\.cancel/);
+  assert.match(traceHtml, /calendar\.cancel 未完成/);
+
+  const recordedFailed = liveFromTranscript({
+    segments: [{kind: 'tool', stepId: 's3', toolName: 'calendar.cancel', label: 'calendar.cancel 未完成', resultSummary: '[failed:UNSUPPORTED_CAPABILITY]', durationMs: 12}],
+  });
+  assert.equal(recordedFailed.steps[0].state, 'failed');
 });

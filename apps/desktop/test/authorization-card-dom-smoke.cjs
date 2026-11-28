@@ -47,7 +47,7 @@ const {_electron}=require('playwright');
   try {
     const page=await app.firstWindow(),errors=[];page.on('pageerror',error=>errors.push(error.name));await page.waitForFunction(()=>window.ready);
     const question=page.locator('#questions [data-question-id]').first(),details=question.locator('details');
-    assert.deepEqual(await question.locator('button').allTextContents(),['同意','拒绝']);
+    assert.deepEqual(await question.locator('button').allTextContents(),['同意','以后都允许','拒绝']);
     assert.equal(await question.locator('input,textarea,select').count(),0);assert.equal(await details.evaluate(node=>node.open),false);
     assert.equal(await question.getByText('workspace:read',{exact:true}).isVisible(),false);
     assert.equal(await question.getByText('Synthetic 读取记录，并将必要结果用于本次云端对话',{exact:true}).first().isVisible(),true);

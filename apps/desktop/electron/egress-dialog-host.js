@@ -1,10 +1,10 @@
 import {createDesktopEgressHost} from './egress-host.js';
 
 /** Native, local-only classification. Used in explicit ask mode when content is not auto-approved by policy. */
-export function createNativeEgressHost({dialog,authorizeTaskEgress,authorizeSecretEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs,readEgressPolicy}) {
+export function createNativeEgressHost({dialog,authorizeTaskEgress,authorizeSecretEgress,authorizePiiEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs,readEgressPolicy}) {
   const current=scope=>!scope.signal.aborted&&Date.parse(scope.deadline)>Date.now()&&scope.isCurrent();
   return createDesktopEgressHost({
-    authorizeTaskEgress,authorizeSecretEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs,readEgressPolicy,
+    authorizeTaskEgress,authorizeSecretEgress,authorizePiiEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs,readEgressPolicy,
     async classifyLocally(scope){
       if(!current(scope))return 'unknown';
       const preview=scope.payload.length>4000
