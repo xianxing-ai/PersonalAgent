@@ -21,7 +21,9 @@ const weather = {
 
 test('front-desk panel turn keeps light tools and skips forced user-work delegation', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'front-desk-light-'));
+  let observedInitialGoal = '';
   const port = new FakeCoordinationPort(request => {
+    if (!request.continuation) observedInitialGoal = request.goal;
     if (request.continuation) {
       return {kind: 'text', text: '青岛今天多云', verification: 'unverified', executionEpoch: request.executionEpoch};
     }
@@ -71,6 +73,8 @@ test('front-desk panel turn keeps light tools and skips forced user-work delegat
     assert.notEqual(task.state, 'failed', task.error?.message ?? task.state);
     const children = app.runtime.listTasks({conversationId: `desktop-subtask:${taskId}`, limit: 10}).items;
     assert.equal(children.length, 0, 'light front-desk weather must not spawn user-work child');
+    assert.match(observedInitialGoal, /subagent\.dispatch/);
+    assert.match(observedInitialGoal, /日历创建\/修改\/取消/);
   } finally {
     app.close();
     await rm(directory, {recursive: true, force: true});

@@ -340,6 +340,13 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
     },
     get competitionToolAvailability(){return tools.map(tool=>({toolName:tool.descriptor.name,
       toolVersion:tool.descriptor.version,
+      publicDescription:tool.descriptor.name==='todo.create'
+        ?'新建本机待办与可选定时提醒（相对分钟优先用 remindInMinutes）。返回的 reminderTrigger 仅表示已排程的未来触发计划（尚未到点触发），请如实告知已设好提醒时间，切勿当场播报“提醒时间到”。'
+        :tool.descriptor.name==='todo.update'
+          ?'更新既有待办的状态、标题或提醒（需传 todo.list 返回的真实 id）。当 status 设为 done 或 cancelled 时，返回的 reminderTrigger 为 null 表示系统已自动取消对应定时提醒（即使 item.reminder 保留原配置历史也不会再触发），切勿提示提醒仍保留。'
+          :tool.descriptor.name==='todo.list'
+            ?'按状态（open / done / cancelled）列出本机待办及真实 id、revision 与提醒配置；status 非 open 的条目其定时提醒已自动停用不会再触发。'
+            :undefined,
       publicEnumPaths:tool.descriptor.name==='todo.list'?['/status']:tool.descriptor.name==='todo.update'?['/status','/missedPolicy']:tool.descriptor.name==='todo.create'?['/missedPolicy']:[],
       available:({taskId,signal})=>!signal.aborted && (question?questionReady():current()) && bound(taskId,true)}));},
     get competitionToolExports(){return tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,

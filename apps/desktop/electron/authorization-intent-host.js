@@ -6,7 +6,7 @@ export const AUTHORIZATION_INTENT_ACTIONS=Object.freeze([
   'memory.save','memory.erase','memory.withdraw','memory.consume','experience.activate',
   'skill.install','skill.enable','skill.uninstall','skill.run','plugin.install','plugin.enable','plugin.uninstall','reference.catalog','reference.source',
   'knowledge.session','knowledge.configure','knowledge.read','knowledge.catalog','workflow.enable','workflow.delete','facts.erase','feeds.classify',
-  'mail.review.configure','computer.observation.configure','computer.observation.export','model.egress','model.egress.secret',
+  'mail.review.configure','computer.observation.configure','computer.observation.export','model.egress','model.egress.secret','model.egress.pii',
   'remoteMcp.configure','knowledge.pair','voice.capture','developer.export','harness.export','workflow.export',
 ]);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -73,7 +73,7 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
         ...(entry.forceAsk?{forceAsk:true}:{}),
         ...(entry.forceAsk?{}
           :reuseTask
-            ?{taskConsent:{taskId:entry.egressReview.ownerTaskId,bindingDigest:digest({action:entry.action,taskId:entry.egressReview.ownerTaskId,destination:entry.egressReview.destination}),summary:entry.summary,mode:'read-only'}}
+            ?{taskConsent:{taskId:entry.egressReview.ownerTaskId,bindingDigest:digest({action:entry.action,taskId:entry.egressReview.ownerTaskId,destination:entry.egressReview.destination,...(entry.egressReview.consentScope?{consentScope:entry.egressReview.consentScope}:{})}),summary:entry.summary,mode:'read-only'}}
             :entry.egressReview?{contentConfirmation:{digest:digest(entry.summary),text:entry.summary}}:{}),
         ...(entry.decisionDeadline?{decisionDeadline:entry.decisionDeadline}:{}),assertCurrent:()=>entry.current()});
       if(entry.parent)question.deriveHostIntent(entry.parent,scope,{operationDigest:entry.operation.digest,assertCurrent:()=>entry.current()});
@@ -82,7 +82,7 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
       if(closed||!AUTHORIZATION_INTENT_ACTIONS.includes(action)||typeof isCurrent!=='function'||!isCurrent()
         ||signal.aborted||!Number.isFinite(Date.parse(deadline))||now()>=Date.parse(deadline)||typeof summary!=='string'||summary.length>512)return false;
       const application=getApplication();if(!application?.submitHostToolTask)return false;
-      const isEgressAction=action==='model.egress'||action==='model.egress.secret';
+      const isEgressAction=action==='model.egress'||action==='model.egress.secret'||action==='model.egress.pii';
       if(isEgressAction&&(!egressReview?.conversationId||typeof egressReview.payload!=='string'||!egressReview.payload))return false;
       const payloadDigest=digest(payload),scopeDigest=digest(scope),args={action,payloadDigest,scopeDigest};
       if(operation&&(!['developer.export','harness.export'].includes(action)||typeof operation.taskId!=='string'

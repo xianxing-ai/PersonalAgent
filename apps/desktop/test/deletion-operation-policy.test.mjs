@@ -62,6 +62,9 @@ test('declining the later native dialog is known no-effect and does not consume 
 test('generic deletion refuses without a real recovery port; caller-supplied recoverability is no proof',()=>{
  for(const toolName of ['filesystem.delete','calendar.cancel','memory.erase','shell.unlink'])
   assert.throws(()=>assertDeletionOperationSupported({toolName,arguments:{recoverable:true,permanent:false}}),/可信/);
+ assertDeletionOperationSupported({toolName:'calendar.cancel',arguments:{externalId:'evt-1'}},{calendarCancelApprovalGate:true});
+ assert.throws(()=>assertDeletionOperationSupported({toolName:'calendar.cancel',arguments:{externalId:'evt-1',permanent:true}},{calendarCancelApprovalGate:true}),/可信/);
+ assert.throws(()=>assertDeletionOperationSupported({toolName:'filesystem.delete',arguments:{path:'a'}},{calendarCancelApprovalGate:true}),/可信/);
  for(const toolName of ['mail.archive','calendar.create','todo.update'])assertDeletionOperationSupported({toolName});
 });
 

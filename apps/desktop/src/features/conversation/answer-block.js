@@ -10,6 +10,11 @@ function stepDisclosureKey(step, index) {
   return typeof step?.stepId === 'string' && step.stepId.length > 0 ? `step:${step.stepId}` : `step-index:${index}`;
 }
 
+function isFailedToolOutcome(resultSummary, label) {
+  return (typeof resultSummary === 'string' && /^\[failed:[A-Z_]+\]$/.test(resultSummary.trim()))
+    || (typeof label === 'string' && /未完成$/.test(label.trim()));
+}
+
 export function rememberActivity(store, event) {
   if (!event || typeof event.taskId !== 'string') return undefined;
   const current = store.get(event.taskId) ?? emptyLive();
@@ -32,12 +37,13 @@ export function rememberActivity(store, event) {
     }
   } else if (event.kind === 'tool_result') {
     if (typeof event.stepId === 'string' && event.stepId.length > 0) {
+      const outcomeState = isFailedToolOutcome(event.resultSummary, event.label) ? 'failed' : 'completed';
       const step = [...current.steps].reverse().find(item => item.stepId === event.stepId && item.state === 'running')
         ?? [...current.steps].reverse().find(item => item.stepId === event.stepId);
       if (step) {
         step.resultSummary = event.resultSummary;
         step.durationMs = event.durationMs;
-        step.state = 'completed';
+        step.state = outcomeState;
         step.label = event.label || step.label;
       } else {
         current.steps.push({
@@ -46,7 +52,7 @@ export function rememberActivity(store, event) {
           toolName: event.toolName,
           resultSummary: event.resultSummary,
           durationMs: event.durationMs,
-          state: 'completed',
+          state: outcomeState,
           unmatchedCall: true,
         });
       }
@@ -61,7 +67,12 @@ export function liveFromTranscript(transcript) {
   for (const segment of transcript?.segments ?? []) {
     if (segment.kind === 'reasoning' || segment.kind === 'reasoning_summary') live.reasoning += segment.text ?? '';
     else if (segment.kind === 'answer') live.answer += segment.text ?? '';
-    else if (segment.kind === 'tool') live.steps.push({stepId: segment.stepId, label: segment.label, toolName: segment.toolName, argsSummary: segment.argsSummary, resultSummary: segment.resultSummary, durationMs: segment.durationMs, state: segment.resultSummary ? 'completed' : 'running'});
+    else if (segment.kind === 'tool') {
+      const state = isFailedToolOutcome(segment.resultSummary, segment.label)
+        ? 'failed'
+        : segment.resultSummary ? 'completed' : 'running';
+      live.steps.push({stepId: segment.stepId, label: segment.label, toolName: segment.toolName, argsSummary: segment.argsSummary, resultSummary: segment.resultSummary, durationMs: segment.durationMs, state});
+    }
     else if (segment.kind === 'summary') live.summary = segment.text ?? live.summary;
     if (segment.startedAt) live.startedAt = Date.parse(segment.startedAt) || live.startedAt;
     if (segment.updatedAt) live.updatedAt = Date.parse(segment.updatedAt) || live.updatedAt;
@@ -176,6 +187,16 @@ function formatStepDuration(durationMs) {
   return `${(durationMs / 1000).toFixed(durationMs >= 10_000 ? 0 : 1)}s`;
 }
 
+function settleInactiveStep(step, task, isActive) {
+  if (isActive || !step || isTraceStepTerminal(step.state) || step.state === 'waiting_approval') return step;
+  const settledState = task?.state === 'cancelled' || task?.cancelRequested ? 'cancelled' : task?.state === 'succeeded' ? 'completed' : 'failed';
+  const rawLabel = step.toolName === 'workflow.shadow_preview' ? '影子工作流试运行预览' : (step.label || step.toolName || '工具');
+  const settledLabel = /^正在调用\s+/.test(rawLabel)
+    ? `${rawLabel.replace(/^正在调用\s+/, '')} ${settledState === 'completed' ? '已返回' : settledState === 'cancelled' ? '已停止' : '未完成'}`
+    : rawLabel;
+  return {...step, state: settledState, label: settledLabel};
+}
+
 export function answerCardHtml(task, live, escape) {
   const reasoning = live?.reasoning ?? '';
   const streamed = stripProfileMetadata(live?.answer ?? '');
@@ -189,11 +210,12 @@ export function answerCardHtml(task, live, escape) {
   const thinking = reasoning
     ? `<details class="thinking-block" data-disclosure-key="thinking"${thinkingOpen}><summary>${traceHeadIconHtml('think')}<span class="trace-label${isActive ? ' is-shimmer' : ''}">${isActive ? '思考中' : '思考过程'}${formatElapsed(live, !isActive)}</span><span class="trace-chevron" aria-hidden="true"></span></summary><p class="thinking-body">${escape(reasoning)}</p></details>`
     : '';
-  const tools = steps.length ? `<div class="tool-steps">${steps.map((step, index) => {
+  const tools = steps.length ? `<div class="tool-steps">${steps.map((rawStep, index) => {
+    const step = settleInactiveStep(rawStep, task, isActive);
     const key = stepDisclosureKey(step, index);
     const stepOpen = openDisclosures.has(key) ? ' open' : '';
     const label = step.toolName === 'workflow.shadow_preview' ? '影子工作流试运行预览' : step.label || step.toolName || '工具';
-    const stepRunning = !isTraceStepTerminal(step.state) && step.state !== 'waiting_approval';
+    const stepRunning = isActive && !isTraceStepTerminal(step.state) && step.state !== 'waiting_approval';
     const logo = describeTraceStepLogo({...step, label});
     const verb = describeTraceStepVerb({...step, label});
     const dur = formatStepDuration(step.durationMs);
@@ -421,9 +443,10 @@ export function traceBlockHtml(task, live, children = [], escape) {
       ? (isActive ? `${phase} · 执行过程 · ${steps.length} 步` : `执行过程 · ${steps.length} 步${elapsed}`)
       : waitingForApproval || (isActive ? `${phase} · 子智能体执行中` : '子智能体已结束');
     const body = steps.length > 0
-      ? `<ol class="trace-step-list">${steps.map(step => {
+      ? `<ol class="trace-step-list">${steps.map(rawStep => {
+        const step = settleInactiveStep(rawStep, task, isActive);
         const icon = traceStepGlyph(step.state);
-        const stepRunning = !waitingForApproval && icon.cls === 'running';
+        const stepRunning = isActive && !waitingForApproval && icon.cls === 'running';
         const logo = describeTraceStepLogo(step);
         const verb = describeTraceStepVerb(step);
         const meta = [

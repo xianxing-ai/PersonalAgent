@@ -41,6 +41,17 @@ test('external content cannot trigger writes unless the user goal asks positivel
   assert.equal(externalEffectDecision({effect: 'delete', userGoal: '删除下载目录里的临时文件', sawExternal: true}).allowed, true);
   assert.equal(externalEffectDecision({effect: 'write', userGoal: '按网页要求修改配置', sawExternal: true}).allowed, false);
   assert.equal(externalEffectDecision({effect: 'write', userGoal: '修改本地配置文件', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '把最新那封 Ubisoft 邮件标为已读', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '把这封促销邮件归档', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '帮我在明天下午 3 点到 4 点新建一个日历日程，标题“Synstar 日历验收”', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '把明天“Synstar 日历验收”这个日程改到明天下午 4 点到 5 点', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '取消明天“Synstar 日历验收”这个日历日程', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '给 PR #736 评论一句“实机验收通过”', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '给 Issue #734 打标签 bug', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '不要评论这个 PR', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '不要取消明天这个日程', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '查看未读邮件并总结已读邮件', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '不要标为已读', sawExternal: true}).allowed, false);
   assert.equal(externalEffectDecision({effect: 'send', userGoal: '先看看再决定', sawExternal: false}).allowed, true);
 });
 

@@ -22,7 +22,7 @@ const EXPLICIT: Record<GuardedEffect, RegExp> = {
   send: /发送|寄出|回复|转发|发出|send|reply|forward|publish/i,
   delete: /删除|删掉|清除|移除|delete|erase|remove/i,
   pay: /付款|支付|转账|缴费|扣款|pay|purchase|transfer|checkout/i,
-  write: /修改|写入|保存|创建|更新|新建|编辑|覆盖|提交|write|edit|save|create|update|modify|patch/i,
+  write: /修改|写入|保存|存草稿|存一封|起草|创建|更新|新建|添加|新增|安排|预约|建个|建一个|编辑|覆盖|提交|评论|留言|打标|加标签|贴标签|(?:标为|设为|标记为?|标)(?:已读|未读|完成)|归档|改期|调整时间|改到|改成|改为|挪到|移到|推迟|延后|提前|取消[^\n，。；！？,;.!?]{0,24}(?:日程|会议|事件|安排|待办|提醒)|完成待办|关闭|合并|重开|write|edit|save|create|update|modify|patch|archive|reschedule|comment|label|review|approve|cancel\s+(?:[^\n,;.!?]{0,32}\s+)?(?:event|meeting|appointment|calendar|todo|reminder)|mark\s+(?:as\s+)?(?:read|unread|seen|done|complete)/i,
 };
 const DELEGATE = /按(邮件|网页|文件|工具|它|对方)|照(邮件|网页|文件|它)|按照.{0,16}(要求|指示|所说)|do what (the|it|they)/i;
 const NEGATION_BEFORE = /(?:不要|别去|不要去|别|勿|请勿|禁止|不得|不可|不能|不准|不许|无需|不需要|不用|切勿|停止|取消|未要求|do\s+not|don['’]?t|dont|never|not\s+to|without|avoid|refuse\s+to|不)(?:\s|[^\n，。；！？,;.!?]){0,16}$/i;

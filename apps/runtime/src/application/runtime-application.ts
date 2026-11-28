@@ -6506,7 +6506,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           assistantId:item.assistantId,displayName:item.displayName,role:item.role,status:item.status,
         }))});
         // Host-owned hint: users speak naturally; do not ask for tool names or IDs.
-        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。`;
+        goal=`${goal}\n\n【主对话值班】当前助手：${roster}。用户不会说工具名或 assistantId。交给某助手时：有则直接投递；没有则先创建同名助手再投递。主对话仅挂载轻量只读工具（如 calendar.events、weather.forecast、feeds.*）；凡涉及日历创建/修改/取消、邮件读写、待办、GitHub、知识库、文件/命令或当前工具表未列出的读写能力，必须直接调用 subagent.dispatch 派发工人执行（工人通过 capability.search 拥有完整工具与连接器目录），禁止因主对话目录未列出写工具而声称没有写入能力。`;
       }
       if(this.delegateUserTasks&&!manualCompaction&&!this.frontDeskTurn(taskId)) {
         const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;

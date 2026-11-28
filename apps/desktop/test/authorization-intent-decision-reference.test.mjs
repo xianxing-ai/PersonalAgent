@@ -113,3 +113,34 @@ test('model.egress.secret with forceAsk forces a card in full-access and support
   assert.equal(differentSecret.allowed,false);
   assert.equal(differentSecret.card.forceAsk,true);
 });
+
+test('model.egress.pii asks in low-risk mode, reuses allow_task for same ownerTaskId+consentScope, and re-prompts on new PII scope',async t=>{
+  const f=await fixture(t);
+  const deadline=new Date(Date.now()+60000).toISOString();
+  const destination='https://example.test/runtimes/fixture/invocations';
+  const sendPii=(taskId,ownerTaskId,requestId,consentScope,fingerprints)=>f.intent.request({
+    action:'model.egress.pii',
+    payload:{taskId,requestId,payloadDigest:'d-'+requestId},
+    scope:{destination,piiFingerprints:fingerprints},
+    summary:`检测到个人敏感信息（邮箱地址），是否允许发送到 ${destination}？`,
+    deadline,
+    isCurrent:()=>true,
+    egressReview:{conversationId:'Synthetic original conversation',payload:'{"goal":"re***@qq.com"}',
+      ownerTaskId,destination,allowTaskReuse:true,consentScope},
+  });
+
+  // Parent task prompts once with suggestedDecision = allow_task
+  const parentRes=await f.decide(sendPii('parent-1','parent-1','req-p1','scope-email-1',['fp-email-1']),'allow_task');
+  assert.equal(parentRes.allowed,true);
+  assert.equal(parentRes.card.suggestedDecision,'allow_task');
+  assert.equal(parentRes.card.canAlways,true);
+
+  // Child subagent sharing ownerTaskId + consentScope reuses task consent without another pending card
+  const childAllowed=await sendPii('child-1','parent-1','req-p2','scope-email-1',['fp-email-1']);
+  assert.equal(childAllowed,true);
+  assert.equal(f.question.snapshot().filter(item=>item.state==='pending').length,0);
+
+  // A new unapproved PII fingerprint (new consentScope) must prompt again
+  const newScopeDenied=await f.decide(sendPii('child-1','parent-1','req-p3','scope-email-2',['fp-email-1','fp-phone-2']),'deny');
+  assert.equal(newScopeDenied.allowed,false);
+});

@@ -12,6 +12,33 @@ import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCap
 import type {ExecutionCapacityState} from './execution-capacity.js';
 
 const DEFAULT_COMPETITION_STEPS = 4;
+const REVIEWED_LOCAL_EGRESS_MESSAGES = new Set([
+  '检测到疑似密钥、口令或令牌信息，已阻止出机发送（不会发往云端）',
+  '检测到疑似密钥、口令或令牌信息，用户已拒绝或未确认出机发送',
+  '检测到疑似个人敏感信息（如邮箱、手机号或证件号），已阻止出机发送；如需在完全信任模式下发送，可切换为「完全访问」或先脱敏',
+  '检测到疑似个人敏感信息（如邮箱、手机号或证件号），用户已拒绝或未确认出机发送',
+  '媒体或二进制内容暂不支持通过当前文本出机门禁发送',
+  '本次出机内容未通过本机分类与原范围确认',
+]);
+
+function readReviewedLocalEgressError(error: unknown): ProtocolError | undefined {
+  try {
+    if (!(error instanceof ProtocolError)) return undefined;
+    const codeDesc = Object.getOwnPropertyDescriptor(error, 'code');
+    const msgDesc = Object.getOwnPropertyDescriptor(error, 'message');
+    if (!codeDesc || !Object.hasOwn(codeDesc, 'value') || !msgDesc || !Object.hasOwn(msgDesc, 'value')) return undefined;
+    const code = codeDesc.value;
+    const message = msgDesc.value;
+    if ((code === 'UNAUTHORIZED' || code === 'UNSUPPORTED_CAPABILITY')
+      && typeof message === 'string'
+      && REVIEWED_LOCAL_EGRESS_MESSAGES.has(message)) {
+      return new ProtocolError(code, message);
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 const COORDINATION_FAILURE_CODES = new Set([
   'INVALID_ARGUMENT', 'PROTOCOL_MISMATCH', 'UNAUTHORIZED', 'SCOPE_DENIED', 'NOT_FOUND',
   'UNSUPPORTED_CAPABILITY', 'REVISION_CONFLICT', 'RATE_LIMITED', 'TIMEOUT',
@@ -375,8 +402,12 @@ async function exchange(
             markCompetitionCloudUnknown(runtime, taskId, error.receipt, suffix);
             throw new ProtocolError('RESULT_UNKNOWN', `Original cloud invocation requires reconciliation${suffix}`);
           }
-          if (error instanceof ProtocolError && error.message.startsWith('任务执行未完成；')) {
+          if (error instanceof ProtocolError && Object.getOwnPropertyDescriptor(error, 'message')?.value?.startsWith?.('任务执行未完成；')) {
             throw error;
+          }
+          const reviewedEgressError = readReviewedLocalEgressError(error);
+          if (reviewedEgressError) {
+            throw reviewedEgressError;
           }
           // Adapter errors may contain credentials or private response bodies.
           throw new ProtocolError('EXTERNAL_FAILURE', `Coordination adapter failed${suffix}`);
@@ -687,16 +718,30 @@ export async function runCoordinationWorker(
       const toolArgs = (() => { try { const text = JSON.stringify(result.arguments); return text.length > 180 ? text.slice(0, 179) + '…' : text; } catch { return '[无法显示]'; } })();
       context.noteActivity?.({kind: 'tool_call', stepId: runId, toolName: result.toolName, argsSummary: toolArgs, label: `正在调用 ${result.toolName}`});
       context.reportProgress({stepId: runId, label: `正在调用 ${result.toolName}`, completedUnits: step, totalUnits: maxSteps});
-      const toolResult: ToolInvocationResult = workerResult??await tools.invoke({
-        toolName: result.toolName,
-        toolVersion: result.toolVersion,
-        arguments: result.arguments,
-        taskId,
-        runId,
-        authorizationRef: runId,
-        deadline: context.deadline,
-        signal: context.signal,
-      });
+      let toolResult: ToolInvocationResult;
+      try {
+        toolResult = workerResult??await tools.invoke({
+          toolName: result.toolName,
+          toolVersion: result.toolVersion,
+          arguments: result.arguments,
+          taskId,
+          runId,
+          authorizationRef: runId,
+          deadline: context.deadline,
+          signal: context.signal,
+        });
+      } catch (toolError) {
+        const errCode = toolError instanceof ProtocolError ? toolError.code : 'EXTERNAL_FAILURE';
+        context.noteActivity?.({
+          kind: 'tool_result',
+          stepId: runId,
+          toolName: result.toolName,
+          resultSummary: `[failed:${errCode}]`,
+          durationMs: Date.now() - toolStarted,
+          label: `${result.toolName} 未完成`,
+        });
+        throw toolError;
+      }
       evidenceRefs = [...new Set([...evidenceRefs, ...toolResult.evidenceRefs])];
       if (toolResult.state !== 'pending') {
         const toolText = (() => { try { const text = JSON.stringify(toolResult.result ?? toolResult.state); return text.length > 180 ? text.slice(0, 179) + '…' : text; } catch { return toolResult.state; } })();

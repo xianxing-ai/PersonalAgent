@@ -14,6 +14,19 @@ const GITHUB_TOOL_NAMES = new Set(USER_FACING_GITHUB_OPS.map(op => `github.${op}
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied = () => { throw new ProtocolError('UNAUTHORIZED', 'GitHub 连接器配置或本次任务许可已失效'); };
 const GITHUB_SECRET_PATTERN = /(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+[A-Za-z0-9_.-]{16,})/u;
+const GITHUB_PUBLIC_DESCRIPTIONS = {
+  'github.repo.list': '列出已连接 GitHub 账号可访问且在配置范围内的仓库（返回 repo 如 owner/repo）。用户未提供 owner/repo 时先调用此工具定位已配置仓库。',
+  'github.repo.get': '读取指定 GitHub 仓库（owner/repo）的默认分支、可见性与地址。',
+  'github.pr.get': '读取指定 Pull Request 的标题、正文、源/目标分支 SHA 与合并状态（不含评论列表）。',
+  'github.pr.list': '列出仓库中的 Pull Request 列表。',
+  'github.pr.comment': '在指定 Pull Request 下发表评论。返回 state="confirmed" 与 externalId、url 即代表远端评论已真实创建生效；当前目录无评论列表读取工具，请勿在评论成功后调用 github.issue.get 读取 PR，无需额外读回评论列表。',
+  'github.issue.get': '读取指定纯 Issue 详情（不含 Pull Request；对 PR 编号调用会报 INVALID_ARGUMENT，读取 PR 请用 github.pr.get）。',
+  'github.issue.list': '列出仓库中的纯 Issue 列表（自动排除 Pull Request）。',
+  'github.issue.comment': '在指定纯 Issue 下发表评论（PR 评论请用 github.pr.comment）。返回 state="confirmed" 与 externalId、url 即代表远端评论已真实创建生效；当前目录无评论列表读取工具，无需额外读回评论列表。',
+  'github.issue.update': '更新纯 Issue 的标题、正文、状态或标签（对 PR 编号调用会报 INVALID_ARGUMENT）。',
+  'github.issue.label': '更新纯 Issue 的标签（对 PR 编号调用会报 INVALID_ARGUMENT）。',
+  'github.issue.close': '关闭纯 Issue（对 PR 编号调用会报 INVALID_ARGUMENT）。',
+};
 
 export function createGitHubConversationTools({
   github,
@@ -190,6 +203,9 @@ export function createGitHubConversationTools({
     competitionToolAvailability: tools.map(tool => ({
       toolName: tool.descriptor.name,
       toolVersion: tool.descriptor.version,
+      ...(GITHUB_PUBLIC_DESCRIPTIONS[tool.descriptor.name]
+        ? {publicDescription: GITHUB_PUBLIC_DESCRIPTIONS[tool.descriptor.name]}
+        : {}),
       available: scope => available(tool.descriptor.name, scope),
     })),
   };

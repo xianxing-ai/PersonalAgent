@@ -141,8 +141,10 @@ export function handleSessionManagementApi({name, payload, surface, conversation
     if (!session.archived) {
       expectCurrent();
       if (submitting?.has(id)) throw new SessionApiError('SESSION_TASK_SUBMITTING', '任务正在受理，请稍后归档会话');
+      const taskConversationId = task => conversations.turns?.get(task.taskId)?.conversationId ?? task.conversationId ?? conversations.conversationIdForTask(task);
       const running = [...tasks.values()].some(task => taskSurface(task) === session.surface
-        && conversations.conversationIdForTask(task) === id && !TERMINAL_TASK_STATES.includes(task.state));
+        && taskConversationId(task) === id && !TERMINAL_TASK_STATES.includes(task.state)
+        && !(task.state === 'waiting_reconciliation' && (task.cancelRequested === true || task.outputTruncated === true)));
       if (running) throw new SessionApiError('SESSION_TASK_ACTIVE', '任务尚未结束，请先停止或核实后归档');
       guarded(() => conversations.archive(surface, id, true));
       publish();

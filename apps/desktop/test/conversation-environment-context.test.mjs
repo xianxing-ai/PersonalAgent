@@ -61,4 +61,9 @@ test('Synthetic todo consent guidance is metadata only, refreshed after enable/r
   assert.doesNotMatch(calendar(),/Synthetic private calendar|Synthetic-only|password/);
   configured = true;
   assert.equal(JSON.parse(calendar()).capabilityGuidance[0].state,'check_task_catalog');
+  const githubCtx = createConversationEnvironmentContext({readGitHubState:()=>({registered:true,configured:true})});
+  const ghGuidance = JSON.parse(githubCtx()).capabilityGuidance[0];
+  assert.equal(ghGuidance.capability, 'github');
+  assert.match(ghGuidance.guidance, /github\.repo\.list/);
+  assert.match(ghGuidance.guidance, /无评论列表读取接口/);
 });

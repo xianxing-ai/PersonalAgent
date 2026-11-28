@@ -1,8 +1,8 @@
 import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ProtocolError} from '@personal-agent/contracts';
-import {FakeMailProvider} from '@personal-agent/mail';
+import {ProtocolError,isToolNotStartedError} from '@personal-agent/contracts';
+import {FakeMailProvider,QQMailProvider} from '@personal-agent/mail';
 import {CalDavProvider,FakeCalendarProvider} from '@personal-agent/calendar';
 import {createServer} from 'node:http';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
@@ -42,6 +42,7 @@ async function project(policy,s,result){return policy.project({taskId:s.taskId,p
 test('registers only existing supplemental tools; missing configuration and absent native consent stay closed',async t=>{
   const f=fixture(t,{mail:{current:()=>undefined},calendar:{binding:()=>undefined}});
   assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.send','mail.archive','mail.reconcile_archive','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
+  assert.match(f.host.competitionToolAvailability.find(x=>x.toolName==='calendar.events')?.publicDescription??'',/subagent\.dispatch/);
   for(const tool of f.host.tools){const s=scope(tool);assert.equal(await f.host.competitionToolAvailability.find(x=>x.toolName===tool.descriptor.name).available(s),false);
     await assert.rejects(f.host.prepareExport({...s,phase:'preflight'}),{code:'UNAUTHORIZED'});}
   assert.deepEqual(f.calls,[]);
@@ -521,4 +522,65 @@ test('calendar write proxy denies read-only scope and never repeats an interrupt
     await rejected;assert.equal(writes,1);
     await assert.rejects(tool.execute(args,context),{code:'UNAUTHORIZED'});assert.equal(writes,1);
   });
+});
+
+test('pre-write archive capability failure stays ToolNotStartedError and fails the Runtime task cleanly instead of waiting_reconciliation',async t=>{
+  let application,sends=0,moves=0;
+  const createNoArchiveProvider=options=>{
+    const provider=new QQMailProvider(options);
+    provider.client={
+      usable:true,
+      capabilities:new Map([['MOVE',true],['UIDPLUS',true]]),
+      mailbox:{uidValidity:19n},
+      list:async()=>[{path:'INBOX',specialUse:'\\Inbox'},{path:'Sent Messages',specialUse:'\\Sent'},{path:'Drafts',specialUse:'\\Drafts'}],
+      async getMailboxLock(){return {release(){}};},
+      async fetchOne(){return {uid:3,envelope:{messageId:'<original@example.invalid>'}};},
+      async messageMove(){moves++;return {path:'INBOX',destination:'Archive',uidValidity:20n,uidMap:new Map([[3,41]])};},
+      close(){},
+    };
+    return provider;
+  };
+  const host=createConnectorConversationTools({
+    mail:{current:()=>({user:'synthetic@qq.com',authCode:'synthetic-password',revision:1})},
+    getApplication:()=>application,
+    resolveConversation:id=>application.runtime.getTask(id).conversationId,
+    createMailProvider:createNoArchiveProvider,
+    confirmExport:async()=>true,
+  });
+  t.after(()=>host.close());
+  const archiveTool=host.tools.find(tool=>tool.descriptor.name==='mail.archive');
+  const args={folder:'INBOX',uid:3,uidValidity:19,messageId:'<original@example.invalid>'};
+  const direct=fixture(t,{createMailProvider:createNoArchiveProvider});
+  const directPrepared=await prepare(direct.host,'mail.archive',args);
+  await assert.rejects(directPrepared.tool.execute(args,directPrepared.s),error=>
+    isToolNotStartedError(error)&&error.code==='UNSUPPORTED_CAPABILITY'
+    &&error.message==='当前邮箱服务不支持该操作（如缺少独立的标准归档文件夹或原子移动能力）；原邮件未被修改');
+  application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({
+    path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'archive-prewrite-failure',
+    initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
+    tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
+    prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=>'Bearer synthetic'},
+    fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify({
+      kind:'tool_proposal',proposalId:'archive-1',toolName:'mail.archive',toolVersion:archiveTool.descriptor.version,arguments:args,
+    })}}),{headers:{'content-type':'application/json'}});},
+  }));
+  t.after(()=>application.close());
+  const client=new Client(application);await client.connect();
+  const {taskId}=await client.call('task.submit',{goal:'归档最新邮件',conversationId:'synthetic-archive'},{idempotencyKey:'archive-unsupported',timeoutMs:10000});
+  const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}
+    throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
+  await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');
+  const approval=application.runtime.listApprovals({taskId,state:'pending'}).items[0];
+  await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+  await wait(()=>['succeeded','failed','waiting_reconciliation'].includes(application.runtime.getTask(taskId).state));
+  const finalTask=application.runtime.getTask(taskId);
+  assert.equal(finalTask.state,'failed',JSON.stringify(finalTask));
+  assert.equal(finalTask.error?.code,'UNSUPPORTED_CAPABILITY');
+  assert.equal(finalTask.error?.message,'当前邮箱服务不支持该操作（如缺少独立的标准归档文件夹或原子移动能力）；原邮件未被修改');
+  const record=application.runtime.readToolExecutions(taskId)[0];
+  assert.equal(record.state,'failed');
+  assert.equal(record.errorCode,'UNSUPPORTED_CAPABILITY');
+  assert.equal(record.executionStarted,false);
+  assert.equal(moves,0);
+  assert.equal(sends,1);
 });

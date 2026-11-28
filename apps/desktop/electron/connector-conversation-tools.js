@@ -1,7 +1,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {ProtocolError} from '@personal-agent/contracts';
+import {ProtocolError,ToolNotStartedError,isToolNotStartedError} from '@personal-agent/contracts';
 import {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity,prepareOriginalMailSendReconciliation,
   readOriginalMailSendReconciliation,assertOriginalMailSendReconciliation,prepareOriginalMailArchiveIdentity,readOriginalMailArchiveIdentity,
   recordOriginalMailArchiveMove,prepareOriginalMailArchiveReconciliation,readOriginalMailArchiveReconciliation} from '@personal-agent/runtime/application';
@@ -93,11 +93,11 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       ['createEvent','updateEvent','cancelEvent'].map(method=>[method,(...args)=>{
         const scope=execution.getStore();if(!scope||scope.kind!=='calendar')denied();assertCurrent(scope);
         const writes=scope.provider.writes;
-        if(typeof writes?.[method]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前提供者不支持此日历写操作');
+        if(typeof writes?.[method]!=='function')throw new ToolNotStartedError('UNSUPPORTED_CAPABILITY','当前日历提供者不支持该操作；未执行任何修改');
         return writes[method](...args);
       }])));
     return (...args)=>{const scope=execution.getStore();if(!scope||scope.kind!==kind)denied();assertCurrent(scope);
-      if(typeof scope.provider[key]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前提供者不支持此连接器操作');
+      if(typeof scope.provider[key]!=='function')throw new ToolNotStartedError('UNSUPPORTED_CAPABILITY','当前连接器提供者不支持此操作');
       return scope.provider[key](...args);};
   }});
   const host={register(tool){
@@ -132,7 +132,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       }
       const controller=new AbortController(),signal=AbortSignal.any([context.signal,controller.signal]);controllers.set(controller,kind);
       // Each execution owns its connection: cancelling one task must not close another's socket.
-      let provider,timer,onAbort,disposal,timedOut=false;
+      let provider,timer,onAbort,disposal,timedOut=false,identityPrepared=false;
       const dispose=()=>disposal??=(Promise.resolve().then(()=>provider?.dispose?.()).catch(()=>{}));
       const activeContext={...context,signal};
       try {
@@ -167,7 +167,6 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
           providers.set(controller,{kind,provider,dispose});assertCurrent(activeContext);
         }
         const scope={...context,signal,kind,provider};assertCurrent(scope);
-        let identityPrepared=false;
         const sendContext=tool.descriptor.name==='mail.send'?{now,assertCurrent:()=>assertCurrent(scope),beforeSend:identity=>{
           assertCurrent(scope);
           const state=prepareOriginalMailSendIdentity(getApplication().runtime,{taskId:context.taskId,runId:context.runId,
@@ -195,6 +194,14 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       }catch(error){
         if(signal.aborted)throw new ProtocolError(!context.signal.aborted&&(timedOut||now()>=Date.parse(context.deadline))?'TIMEOUT':'CANCELLED',
           '连接器操作已停止，已发生的写入须在原任务核实');
+        if(!identityPrepared&&isToolNotStartedError(error)){
+          const message=error.code==='UNSUPPORTED_CAPABILITY'
+            ?(kind==='mail'?'当前邮箱服务不支持该操作（如缺少独立的标准归档文件夹或原子移动能力）；原邮件未被修改':'当前日历提供者不支持该操作；未执行任何修改')
+            :error.code==='CURSOR_EXPIRED'?'邮箱文件夹状态已变化，本次未执行修改；请重新读取后再试'
+            :error.code==='REVISION_CONFLICT'?'目标条目已变化，本次未执行修改；请重新读取核对后再试'
+            :'连接器前置条件未满足；本次未执行任何写入';
+          throw new ToolNotStartedError(error.code,message);
+        }
         if(error instanceof ProtocolError)throw new ProtocolError(error.code,'连接器操作未完成；请按错误码核实原任务');
         throw new ProtocolError('EXTERNAL_FAILURE','连接器操作未完成；请核实原任务，勿重复未知写入');
       }finally{clearTimeout(timer);signal.removeEventListener('abort',onAbort);controllers.delete(controller);
@@ -205,7 +212,9 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
   // The public account reference remains a host constant; URL/credentials are never model arguments.
   disposers.push(calendarModule.register(host,{provider:proxy('calendar'),accountRef:'desktop-calendar'}));
   const original={tools,competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,
-    toolVersion:tool.descriptor.version,available:scope=>available(tool.descriptor.name,scope)}))};
+    toolVersion:tool.descriptor.version,
+    ...(tool.descriptor.name==='calendar.events'?{publicDescription:'按时间窗只读查询日历日程。如需创建、修改、改期或取消日程而当前工具表未列出日历写工具时，必须调用 subagent.dispatch 派发工人（工人通过 capability.search 装载 calendar.create / calendar.update / calendar.cancel 执行），不要声称没有日历写入能力。'}:{}),
+    available:scope=>available(tool.descriptor.name,scope)}))};
   const exports=attachExactExports(original,{current,ready:available,assertCurrent,confirmExport,now,
     kindPrefix:'connector',policyBinding:'configured-account-v1',
     containsCredential:value=>[mail?.current()?.authCode,...secrets].some(secret=>secret&&value.includes(secret))});
