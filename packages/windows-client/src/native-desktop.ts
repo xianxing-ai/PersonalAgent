@@ -63,7 +63,12 @@ export interface NativeDesktopOptions {
   authorizePresence(input:{taskId:string;targetRef?:string;signal:AbortSignal;deadline:string}):Promise<boolean>;
   /** Advisory only: supplied controls come from the original local observation. */
   selectControl?(input:NativeDesktopControlChoiceInput):Promise<{state:'selected'|'review'|'unavailable';controlRef?:string}>;
+  /** Trusted host reader returning the task-consented ordinary edit windowRef for this exact run, or undefined. */
+  readOrdinaryEditWindow?(input:{taskId:string;runId:string}):string|undefined;
 }
+export type OrdinaryEditTargetInspection=
+  |{eligible:false}
+  |{eligible:true;windowRef:string;windowTitle:string;controlRef:string;controlRole:string;targetDigest:string};
 export interface NativeDesktopControlChoiceInput {
   taskId:string;targetRef:string;operation:'type'|'set_value'|'click'|'invoke'|'select'|'focus';
   windowTitle:string;controls:readonly {ref:string;role:string;name:string;patterns:readonly string[]}[];
@@ -87,6 +92,27 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
   const targets=new Map<string,{taskId:string;windowRef:string;windowRect:NativeDesktopArtifactMetadata['windowRect'];expiresAt:number;digest:string;
     windowTitle:string;controls:NativeDesktopControlChoiceInput['controls'];truncated:boolean}>(),windows=new Map<string,{taskId:string;expiresAt:number}>(),ongoing=new Set<string>();
   const artifacts=new Map<string,{metadata:NativeDesktopArtifactMetadata;file:string;generation:number;targetDigest:string;signal:AbortSignal}>();
+  const SENSITIVE_OR_DANGEROUS_CONTROL=/(?:password|passwd|credential|api[ _-]?key|secret|token|otp|密码|凭据|密钥|验证码|口令|submit|send|confirm|delete|remove|pay|transfer|publish|提交|发送|确认|删除|支付|转账|发布)/iu;
+  const ORDINARY_EDIT_TOOLS=new Set(['computer.desktop.focus','computer.desktop.click','computer.desktop.type','computer.desktop.set_value']);
+  function inspectOrdinaryEditTarget(input:{taskId:string;toolName:string;arguments?:unknown}):OrdinaryEditTargetInspection {
+    try{
+      if(!input||typeof input.taskId!=='string'||!input.taskId||!ORDINARY_EDIT_TOOLS.has(input.toolName))return {eligible:false};
+      const args=input.arguments;
+      if(!object(args)||typeof args.targetRef!=='string'||typeof args.controlRef!=='string'||args.loc!==undefined)return {eligible:false};
+      if(input.toolName==='computer.desktop.click'&&((args.button!==undefined&&args.button!=='left')||(args.clicks!==undefined&&args.clicks!==1)))return {eligible:false};
+      if(input.toolName==='computer.desktop.type'&&args.press_enter===true)return {eligible:false};
+      for(const [key,value]of targets)if(value.expiresAt<=now())targets.delete(key);
+      const seen=targets.get(args.targetRef);
+      if(!seen||seen.taskId!==input.taskId||seen.expiresAt<=now()||seen.truncated)return {eligible:false};
+      if(SENSITIVE_OR_DANGEROUS_CONTROL.test(seen.windowTitle))return {eligible:false};
+      const control=seen.controls.find(item=>item.ref===args.controlRef);
+      if(!control)return {eligible:false};
+      if(control.role!=='Edit'&&control.role!=='Document')return {eligible:false};
+      if(control.patterns.includes('invoke'))return {eligible:false};
+      if(SENSITIVE_OR_DANGEROUS_CONTROL.test(control.name))return {eligible:false};
+      return {eligible:true,windowRef:seen.windowRef,windowTitle:seen.windowTitle,controlRef:control.ref,controlRole:control.role,targetDigest:seen.digest};
+    }catch{return {eligible:false};}
+  }
   function artifactScope(input:NativeDesktopArtifactRead) {
     if(!input||typeof input!=='object'||Object.keys(input).some(key=>!['taskId','artifactId','sha256','signal','deadline'].includes(key))
       ||typeof input.taskId!=='string'||!input.taskId||typeof input.artifactId!=='string'||!new RegExp(uuid.pattern).test(input.artifactId)
@@ -163,6 +189,12 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
         const ref=typeof input.targetRef==='string'?input.targetRef:undefined;
         if(ref&&targets.get(ref)?.taskId!==context.taskId)return reject('UNAUTHORIZED','目标已过期或不属于本任务，请重新观察');
         if(typeof input.windowRef==='string'&&windows.get(input.windowRef)?.taskId!==context.taskId)return reject('UNAUTHORIZED','窗口不属于本任务的当前目录');
+        const grantedWindowRef=write?options.readOrdinaryEditWindow?.({taskId:context.taskId,runId:context.runId}):undefined;
+        if(grantedWindowRef!==undefined){
+          const checked=inspectOrdinaryEditTarget({taskId:context.taskId,toolName:'computer.desktop.'+name,arguments:input});
+          if(!checked.eligible||checked.windowRef!==grantedWindowRef)
+            return reject('UNAUTHORIZED','当前窗口或目标控件已变化，普通编辑复用已拒绝，请重新审批');
+        }
         if(write){
           if(!context.argumentsDigest||context.argumentsDigest!==hash(canonical(input)))return reject('UNAUTHORIZED','电脑参数与原授权不一致');
           const binding=name==='launch_app'?{app:'notepad' as const}:{targetRef:ref??String(input.windowRef??'')};
@@ -181,7 +213,7 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
           active(context,now);return {source:'windows-native',state:'waited',goalVerified:false,milliseconds};
         }
         const isAction=write&&name!=='activate'&&name!=='launch_app';
-        const value=await transport.request(isAction?'action':name,isAction?{...input,action:name}:input,context);active(context,now);
+        const value=await transport.request(isAction?'action':name,isAction?{...input,action:name,...(grantedWindowRef!==undefined?{ordinary_edit:true}:{})}:input,context);active(context,now);
         if(!object(value))throw new ProtocolError('EXTERNAL_FAILURE','原生电脑结果格式无效');
         if(name==='launch_app'&&typeof input.text==='string'){
           if(!object(value.verification)||value.verification.state!=='verified'||value.verification.kind!=='value')
@@ -297,7 +329,7 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
         } finally {busy=false;ongoing.delete(context.taskId);}
       }});
   }
-  return {get tools(){return tools;},supportsTool,activeTasks:()=>[...ongoing],readScreenshotArtifact,readScreenshotArtifactMetadata,
+  return {get tools(){return tools;},supportsTool,inspectOrdinaryEditTarget,activeTasks:()=>[...ongoing],readScreenshotArtifact,readScreenshotArtifactMetadata,
     health:()=>({state,configured:!!transport,source:'windows-native',upstream:{version:NATIVE_DESKTOP_VERSION,license:'project'},targetIdentity:'native_os_guard',recoverySupport:false}),
     async start(context:DesktopCallContext){active(context,now);if(['blocked','disposed'].includes(state))throw new ProtocolError('UNSUPPORTED_CAPABILITY','原电脑操作尚未核实或组件已释放');
       if(!transport)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Windows原生电脑组件缺失');if(state==='ready')return;if(state==='connecting')throw new ProtocolError('REVISION_CONFLICT','电脑组件正在准备');

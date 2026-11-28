@@ -1079,14 +1079,23 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   invalidatePendingApproval(approvalId:string,reason:'cancelled'|'stale',cause?:unknown):void {
     // Only fixed local scope errors may become public task errors; arbitrary provider errors can contain private data.
     const nativeUnavailable='当前外部进程隔离后端或原授权不可用，未降级为普通进程';
-    const safeCauses=new Set(['Mail conversation read is outside the active manual batch','Mail page is outside the original manual batch',nativeUnavailable]);
+    const nativeCauses=new Set([
+      nativeUnavailable,
+      '外部进程隔离宿主已关闭，命令尚未启动（未降级为普通进程）',
+      '工作目录或 Node 路径不可用，命令尚未启动（未降级为普通进程）',
+      '缺少 Windows 进程沙箱宿主组件或校验失败，命令尚未启动（未降级为普通进程）',
+      '当前 Windows 环境不支持 PSEC/AppContainer 隔离 API，命令尚未启动（未降级为普通进程）',
+      'Windows 进程隔离自检未通过，命令尚未启动（未降级为普通进程）',
+      '工作区配置、权限策略或原授权已变化，命令尚未启动（未降级为普通进程）',
+    ]);
+    const safeCauses=new Set(['Mail conversation read is outside the active manual batch','Mail page is outside the original manual batch',...nativeCauses]);
     let causeMessage:string|undefined,nativeCauseCode:TaskError['code']|undefined;
     try {
       const message=cause&&typeof cause==='object'?Object.getOwnPropertyDescriptor(cause,'message'):undefined;
       if(message&&Object.hasOwn(message,'value')&&typeof message.value==='string'&&safeCauses.has(message.value)) {
         causeMessage=message.value;
         const code=Object.getOwnPropertyDescriptor(cause,'code');
-        if(causeMessage===nativeUnavailable&&code&&Object.hasOwn(code,'value')&&code.value==='UNSUPPORTED_CAPABILITY')
+        if(nativeCauses.has(causeMessage)&&code&&Object.hasOwn(code,'value')&&code.value==='UNSUPPORTED_CAPABILITY')
           nativeCauseCode='UNSUPPORTED_CAPABILITY';
       }
     } catch { /* Untrusted accessors and proxies cannot disclose a provider body or replace invalidation. */ }
@@ -1105,11 +1114,17 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       this.db.prepare('INSERT INTO tool_execution_records (evidence_id, task_id, record_json) VALUES (?, ?, ?)')
         .run(evidenceId,approval.taskId,JSON.stringify(record));
       if(task.state==='waiting_approval'&&!task.cancelRequested){
-        const unknown=this.readToolExecutions(task.taskId).some(value=>value.state==='started'||value.state==='unknown')
+        const taskExecutions=this.readToolExecutions(task.taskId);
+        const unknown=taskExecutions.some(value=>value.state==='started'||value.state==='unknown')
           ||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-inflight'))||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-unknown'));
-        this.updateTask(task.taskId,unknown?'waiting_reconciliation':reason==='cancelled'?'cancelled':'failed',
-          {evidenceRefs:[...new Set([...task.evidenceRefs,evidenceId])],error:{code:unknown?'RESULT_UNKNOWN':reason==='cancelled'?'CANCELLED':nativeCauseCode??'REVISION_CONFLICT',retryable:false,
-            message:unknown?'原授权请求已失效；已有操作结果仍待核实，不会重新执行。':causeMessage??'原授权请求已失效，本次操作未执行；请在当前对话重新提出。'}},true);
+        const approvalStarted=taskExecutions.some(value=>value.requestId===approvalId&&value.executionStarted===true);
+        const provenNotStarted=!unknown&&!approvalStarted;
+        const finalMessage=unknown||approvalStarted
+          ?'原授权请求已失效；已有操作结果仍待核实，不会重新执行。'
+          :(provenNotStarted?causeMessage:undefined)??'原授权请求已失效，本次操作未执行；请在当前对话重新提出。';
+        this.updateTask(task.taskId,unknown||approvalStarted?'waiting_reconciliation':reason==='cancelled'?'cancelled':'failed',
+          {evidenceRefs:[...new Set([...task.evidenceRefs,evidenceId])],error:{code:unknown||approvalStarted?'RESULT_UNKNOWN':reason==='cancelled'?'CANCELLED':nativeCauseCode??'REVISION_CONFLICT',retryable:false,
+            message:finalMessage}},true);
       }
       return [approval];
     });

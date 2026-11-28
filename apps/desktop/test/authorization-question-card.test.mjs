@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {authorizationQuestionMarkup,authorizationQuestionResponse,authorizationQuestionDefaultDecision,mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../src/features/conversation/authorization-question-card.js';
 import {authorizationSettingsMarkup,mountAuthorizationSettings} from '../src/features/conversation/authorization-settings-controls.js';
+import {describeScopes} from '../src/shared/scope-phrases.js';
 import {authorizationDom} from '../test-support/authorization-dom.mjs';
 
 const instant=Date.parse('2030-10-21T02:00:00Z');
@@ -195,4 +196,47 @@ test('Synthetic safety settings only select available sandbox and revoke exact r
   assert.match(forceCard,/>仅本次放行<\/button>/);
   assert.match(forceCard,/>加入白名单<\/button>/);
   assert.match(forceCard,/高敏凭据拦截/);
+});
+
+test('#730 settings UI displays inactive_profile rules as saved for original profile and allows revoking them directly',async t=>{
+  const f=authorizationDom(),calls=[];
+  const value={
+    selected:{ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:5},
+    profiles:[
+      {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',available:true},
+      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',available:true},
+    ],
+    rules:[
+      {ruleId:'r-inactive',revision:3,summary:'允许写入日程',sandboxLabel:'低风险自动',sandboxRef:'low-risk-auto',active:false,status:'inactive_profile'},
+      {ruleId:'r-revoked',revision:4,summary:'已撤销规则',sandboxLabel:'低风险自动',sandboxRef:'low-risk-auto',active:false,status:'revoked'},
+    ],
+  };
+  const controls=mountAuthorizationSettings(f.root,async(name,body)=>{calls.push({name,body});return value;});
+  t.after(()=>controls.dispose());
+  controls.show(true);await new Promise(resolve=>setImmediate(resolve));
+  assert.match(f.root.html,/低风险自动 · 已保存（切回原模式生效）/);
+  assert.match(f.root.html,/低风险自动 · 已撤销/);
+  const inactiveBtn=f.root.querySelector('[data-authorization-rule="r-inactive"]');
+  const revokedBtn=f.root.querySelector('[data-authorization-rule="r-revoked"]');
+  assert.equal(inactiveBtn.disabled,false);
+  assert.equal(revokedBtn.disabled,true);
+  await f.root.fire('click',inactiveBtn);
+  assert.deepEqual(calls[1],{name:'authorization.rule.revoke',body:{ruleId:'r-inactive',expectedRevision:3}});
+});
+
+test('Stage 4 non-secret forceAsk card uses neutral confirm copy instead of secret whitelist jargon, and intent scopes have readable Chinese labels',()=>{
+  const nonSecret=authorizationQuestionMarkup(question({
+    title:'请确认这项操作',
+    description:'取消日程 evt-1。',
+    toolName:'calendar.cancel',
+    forceAsk:true,
+    canAlways:false,
+    requirements:[{requirementId:'tool',kind:'tool',summary:'取消日程 evt-1',scopes:['calendar:write']}],
+  }),{now:instant});
+  assert.match(nonSecret,/>确认执行<\/button>/);
+  assert.match(nonSecret,/此操作需要明确确认，即使在「完全访问」下也不会自动放行/);
+  assert.doesNotMatch(nonSecret,/高敏凭据拦截|仅本次放行|加入白名单/);
+
+  assert.equal(describeScopes(['goal.plan.execute']),'提交计划到云端执行');
+  assert.equal(describeScopes(['skill.enable','knowledge.configure']),'启用技能、修改知识库配置');
 });

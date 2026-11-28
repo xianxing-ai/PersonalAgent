@@ -3,6 +3,7 @@ import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {detectSecretsInArguments,detectSecretsInText,operationContentConfirmation,operationSummary,requiresContentConfirmation,taskOperationBinding} from './authorization-operation-policy.js';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const UUID_V4=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','原操作的精确授权已失效，未执行或发送新的资料');};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const key=scope=>JSON.stringify([scope.taskId,scope.runId]);
@@ -52,7 +53,7 @@ function boundedProjection(schema,value,depth=0) {
 
 /** Trusted Main adapter. Never receives a profile, task binding or requirement from Renderer. */
 export function createDesktopAuthorizationQuestionHost({createQuestions,getApplication,namespace,resolveConversation,
-  available,onUpdate=()=>{},profiles,defaultProfileRef,resolveProfile,describeExecution,canAutoApprove,now=Date.now}) {
+  available,deferWhenUnavailable=false,onUpdate=()=>{},profiles,defaultProfileRef,resolveProfile,describeExecution,canAutoApprove,now=Date.now}) {
   const preparations=new Map(),operations=new Map(),owners=new Map(),batchDerivations=new Map(),projections=new Map();let application,questions,closed=false;
   function stateStore(){
     const current=getApplication();if(closed||!current?.runtime)denied();
@@ -113,7 +114,8 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       questions?.close();application=current;
       const store=wrapStateStore(current.runtime.bindTrustedHostState('desktop-authorization:'+digest(namespace)));
       questions=createQuestions({store,profiles,
-        defaultProfileRef,now,available,onChange:onUpdate,resolveProfile,describeExecution,canAutoApprove,
+        defaultProfileRef,now,available,deferWhenUnavailable,onChange:onUpdate,resolveProfile,describeExecution,canAutoApprove,
+        onPending:info=>{try{preparations.get(key(info))?.onPending?.(info);}catch{}},
         readBinding:request=>{
           const original=current.readAuthorizationQuestionBinding(request);
           if(!original||getApplication()!==current)return undefined;
@@ -144,7 +146,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       ||value.deadline!==scope.deadline)denied();
     return {...value,signal:scope.signal};
   }
-  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline,contentConfirmation,forceAsk}={}) {
+  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline,contentConfirmation,forceAsk,desktopOrdinaryEdit,trustedLocalConfig,onPending}={}) {
     const source=original(scope),identity=key(source),prior=preparations.get(identity);
     if(operations.has(identity))denied();
     const requested=structuredClone(requirements);
@@ -152,16 +154,27 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     if(prior?.taskConsent&&taskConsent&&!same(prior.taskConsent,taskConsent))denied();
     if(forceAsk!==undefined&&typeof forceAsk!=='boolean')denied();
     if(prior?.forceAsk!==undefined&&forceAsk!==undefined&&prior.forceAsk!==forceAsk)denied();
+    if(trustedLocalConfig!==undefined&&typeof trustedLocalConfig!=='boolean')denied();
+    if(prior?.trustedLocalConfig!==undefined&&trustedLocalConfig!==undefined&&prior.trustedLocalConfig!==trustedLocalConfig)denied();
+    if(onPending!==undefined&&typeof onPending!=='function')denied();
+    if(desktopOrdinaryEdit!==undefined&&(!desktopOrdinaryEdit||typeof desktopOrdinaryEdit!=='object'||Array.isArray(desktopOrdinaryEdit)
+      ||Object.keys(desktopOrdinaryEdit).some(k=>k!=='windowRef')||!UUID_V4.test(desktopOrdinaryEdit.windowRef)))denied();
+    if(prior?.desktopOrdinaryEdit&&desktopOrdinaryEdit&&!same(prior.desktopOrdinaryEdit,desktopOrdinaryEdit))denied();
     if(contentConfirmation&&(typeof contentConfirmation.text!=='string'||!contentConfirmation.text||contentConfirmation.text.length>950_000
       ||contentConfirmation.digest!==digest(contentConfirmation.text)||prior?.contentConfirmation&&!same(prior.contentConfirmation,contentConfirmation)))denied();
     if(decisionDeadline!==undefined&&(!Number.isFinite(Date.parse(decisionDeadline))||Date.parse(decisionDeadline)>Date.parse(source.deadline)))denied();
     const merged=new Map((prior?.requirements??[]).map(item=>[item.requirementId,item]));
     for(const requirement of requested){const old=merged.get(requirement.requirementId);if(old&&!same(old,requirement))denied();merged.set(requirement.requirementId,requirement);}
     const mergedForceAsk=forceAsk??prior?.forceAsk;
+    const mergedTrustedLocalConfig=trustedLocalConfig??prior?.trustedLocalConfig;
+    const mergedOnPending=prior?.onPending&&onPending?(info=>{prior.onPending(info);onPending(info);}):(onPending??prior?.onPending);
     preparations.set(identity,{...requestFields(source),requirements:[...merged.values()],
       ...((taskConsent??prior?.taskConsent)?{taskConsent:structuredClone(taskConsent??prior.taskConsent)}:{}),
       ...((contentConfirmation??prior?.contentConfirmation)?{contentConfirmation:structuredClone(contentConfirmation??prior.contentConfirmation)}:{}),
+      ...((desktopOrdinaryEdit??prior?.desktopOrdinaryEdit)?{desktopOrdinaryEdit:structuredClone(desktopOrdinaryEdit??prior.desktopOrdinaryEdit)}:{}),
       ...(mergedForceAsk===true?{forceAsk:true}:{}),
+      ...(mergedTrustedLocalConfig===true?{trustedLocalConfig:true}:{}),
+      ...(mergedOnPending?{onPending:mergedOnPending}:{}),
       decisionDeadline:new Date(Math.min(Date.parse(source.deadline),Date.parse(decisionDeadline??source.deadline),
         Date.parse(prior?.decisionDeadline??source.deadline))).toISOString(),
       assertCurrent:()=>assertCurrent()&&(prior?.assertCurrent?.()??true)});
@@ -189,12 +202,13 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     const autoFullContent=isFullAccessAutoContent();
     const secrets=collectSecretDetection(source,prepared,autoFullContent);
     const forceAsk=Boolean(secrets)||prepared?.forceAsk===true;
+    const ordinaryEdit=Boolean(prepared?.desktopOrdinaryEdit);
     let contentConfirmation;
-    if(!forceAsk&&!autoFullContent)contentConfirmation=operationContentConfirmation(source);
+    if(!forceAsk&&!autoFullContent&&!ordinaryEdit)contentConfirmation=operationContentConfirmation(source);
     const extraRequirements=prepared?.requirements??[];
     const hasReusableExtra=extraRequirements.some(item=>item.requirementId!=='tool'&&item.ruleBindingDigest);
     const hasNonReusableExtra=extraRequirements.some(item=>item.requirementId!=='tool'&&!item.ruleBindingDigest);
-    const canBindRule=!contentConfirmation&&!hasNonReusableExtra&&(Boolean(secrets)||hasReusableExtra||source.sideEffect!=='external_write');
+    const canBindRule=!contentConfirmation&&!ordinaryEdit&&!hasNonReusableExtra&&(Boolean(secrets)||hasReusableExtra||source.sideEffect!=='external_write');
     const summary=secrets
       ?`检测到疑似凭据信息（${secrets.categories.join('、')}）：${operationSummary(source)}（确认后可加入白名单）`
       :operationSummary(source);
@@ -207,12 +221,13 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       summary};
     return {...requestFields(source),...(contentConfirmation?{contentConfirmation}:{}),
       ...(forceAsk?{forceAsk:true}:{}),
+      ...(prepared?.trustedLocalConfig===true&&!forceAsk?{trustedLocalConfig:true}:{}),
       ...(prepared?.taskConsent&&!forceAsk?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
       requirements:[tool,...extraRequirements.filter(item=>item.requirementId!=='tool')]};
   }
   function withPreparedContent(request,prepared){
     if(!prepared?.contentConfirmation)return request;
-    if(request.forceAsk||isFullAccessAutoContent())return request;
+    if(request.forceAsk||isFullAccessAutoContent()||prepared?.desktopOrdinaryEdit)return request;
     const text=[request.contentConfirmation?.text,prepared.contentConfirmation.text].filter(Boolean).join('\n\n');
     if(text.length>1_000_000)denied();
     return {...request,contentConfirmation:{digest:digest(text),text}};
@@ -244,7 +259,8 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       if(receipt.decision==='deny')return 'deny';
       stage='tool-requirement';
       api.consume(receipt,request,'tool',source.runId+':tool');
-      operations.set(identity,{request,receipt,consumers:new Map([['tool',source.runId+':tool']]),outputSchema:source.outputSchema});
+      operations.set(identity,{request,receipt,consumers:new Map([['tool',source.runId+':tool']]),outputSchema:source.outputSchema,
+        ...(prepared?.desktopOrdinaryEdit?.windowRef?{desktopOrdinaryEditWindow:prepared.desktopOrdinaryEdit.windowRef}:{})});
       return 'allow_once';
     }catch(error){
       // Runtime may subsequently invalidate the pending approval and report a
@@ -381,10 +397,22 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       return Boolean(invocation&&invocation.argumentsDigest===active.argumentsDigest);
     }catch(error){if(error?.code==='NOT_FOUND')return false;throw error;}
   }
+  function readOrdinaryEditWindow(scope){
+    if(closed||!scope||typeof scope.taskId!=='string'||typeof scope.runId!=='string')return undefined;
+    const entry=operations.get(key(scope));
+    if(!entry?.desktopOrdinaryEditWindow)return undefined;
+    const application=getApplication();
+    const currentInvocation=application?.readAuthorizationQuestionInvocation?.(scope.taskId,scope.runId);
+    if(!currentInvocation||currentInvocation.argumentsDigest!==entry.request.argumentsDigest||currentInvocation.deadline!==entry.request.deadline)return undefined;
+    try{
+      service().assertRequirement(entry.receipt,entry.request,'tool',scope.runId+':tool');
+    }catch{return undefined;}
+    return entry.desktopOrdinaryEditWindow;
+  }
   return {
     requiresAuthorization:scope=>preparations.has(key(scope))||requiresContentConfirmation(scope),
     requiresNativeForAuthorization:scope=>preparations.get(key(scope))?.taskConsent?.requiresNative===true,
-    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,readConsumedOperation,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
+    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,readConsumedOperation,deriveMailBatch,deriveHostIntent,readExecutionPolicy,readOrdinaryEditWindow,
     readResourceGeneration,rotateResourceGeneration,
     request:(request,current)=>service().request(request,current),
     consume:(...args)=>service().consume(...args),assertRequirement:(...args)=>service().assertRequirement(...args),
@@ -392,6 +420,11 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     snapshot:conversationId=>closed||!getApplication()?.runtime?[]:service().snapshot(conversationId),
     refresh:()=>service().refresh(),
     hasPending,
+    asksEveryOperation:()=>{
+      if(closed||!getApplication()?.runtime)return false;
+      const selected=service().sandboxSnapshot().selected;
+      return selected.mode==='read-only'&&!profiles?.some(profile=>(selected.ref?profile.ref===selected.ref:profile.label===selected.label)&&profile.lowRiskAuto===true);
+    },
     automaticallyApproves:()=>!closed&&Boolean(getApplication()?.runtime)&&service().sandboxSnapshot().selected.mode==='full-access',
     sandboxSnapshot:()=>service().sandboxSnapshot(),selectSandbox:input=>service().selectSandbox(input),revokeRule:input=>service().revokeRule(input),
     close(){closed=true;questions?.close();preparations.clear();operations.clear();owners.clear();batchDerivations.clear();projections.clear();},

@@ -415,3 +415,207 @@ test('forceAsk forces a pending card even in full-access mode and supports perma
   assert.equal((await afterRevoke).decision,'deny');
   f.host.close();
 });
+
+test('#728 UI unavailable keeps policy/rule/task consents passing while deferWhenUnavailable keeps manual cards pending until panel reopens',async()=>{
+  const saved={};
+  const now=Date.parse('2026-10-21T00:00:00Z');
+  let uiAvailable=false;
+  const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
+    compareAndSet(key,previous,next){if(!isDeepStrictEqual(saved[key],previous))return false;saved[key]=structuredClone(next);return true;}};
+  const profiles=[
+    {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+    {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true},
+  ];
+  const makeReq=(runId,overrides={})=>({taskId:'task-728',proposalId:'prop-'+runId,runId,toolName:'mail.inbox',toolVersion:'1',
+    argumentsDigest:H,deadline:new Date(now+60000).toISOString(),signal:new AbortController().signal,sideEffect:'read',
+    requirements:[{requirementId:'tool',kind:'tool',scopes:['mail:read'],bindingDigest:H,ruleBindingDigest:R,summary:'Read mail'}],...overrides});
+
+  const deferredHost=new AuthorizationQuestions({store,profiles,defaultProfileRef:'low-risk-auto',now:()=>now,
+    available:()=>uiAvailable,deferWhenUnavailable:true,
+    readBinding:()=>({conversationId:'conv-1',digest:'owner-1'}),canExecute:()=>true});
+
+  // Auto policy passes even when UI is unavailable.
+  const autoRead=await deferredHost.request(makeReq('run-auto'));
+  assert.equal(autoRead.decision,'allow_once');
+
+  // Pending card is deferred rather than failing closed immediately when deferWhenUnavailable is true.
+  const writeReq=makeReq('run-write',{toolName:'calendar.update',sideEffect:'external_write',
+    requirements:[{requirementId:'tool',kind:'tool',scopes:['calendar:write'],bindingDigest:H,ruleBindingDigest:R,summary:'Update event'}]});
+  let settled=false;
+  const deferredWrite=deferredHost.request(writeReq).then(res=>{settled=true;return res;});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(settled,false);
+  const card=deferredHost.snapshot().at(-1);
+  assert.equal(card.state,'pending');
+  assert.throws(()=>deferredHost.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_always'},'conv-1'),/不可用/);
+
+  // Reopening panel enables respond(), and saved rule / allow_task continue to work even when UI closes again.
+  uiAvailable=true;
+  assert.equal(deferredHost.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_always'},'conv-1').accepted,true);
+  const receipt=await deferredWrite;
+  deferredHost.consume(receipt,writeReq,'tool','exec-1');
+
+  uiAvailable=false;
+  const savedRuleReceipt=await deferredHost.request({...writeReq,runId:'run-write-reused'});
+  assert.equal(savedRuleReceipt.decision,'allow_always');
+
+  // Switch to workspace-write: taskConsent passes without UI once allowed.
+  uiAvailable=true;
+  deferredHost.selectSandbox({profileRef:'workspace-write',expectedRevision:deferredHost.sandboxSnapshot().selected.revision});
+  uiAvailable=false;
+  const localAuto=await deferredHost.request(makeReq('run-local-write',{toolName:'todo.create',sideEffect:'local_write',
+    requirements:[{requirementId:'tool',kind:'tool',scopes:['todo:write'],bindingDigest:H,ruleBindingDigest:R,summary:'Create todo'}]}));
+  assert.equal(localAuto.decision,'allow_once');
+
+  const taskReq=makeReq('run-task',{toolName:'calendar.update',sideEffect:'external_write',
+    requirements:[{requirementId:'tool',kind:'tool',scopes:['calendar:write'],bindingDigest:H,ruleBindingDigest:R,summary:'Update event'}]});
+  const pendingTask=deferredHost.request(taskReq);
+  uiAvailable=true;
+  const taskCard=deferredHost.snapshot().at(-1);
+  deferredHost.respond({questionId:taskCard.questionId,expectedRevision:taskCard.revision,decision:'allow_task'},'conv-1');
+  await pendingTask;
+  uiAvailable=false;
+  assert.equal((await deferredHost.request({...taskReq,runId:'run-task-reused'})).decision,'allow_task');
+  deferredHost.close();
+});
+
+test('#730 switching sandbox marks rules inactive_profile and restores them on switch back unless modified or explicitly revoked',async()=>{
+  const saved={};
+  const now=Date.parse('2026-10-21T00:00:00Z');
+  const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
+    compareAndSet(key,previous,next){if(!isDeepStrictEqual(saved[key],previous))return false;saved[key]=structuredClone(next);return true;}};
+  const profiles=[
+    {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+    {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true},
+  ];
+  const makeHost=(overrideProfiles=profiles)=>new AuthorizationQuestions({store,profiles:overrideProfiles,defaultProfileRef:'low-risk-auto',now:()=>now,
+    available:()=>true,readBinding:()=>({conversationId:'conv-1',digest:'owner-1'}),canExecute:()=>true});
+  const req=(runId,toolName='calendar.update',summary='Update event',digestSuffix=R)=>({taskId:'task-730',proposalId:'prop-'+runId,runId,toolName,toolVersion:'1',
+    argumentsDigest:H,deadline:new Date(now+60000).toISOString(),signal:new AbortController().signal,sideEffect:'external_write',
+    requirements:[{requirementId:'tool',kind:'tool',scopes:['calendar:write'],bindingDigest:H,ruleBindingDigest:digestSuffix,summary}]});
+
+  const host=makeHost();
+  const first=host.request(req('r1'));
+  const card=host.snapshot().at(-1);
+  host.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_always'},'conv-1');
+  assert.equal((await first).decision,'allow_always');
+
+  const second=host.request(req('r2','calendar.create','Create event','c'.repeat(64)));
+  const card2=host.snapshot().at(-1);
+  host.respond({questionId:card2.questionId,expectedRevision:card2.revision,decision:'allow_always'},'conv-1');
+  assert.equal((await second).decision,'allow_always');
+
+  // Switch to workspace-write: rules from low-risk-auto become inactive_profile, not permanently revoked, and do not auto-allow under workspace-write.
+  const snapB=host.selectSandbox({profileRef:'workspace-write',expectedRevision:host.sandboxSnapshot().selected.revision});
+  assert.equal(snapB.rules.length,2);
+  assert.ok(snapB.rules.every(rule=>rule.active===false&&rule.status==='inactive_profile'));
+
+  const inB=host.request(req('r3'));
+  const cardInB=host.snapshot().at(-1);
+  assert.equal(cardInB.state,'pending');
+  host.respond({questionId:cardInB.questionId,expectedRevision:cardInB.revision,decision:'deny'},'conv-1');
+  assert.equal((await inB).decision,'deny');
+
+  // Explicitly revoke one inactive_profile rule while in workspace-write.
+  const toRevoke=snapB.rules.find(rule=>rule.summary.includes('Create event'));
+  const snapAfterRevoke=host.revokeRule({ruleId:toRevoke.ruleId,expectedRevision:toRevoke.revision});
+  assert.equal(snapAfterRevoke.rules.find(r=>r.ruleId===toRevoke.ruleId).status,'revoked');
+
+  // Switch back to unmodified low-risk-auto: non-revoked rule restores to active, revoked rule stays revoked.
+  const snapBack=host.selectSandbox({profileRef:'low-risk-auto',expectedRevision:host.sandboxSnapshot().selected.revision});
+  const activeRule=snapBack.rules.find(rule=>rule.summary.includes('Update event'));
+  const revokedRule=snapBack.rules.find(rule=>rule.summary.includes('Create event'));
+  assert.equal(activeRule.active,true);assert.equal(activeRule.status,'active');
+  assert.equal(revokedRule.active,false);assert.equal(revokedRule.status,'revoked');
+
+  assert.equal((await host.request(req('r4'))).decision,'allow_always');
+  const revokedReq=host.request(req('r5','calendar.create','Create event','c'.repeat(64)));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:host.snapshot().at(-1).revision,decision:'deny'},'conv-1');
+  assert.equal((await revokedReq).decision,'deny');
+  host.close();
+
+  // If the profile definition changes, saved rules for that profile become revoked.
+  const modifiedProfiles=[
+    {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:false},
+    {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true},
+  ];
+  const hostChanged=makeHost(modifiedProfiles);
+  assert.ok(hostChanged.sandboxSnapshot().rules.every(rule=>rule.active===false&&rule.status==='revoked'));
+  hostChanged.close();
+});
+
+test('non-secret forceAsk card (such as calendar.cancel) uses neutral confirmation title instead of secret alert',async()=>{
+  const f=fixture();
+  f.host.selectSandbox({profileRef:'full',expectedRevision:1});
+  const pending=f.host.request(f.request({
+    runId:'cal-cancel-1',toolName:'calendar.cancel',forceAsk:true,sideEffect:'external_write',
+    requirements:[{requirementId:'tool',kind:'tool',scopes:['calendar:write'],bindingDigest:H,summary:'取消日程 evt-1。'}],
+  }));
+  const card=f.host.snapshot().at(-1);
+  assert.equal(card.title,'请确认这项操作');
+  assert.doesNotMatch(card.title,/疑似密钥或凭据/);
+  f.respond('allow_once',card);
+  assert.equal((await pending).decision,'allow_once');
+  f.host.close();
+});
+
+test('trustedLocalConfig auto-approves only reversible config scopes in lowRiskAuto/localWriteAuto and invokes onPending only when pending',async()=>{
+  const pendingEvents=[];
+  const saved={};
+  const store={
+    get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
+    compareAndSet(key,previous,next){if(!isDeepStrictEqual(saved[key],previous))return false;saved[key]=structuredClone(next);return true;},
+  };
+  const host=new AuthorizationQuestions({
+    store,
+    profiles:[
+      {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+      {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true},
+    ],
+    defaultProfileRef:'low-risk-auto',
+    readBinding:request=>({conversationId:'conv-1',digest:request.taskId}),
+    available:()=>true,
+    canExecute:()=>true,
+    onPending:info=>pendingEvents.push(info),
+  });
+  const configReq=(runId,scope='skill.enable')=>({
+    taskId:`task-${runId}`,proposalId:`prop-${runId}`,runId,
+    toolName:'desktop.authorization.intent',toolVersion:'1.0.0',argumentsDigest:H,
+    deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal,
+    sideEffect:'read',trustedLocalConfig:true,
+    requirements:[{requirementId:'intent',kind:'tool',scopes:[scope],bindingDigest:H,ruleBindingDigest:H,summary:'启用本地技能'}],
+  });
+
+  // Safe local config in low-risk-auto auto-approves without firing onPending.
+  const autoRes=await host.request(configReq('r-auto','skill.enable'));
+  assert.equal(autoRes.decision,'allow_once');
+  assert.equal(pendingEvents.length,0);
+
+  // Destructive/install scope cannot bypass via trustedLocalConfig even in low-risk-auto.
+  const blockedP=host.request(configReq('r-install','skill.install'));
+  assert.equal(pendingEvents.length,1);
+  assert.equal(pendingEvents[0].runId,'r-install');
+  const blockedCard=host.snapshot().find(q=>q.sourceApprovalId==='r-install'&&q.state==='pending');
+  assert.ok(blockedCard);
+  host.respond({questionId:blockedCard.questionId,expectedRevision:blockedCard.revision,decision:'deny'},'conv-1');
+  assert.equal((await blockedP).decision,'deny');
+
+  // Switch to default-read-only: even trustedLocalConfig prompts and fires onPending.
+  host.selectSandbox({profileRef:'default-read-only',expectedRevision:host.sandboxSnapshot().selected.revision});
+  const manualP=host.request(configReq('r-manual','skill.enable'));
+  assert.equal(pendingEvents.length,2);
+  assert.equal(pendingEvents[1].runId,'r-manual');
+  const manualCard=host.snapshot().find(q=>q.sourceApprovalId==='r-manual'&&q.state==='pending');
+  host.respond({questionId:manualCard.questionId,expectedRevision:manualCard.revision,decision:'allow_once'},'conv-1');
+  assert.equal((await manualP).decision,'allow_once');
+
+  // Switch to workspace-write: trustedLocalConfig auto-approves cleanly without firing onPending.
+  host.selectSandbox({profileRef:'workspace-write',expectedRevision:host.sandboxSnapshot().selected.revision});
+  const wsRes=await host.request(configReq('r-ws','knowledge.configure'));
+  assert.equal(wsRes.decision,'allow_once');
+  assert.equal(pendingEvents.length,2);
+
+  host.close();
+});

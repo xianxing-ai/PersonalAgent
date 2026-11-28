@@ -34,6 +34,8 @@ const ordinaryExternalTools=new Set(['calendar.create','calendar.update','calend
 const desktopWrites=new Set(['activate','click','type','set_value','invoke','select','focus','scroll','move','drag','shortcut','press']
   .map(name=>'computer.desktop.'+name));
 const credentialField=/(?:password|passwd|secret|token|credential|api[_-]?key|authorization|private[_-]?key|access[_-]?key)/iu;
+const genericTokenField=/token/iu;
+const explicitCredentialField=/(?:password|passwd|secret|credential|api[_-]?key|authorization|private[_-]?key|access[_-]?key|(?:access|refresh|auth|bearer|id|csrf|xsrf|session|security|client|oauth2?|personal|api|jwt|secret)[_-]?token|token[_-]?(?:secret|value|key|hash|string))/iu;
 const secretText=/(?:-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{16,}|\bBearer\s+[A-Za-z0-9_.~+/-]{8,}|(?:password|passwd|api[_ -]?key|secret[_ -]?key|access[_ -]?token|密码|口令|验证码)\s*[:=]\s*["']?[^\s"',;}]{3,})/iu;
 function classifyCredentialHint(hint) {
   if(/-----BEGIN|private|私钥/iu.test(hint))return '私钥';
@@ -41,8 +43,55 @@ function classifyCredentialHint(hint) {
   if(/verification|otp|验证码/iu.test(hint))return '验证码';
   return '密钥/令牌';
 }
-function containsCredential(value) {
-  return value!==null&&typeof value==='object'&&Object.entries(value).some(([name,item])=>credentialField.test(name)||containsCredential(item));
+function isNumericSchemaOnly(schema) {
+  if(!schema||typeof schema!=='object')return false;
+  const types=Array.isArray(schema.type)?schema.type:typeof schema.type==='string'?[schema.type]:[];
+  if(!types.length||types.includes('string'))return false;
+  return types.every(t=>t==='integer'||t==='number');
+}
+function resolvePropertySchema(schema,key) {
+  if(!schema||typeof schema!=='object')return undefined;
+  if(schema.properties&&Object.hasOwn(schema.properties,key))return schema.properties[key];
+  if(Array.isArray(schema.allOf)){
+    for(const part of schema.allOf){
+      const found=resolvePropertySchema(part,key);
+      if(found)return found;
+    }
+  }
+  const union=schema.anyOf??schema.oneOf;
+  if(Array.isArray(union)&&union.length){
+    const branchProps=union.map(part=>resolvePropertySchema(part,key));
+    if(branchProps.every(part=>part&&isNumericSchemaOnly(part))){
+      return branchProps.some(part=>(Array.isArray(part.type)?part.type:[part.type]).includes('number'))
+        ?{type:'number'}:{type:'integer'};
+    }
+  }
+  return undefined;
+}
+function resolveItemSchema(schema) {
+  if(!schema||typeof schema!=='object')return undefined;
+  return schema.items&&typeof schema.items==='object'&&!Array.isArray(schema.items)?schema.items:undefined;
+}
+function isTrustedNumericQuotaField(name,value,propSchema) {
+  if(!propSchema||typeof propSchema!=='object')return false;
+  if(explicitCredentialField.test(name)||!genericTokenField.test(name))return false;
+  if(!isNumericSchemaOnly(propSchema))return false;
+  const types=Array.isArray(propSchema.type)?propSchema.type:[propSchema.type];
+  if(typeof value!=='number'||!Number.isFinite(value)||value<0)return false;
+  if(types.includes('integer')&&!types.includes('number'))return Number.isSafeInteger(value);
+  return true;
+}
+function containsCredential(value,schema) {
+  if(value===null||typeof value!=='object')return false;
+  if(Array.isArray(value)){
+    const itemSchema=resolveItemSchema(schema);
+    return value.some(item=>containsCredential(item,itemSchema));
+  }
+  return Object.entries(value).some(([name,item])=>{
+    const propSchema=resolvePropertySchema(schema,name);
+    if(credentialField.test(name)&&!isTrustedNumericQuotaField(name,item,propSchema))return true;
+    return containsCredential(item,propSchema);
+  });
 }
 export function detectSecretsInText(text) {
   if(typeof text!=='string')return undefined;
@@ -54,7 +103,7 @@ export function detectSecretsInText(text) {
   }
   return fingerprints.size?{categories:[...categories],fingerprints:[...fingerprints].sort()}:undefined;
 }
-function collectArgumentSecrets(value,categories,fingerprints,depth=0) {
+function collectArgumentSecrets(value,categories,fingerprints,depth=0,schema=undefined) {
   if(depth>24)throw new ProtocolError('UNAUTHORIZED','无法安全校验本次操作参数，未获允许');
   if(typeof value==='string'){
     const detected=detectSecretsInText(value);
@@ -65,17 +114,19 @@ function collectArgumentSecrets(value,categories,fingerprints,depth=0) {
     return;
   }
   if(Array.isArray(value)){
-    for(const item of value)collectArgumentSecrets(item,categories,fingerprints,depth+1);
+    const itemSchema=resolveItemSchema(schema);
+    for(const item of value)collectArgumentSecrets(item,categories,fingerprints,depth+1,itemSchema);
     return;
   }
   if(value&&typeof value==='object'){
     for(const [name,item]of Object.entries(value)){
-      if(credentialField.test(name)){
+      const propSchema=resolvePropertySchema(schema,name);
+      if(credentialField.test(name)&&!isTrustedNumericQuotaField(name,item,propSchema)){
         categories.add(classifyCredentialHint(name));
         const normalized=item===null||item===undefined||typeof item==='object'?'':String(item).trim();
         fingerprints.add(digest({kind:'field',field:name.toLowerCase(),value:normalized}));
       }
-      collectArgumentSecrets(item,categories,fingerprints,depth+1);
+      collectArgumentSecrets(item,categories,fingerprints,depth+1,propSchema);
     }
   }
 }
@@ -90,7 +141,7 @@ export function detectSecretsInArguments(source,{requireValidArgs=false}={}) {
     return undefined;
   }
   const categories=new Set(),fingerprints=new Set();
-  collectArgumentSecrets(args,categories,fingerprints,0);
+  collectArgumentSecrets(args,categories,fingerprints,0,source?.inputSchema);
   return fingerprints.size?{categories:[...categories],fingerprints:[...fingerprints].sort()}:undefined;
 }
 export function assertNoSecretsInText(text) {
@@ -113,7 +164,7 @@ export function operationContentConfirmation(source) {
   if(!requiresContentConfirmation(source))return undefined;
   const fields=Object.hasOwn(contentFields,source.toolName)?contentFields[source.toolName]:undefined;
   const args=source.arguments;
-  if(!args||typeof args!=='object'||Array.isArray(args)||containsCredential(args)
+  if(!args||typeof args!=='object'||Array.isArray(args)||containsCredential(args,source?.inputSchema)
     ||fields&&(fields.some(field=>!field.startsWith('?')&&!Object.hasOwn(args,field))
       ||Object.keys(args).some(name=>!fields.some(field=>field.replace(/^\?/u,'')===name))))
     throw new ProtocolError('UNAUTHORIZED','无法安全完整展示本次操作内容，未获允许');

@@ -32,6 +32,16 @@ export function taskProgress(tasks, computer, authorization = {}) {
       detail: computer.reviewAction ? `需要你确认：${computer.reviewAction}。30 秒内未确认会跳过这一步，继续其他工作。`
         : '电脑操作尚未开始。确认本次在场后继续原任务；也可保持目标应用在前台按 F9。'};
   }
+  if (['running', 'planning', 'waiting_approval', 'waiting_external'].includes(task.state)
+    && computer?.missedConfirmation && typeof computer.missedConfirmation.taskId === 'string'
+    && typeof computer.missedConfirmation.stepId === 'string') {
+    return {state: task.state, label: '本机确认已超时',
+      reconfirmTaskId: computer.missedConfirmation.taskId,
+      reconfirmStepId: computer.missedConfirmation.stepId,
+      detail: computer.missedConfirmation.reviewAction
+        ? `步骤「${computer.missedConfirmation.reviewAction}」上次未及时确认已跳过；其他步骤仍可正常请求，也可点此重新允许该步骤确认（不会重放写入）。`
+        : '上一步电脑在场确认已超时跳过；其他步骤可继续请求，也可点此重新确认该步骤（不会重放写入）。'};
+  }
   const step = ['running', 'planning', 'verifying'].includes(task.state)
     ? task.steps?.find(item => ['running', 'executing', 'verifying'].includes(item.state)) : undefined;
   return {state: task.state, label: stateNames[task.state] ?? '状态待确认',
@@ -40,13 +50,13 @@ export function taskProgress(tasks, computer, authorization = {}) {
 }
 
 // Presentation only: consumes the existing Runtime snapshot and never advances task state.
-export function mountTaskProgress(container, before = null, confirmPresence) {
+export function mountTaskProgress(container, before = null, confirmPresence, reconfirmStep) {
   const status = document.createElement('section');
   status.className = 'task-progress';status.hidden = true;
   status.setAttribute('role', 'status');status.setAttribute('aria-live', 'polite');status.setAttribute('aria-atomic', 'true');
   const label = document.createElement('strong'), detail = document.createElement('span');
   status.append(label, detail);container.insertBefore(status, before);
-  let signature,current,pending=false;
+  let signature,current,pending=false,reconfirmPending=false;
   const confirm=typeof confirmPresence==='function'?document.createElement('button'):null;
   if(confirm){confirm.type='button';confirm.textContent='确认本次在场';confirm.hidden=true;status.append(confirm);
     confirm.onclick=async()=>{
@@ -57,9 +67,21 @@ export function mountTaskProgress(container, before = null, confirmPresence) {
       finally{pending=false;confirm.disabled=false;}
     };
   }
+  const reconfirm=typeof reconfirmStep==='function'?document.createElement('button'):null;
+  if(reconfirm){reconfirm.type='button';reconfirm.textContent='重新确认此步骤';reconfirm.hidden=true;status.append(reconfirm);
+    reconfirm.onclick=async()=>{
+      const taskId=current?.reconfirmTaskId,stepId=current?.reconfirmStepId;
+      if(!taskId||!stepId||reconfirmPending)return;
+      reconfirmPending=true;reconfirm.disabled=true;
+      try{await reconfirmStep({taskId,stepId});}
+      catch{if(current?.reconfirmTaskId===taskId&&current?.reconfirmStepId===stepId)detail.textContent='该步骤暂无法重新确认，可能已过期或策略已变化。';}
+      finally{reconfirmPending=false;reconfirm.disabled=false;}
+    };
+  }
   return (tasks, computer, authorization) => {
     const value = taskProgress(tasks, computer, authorization), next = JSON.stringify(value);
     current=value;if(confirm)confirm.hidden=!value?.confirmationTaskId;
+    if(reconfirm)reconfirm.hidden=!value?.reconfirmTaskId||!value?.reconfirmStepId;
     if (signature === next) return;
     signature = next;status.hidden = !value;
     if (!value) {label.textContent = '';detail.textContent = '';delete status.dataset.state;return;}

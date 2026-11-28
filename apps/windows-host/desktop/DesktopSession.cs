@@ -311,6 +311,8 @@ internal sealed class DesktopSession(InputController inputs)
     private static string Bounded(string? value, int length) => value is null ? "" : value.Length <= length ? value : value[..length];
     private static bool SensitiveName(string name) => System.Text.RegularExpressions.Regex.IsMatch(name,
         @"password|credential|api[ _-]?key|secret|密码|凭据|密钥", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static bool SubmitOrDangerousName(string name) => System.Text.RegularExpressions.Regex.IsMatch(name,
+        @"submit|send|confirm|delete|remove|pay|transfer|publish|提交|发送|确认|删除|支付|转账|发布", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     private static void RequireSafeTree(Target target, RequestContext context)
     {
         // Do not rely on the old snapshot's password classification for a later image capture.
@@ -383,7 +385,7 @@ internal sealed class DesktopSession(InputController inputs)
     }
     private object Action(JsonElement p, RequestContext context)
     {
-        Fields(p, "targetRef", "action", "loc", "controlRef", "text", "clear", "caret_position", "press_enter", "shortcut", "key", "button", "clicks", "direction", "wheel_times", "type", "from_loc", "to_loc", "duration", "drag");
+        Fields(p, "targetRef", "action", "loc", "controlRef", "text", "clear", "caret_position", "press_enter", "shortcut", "key", "button", "clicks", "direction", "wheel_times", "type", "from_loc", "to_loc", "duration", "drag", "ordinary_edit");
         var action = Text(p, "action", 32); var target = TargetFor(p); Check(target, context);
         if (target.Sensitive) throw new Refusal("UNAUTHORIZED");
         if (!new[] { "click", "type", "scroll", "move", "shortcut", "drag", "press", "invoke", "set_value", "select", "focus" }.Contains(action, StringComparer.Ordinal)) throw new Refusal("INVALID_ARGUMENT");
@@ -398,6 +400,22 @@ internal sealed class DesktopSession(InputController inputs)
         var clicks = Number(p, "clicks", 1, 1, 2);
         var button = p.TryGetProperty("button", out _) ? Text(p, "button", 10) : "left";
         if (button is not ("left" or "right" or "middle")) throw new Refusal("INVALID_ARGUMENT");
+        if (Flag(p, "ordinary_edit"))
+        {
+            if (action is not ("focus" or "click" or "type" or "set_value")) throw new Refusal("UNAUTHORIZED");
+            if (!p.TryGetProperty("controlRef", out _) || p.TryGetProperty("loc", out _) || element is null) throw new Refusal("UNAUTHORIZED");
+            if (action == "type" && enter) throw new Refusal("UNAUTHORIZED");
+            if (action == "click" && (button != "left" || clicks != 1)) throw new Refusal("UNAUTHORIZED");
+            var elState = element.Current;
+            var elName = Bounded(elState.Name, 256);
+            var elRole = elState.ControlType.ProgrammaticName.Replace("ControlType.", "", StringComparison.Ordinal);
+            if (elState.IsPassword || SensitiveName(elName) || SubmitOrDangerousName(elName) || SensitiveName(target.Listed.Window.Title))
+                throw new Refusal("UNAUTHORIZED");
+            if (elRole is not ("Edit" or "Document")) throw new Refusal("UNAUTHORIZED");
+            if (element.TryGetCurrentPattern(InvokePattern.Pattern, out _)) throw new Refusal("UNAUTHORIZED");
+            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var vp) && ((ValuePattern)vp).Current.IsReadOnly)
+                throw new Refusal("UNAUTHORIZED");
+        }
         ushort[]? chord = action == "shortcut" ? InputController.ParseChord(Text(p, "shortcut", 128))
             : action == "press" ? InputController.ParseChord(Text(p, p.TryGetProperty("key", out _) ? "key" : "shortcut", 128)) : null;
         var direction = p.TryGetProperty("direction", out _) ? Text(p, "direction", 10) : "down";

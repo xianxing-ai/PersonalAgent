@@ -16,7 +16,7 @@ function visit(node){
 }
 visit(ast);assert.equal(blocks.length,1);
 function fixture({change,prior=false}={}){
-  const owner=Object.assign(new EventEmitter(),{isDestroyed:()=>false}),added=[],dialogs=[];
+  const owner=Object.assign(new EventEmitter(),{isDestroyed:()=>false}),added=[],requests=[];
   let conversationId='original-chat',selection={runtimeReady:true,deploymentSelection:'pinned',runtimeName:'original-runtime',
     deploymentVersion:'fixed-version',gatewayUrl:'https://synthetic.invalid/'};
   const task={taskId:'original-task',conversationId:prior?'previous-chat':'original-chat',goal:'Original selected Plan',state:'running'};
@@ -24,12 +24,18 @@ function fixture({change,prior=false}={}){
     payload:{plan:{id:'original-plan',revision:1},expectedGraphRevision:1,requestId:'original-request-id'},
     readCompetitionExecutionPolicy:()=>({taskTimeoutMs:60000}),runtimeApplication:{coordinationConfigurationRef:'original-configuration'},
     agentArtsConfig:{snapshot:()=>({...selection})},conversations:{activeConversationId:()=>conversationId,turns:new Map(),
-      add:(...args)=>added.push(args)},rememberTaskGoal(){},publish(){},dialog:{showMessageBox:async(window,options)=>{
-      assert.equal(window,owner);dialogs.push(options);
+      add:(...args)=>added.push(args)},rememberTaskGoal(){},publish(){},
+    dialog:{showMessageBox:async()=>{assert.fail('goal.plan.execute must use authorizationIntentHost instead of OS modal showMessageBox');}},
+    authorizationIntentHost:{request:async request=>{
+      assert.equal(request.action,'goal.plan.execute');
+      assert.equal(request.conversationId,'original-chat');
+      assert.equal(request.isCurrent(),true);
+      requests.push(request);
       if(change==='conversation')conversationId='replacement';
       if(change==='deployment')selection={...selection,deploymentVersion:'replacement'};
       if(change==='close')owner.emit('closed');
-      return {response:change==='deny'?0:1};
+      if(change==='conversation'||change==='deployment'||change==='close')assert.equal(request.isCurrent(),false);
+      return change!=='deny';
     }},goalHost:{executePlan:async(payload,scope)=>{
       assert.equal(payload,context.payload);assert.equal(scope.conversationId,'original-chat');
       if(prior)return {state:'submitted',task};
@@ -37,13 +43,12 @@ function fixture({change,prior=false}={}){
         configurationRef:'original-configuration',dependencyCount:1,factCount:1});
       return accepted?{state:'submitted',task}:{state:'declined'};
     }}};
-  return {context,owner,dialogs,added,run:()=>vm.runInNewContext(`(async()=>${blocks[0]})()`,context)};
+  return {context,owner,requests,added,run:()=>vm.runInNewContext(`(async()=>${blocks[0]})()`,context)};
 }
 
 test('Main Plan confirmation shows the fixed destination and keeps the original conversation',async()=>{
-  const f=fixture(),result=await f.run();assert.equal(result.state,'submitted');assert.equal(f.dialogs.length,1);
-  assert.match(f.dialogs[0].detail,/original-runtime \/ fixed-version/);assert.match(f.dialogs[0].detail,/Original selected Plan/);
-  assert.equal(f.dialogs[0].defaultId,0);assert.equal(f.dialogs[0].cancelId,0);
+  const f=fixture(),result=await f.run();assert.equal(result.state,'submitted');assert.equal(f.requests.length,1);
+  assert.match(f.requests[0].summary,/original-runtime \/ fixed-version/);assert.match(f.requests[0].summary,/Original selected Plan/);
   assert.deepEqual(f.added,[['original-task','workspace','Original selected Plan','original-chat']]);assert.equal(f.owner.listenerCount('closed'),0);
 });
 
@@ -55,5 +60,5 @@ test('denial, changed conversation/deployment or closed original window cannot a
 
 test('reading a prior Plan task does not ask again or move it to another conversation',async()=>{
   const f=fixture({prior:true});assert.equal((await f.run()).task.conversationId,'previous-chat');
-  assert.equal(f.dialogs.length,0);assert.equal(f.added.length,0);
+  assert.equal(f.requests.length,0);assert.equal(f.added.length,0);
 });

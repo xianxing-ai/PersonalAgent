@@ -62,3 +62,25 @@ test('presence rendering never confirms automatically and a click binds the curr
  render(tasks,{waitingConfirmation:false});assert.equal(button.hidden,true);
  finish();await pending;await button.onclick();assert.deepEqual(calls,['original-child']);
 });
+
+test('#732 taskProgress renders missedConfirmation and binds explicit step reconfirm action',async t=>{
+ const original=Object.getOwnPropertyDescriptor(globalThis,'document');
+ t.after(()=>original?Object.defineProperty(globalThis,'document',original):delete globalThis.document);
+ function node(){return {dataset:{},attrs:{},children:[],hidden:false,setAttribute(k,v){this.attrs[k]=v;},append(...items){this.children.push(...items);}};}
+ globalThis.document={createElement:node};
+ const container={insertBefore(value){this.status=value;}},reconfirms=[];
+ const render=mountTaskProgress(container,null,()=>Promise.resolve(),payload=>{reconfirms.push(payload);return Promise.resolve();});
+ const tasks=[{taskId:'task-732',state:'running'}];
+ const missed={missedConfirmation:{taskId:'task-732',stepId:'action:abc123',reviewAction:'Click Submit'}};
+ const view=taskProgress(tasks,missed);
+ assert.equal(view.label,'本机确认已超时');
+ assert.equal(view.reconfirmTaskId,'task-732');assert.equal(view.reconfirmStepId,'action:abc123');
+ assert.match(view.detail,/Click Submit.*不会重放写入/);
+ render(tasks,missed);
+ const reconfirmBtn=container.status.children[3];
+ assert.equal(reconfirmBtn.hidden,false);assert.equal(reconfirmBtn.textContent,'重新确认此步骤');
+ await reconfirmBtn.onclick();
+ assert.deepEqual(reconfirms,[{taskId:'task-732',stepId:'action:abc123'}]);
+ render(tasks,{waitingConfirmation:false});
+ assert.equal(reconfirmBtn.hidden,true);
+});

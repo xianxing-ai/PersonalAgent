@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {needsMicrophoneApproval,operationContentConfirmation,operationSummary,taskOperationBinding} from '../electron/authorization-operation-policy.js';
-const source=(name,scopes,args={})=>({toolName:name,toolVersion:'1',scopes,arguments:args,argumentsDigest:JSON.stringify(args)});
+import {detectSecretsInArguments,needsMicrophoneApproval,operationContentConfirmation,operationSummary,taskOperationBinding} from '../electron/authorization-operation-policy.js';
+const source=(name,scopes,args={},extra={})=>({toolName:name,toolVersion:'1',scopes,arguments:args,argumentsDigest:JSON.stringify(args),...extra});
 
 test('F23 evaluation report cannot silently publish a candidate configuration',()=>{
   const candidate={action:'promote',operationId:'original-report',configurationId:'decision',candidateParameters:{modelId:'candidate'}};
@@ -62,5 +62,31 @@ test('an explicit Live start needs no duplicate application card in any file san
     assert.equal(needsMicrophoneApproval(mode,'live'),false);
     assert.equal(needsMicrophoneApproval(mode,'wake'),true,'background wake remains a distinct purpose');
     assert.equal(needsMicrophoneApproval(mode,'dictation'),true);
+  }
+});
+
+test('#729 schema-declared non-negative numeric quota token fields are allowed while secrets and explicit token fields fail closed',()=>{
+  const quotaSchema={type:'object',properties:{
+    prompt:{type:'string'},
+    maxTokens:{type:'integer'},
+    nested:{type:'object',properties:{max_tokens:{type:'number'}}},
+  }};
+  const allowed=source('vendor.generate',['vendor:write'],{prompt:'hello',maxTokens:512,nested:{max_tokens:0}},
+    {sideEffect:'external_write',inputSchema:quotaSchema});
+  assert.equal(detectSecretsInArguments(allowed,{requireValidArgs:true}),undefined);
+  const confirmation=operationContentConfirmation(allowed);
+  assert.match(confirmation.text,/"maxTokens": 512/);
+
+  // Missing schema, string value, negative value, fractional integer, or explicit credential field names stay blocked.
+  for(const bad of [
+    source('vendor.generate',['vendor:write'],{prompt:'hello',maxTokens:512},{sideEffect:'external_write'}),
+    source('vendor.generate',['vendor:write'],{prompt:'hello',maxTokens:'sk-1234567890abcdef1234'},{sideEffect:'external_write',inputSchema:quotaSchema}),
+    source('vendor.generate',['vendor:write'],{prompt:'hello',maxTokens:-1},{sideEffect:'external_write',inputSchema:quotaSchema}),
+    source('vendor.generate',['vendor:write'],{prompt:'hello',maxTokens:1.5},{sideEffect:'external_write',inputSchema:quotaSchema}),
+    source('vendor.generate',['vendor:write'],{prompt:'hello',securityToken:512},
+      {sideEffect:'external_write',inputSchema:{type:'object',properties:{prompt:{type:'string'},securityToken:{type:'integer'}}}}),
+  ]){
+    assert.ok(detectSecretsInArguments(bad,{requireValidArgs:true}),`expected secret detection for ${JSON.stringify(bad.arguments)}`);
+    assert.throws(()=>operationContentConfirmation(bad),{code:'UNAUTHORIZED'});
   }
 });

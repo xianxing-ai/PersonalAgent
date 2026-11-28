@@ -242,3 +242,134 @@ test('fullAccessAutoContent skips content confirmation for safe external writes 
   assert.equal(await pendingPrepared,'deny');
   host.close();
 });
+
+test('#729 inputSchema numeric maxTokens skips false credential forceAsk while string maxTokens and closed panel deferral work end-to-end',async()=>{
+  const saved={};
+  const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
+    compareAndSet(key,expected,next){if(!isDeepStrictEqual(saved[key],expected))return false;saved[key]=structuredClone(next);return true;}};
+  let panelOpen=true;
+  const deadline=new Date(Date.now()+60000).toISOString();
+  const inputSchema={type:'object',properties:{query:{type:'string'},maxTokens:{type:'integer'}}};
+  let currentArgs={query:'hello',maxTokens:512};
+  const application={
+    runtime:{bindTrustedHostState:()=>store,getTask:()=>({state:'waiting_approval',cancelRequested:false}),getApproval:()=>({expiresAt:deadline}),saveCheckpointOnce(){}},
+    readAuthorizationQuestionInvocation:(_t,runId)=>({taskId:'task-quota',runId,proposalId:'p-'+runId,toolName:'vendor.generate',toolVersion:'1.0.0',
+      sideEffect:'external_write',arguments:currentArgs,argumentsDigest:H,scopes:['vendor:write'],deadline,
+      inputSchema,outputSchema:{type:'object'}}),
+    bindAuthorizationQuestion(){},
+    readAuthorizationQuestionBinding:()=>({conversationId:'conv-1',digest:'owner-1'}),
+  };
+  const host=createDesktopAuthorizationQuestionHost({
+    createQuestions:options=>new AuthorizationQuestions(options),
+    getApplication:()=>application,
+    namespace:'quota-and-defer',
+    resolveConversation:()=>'conv-1',
+    available:()=>panelOpen,
+    deferWhenUnavailable:true,
+    profiles:[{ref:'full-access',label:'完全访问',mode:'full-access',revision:1,available:true,fullAccessAutoContent:true},
+      {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true}],
+    defaultProfileRef:'full-access',
+  });
+
+  // maxTokens: 512 with integer schema does not trigger secret forceAsk in full-access.
+  assert.equal(await host.requestToolAuthorization({taskId:'task-quota',runId:'run-ok',deadline,signal:new AbortController().signal}),'allow_once');
+
+  // Switch to read-only and close panel: deferWhenUnavailable keeps manual request pending until panel reopens.
+  host.selectSandbox({profileRef:'default-read-only',expectedRevision:host.sandboxSnapshot().selected.revision});
+  panelOpen=false;
+  currentArgs={query:'hello',maxTokens:'sk-1234567890abcdef1234'};
+  const pending=host.requestToolAuthorization({taskId:'task-quota',runId:'run-deferred',deadline,signal:new AbortController().signal});
+  await new Promise(resolve=>setImmediate(resolve));
+  const card=host.snapshot().at(-1);
+  assert.equal(card.state,'pending');
+  assert.equal(card.forceAsk,true);
+  panelOpen=true;
+  host.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'deny'},card.conversationId);
+  assert.equal(await pending,'deny');
+  host.close();
+});
+
+test('#733 desktopOrdinaryEdit reuses same-window allow_task for ordinary edits without canAlways, and still asks on window switch, coordinates, Enter, or secrets',async()=>{
+  const saved={},deadline=new Date(Date.now()+60000).toISOString();
+  const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
+    compareAndSet(key,expected,next){if(!isDeepStrictEqual(saved[key],expected))return false;saved[key]=structuredClone(next);return true;}};
+  const windowA='11111111-1111-4111-8111-111111111111',windowB='22222222-2222-4222-8222-222222222222';
+  let currentInvocation,taskState='waiting_approval';
+  const application={
+    runtime:{bindTrustedHostState:()=>store,getTask:()=>({state:taskState,cancelRequested:false}),getApproval:()=>({expiresAt:deadline}),saveCheckpointOnce(){}},
+    readAuthorizationQuestionInvocation:()=>currentInvocation,
+    bindAuthorizationQuestion(){},
+    readAuthorizationQuestionBinding:()=>({conversationId:'conv-1',digest:'owner-1'}),
+  };
+  const host=createDesktopAuthorizationQuestionHost({
+    createQuestions:options=>new AuthorizationQuestions(options),
+    getApplication:()=>application,
+    namespace:'desktop-ordinary-edit',
+    resolveConversation:()=>'conv-1',
+    available:()=>true,
+    profiles:[{ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true,lowRiskAuto:true,localWriteAuto:true}],
+    defaultProfileRef:'workspace-write',
+  });
+  const makeScope=runId=>({taskId:'task-edit',runId,deadline,signal:new AbortController().signal});
+  const prepareOrdinary=(runId,toolName,args,win=windowA)=>{
+    currentInvocation={taskId:'task-edit',runId,proposalId:'p-'+runId,toolName,toolVersion:'1.0.0',sideEffect:'external_write',
+      arguments:args,argumentsDigest:H,scopes:['computer:desktop:control'],deadline,outputSchema:{type:'object'}};
+    const s=makeScope(runId);
+    host.prepare(s,{
+      taskConsent:{taskId:'task-edit',bindingDigest:win===windowA?H:R,summary:'在当前窗口普通输入框复用编辑',mode:'workspace-write'},
+      desktopOrdinaryEdit:{windowRef:win},
+    });
+    return s;
+  };
+
+  // First ordinary focus asks once with allow_task allowed and canAlways: false
+  const s1=prepareOrdinary('run-1','computer.desktop.focus',{targetRef:windowA,controlRef:windowA});
+  const p1=host.requestToolAuthorization(s1);
+  const c1=host.snapshot().at(-1);
+  assert.equal(c1.state,'pending');
+  assert.equal(c1.canAlways,false);
+  assert.equal(c1.canReuseTask,true);
+  assert.equal(c1.suggestedDecision,'allow_task');
+  host.respond({questionId:c1.questionId,expectedRevision:c1.revision,decision:'allow_task'},c1.conversationId);
+  assert.equal(await p1,'allow_once');
+  assert.equal(host.readOrdinaryEditWindow(s1),undefined,'execution window requires running state');
+  taskState='running';
+  assert.equal(host.readOrdinaryEditWindow(s1),windowA);
+
+  // Subsequent click / type / set_value in SAME windowA reuse task consent silently
+  for(const [runId,toolName,args]of [
+    ['run-2','computer.desktop.click',{targetRef:windowA,controlRef:windowA}],
+    ['run-3','computer.desktop.type',{targetRef:windowA,controlRef:windowA,text:'hello world'}],
+    ['run-4','computer.desktop.set_value',{targetRef:windowA,controlRef:windowA,text:'body'}],
+  ]){
+    const s=prepareOrdinary(runId,toolName,args,windowA);
+    assert.equal(await host.requestToolAuthorization(s),'allow_once');
+    assert.equal(host.readOrdinaryEditWindow(s),windowA);
+  }
+
+  // Secret in text bypasses taskConsent and forces explicit confirmation
+  taskState='waiting_approval';
+  const sSecret=prepareOrdinary('run-secret','computer.desktop.type',{targetRef:windowA,controlRef:windowA,text:'token sk-1234567890abcdef1234'},windowA);
+  const pSecret=host.requestToolAuthorization(sSecret);
+  assert.equal(host.snapshot().at(-1).forceAsk,true);
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:host.snapshot().at(-1).revision,decision:'deny'},'conv-1');
+  assert.equal(await pSecret,'deny');
+
+  // Switching to windowB requires fresh approval
+  const sOtherWin=prepareOrdinary('run-win-b','computer.desktop.type',{targetRef:windowB,controlRef:windowB,text:'hi'},windowB);
+  const pOtherWin=host.requestToolAuthorization(sOtherWin);
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:host.snapshot().at(-1).revision,decision:'deny'},'conv-1');
+  assert.equal(await pOtherWin,'deny');
+
+  // Unprepared coordinate click requires fresh complete content confirmation card
+  currentInvocation={taskId:'task-edit',runId:'run-coord',proposalId:'p-coord',toolName:'computer.desktop.click',toolVersion:'1.0.0',
+    sideEffect:'external_write',arguments:{targetRef:windowA,loc:[10,20]},argumentsDigest:H,scopes:['computer:desktop:control'],deadline,outputSchema:{type:'object'}};
+  const sCoord=makeScope('run-coord');
+  const pCoord=host.requestToolAuthorization(sCoord);
+  assert.equal(host.snapshot().at(-1).canReuseTask,false);
+  assert.match(host.snapshot().at(-1).description,/"loc": \[\s*10,\s*20\s*\]/s);
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:host.snapshot().at(-1).revision,decision:'deny'},'conv-1');
+  assert.equal(await pCoord,'deny');
+  host.close();
+});

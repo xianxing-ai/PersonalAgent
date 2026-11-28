@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDesktopNativeExecutionHost} from '../electron/native-execution-host.js';
+import {createDesktopNativeExecutionHost,NATIVE_PRELAUNCH_ERRORS} from '../electron/native-execution-host.js';
+import {errorDisplay} from '../src/shared/error-display.js';
 import {readFileSync,mkdtempSync,rmSync,mkdirSync,writeFileSync,realpathSync,renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -174,7 +175,7 @@ test('native execution host reports specific safe Chinese diagnostics for unconf
 
     // 3. Helper build / attestation failure
     helperShouldThrow=true;
-    await assert.rejects(host.prepare(scope),{code:'UNSUPPORTED_CAPABILITY',message:'当前外部进程隔离后端或原授权不可用，未降级为普通进程'});
+    await assert.rejects(host.prepare(scope),{code:'UNSUPPORTED_CAPABILITY',message:NATIVE_PRELAUNCH_ERRORS.helperFailed});
     const helperFailed=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},profile);
     assert.equal(helperFailed.available,false);
     assert.equal(helperFailed.reason,'Windows 进程沙箱辅助程序构建或完整性校验失败，外部命令已保持拒绝（未降级为普通进程）');
@@ -186,7 +187,7 @@ test('native execution host reports specific safe Chinese diagnostics for unconf
       baseline:{backend:'none',enforced:false,outcome:'exited',exitCode:0,stopped:true},
       readOnly:unavailable,workspaceWrite:unavailable,cancel:unavailable,
     }};
-    await assert.rejects(host.prepare(scope),{code:'UNSUPPORTED_CAPABILITY',message:'当前外部进程隔离后端或原授权不可用，未降级为普通进程'});
+    await assert.rejects(host.prepare(scope),{code:'UNSUPPORTED_CAPABILITY',message:NATIVE_PRELAUNCH_ERRORS.psecUnsupported});
     const psecUnsupported=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},profile);
     assert.equal(psecUnsupported.available,false);
     assert.equal(psecUnsupported.reason,'当前 Windows 环境不支持 PSEC/AppContainer 隔离 API，受限外部命令已保持拒绝（未降级为普通进程）');
@@ -197,4 +198,89 @@ test('native execution host reports specific safe Chinese diagnostics for unconf
     assert.equal(afterClose.available,false);
     assert.equal(afterClose.reason,'外部进程隔离宿主已关闭');
   }finally{rmSync(directory,{recursive:true,force:true});}
+});
+
+test('#731 native execution host distinguishes all 6 pre-launch failure causes cleanly through errorDisplay without leaking paths',async()=>{
+  const base=mkdtempSync(path.join(tmpdir(),'pa-native-731-'));
+  const missingWorkspace=path.join(base,'deleted-workspace-secret-name');
+  const scope={taskId:'task-731',runId:'run-731',toolName:'workspace.npm_test',argumentsDigest:'a'.repeat(64),
+    deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal};
+  try{
+    let config={rootPath:missingWorkspace,nodeExecutable:process.execPath,bindingId:'b1'};
+    let helperThrows=false,probeMode='throw';
+    const host=createDesktopNativeExecutionHost({
+      coding:{
+        readWindowsNativeHelperAttestation:helperPath=>({helperPath,helperSha256:'b'.repeat(64)}),
+        verifyWindowsNativeSandbox:async()=>probeMode==='psec'?{backend:'windows-psec',available:false,enforced:false,results:{
+          baseline:{backend:'none',enforced:false,outcome:'exited',exitCode:0,stopped:true},
+          readOnly:{backend:'windows-psec',enforced:false,outcome:'unavailable',stopped:true,reason:'native-create-environment:-2146233052'},
+          workspaceWrite:{backend:'windows-psec',enforced:false,outcome:'unavailable',stopped:true,reason:'native-create-environment:-2146233052'},
+          cancel:{backend:'windows-psec',enforced:false,outcome:'unavailable',stopped:true,reason:'native-create-environment:-2146233052'},
+        }}:probeMode==='generic_fail'?{backend:'windows-psec',available:false,enforced:false,results:{}}:(()=>{throw Error('probe crashed at C:\\secret\\path');})(),
+      },
+      question:{prepare(){},readExecutionPolicy:()=>({ref:'diag',revision:1,mode:'workspace-write'}),currentRequirement(){}},
+      getApplication:()=>({readAuthorizationQuestionInvocation:()=>({})}),
+      readConfiguration:()=>config,
+      ensureHelper:async()=>{if(helperThrows)throw Error('missing C:\\private\\helper');return process.execPath;},
+      probeRootPath:base,systemRoot:path.dirname(process.execPath),localAppData:base,
+    });
+
+    // Missing workspace on disk -> workspaceUnavailable without leaking path
+    await assert.rejects(host.prepare(scope),err=>{
+      assert.equal(err.message,NATIVE_PRELAUNCH_ERRORS.workspaceUnavailable);
+      assert.equal(err.message.includes('deleted-workspace-secret-name'),false);
+      assert.match(errorDisplay(err,'task').message,/^工作目录或 Node 路径不可用，命令尚未启动/);
+      return true;
+    });
+
+    mkdirSync(missingWorkspace);
+    helperThrows=true;
+    await assert.rejects(host.prepare(scope),err=>{
+      assert.equal(err.message,NATIVE_PRELAUNCH_ERRORS.helperFailed);
+      assert.match(errorDisplay(err,'task').message,/^缺少 Windows 进程沙箱宿主组件或校验失败，命令尚未启动/);
+      return true;
+    });
+
+    helperThrows=false;probeMode='throw';
+    await assert.rejects(host.prepare(scope),err=>{
+      assert.equal(err.message,NATIVE_PRELAUNCH_ERRORS.probeFailed);
+      assert.match(errorDisplay(err,'task').message,/^Windows 进程隔离自检未通过，命令尚未启动/);
+      return true;
+    });
+
+    probeMode='psec';
+    await assert.rejects(host.prepare(scope),err=>{
+      assert.equal(err.message,NATIVE_PRELAUNCH_ERRORS.psecUnsupported);
+      assert.match(errorDisplay(err,'task').message,/^当前 Windows 环境不支持 PSEC\/AppContainer 隔离 API，命令尚未启动/);
+      return true;
+    });
+
+    const controller=new AbortController();
+    probeMode='pass';
+    const abortedScope={...scope,signal:controller.signal};
+    const abortHost=createDesktopNativeExecutionHost({
+      coding:{
+        readWindowsNativeHelperAttestation:helperPath=>({helperPath,helperSha256:'b'.repeat(64)}),
+        verifyWindowsNativeSandbox:async()=>{controller.abort();return {available:true,enforced:true,helperSha256:'b'.repeat(64)};},
+      },
+      question:{prepare(){},readExecutionPolicy:()=>({ref:'diag',revision:1,mode:'workspace-write'}),currentRequirement(){}},
+      getApplication:()=>({readAuthorizationQuestionInvocation:()=>({})}),
+      readConfiguration:()=>config,
+      ensureHelper:async()=>process.execPath,
+      probeRootPath:base,systemRoot:path.dirname(process.execPath),localAppData:base,
+    });
+    await assert.rejects(abortHost.prepare(abortedScope),err=>{
+      assert.equal(err.message,NATIVE_PRELAUNCH_ERRORS.policyChanged);
+      assert.match(errorDisplay(err,'task').message,/^工作区配置、权限策略或原授权已变化，命令尚未启动/);
+      return true;
+    });
+
+    abortHost.close();
+    await assert.rejects(abortHost.prepare(scope),err=>{
+      assert.equal(err.message,NATIVE_PRELAUNCH_ERRORS.closed);
+      assert.match(errorDisplay(err,'task').message,/^外部进程隔离宿主已关闭，命令尚未启动/);
+      return true;
+    });
+    host.close();
+  }finally{rmSync(base,{recursive:true,force:true});}
 });

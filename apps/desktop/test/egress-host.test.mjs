@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
-import {classifyEgressSensitivity,classifyKnownEgressContent,createDesktopEgressHost,extractFencedText,extractVerifiedPiiTokens,hasOnlyVerifiedPii} from '../electron/egress-host.js';
+import {classifyEgressSensitivity,classifyKnownEgressContent,createDesktopEgressHost,extractFencedText,extractVerifiedPiiTokens,hasOnlyVerifiedPii,redactPiiPreview,redactSecretPreview} from '../electron/egress-host.js';
 import {createNativeEgressHost} from '../electron/egress-dialog-host.js';
 
 const request=(extra={})=>({requestId:'request-1',destination:'https://example.test/invoke',payload:'{"query":"summarize public documentation"}',
@@ -472,4 +472,28 @@ test('authorizePiiEgress prompts with masked preview in auto-standard/ask, bypas
 
   mode='ask';
   assert.throws(()=>fullLease.assertBeforeSend(reqFull),error=>error instanceof ProtocolError&&error.code==='UNAUTHORIZED');
+});
+
+test('redactSecretPreview and redactPiiPreview fully mask multiline PEM blocks and over-deep nested payloads fail closed',()=>{
+  const pemBody='MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCtestline1\nsecret-base64-line2\n';
+  const pem=`-----BEGIN RSA PRIVATE KEY-----\n${pemBody}-----END RSA PRIVATE KEY-----`;
+  const plainPemPayload=`Prefix\n${pem}\nSuffix`;
+  const jsonPemPayload=JSON.stringify({note:'see key',keyBlock:pem,email:'user@example.test'});
+
+  for(const preview of [redactSecretPreview(plainPemPayload),redactSecretPreview(jsonPemPayload),
+    redactPiiPreview(plainPemPayload),redactPiiPreview(jsonPemPayload)]){
+    assert.equal(preview.includes('MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCtestline1'),false);
+    assert.equal(preview.includes('secret-base64-line2'),false);
+    assert.match(preview,/\[已脱敏凭据\]/);
+  }
+  assert.equal(redactPiiPreview(jsonPemPayload).includes('user@example.test'),false);
+
+  let deep={apiKey:'sk-1234567890abcdef1234',email:'deep@example.test'};
+  for(let i=0;i<18;i++)deep={layer:deep};
+  const deepPayload=JSON.stringify(deep);
+  for(const deepPreview of [redactSecretPreview(deepPayload),redactPiiPreview(deepPayload)]){
+    assert.equal(deepPreview.includes('sk-1234567890abcdef1234'),false);
+    assert.equal(deepPreview.includes('deep@example.test'),false);
+    assert.match(deepPreview,/\[嵌套过深，内容已整体遮蔽\]/);
+  }
 });

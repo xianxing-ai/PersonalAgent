@@ -427,3 +427,82 @@ test('production preflight renews only the original confirmed seed and fails clo
     await assert.rejects(f.host.prepareToolPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,2);
   }finally{await f.close();}
 });
+
+test('#732 missed F9 presence stays scoped to that step and allows safe explicit step reconfirmation without replaying writes',async()=>{
+  let currentPresence=false,gestureMode='timeout',taskState='running',cancelRequested=false,binding='sandbox:1',conv='conv-1',time=clock;
+  const timers=new Map();let nextTimerId=0,reconfirmRuns=0;
+  const broker={
+    async requestPresence(input){
+      if(gestureMode==='timeout'){
+        return new Promise((_resolve,reject)=>{
+          input.signal.addEventListener('abort',()=>reject(new ProtocolError('CANCELLED','aborted')),{once:true});
+        });
+      }
+      currentPresence=true;
+      return {taskId:input.taskId,expiresAt:new Date(time+30000).toISOString(),source:'native-gesture'};
+    },
+    isUserPresent:()=>currentPresence,
+    pendingPrompt:()=>undefined,
+  };
+  const checkpoints=new Map();
+  let blocked=false;
+  const provider={tools:[{descriptor:{name:'computer.desktop.observe',version:'1.0.0',outputSchema:{type:'object'},requiresPresence:true}}],
+    start:async()=>{},dispose:async()=>{},block(){blocked=true;},health:()=>({state:blocked?'blocked':'ready'})};
+  const host=createDesktopWindowsControlHost({
+    createControlHost:()=>provider,presenceHost:broker,allowObservationExport:true,now:()=>time,
+    readPolicyBinding:()=>binding,readTaskBinding:()=>conv,
+  });
+  const deadline=new Date(time+120000).toISOString();
+  host.bind({runtime:{
+    listTasks:()=>({items:[]}),readToolExecutions:()=>{reconfirmRuns++;return [];},
+    getTask:id=>({taskId:id,state:taskState,cancelRequested,conversationId:conv}),
+    loadCheckpoint:(t,k)=>k==='application-deadline'?deadline:checkpoints.get(t+':'+k),
+    saveCheckpointOnce:(t,k,v)=>{const id=t+':'+k;if(checkpoints.has(id))return false;checkpoints.set(id,structuredClone(v));return true;},
+    matchesToolExecutionInput:()=>true,
+  }});
+  await host.start({deadline,signal:new AbortController().signal});
+  const reqAccess=host.tools.find(t=>t.descriptor.name==='computer.request_access');
+
+  // Step A times out: use real timers vs micro abort? Trigger immediate UNSUPPORTED_CAPABILITY by closed presence abort? Wait: simulate timeout via signal/fake timers!
+  // Let's test via UNSUPPORTED_CAPABILITY (no F9 hook available) OR mock timer; actually mock setTimeout!
+  const origSetTimeout=globalThis.setTimeout;
+  const scheduled=[];
+  globalThis.setTimeout=(fn,ms)=>{if(ms===30_000){scheduled.push(fn);return ++nextTimerId;}return origSetTimeout(fn,ms);};
+  try{
+    const stepA=reqAccess.execute({action:'Click Save'},context({runId:'run-A',deadline}));
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(scheduled.length,1);
+    scheduled.shift()();
+    const resA=await stepA;
+    assert.equal(resA.state,'not_present');
+    assert.equal(resA.skippedAction,'Click Save');
+  }finally{globalThis.setTimeout=origSetTimeout;}
+
+  const missed=host.snapshot().missedConfirmation;
+  assert.ok(missed);assert.equal(missed.taskId,'task-1');assert.equal(missed.reviewAction,'Click Save');
+
+  // Repeating Step A before reconfirm returns not_present immediately, while Step B in the SAME task proceeds normally!
+  assert.equal((await reqAccess.execute({action:'Click Save'},context({runId:'run-A2',deadline}))).state,'not_present');
+  gestureMode='confirm';
+  const resB=await reqAccess.execute({action:'Type Notes'},context({runId:'run-B',deadline}));
+  assert.equal(resB.state,'presence_confirmed');
+
+  // Expired / wrong conversation / policy changed fail closed on reconfirmMissedStep
+  conv='conv-other';
+  assert.throws(()=>host.reconfirmMissedStep({taskId:'task-1',stepId:missed.stepId}),{code:'UNAUTHORIZED'});
+  conv='conv-1';binding='sandbox:2';
+  assert.throws(()=>host.reconfirmMissedStep({taskId:'task-1',stepId:missed.stepId}),{code:'UNAUTHORIZED'});
+  binding='sandbox:1';
+
+  // Valid explicit reconfirm clears missed state, never replays writes, and unlocks Step A
+  const readsBefore=reconfirmRuns;
+  const reconfirm=host.reconfirmMissedStep({taskId:'task-1',stepId:missed.stepId});
+  assert.deepEqual(reconfirm,{reconfirmed:true,taskId:'task-1',stepId:missed.stepId,replayExecuted:false});
+  assert.equal(reconfirmRuns,readsBefore);
+  assert.equal(host.snapshot().missedConfirmation,undefined);
+  assert.throws(()=>host.reconfirmMissedStep({taskId:'task-1',stepId:missed.stepId}),{code:'UNAUTHORIZED'});
+
+  const retryA=await reqAccess.execute({action:'Click Save'},context({runId:'run-A3',deadline}));
+  assert.equal(retryA.state,'presence_confirmed');
+  await host.close();
+});

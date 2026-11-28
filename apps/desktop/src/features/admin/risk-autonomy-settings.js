@@ -40,7 +40,7 @@ export function mountRiskAutonomySettings(root, invoke) {
       <option value="balanced">平衡</option>
       <option value="conservative">保守</option>
     </select></label>
-    <p>发消息、付款、删除和对外提交始终先问。注意：整体放行由「安全与权限」的权限模式控制；在此选择「保守」「先问」或「停止自动执行」会暂停低风险与受限写入的自动放行。</p>
+    <p>发消息、付款、删除和对外提交始终先问。整体权限模式统一在「安全与权限」中设置；此处保留紧急「停止自动执行」总闸，以及自动执行后的撤销与审计记录。</p>
     <details><summary>个别类别</summary>
       <label>只读<select data-risk="read" aria-label="只读">
         <option value="">跟随档位</option><option value="execute">直接做</option><option value="execute_and_notify">做完通知</option><option value="ask">先问</option>

@@ -53,19 +53,22 @@ export function extractSecretDetections(payload) {
   return {categories:[...categories],fingerprints:[...fingerprints].sort()};
 }
 
+const pemPrivateKeyBlock=/-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----|$)/giu;
+
 /** Redact detected secret substrings/fields while leaving safe surrounding context visible for user confirmation. */
 export function redactSecretPreview(payload,maxLength=2000) {
   if(typeof payload!=='string')return '';
+  const globalPem=()=>new RegExp(pemPrivateKeyBlock.source,'giu');
   const globalSecret=()=>new RegExp(secretText.source,'giu');
   const scrubString=text=>{
     try{
       const decoded=JSON.parse(text);
       if(decoded&&typeof decoded==='object')return JSON.stringify(scrub(decoded));
     }catch{}
-    return text.replace(globalSecret(),'[已脱敏凭据]');
+    return text.replace(globalPem(),'[已脱敏凭据]').replace(globalSecret(),'[已脱敏凭据]');
   };
   const scrub=(value,depth=0)=>{
-    if(depth>16)return value;
+    if(depth>16)return '[嵌套过深，内容已整体遮蔽]';
     if(typeof value==='string')return scrubString(value);
     if(Array.isArray(value))return value.map(item=>scrub(item,depth+1));
     if(value&&typeof value==='object'){
@@ -83,7 +86,10 @@ export function redactSecretPreview(payload,maxLength=2000) {
     const parsed=JSON.parse(payload);
     rendered=JSON.stringify(scrub(parsed),null,2);
   }catch{
-    rendered=payload.replace(globalSecret(),'[已脱敏凭据]');
+    rendered=scrubString(payload);
+  }
+  if(new RegExp(secretText.source,'iu').test(rendered)||new RegExp(pemPrivateKeyBlock.source,'iu').test(rendered)){
+    return '[内容包含未完全脱敏凭据，预览已整体遮蔽]';
   }
   return rendered.length>maxLength?`${rendered.slice(0,maxLength)}\n…（内容共 ${rendered.length} 字符，已截断预览）`:rendered;
 }
@@ -136,6 +142,7 @@ export function extractPiiDetections(payload) {
 /** Mask detected PII/secret substrings for safe in-conversation preview. */
 export function redactPiiPreview(payload, maxLength = 2000) {
   if (typeof payload !== 'string') return '';
+  const globalPem = () => new RegExp(pemPrivateKeyBlock.source, 'giu');
   const globalSecret = () => new RegExp(secretText.source, 'giu');
   const globalPii = () => new RegExp(piiText.source, 'giu');
   const scrubString = text => {
@@ -143,7 +150,7 @@ export function redactPiiPreview(payload, maxLength = 2000) {
       const decoded = JSON.parse(text);
       if (decoded && typeof decoded === 'object') return JSON.stringify(scrub(decoded));
     } catch {}
-    return text.replace(globalSecret(), '[已脱敏凭据]').replace(globalPii(), match => {
+    return text.replace(globalPem(), '[已脱敏凭据]').replace(globalSecret(), '[已脱敏凭据]').replace(globalPii(), match => {
       if (match.includes('@')) {
         const [local, domain] = match.split('@');
         return `${local.slice(0, 2)}***@${domain}`;
@@ -152,7 +159,7 @@ export function redactPiiPreview(payload, maxLength = 2000) {
     });
   };
   const scrub = (value, depth = 0) => {
-    if (depth > 16) return value;
+    if (depth > 16) return '[嵌套过深，内容已整体遮蔽]';
     if (typeof value === 'string') return scrubString(value);
     if (Array.isArray(value)) return value.map(item => scrub(item, depth + 1));
     if (value && typeof value === 'object') {
@@ -172,6 +179,9 @@ export function redactPiiPreview(payload, maxLength = 2000) {
     rendered = JSON.stringify(scrub(parsed), null, 2);
   } catch {
     rendered = scrubString(payload);
+  }
+  if (new RegExp(secretText.source, 'iu').test(rendered) || new RegExp(pemPrivateKeyBlock.source, 'iu').test(rendered)) {
+    return '[内容包含未完全脱敏凭据，预览已整体遮蔽]';
   }
   return rendered.length > maxLength ? `${rendered.slice(0, maxLength)}\n…（内容共 ${rendered.length} 字符，已截断预览）` : rendered;
 }

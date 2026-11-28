@@ -16,7 +16,11 @@ export function authorizationSettingsMarkup(value,{busy=false,message=''}={}) {
       `<option value="${escape(profile.ref)}" ${isSelected(profile,value)?'selected':''} ${profile.available!==true?'disabled':''}>${escape(profile.label)}${profile.mode==='full-access'&&!String(profile.label).includes('自动同意')?'（自动同意）':''}${profile.available===true?'':'（不可用）'}</option>`).join('')}</select></label>
     <ul class="authorization-question-hint" data-pro-only="true">${profiles.filter(profile=>profile.available!==true).map(profile=>`<li>${escape(profile.label)}：${escape(profile.reason||'宿主尚未提供此能力')}</li>`).join('')}</ul>
     <h3>已保存的受限规则</h3><p class="authorization-question-hint" data-pro-only="true">规则由可信宿主保存，仅匹配列出的沙箱和范围；撤销单条规则只影响该条，不影响其他已保存规则。账号和凭据仍在各自原配置入口管理。</p>
-    ${rules.length?rules.map(rule=>`<div class="authorization-sandbox-rule"><div><p>${escape(rule.summary)}</p><small>${escape(rule.sandboxLabel)} · ${rule.active===true?'有效':'已撤销'}</small></div><button type="button" data-authorization-rule="${escape(rule.ruleId)}" ${rule.active!==true||busy?'disabled':''}>撤销规则</button></div>`).join(''):'<p class="auth-empty-rules">当前没有已保存规则。</p>'}
+    ${rules.length?rules.map(rule=>{
+      const status=rule.status??(rule.active===true?'active':'revoked');
+      const statusLabel=status==='active'?'有效':status==='inactive_profile'?'已保存（切回原模式生效）':'已撤销';
+      return `<div class="authorization-sandbox-rule"><div><p>${escape(rule.summary)}</p><small>${escape(rule.sandboxLabel)} · ${statusLabel}</small></div><button type="button" data-authorization-rule="${escape(rule.ruleId)}" ${status==='revoked'||busy?'disabled':''}>撤销规则</button></div>`;
+    }).join(''):'<p class="auth-empty-rules">当前没有已保存规则。</p>'}
     <button type="button" data-authorization-refresh data-pro-only="true" ${busy?'disabled':''}>刷新状态</button><p role="status" aria-live="polite">${escape(message||(!value?'正在读取可信宿主状态…':''))}</p></section>`;
 }
 
@@ -53,7 +57,8 @@ export function mountAuthorizationSettings(root,invoke) {
     const button=event.target.closest('button');if(closed||busy||!button||!root.contains(button)||button.disabled)return;
     if(button.hasAttribute('data-authorization-refresh'))return refresh();
     const rule=current?.rules?.find(item=>item.ruleId===button.dataset.authorizationRule);
-    if(rule?.active!==true||!Number.isSafeInteger(rule.revision))return;
+    const canRevoke=rule&&(rule.status?rule.status!=='revoked':rule.active===true);
+    if(!canRevoke||!Number.isSafeInteger(rule.revision))return;
     return change('authorization.rule.revoke',{ruleId:rule.ruleId,expectedRevision:rule.revision});
   }
   root.addEventListener('change',select);root.addEventListener('click',click);render();

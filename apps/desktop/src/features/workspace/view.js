@@ -190,7 +190,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   };
   roster=mountAssistantRoster(assistantRoster,{invoke,escape,report,onOpen:id=>showAssistant(id).catch(report)});
   window.desktop?.onOpenAssistant?.(value=>{if(value?.assistantId)showAssistant(value.assistantId).catch(report);});
-  const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage,taskId=>invoke('computer.control.confirm',{taskId}));
+  const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage,taskId=>invoke('computer.control.confirm',{taskId}),
+    payload=>invoke('computer.control.reconfirm',payload));
   const updateRepair=mountFailureRepairCard(root.querySelector('#conversation-inspector'),root.querySelector('#inspector-content'),invoke);
   const briefingPanel=mountBriefingPanel(stage,invoke);
   const proactiveControls=mountProactiveControls(stage,invoke);
@@ -472,7 +473,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       root.querySelector('.cc-chat-heading').append(brakeButton);
     }
     applyOperatorBrake({button:brakeButton,status:brakeStatus,snapshot:data.operatorBrake});
-    updateProgress(data.computerControl?.waitingConfirmation?data.tasks:[],data.computerControl,
+    updateProgress((data.computerControl?.waitingConfirmation||data.computerControl?.missedConfirmation)?data.tasks:[],data.computerControl,
       {questions:data.authorizationQuestions,workflowQuestions:data.workflowQuestions,conversationId:data.conversationState?.activeId});
     updateRepair(data.tasks.filter(task=>task.taskId===inspected&&!task.outputTruncated));
     briefingPanel.render(data.dailyBriefing,{open:data.briefingOpen===true});
