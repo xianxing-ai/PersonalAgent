@@ -54,15 +54,16 @@
   --r-lg: 14px;
   --r-pill: 999px;
 
-  --font-ui: "Candara", "Optima", "Corbel", "Segoe UI Variable Text",
-    "LXGW WenKai", "PingFang SC", "HarmonyOS Sans SC", "DengXian",
-    "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-metric: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "HarmonyOS Sans SC", "Microsoft YaHei UI", system-ui, sans-serif;
   --font-display: "Palatino Linotype", "Constantia", "Garamond", "Georgia",
     "FZFengYaSongS-GB", "Noto Serif SC", "Source Han Serif SC", "Songti SC",
     "STZhongsong", "STKaiti", serif;
   --font-brand: "Palatino Linotype", "Constantia", "Garamond", "Georgia", serif;
-  --font-num: "Cascadia Code", "Segoe UI Variable Display", "JetBrains Mono",
-    Consolas, monospace;
+  --font-num: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "HarmonyOS Sans SC", "Microsoft YaHei UI", system-ui, sans-serif;
 
   --fs-11: 11px;
   --fs-12: 12px;
@@ -183,7 +184,8 @@ body {
   font-size: var(--fs-14);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: "lnum" 1, "tnum" 1;
 }
 
 h1,
@@ -194,6 +196,15 @@ h4 {
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.25;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+button,
+input,
+select,
+textarea {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: "lnum" 1, "tnum" 1;
 }
 
 h1 {
@@ -236,7 +247,7 @@ svg {
 
 .mono {
   font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 .eyebrow {

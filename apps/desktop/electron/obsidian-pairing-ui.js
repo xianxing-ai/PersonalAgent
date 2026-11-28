@@ -14,7 +14,7 @@ export function createObsidianPairingUI({BrowserWindow, ipcMain, owner, confirmA
       if (closed || current || signal.aborted || !owner() || owner().isDestroyed()) return Promise.reject(Error('配对窗口不可用'));
       return new Promise(resolve => {
         const window = new BrowserWindow({parent: owner(), modal: true, width: 560, height: 400,
-          title: 'Obsidian 本机配对', show: false, autoHideMenuBar: true,
+          title: 'Obsidian 本机配对', show: false, autoHideMenuBar: true, roundedCorners: true,
           webPreferences: {preload: fileURLToPath(new URL('./obsidian-pairing-preload.cjs', import.meta.url)),
             contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'obsidian-pairing'}});
         const finish = code => {

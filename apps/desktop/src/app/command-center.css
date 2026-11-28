@@ -21,12 +21,12 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center button {font-family:inherit}
 .command-center svg {width:18px;height:18px;flex-shrink:0}
 .command-center [hidden] {display:none!important}
-.command-center>.workspace-titlebar {grid-column:2;grid-row:1;height:46px;min-height:46px;padding:0 0 0 20px;display:flex;align-items:center;gap:10px;border:0;background:transparent}
+.command-center>.workspace-titlebar {grid-column:2;grid-row:1;height:46px;min-height:46px;padding:0 8px 0 20px;display:flex;align-items:center;gap:10px;border:0;background:transparent}
 .command-center .workspace-app-title {font-size:11px;font-weight:400;color:var(--cc-muted)}
-.command-center .window-controls {align-self:stretch;margin-left:4px}
-.command-center .window-button {color:var(--cc-muted);background:transparent}
+.command-center .window-controls {align-self:center;gap:4px;margin-left:4px}
+.command-center .window-button {color:var(--cc-muted);background:transparent;border-radius:9px}
 .command-center .window-button:hover {background:var(--cc-hover);color:var(--cc-text)}
-.command-center .window-button-close:hover {background:#b82d3b;color:white}
+.command-center .window-close:hover {background:#d93848;color:#ffffff}
 .command-center .cc-search {display:flex;align-items:center;gap:8px;min-height:28px;width:180px;padding:5px 10px;border:1px solid var(--cc-line);border-radius:7px;background:var(--cc-soft);color:var(--cc-dim);font-size:10px;-webkit-app-region:no-drag}
 .cc-search svg {width:13px;height:13px}.cc-search kbd {margin-left:auto;font:9px var(--font-ui);color:var(--cc-dim)}
 .command-center .cc-theme-toggle {width:28px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--cc-muted);font-size:19px;-webkit-app-region:no-drag}

@@ -241,13 +241,15 @@
 .cc-context[data-context-view="activity"] .connector-card :is(small, footer) { color: var(--cc-muted); line-height: 1.45; }
 .cc-context .weather-empty { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; }
 .cc-context .weather-empty span { font-size: 10.5px; }
-.cc-context .weather-preview { gap: 10px; flex-wrap: wrap; }
+.cc-context .weather-preview { gap: 12px; flex-wrap: wrap; align-items: center; }
 .cc-context .weather-preview > strong {
-  font: 550 24px/1.2 var(--font-ui);
-  letter-spacing: -.04em;
-  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: flex-start;
+  font: 600 26px/1.05 var(--font-metric, var(--font-ui));
+  letter-spacing: -.03em;
+  font-variant-numeric: lining-nums tabular-nums;
 }
-.cc-context .weather-preview > strong span { font-size: .7em; }
+.cc-context .weather-preview > strong span { font-size: .58em; font-weight: 500; line-height: 1; margin-left: 1px; margin-top: .06em; }
 .cc-context .weather-preview > div { min-width: 0; line-height: 1.4; }
 .cc-context .calendar-preview { font: 11.5px/1.5 var(--font-ui); }
 .cc-context .calendar-preview strong { font-weight: 550; }
@@ -270,7 +272,15 @@
   gap: 8px;
   align-items: baseline;
 }
-.cc-context[data-context-view="activity"] .agenda-row time { padding: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cc-context[data-context-view="activity"] .agenda-row time {
+  padding: 0;
+  white-space: nowrap;
+  font-family: var(--font-metric, var(--font-ui));
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: .01em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
 .cc-context[data-context-view="activity"] .agenda-row > div { padding: 0; border: 0; }
 .command-center .cc-context :is(.cc-computer, .connector-board, .cc-internal-chat, .cc-activity) > header {
   min-height: 24px;

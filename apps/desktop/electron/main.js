@@ -1308,6 +1308,7 @@ function publish(topics) {
 function windowFor(mode, bounds, options = {}) {
   const centerOnPresent = mode === 'workspace' && !desktopHost.hasSavedBounds(mode);
   const win = new BrowserWindow({...desktopHost.restore(mode, bounds), show: false, backgroundColor: '#00000000',
+    roundedCorners: mode !== 'orb',
     webPreferences: {preload: path.join(dir, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true,
       ...(mode === 'panel' ? {autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false} : {})}, ...options});
   win.setMenuBarVisibility(false);
@@ -1537,7 +1538,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1180, area.width), height: Math.min(800, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'Synstar · 设置', frame: false, transparent: false,
+    {title: 'Synstar · 设置', frame: false, transparent: false, thickFrame: true,
       backgroundMaterial: adminAcrylic ? 'acrylic' : 'none',
       backgroundColor: adminAcrylic ? '#00000000' : '#090b10',
       roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
@@ -1961,7 +1962,7 @@ async function openSubagentConversation(payload,surface){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(780,area.width-32),height=Math.min(760,area.height-32);
   const window=windowFor('subagent',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'Synstar · 子智能体对话',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 子智能体对话',frame:true,transparent:false,roundedCorners:true,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   const record={window,binding:{parentTaskId:detail.parentTaskId,taskId:detail.taskId},activityTaskIds:childActivityTaskIds(detail),
     revision:runtimeApplication.runtime.getTask(detail.taskId).updatedAt,lastUsedAt:Date.now(),checkedAt:0};
   subagentWindows.set(key,record);
@@ -2021,7 +2022,7 @@ function openAllSubagentConversations(){
   const area=screen.getDisplayMatching(orb.getBounds()).workArea;
   const width=Math.min(900,area.width-32),height=Math.min(760,area.height-32);
   subagentListWindow=windowFor('subagent-list',{width,height,x:area.x+Math.round((area.width-width)/2),y:area.y+Math.round((area.height-height)/2)},
-    {title:'Synstar · 全部子智能体',frame:true,transparent:false,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
+    {title:'Synstar · 全部子智能体',frame:true,transparent:false,roundedCorners:true,backgroundColor:'#151515',minWidth:Math.min(420,width),minHeight:Math.min(440,height)});
   subagentListWindow.on('closed',()=>{subagentListWindow=undefined;});
 }
 
