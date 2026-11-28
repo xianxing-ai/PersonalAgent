@@ -191,7 +191,7 @@ import {prepareWorkflowHostPreflight} from './workflow-host-preflight.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createNativeEgressHost} from './egress-dialog-host.js';
-import {extractGitSha40} from './egress-host.js';
+import {extractGitSha40,extractFencedText,extractVerifiedPiiTokens,hasOnlyVerifiedPii} from './egress-host.js';
 import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
@@ -2719,6 +2719,87 @@ function authorizeAgentArtsEgress(scope) {
     egressReview:{conversationId:binding.conversationId,payload:scope.payload,ownerTaskId:scope.taskId,destination:scope.destination,allowTaskReuse:true}});
 }
 
+const approvedTaskPiiScopes = new Map();
+
+function resolveRootEgressTaskId(owner, taskId) {
+  if (typeof taskId !== 'string' || !taskId) return undefined;
+  let current = taskId;
+  for (let depth = 0; depth < 8; depth++) {
+    const parent = owner.runtime.loadCheckpoint?.(current, 'subtask-parent');
+    const delegated = owner.readDelegatedUserTaskParent?.(current);
+    let nextId = typeof parent?.parentTaskId === 'string' && parent.parentTaskId
+      ? parent.parentTaskId
+      : typeof delegated?.taskId === 'string' && delegated.taskId
+        ? delegated.taskId
+        : undefined;
+    if (!nextId) {
+      try {
+        const conv = owner.runtime.getTask(current)?.conversationId ?? '';
+        const match = /^desktop-subtask:([a-f0-9-]{36})$/iu.exec(conv);
+        if (match) nextId = match[1];
+      } catch {}
+    }
+    if (!nextId || nextId === current) break;
+    current = nextId;
+  }
+  return current;
+}
+
+async function authorizePiiAgentArtsEgress(scope) {
+  const owner=runtimeApplication;
+  if(!owner||!authorizationIntentHost||!conversationToolAccess)return false;
+  const panelId=conversations?.activeConversationId('panel');
+  const binding=scope.taskId!==undefined
+    ?resolveEgressReviewConversation({
+      taskId:scope.taskId,
+      resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+      readTask:taskId=>owner.runtime.getTask(taskId),
+      readToolConversation:taskId=>owner.readToolConversation(taskId),
+      activePanelConversationId:()=>panelId,
+    })
+    :(panelId?{conversationId:panelId,assistantOwned:false,directPanel:true}:undefined);
+  if(!binding)return false;
+  const fingerprints=scope.piiDetections?.fingerprints??[];
+  const categories=scope.piiDetections?.categories?.length?scope.piiDetections.categories.join('、'):'个人敏感信息';
+  const rootTaskId=resolveRootEgressTaskId(owner,scope.taskId);
+  const nowMs=Date.now();
+  for(const [k,v]of approvedTaskPiiScopes)if(v.expiresAt<=nowMs)approvedTaskPiiScopes.delete(k);
+  const cacheKey=rootTaskId?JSON.stringify([rootTaskId,scope.destination]):undefined;
+  const existing=cacheKey?approvedTaskPiiScopes.get(cacheKey):undefined;
+  const covered=existing&&fingerprints.every(fp=>existing.fingerprints.has(fp));
+  const consentScope=covered?existing.consentScope:createHash('sha256').update(JSON.stringify(fingerprints)).digest('hex');
+  const summary=covered
+    ?existing.summary
+    :`检测到个人敏感信息（${categories}），是否允许发送到 ${scope.destination}？（可选择本任务允许或永久放行）`;
+  const allowed=await authorizationIntentHost.request({
+    action:'model.egress.pii',
+    payload:{taskId:scope.taskId??'direct',requestId:scope.requestId,payloadDigest:scope.payloadDigest},
+    scope:{destination:scope.destination,piiFingerprints:covered?[...existing.fingerprints].sort():fingerprints},
+    summary,
+    deadline:scope.deadline,
+    signal:scope.signal,
+    isCurrent:()=>owner===runtimeApplication&&(binding.directPanel
+      ?conversations?.activeConversationId('panel')===binding.conversationId
+      :isEgressReviewConversationCurrent({...binding,taskId:scope.taskId},{
+        resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        readTask:taskId=>owner.runtime.getTask(taskId),
+        readToolConversation:taskId=>owner.readToolConversation(taskId),
+        activePanelConversationId:()=>panelId,
+      })),
+    egressReview:{
+      conversationId:binding.conversationId,
+      payload:scope.redactedPreview||'（已脱敏预览）',
+      ...(rootTaskId?{ownerTaskId:rootTaskId,destination:scope.destination,allowTaskReuse:true,consentScope}:{}),
+    },
+  });
+  if(allowed&&cacheKey&&!covered){
+    if(approvedTaskPiiScopes.size>=128)approvedTaskPiiScopes.delete(approvedTaskPiiScopes.keys().next().value);
+    const merged=new Set([...(existing?.fingerprints??[]),...fingerprints]);
+    approvedTaskPiiScopes.set(cacheKey,{consentScope,summary,fingerprints:merged,expiresAt:Date.parse(scope.deadline)});
+  }
+  return allowed;
+}
+
 function authorizeSecretAgentArtsEgress(scope) {
   const owner=runtimeApplication;
   if(!owner||!authorizationIntentHost||!conversationToolAccess)return false;
@@ -3337,7 +3418,7 @@ async function initializeRuntime() {
       const subagentAvailability = {
         toolName: SUBAGENT_DISPATCH_TOOL_NAME,
         toolVersion: SUBAGENT_DISPATCH_TOOL_VERSION,
-        publicDescription: '新建并派发后台工人执行任务（worker.list 为空或没有合适工人时必须调用本工具；支持 researcher/coder/reviewer/planner/coordinator 角色，工人拥有全部工作工具与连接器）。',
+        publicDescription: '新建并派发后台工人执行任务（主对话仅挂载轻量只读工具；凡涉及日历创建/修改/取消、邮件读写、待办、GitHub、知识库、文件/命令或当前目录未列出的读写能力，必须调用本工具派发工人，工人通过 capability.search 拥有全部工作工具与连接器）。',
         publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort'],
         available: async ({taskId}) => runtimeApplication.isDefaultSubagentAvailable()
           && !runtimeApplication.runtime.getTask(taskId).conversationId?.startsWith('desktop-subtask:'),
@@ -3755,7 +3836,10 @@ async function initializeRuntime() {
         },
       });
       contentFence=createContentFenceProduct({readGoal:taskId=>{
-        try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
+        try {
+          const rootTaskId=resolveRootEgressTaskId(runtimeApplication,taskId)??taskId;
+          return runtimeApplication.runtime.getTask(rootTaskId).goal??'';
+        } catch {return '';}
       }});
       conversationTools=contentFence.wrapTools(conversationTools);
       conversationTools=permissionAudit.observeTools(conversationTools);
@@ -4004,6 +4088,7 @@ async function initializeRuntime() {
           f19Workflow?.prepareCloseQuestion?.(scope,authorizationQuestionHost);
           if(/^(?:computer\.desktop\.|computer\.request_access$|computer\.vision\.|browser\.)/.test(scope.toolName))computerTasks.add(scope.taskId);
           authorizationIntentHost.prepareQuestion(scope);
+          if(scope.toolName==='calendar.cancel')authorizationQuestionHost.prepare(scope,{forceAsk:true,requirements:[]});
           calendarMeetingHost?.prepareAuthorization?.(scope);
           mailHost?.prepareAuthorization?.(scope);
           mailAnalysisHost?.prepareAuthorization?.(scope);
@@ -4029,14 +4114,15 @@ async function initializeRuntime() {
           return decision;
         },
         assertToolAllowed:scope=>{
-          assertDeletionOperationSupported(scope);
+          assertDeletionOperationSupported(scope,{calendarCancelApprovalGate:Boolean(authorizationQuestionHost)});
           assertNoUnresolvedWriteReplay({application:runtimeApplication,...scope});
           const conversationId=runtimeApplication.readToolConversation(scope.taskId);
           if(conversationId&&conversations.containsConversation(conversationId))
             assertConversationProhibitions({...scope,rules:conversations.prohibitions(conversationId)});
         },
-        standingAutonomy:input=>developerDirectionHost?runtimeModule.standingDecisionForTool(developerDirectionHost.session, input):undefined,
+        standingAutonomy:input=>input.toolName==='calendar.cancel'?undefined:(developerDirectionHost?runtimeModule.standingDecisionForTool(developerDirectionHost.session, input):undefined),
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
+          ||scope.toolName==='calendar.cancel'
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||scope.toolName==='mail.reconcile_send'||scope.toolName==='mail.reconcile_archive'
@@ -6887,6 +6973,7 @@ app.whenReady().then(async () => {
     onCloudRun: info => usageBudgetProduct.recordCloud(info)});
   egressHost=createNativeEgressHost({dialog,authorizeTaskEgress:authorizeAgentArtsEgress,
     authorizeSecretEgress:authorizeSecretAgentArtsEgress,
+    authorizePiiEgress:authorizePiiAgentArtsEgress,
     readEgressPolicy:readDesktopEgressPolicy,
     isTrustedIdentifier:id=>{
       if(typeof id!=='string')return false;
@@ -6939,25 +7026,61 @@ app.whenReady().then(async () => {
       if(!runtime||typeof taskId!=='string'||!taskId)return undefined;
       const texts=new Set();
       const collect=value=>{
-        if(typeof value==='string'&&value.length>0&&texts.size<2000)texts.add(value);
+        if(typeof value!=='string'||value.length===0||texts.size>=2000)return;
+        texts.add(value);
+        const inner=extractFencedText(value)?.inner;
+        if(inner&&texts.size<2000)texts.add(inner);
       };
       try{
-        for(const record of runtime.readToolExecutions(taskId)){
-          if(['mail.inbox','mail.accounts','calendar.events'].includes(record.toolName)
-            &&record.state==='confirmed'&&record.executionStarted){
-            const saved=runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId);
-            const result=saved?.result;
-            if(!result||typeof result!=='object')continue;
-            if(Array.isArray(result.items)){
-              for(const item of result.items){
-                if(!item||typeof item!=='object')continue;
-                collect(item.contentRef);collect(item.summary);collect(item.title);
+        const queue=[taskId],seen=new Set();
+        while(queue.length&&seen.size<64){
+          const currentId=queue.shift();
+          if(typeof currentId!=='string'||!currentId||seen.has(currentId))continue;
+          seen.add(currentId);
+          for(const record of runtime.readToolExecutions(currentId)){
+            if(['mail.inbox','mail.accounts','calendar.events','feeds.collect'].includes(record.toolName)
+              &&record.state==='confirmed'&&record.executionStarted){
+              const saved=runtime.loadCheckpoint(currentId,'tool-result-'+record.evidenceId);
+              const result=saved?.result;
+              if(!result||typeof result!=='object')continue;
+              if(Array.isArray(result.items)){
+                for(const item of result.items){
+                  if(!item||typeof item!=='object')continue;
+                  collect(item.contentRef);collect(item.dedupeKey);collect(item.externalId);
+                  collect(item.accountRef);collect(item.summary);collect(item.title);
+                }
+              }
+              if(Array.isArray(result.accounts)){
+                for(const account of result.accounts){
+                  if(!account||typeof account!=='object')continue;
+                  collect(account.label);collect(account.accountRef);
+                  collect(account.address);collect(account.email);
+                }
               }
             }
-            if(Array.isArray(result.accounts)){
-              for(const account of result.accounts){
-                if(!account||typeof account!=='object')continue;
-                collect(account.label);collect(account.accountRef);
+          }
+          const subagents=runtimeApplication.readSubagentTasks?.(currentId);
+          if(Array.isArray(subagents)){
+            for(const child of subagents){
+              if(child?.taskId&&!seen.has(child.taskId))queue.push(child.taskId);
+            }
+          }
+        }
+        const verifiedPii=extractVerifiedPiiTokens(texts);
+        if(verifiedPii.size>0){
+          for(const record of runtime.readToolExecutions(taskId)){
+            if(record.toolName==='subagent.dispatch'&&record.state==='confirmed'&&record.executionStarted){
+              const saved=runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId);
+              const result=saved?.result;
+              if(!result||typeof result!=='object')continue;
+              if(hasOnlyVerifiedPii(result.summary,verifiedPii))collect(result.summary);
+              if(hasOnlyVerifiedPii(result.aggregatedSummary,verifiedPii))collect(result.aggregatedSummary);
+              if(Array.isArray(result.subtasks)){
+                for(const subtask of result.subtasks){
+                  if(!subtask||typeof subtask!=='object')continue;
+                  if(hasOnlyVerifiedPii(subtask.result,verifiedPii))collect(subtask.result);
+                  if(hasOnlyVerifiedPii(subtask.error,verifiedPii))collect(subtask.error);
+                }
               }
             }
           }

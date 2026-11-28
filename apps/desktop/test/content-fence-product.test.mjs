@@ -110,6 +110,7 @@ test('main startup wraps tools and preload still carries the desktop action chan
   const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
   const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
   assert.match(main, /contentFence=createContentFenceProduct/);
+  assert.match(main, /resolveRootEgressTaskId\(runtimeApplication,taskId\)/);
   assert.match(main, /beforeToolAuthorize:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*contentFence\?\.beforeAuthorize\(input\)|[^\n;]*contentFence\?\.beforeAuthorize\(input\))/);
   assert.match(main, /onTaskTerminal: taskId => contentFence\?\.clearTask\(taskId\)/);
   assert.match(main, /conversationTools=contentFence\.wrapTools\(conversationTools\)/);

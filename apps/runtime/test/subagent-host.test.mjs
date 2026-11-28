@@ -307,3 +307,26 @@ test('registry lookup ignores inherited object properties', async () => {
   assert.equal(result.failed, 1);
   assert.match(result.subtasks[0].error, /constructor 未配置或不受支持/);
 });
+
+test('after two failed subtasks, reusing a failed subtaskId with modified goal returns stopNotice instead of crashing with REVISION_CONFLICT', async () => {
+  const runtime = new TaskRuntime(':memory:');
+  const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '取消日程重试上限', idempotencyKey: 'retry-cap-parent'});
+  const tool = createRuntimeSubagentDispatchTool({getRuntime: () => runtime});
+  const ctx = n => ({
+    taskId: parent.taskId, runId: `retry-cap-run-${n}`, signal: new AbortController().signal,
+    deadline: new Date(Date.now() + 60_000).toISOString(), authorizationRef: 'auth-retry-cap', scopes: ['agent:delegate'],
+  });
+  const r1 = await tool.execute({subtasks: [{subtaskId: 'cancel-1', role: 'coordinator', goal: 'attempt 1'}]}, ctx(1));
+  assert.equal(r1.failed, 1);
+  // Before reaching 2 failures, mutating an existing subtaskId still throws REVISION_CONFLICT.
+  await assert.rejects(
+    tool.execute({subtasks: [{subtaskId: 'cancel-1', role: 'coordinator', goal: 'mutated early'}]}, ctx(2)),
+    {code: 'REVISION_CONFLICT'},
+  );
+  const r2 = await tool.execute({subtasks: [{subtaskId: 'cancel-2', role: 'coordinator', goal: 'attempt 2'}]}, ctx(3));
+  assert.equal(r2.failed, 1);
+  // Once >=2 subtasks have failed, even reusing cancel-1 with modified goal returns stopNotice cleanly.
+  const r3 = await tool.execute({subtasks: [{subtaskId: 'cancel-1', role: 'coordinator', goal: 'attempt 3 with modified goal'}]}, ctx(4));
+  assert.equal(r3.failed, 1);
+  assert.match(r3.summary, /同一轮对话已有多次工人执行失败/);
+});

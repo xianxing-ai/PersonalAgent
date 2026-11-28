@@ -609,13 +609,16 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
       }
       seen.add(subtask.subtaskId.trim());
       const record = savedRecords && Object.hasOwn(savedRecords, subtask.subtaskId) ? savedRecords[subtask.subtaskId] : undefined;
-      if (record && (record.parentTaskId !== context.taskId || record.inputDigest !== computeSubtaskInputDigest(subtask))) {
+      if (record && record.parentTaskId !== context.taskId) {
         throw new ProtocolError('REVISION_CONFLICT', 'Subtask input changed from the prior dispatch');
       }
     }
     const priorFailedCount = Object.values(savedRecords ?? {}).filter(record => record.state === 'failed').length;
-    const hasOnlyNewSubtasks = input.subtasks.every(subtask => !(savedRecords && Object.hasOwn(savedRecords, subtask.subtaskId)));
-    if (priorFailedCount >= 2 && hasOnlyNewSubtasks) {
+    const allFailedOrNew = input.subtasks.every(subtask => {
+      const record = savedRecords && Object.hasOwn(savedRecords, subtask.subtaskId) ? savedRecords[subtask.subtaskId] : undefined;
+      return !record || record.state === 'failed';
+    });
+    if (priorFailedCount >= 2 && allFailedOrNew) {
       const stopNotice = '同一轮对话已有多次工人执行失败，已停止继续重复派发。请直接用自然语言向用户说明当前遇到的情况、已完成的部分或建议，不要再次调用 subagent.dispatch 重试。';
       const progress: SubtaskProgress[] = input.subtasks.map((subtask: SubtaskDefinition) => ({
         subtaskId: subtask.subtaskId,
@@ -633,6 +636,12 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
         aggregatedSummary: stopNotice,
         summary: stopNotice,
       };
+    }
+    for (const subtask of input.subtasks) {
+      const record = savedRecords && Object.hasOwn(savedRecords, subtask.subtaskId) ? savedRecords[subtask.subtaskId] : undefined;
+      if (record && record.inputDigest !== computeSubtaskInputDigest(subtask)) {
+        throw new ProtocolError('REVISION_CONFLICT', 'Subtask input changed from the prior dispatch');
+      }
     }
 
     // 2. 构造父任务 WorkerContext 桥接对象供 dispatchSubtasks 记录进度与检查点

@@ -161,3 +161,17 @@ test('tool and evidence claims cannot mark a task succeeded', async () => {
     });
   }
 });
+
+test('reviewed local egress ProtocolErrors preserve exact safe message while unreviewed ProtocolErrors stay sanitized', async () => {
+  const reviewedMessage = '检测到疑似个人敏感信息（如邮箱、手机号或证件号），用户已拒绝或未确认出机发送';
+  await fixture({execute: async () => {throw new ProtocolError('UNAUTHORIZED', reviewedMessage);}}, async (app, client) => {
+    const task = await terminal(app, (await submit(client)).taskId);
+    assert.equal(task.state, 'failed');
+    assert.deepEqual(task.error, {code: 'UNAUTHORIZED', message: reviewedMessage, retryable: false});
+  });
+  await fixture({execute: async () => {throw new ProtocolError('UNAUTHORIZED', 'unreviewed-provider-leak');}}, async (app, client) => {
+    const task = await terminal(app, (await submit(client)).taskId);
+    assert.equal(task.state, 'failed');
+    assert.deepEqual(task.error, {code: 'EXTERNAL_FAILURE', message: 'Coordination adapter failed', retryable: false});
+  });
+});

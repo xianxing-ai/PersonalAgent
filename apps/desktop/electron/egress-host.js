@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {ProtocolError} from '@personal-agent/contracts';
 
-const fail=(code='UNAUTHORIZED',message='本次出机内容未通过本机分类与原范围确认')=>{throw Object.assign(new Error(message),{code});};
+const fail=(code='UNAUTHORIZED',message='本次出机内容未通过本机分类与原范围确认')=>{throw new ProtocolError(code,message);};
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const secretField=/^(?:password|passwd|api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|refresh[_-]?token|authorization|private[_-]?key|verification[_-]?code|otp|密码|口令|验证码|私钥)$/iu;
 const piiField=/^(?:full[_-]?name|first[_-]?name|last[_-]?name|phone|mobile|email|postal[_-]?address|home[_-]?address|passport|id[_-]?number|bank[_-]?account|credit[_-]?card|姓名|电话|手机|邮箱|住址|证件号|精确位置|健康信息|金融标识)$/iu;
@@ -85,6 +86,94 @@ export function redactSecretPreview(payload,maxLength=2000) {
     rendered=payload.replace(globalSecret(),'[已脱敏凭据]');
   }
   return rendered.length>maxLength?`${rendered.slice(0,maxLength)}\n…（内容共 ${rendered.length} 字符，已截断预览）`:rendered;
+}
+
+function classifyPiiCategory(hint) {
+  if (hint.includes('@') || /email|邮箱/iu.test(hint)) return '邮箱地址';
+  if (/^1[3-9]\d{9}$/u.test(hint) || /phone|mobile|电话|手机/iu.test(hint)) return '手机号码';
+  if (/^[1-9]\d{16}[\dX]$/iu.test(hint) || /passport|id[_-]?number|证件号/iu.test(hint)) return '证件号码';
+  return '个人敏感信息';
+}
+
+/** Collect safe Chinese PII categories and SHA-256 fingerprints without returning raw PII values. */
+export function extractPiiDetections(payload) {
+  if (typeof payload !== 'string' || Buffer.byteLength(payload, 'utf8') > 2 * 1024 * 1024) return {categories: [], fingerprints: []};
+  const categories = new Set(), fingerprints = new Set();
+  const inspect = (value, depth = 0) => {
+    if (depth > 24) return;
+    if (typeof value === 'string') {
+      const globalPii = new RegExp(piiText.source, 'giu');
+      for (const match of value.matchAll(globalPii)) {
+        const normalized = match[0].trim().toLowerCase();
+        categories.add(classifyPiiCategory(normalized));
+        fingerprints.add(digest('pii-text:' + normalized));
+      }
+      try {
+        const decoded = JSON.parse(value);
+        if (decoded !== value) inspect(decoded, depth + 1);
+      } catch {}
+      return;
+    }
+    if (Array.isArray(value)) { for (const item of value) inspect(item, depth + 1); return; }
+    if (value && typeof value === 'object') {
+      for (const [key, item] of Object.entries(value)) {
+        if (item !== null && item !== undefined && typeof item !== 'object' && String(item).trim() !== '' && piiField.test(key)) {
+          categories.add(classifyPiiCategory(key));
+          fingerprints.add(digest('pii-field:' + key.toLowerCase() + ':' + String(item).trim().toLowerCase()));
+        }
+        inspect(item, depth + 1);
+      }
+    }
+  };
+  inspect(payload);
+  if (fingerprints.size === 0 && classifyEgressSensitivity(payload) === 'pii') {
+    categories.add('个人敏感信息');
+    fingerprints.add(digest('pii-payload:' + digest(payload)));
+  }
+  return {categories: [...categories], fingerprints: [...fingerprints].sort()};
+}
+
+/** Mask detected PII/secret substrings for safe in-conversation preview. */
+export function redactPiiPreview(payload, maxLength = 2000) {
+  if (typeof payload !== 'string') return '';
+  const globalSecret = () => new RegExp(secretText.source, 'giu');
+  const globalPii = () => new RegExp(piiText.source, 'giu');
+  const scrubString = text => {
+    try {
+      const decoded = JSON.parse(text);
+      if (decoded && typeof decoded === 'object') return JSON.stringify(scrub(decoded));
+    } catch {}
+    return text.replace(globalSecret(), '[已脱敏凭据]').replace(globalPii(), match => {
+      if (match.includes('@')) {
+        const [local, domain] = match.split('@');
+        return `${local.slice(0, 2)}***@${domain}`;
+      }
+      return `${match.slice(0, 3)}****${match.slice(-2)}`;
+    });
+  };
+  const scrub = (value, depth = 0) => {
+    if (depth > 16) return value;
+    if (typeof value === 'string') return scrubString(value);
+    if (Array.isArray(value)) return value.map(item => scrub(item, depth + 1));
+    if (value && typeof value === 'object') {
+      const copy = {};
+      for (const [key, item] of Object.entries(value)) {
+        if (item !== null && item !== undefined && typeof item !== 'object' && String(item).trim() !== '' && secretField.test(key)) copy[key] = '[已脱敏凭据]';
+        else if (item !== null && item !== undefined && typeof item !== 'object' && String(item).trim() !== '' && piiField.test(key)) copy[key] = '[已脱敏个人信息]';
+        else copy[key] = scrub(item, depth + 1);
+      }
+      return copy;
+    }
+    return value;
+  };
+  let rendered;
+  try {
+    const parsed = JSON.parse(payload);
+    rendered = JSON.stringify(scrub(parsed), null, 2);
+  } catch {
+    rendered = scrubString(payload);
+  }
+  return rendered.length > maxLength ? `${rendered.slice(0, maxLength)}\n…（内容共 ${rendered.length} 字符，已截断预览）` : rendered;
 }
 
 /** Positive detections only. Returns 'secret', 'pii', or 'unknown'. */
@@ -189,11 +278,61 @@ export function extractGitSha40(value) {
   return fenced?.[2];
 }
 
-function extractFencedText(value) {
+export function extractFencedText(value) {
   if (typeof value !== 'string') return undefined;
-  const fenced = /^((?:[^\n]*\n){0,3}<<<PA_EXTERNAL kind=[a-z_]+ id=([a-f0-9]{16})>>>\n)([\s\S]*?)(\n<<<END_PA_EXTERNAL \2>>>)$/u.exec(value);
+  const fenced = /^((?:[^\n]*\n){0,3}<<<PA_EXTERNAL kind=[a-z0-9_-]+ id=([a-f0-9]{16})>>>\n)([\s\S]*?)(\n<<<END_PA_EXTERNAL \2>>>)$/u.exec(value);
   if (fenced) return {prefix:fenced[1],inner:fenced[3],suffix:fenced[4]};
   return {prefix:'',inner:value,suffix:''};
+}
+
+export function extractVerifiedPiiTokens(texts) {
+  const tokens = new Set();
+  if (!texts) return tokens;
+  const globalPii = new RegExp(piiText.source, 'giu');
+  for (const raw of texts) {
+    if (typeof raw !== 'string' || !raw) continue;
+    const inner = extractFencedText(raw)?.inner ?? raw;
+    for (const match of inner.matchAll(globalPii)) {
+      const token = match[0].toLowerCase();
+      tokens.add(token);
+      if (token.includes('@') && token.includes('/')) {
+        const tail = token.split('/').pop();
+        if (tail && tail.includes('@')) tokens.add(tail);
+      }
+    }
+  }
+  return tokens;
+}
+
+export function hasOnlyVerifiedPii(text, verifiedPii) {
+  if (typeof text !== 'string' || !text || !verifiedPii?.size) return false;
+  const inner = extractFencedText(text)?.inner ?? text;
+  const matches = [...inner.matchAll(new RegExp(piiText.source, 'giu'))];
+  return matches.length > 0 && matches.every(m => verifiedPii.has(m[0].toLowerCase()));
+}
+
+const COMPETITION_FOOTER = /\n\[profile=huawei_ict_agentarts; verification=(?:mock|unverified)\]$/u;
+
+export function stripTrustedResultMetadata(value) {
+  return typeof value === 'string' ? value.replace(COMPETITION_FOOTER, '') : value;
+}
+
+function normalizeTrustedConnectorTexts(rawTexts) {
+  if (!rawTexts) return undefined;
+  const normalized = new Set();
+  for (const item of rawTexts) {
+    if (typeof item !== 'string' || !item) continue;
+    normalized.add(item);
+    const inner = extractFencedText(item)?.inner;
+    if (inner) {
+      normalized.add(inner);
+      const stripped = stripTrustedResultMetadata(inner);
+      if (stripped) normalized.add(stripped);
+    }
+    const itemStripped = stripTrustedResultMetadata(item);
+    if (itemStripped) normalized.add(itemStripped);
+  }
+  return normalized;
 }
 
 function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs) {
@@ -202,6 +341,15 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
     const value=JSON.parse(text);
     if(value&&typeof value==='object'&&!Array.isArray(value)&&JSON.stringify(value)===text)return value;
   }
+  const assistantPiiCache=new Map();
+  const readAssistantAllowedPii=msgTaskId=>{
+    if(assistantPiiCache.has(msgTaskId))return assistantPiiCache.get(msgTaskId);
+    const tokens=typeof readTrustedConnectorOutputs==='function'
+      ?extractVerifiedPiiTokens(readTrustedConnectorOutputs(msgTaskId))
+      :new Set();
+    assistantPiiCache.set(msgTaskId,tokens);
+    return tokens;
+  };
   const sanitizeId=id=>{
     if(typeof id!=='string')return id;
     if(UUID_VALUE.test(id)&&isTrustedIdentifier(id)===true)return 'trusted-id';
@@ -220,7 +368,17 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
     if(!obj||obj.conversationContext?.treatment!=='untrusted_data'||!Array.isArray(obj.conversationContext.messages))return undefined;
     for(const msg of obj.conversationContext.messages){
       if(!msg||typeof msg!=='object')continue;
-      if(typeof msg.taskId==='string'&&UUID_VALUE.test(msg.taskId)&&isTrustedIdentifier(msg.taskId)===true)msg.taskId='trusted-id';
+      const msgTaskId=msg.taskId;
+      if(typeof msgTaskId==='string'&&UUID_VALUE.test(msgTaskId)&&typeof isTrustedIdentifier==='function'&&isTrustedIdentifier(msgTaskId)===true){
+        if(msg.role==='assistant'&&typeof msg.content==='string'&&typeof readTrustedConnectorOutputs==='function'){
+          const allowedPii=readAssistantAllowedPii(msgTaskId);
+          if(allowedPii.size>0){
+            msg.content=msg.content.replace(new RegExp(piiText.source,'giu'),match=>
+              allowedPii.has(match.toLowerCase())?'[verified-pii]':match);
+          }
+        }
+        msg.taskId='trusted-id';
+      }
       if(typeof msg.id==='string')msg.id=sanitizeId(msg.id);
     }
     if(Array.isArray(obj.conversationContext.selection?.omittedAssistantIds)){
@@ -274,7 +432,7 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
     if(!trustedTexts?.size||depth>10||value==null)return value;
     if(typeof value==='string'){
       const parts=extractFencedText(value);
-      if(!parts||!trustedTexts.has(parts.inner))return value;
+      if(!parts||(!trustedTexts.has(parts.inner)&&!trustedTexts.has(value)))return value;
       // Only mask PII (emails/phones/IDs) inside verified connector outputs; never mask secret patterns.
       const masked=parts.inner.replace(new RegExp(piiText.source,'giu'),'[verified-pii]');
       return parts.prefix+masked+parts.suffix;
@@ -288,7 +446,9 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
   try{
     if(typeof isTrustedIdentifier!=='function'&&typeof readTrustedGitHubShas!=='function'&&typeof readTrustedConnectorOutputs!=='function')return undefined;
     const trustedShas=scope.taskId&&typeof readTrustedGitHubShas==='function'?readTrustedGitHubShas(scope.taskId):undefined;
-    const trustedConnectorTexts=scope.taskId&&typeof readTrustedConnectorOutputs==='function'?readTrustedConnectorOutputs(scope.taskId):undefined;
+    const trustedConnectorTexts=scope.taskId&&typeof readTrustedConnectorOutputs==='function'
+      ?normalizeTrustedConnectorTexts(readTrustedConnectorOutputs(scope.taskId))
+      :undefined;
     const outer=object(scope.payload);
     const field=outer?.query!==undefined?'query':Object.keys(outer?.inputs??{})[0];
     const container=outer?.query!==undefined?outer:outer?.inputs;
@@ -320,12 +480,13 @@ function classifyTrustedTaskEnvelope(scope,isTrustedIdentifier,readTrustedGitHub
     }else{
       container[field]=JSON.stringify(inner);
     }
-    return classifyEgressSensitivity(JSON.stringify(outer));
+    const sanitizedPayload=JSON.stringify(outer);
+    return {sensitivity:classifyEgressSensitivity(sanitizedPayload),sanitizedPayload};
   }catch{return undefined;}
 }
 
 /** Main-only callbacks approve the exact content before the transport may send it. */
-export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,authorizeSecretEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs,readEgressPolicy,now=Date.now}={}) {
+export function createDesktopEgressHost({classifyLocally,approvePrivate,authorizeTaskEgress,authorizeSecretEgress,authorizePiiEgress,readPendingWorkflowGraph,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs,readEgressPolicy,now=Date.now}={}) {
   let closed=false;const decisions=new Map();
   const resolvePolicyMode=()=>{
     if(typeof readEgressPolicy!=='function')return 'ask';
@@ -355,7 +516,9 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
       };
       current();
       const rawSensitivity=classifyEgressSensitivity(payload);
+      let effectiveSanitizedPayload=payload;
       const resolveEffectiveSensitivity=()=>{
+        effectiveSanitizedPayload=payload;
         if(rawSensitivity==='unknown')return 'unknown';
         let effective=rawSensitivity;
         if(taskId&&readPendingWorkflowGraph){
@@ -363,12 +526,15 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
           if(receiptSensitivity!==undefined)effective=receiptSensitivity;
         }
         if(effective!=='unknown'&&(isTrustedIdentifier||readTrustedGitHubShas||readTrustedConnectorOutputs)){
-          const envelopeSensitivity=classifyTrustedTaskEnvelope(input,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs);
-          if(envelopeSensitivity!==undefined)effective=envelopeSensitivity;
+          const envelopeResult=classifyTrustedTaskEnvelope(input,isTrustedIdentifier,readTrustedGitHubShas,readTrustedConnectorOutputs);
+          if(envelopeResult!==undefined){
+            effective=envelopeResult.sensitivity;
+            effectiveSanitizedPayload=envelopeResult.sanitizedPayload;
+          }
         }
         return effective;
       };
-      const assertSensitivityAllowed=secretApproved=>{
+      const assertSensitivityAllowed=({secretApproved=false,piiApproved=false}={})=>{
         const effective=resolveEffectiveSensitivity();
         if(effective==='unknown')return 'unknown';
         if(effective==='secret'){
@@ -377,12 +543,13 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
           return 'secret_needs_approval';
         }
         if(effective==='pii'){
-          if(resolvePolicyMode()==='full-access')return 'pii';
+          if(resolvePolicyMode()==='full-access'||piiApproved===true)return 'pii';
+          if(typeof authorizePiiEgress==='function')return 'pii_needs_approval';
           fail('UNAUTHORIZED','检测到疑似个人敏感信息（如邮箱、手机号或证件号），已阻止出机发送；如需在完全信任模式下发送，可切换为「完全访问」或先脱敏');
         }
         fail();
       };
-      const initialCheck=assertSensitivityAllowed(false);
+      const initialCheck=assertSensitivityAllowed();
       const key=JSON.stringify([requestId,destination,deadline]);
       for(const [id,value] of decisions)if(value.signal.aborted||value.expiresAt<=now())decisions.delete(id);
       const previous=decisions.get(key);
@@ -409,7 +576,7 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
       const entry={taskId,signal,payloadDigest,guards,expiresAt:Date.parse(deadline)};decisions.set(key,entry);
       entry.promise=(async()=>{
         try{
-          let classification='private',secretApproved=false;
+          let classification='private',secretApproved=false,piiApproved=false;
           if(initialCheck==='secret_needs_approval'){
             const secretScope=Object.freeze({...scope,sensitivity:'secret',
               secretDetections:extractSecretDetections(payload),
@@ -419,11 +586,20 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
             }
             secretApproved=true;
             classification='private';
+          } else if(initialCheck==='pii_needs_approval'){
+            const piiScope=Object.freeze({...scope,sensitivity:'pii',
+              piiDetections:extractPiiDetections(effectiveSanitizedPayload),
+              redactedPreview:redactPiiPreview(effectiveSanitizedPayload)});
+            if(await wait(authorizePiiEgress,piiScope)!==true){
+              fail('UNAUTHORIZED','检测到疑似个人敏感信息（如邮箱、手机号或证件号），用户已拒绝或未确认出机发送');
+            }
+            piiApproved=true;
+            classification='private';
           } else {
             const mode=resolvePolicyMode();
             if(mode==='full-access'||mode==='auto-standard'){
               assertCurrent();
-              assertSensitivityAllowed(false);
+              assertSensitivityAllowed();
               classification='public';
             } else if(taskId!==undefined) {
               if(await wait(authorizeTaskEgress)!==true)fail();
@@ -437,8 +613,9 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,authoriz
           return Object.freeze({payloadDigest,classification,assertBeforeSend(actual){
             assertCurrent();
             if(actual?.destination!==destination||actual?.payload!==payload)fail();
-            const status=assertSensitivityAllowed(secretApproved);
+            const status=assertSensitivityAllowed({secretApproved,piiApproved});
             if(status==='secret_needs_approval')fail('UNAUTHORIZED','检测到疑似密钥、口令或令牌信息，用户已拒绝或未确认出机发送');
+            if(status==='pii_needs_approval')fail('UNAUTHORIZED','检测到疑似个人敏感信息（如邮箱、手机号或证件号），用户已拒绝或未确认出机发送');
           }});
         }catch(error){if(decisions.get(key)===entry)decisions.delete(key);throw error;}
       })();
