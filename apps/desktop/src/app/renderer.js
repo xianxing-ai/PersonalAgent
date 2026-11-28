@@ -108,11 +108,25 @@ if(mode==='orb') {
     catch(error){if(!operationClosed&&generation===operationGeneration&&sequence>=feedbackOwner){feedbackOwner=sequence;operationError=error.message||String(error);syncOperationFeedback();}}
   };
   window.addEventListener('unload',()=>{operationClosed=true;},{once:true});
+  let orbMoveInFlight=false,orbMoveQueued=false,orbMoveFrame=0;
+  const stopOrbMove=()=>{orbMoveQueued=false;if(orbMoveFrame){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(orbMoveFrame);orbMoveFrame=0;}};
+  const flushOrbMove=()=>{
+    if(!drag||orbMoveInFlight||!bridge?.invoke)return;
+    orbMoveInFlight=true;orbMoveQueued=false;
+    void bridge.invoke('orb.dragMove').catch(()=>{}).finally(()=>{
+      orbMoveInFlight=false;
+      if(drag&&orbMoveQueued&&!orbMoveFrame){
+        orbMoveFrame=typeof requestAnimationFrame==='function'?requestAnimationFrame(()=>{orbMoveFrame=0;flushOrbMove();}):0;
+        if(!orbMoveFrame)flushOrbMove();
+      }
+    });
+  };
+  window.addEventListener('unload',stopOrbMove,{once:true});
   button.addEventListener('pointerdown',e=>{if(e.button!==0)return;start={x:e.screenX,y:e.screenY,offset:{x:e.clientX,y:e.clientY}};button.setPointerCapture(e.pointerId);});
-  button.addEventListener('pointermove',e=>{if(!docked&&start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart',start.offset);}});
-  function finish(){if(drag)orbOperation('orb.dragEnd');else if(start)orbOperation('orb.open');start=null;drag=false;}
-  button.addEventListener('pointerup',finish);button.addEventListener('pointercancel',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
-  button.addEventListener('lostpointercapture',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
+  button.addEventListener('pointermove',e=>{if(!docked&&start&&!drag&&Math.hypot(e.screenX-start.x,e.screenY-start.y)>4){drag=true;orbOperation('orb.dragStart',start.offset);}if(drag){if(!orbMoveInFlight&&!orbMoveFrame)flushOrbMove();else orbMoveQueued=true;}});
+  function finish(){stopOrbMove();if(drag)orbOperation('orb.dragEnd');else if(start)orbOperation('orb.open');start=null;drag=false;}
+  button.addEventListener('pointerup',finish);button.addEventListener('pointercancel',()=>{stopOrbMove();if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
+  button.addEventListener('lostpointercapture',()=>{stopOrbMove();if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();orbOperation('orb.open');}});
   button.addEventListener('click',e=>{if(e.detail===0)orbOperation('orb.open');});
   render=data=>{
@@ -204,10 +218,13 @@ else {
     if(event.kind==='reasoning_summary')event={...event,kind:'reasoning'};
     const task=current?.tasks.find(item=>item.taskId===event.taskId);
     if(!task||task.bodyWithheld||task.outputTruncated||truncatedTaskIds.has(task.taskId))return;
+    const hadAnswer=Boolean(panelLiveTurns.get(event.taskId)?.answer);
     const live=rememberActivity(panelLiveTurns,event);
     if(panelLiveTurns.size>40)panelLiveTurns.delete(panelLiveTurns.keys().next().value);
-    const traceSlot=tasksNode.querySelector(`[data-trace-for="${CSS.escape(task.taskId)}"]`);
-    if(traceSlot)replaceTraceBlock(traceSlot,task,live,current?.subagentTasks?.filter(c=>c.parentTaskId===task.taskId)??[],escape);
+    if(event.kind!=='answer_delta'||!hadAnswer){
+      const traceSlot=tasksNode.querySelector(`[data-trace-for="${CSS.escape(task.taskId)}"]`);
+      if(traceSlot)replaceTraceBlock(traceSlot,task,live,current?.subagentTasks?.filter(c=>c.parentTaskId===task.taskId)??[],escape);
+    }
     if(event.kind==='answer_delta'&&typeof event.text==='string'&&!isTerminal(task)){
       const slot=tasksNode.querySelector(`[data-chat-answer="${CSS.escape(task.taskId)}"]`);
       if(!slot)return;
@@ -759,7 +776,7 @@ if(bridge&&['subagent','subagent-list'].includes(mode)){
 }
 else if(bridge){
   let receivedUpdate=false,closed=false,recoveringSnapshot=false;
-  const renderBudget=mountRenderBudget(budget=>{orb?.setResourceBudget(budget);render?.setResourceBudget?.(budget);});
+  const renderBudget=mountRenderBudget(budget=>{orb?.setResourceBudget(budget);render?.setResourceBudget?.(budget);},{ambient:mode==='orb'});
   const receiver=createSnapshotReceiver({render:data=>{
     activeDesktopConversationId=data.conversationState?.activeId;renderBudget.update(data.resourceBudget);render(data);clearSnapshotFailure();
   },ack:token=>bridge.ackSnapshot?.(token),resync:()=>{void invoke('snapshot.resync').catch(reportSnapshotFailure);}});

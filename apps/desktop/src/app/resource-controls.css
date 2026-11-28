@@ -7,6 +7,6 @@
 .history-navigation span {flex:1;min-width:80px}
 :root[data-resource-mode="critical"] {--glass-filter:none}
 :root[data-resource-mode="critical"] .thinking-grid i {animation:none;opacity:.6}
-:root[data-resource-mode="critical"] .cc-hero-field {animation:none}
-:root[data-render-activity="hidden"] *, :root[data-render-activity="background"] .cc-hero-field {animation-play-state:paused!important}
+:root[data-resource-mode="critical"] :is(.cc-hero-field,.is-shimmer) {animation:none}
+:root[data-render-activity="hidden"] *, :root[data-render-activity="background"] :is(.cc-hero-field,.is-shimmer) {animation-play-state:paused!important}
 :root[data-resource-mode="critical"] :is(.panel,.workspace,.admin) button {transition:none}

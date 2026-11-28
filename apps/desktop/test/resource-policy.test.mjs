@@ -41,3 +41,18 @@ test('focus and visibility adapt optional rendering without changing the saved r
   doc.hidden=true;listeners.get('visibilitychange')();assert.equal(doc.documentElement.dataset.renderActivity,'hidden');
   assert.equal(doc.documentElement.dataset.calm,'true');controller.dispose();assert.equal(listeners.size,0);
 });
+
+test('ambient orb budget stays at full foreground rate and DPR when unfocused while still pausing when hidden',()=>{
+  const listeners=new Map(),applied=[];let focused=false;
+  const win={addEventListener:(name,callback)=>listeners.set(name,callback),removeEventListener:name=>listeners.delete(name)};
+  const doc={...win,hidden:false,hasFocus:()=>focused,documentElement:{dataset:{}}};
+  const controller=mountRenderBudget(budget=>applied.push(budget),{window:win,document:doc,ambient:true});
+  controller.update({mode:'normal',fps:30,maxDpr:2});
+  assert.equal(applied.at(-1).fps,30);
+  assert.equal(applied.at(-1).maxDpr,2);
+  assert.equal(doc.documentElement.dataset.renderActivity,'foreground');
+  doc.hidden=true;listeners.get('visibilitychange')();
+  assert.equal(doc.documentElement.dataset.renderActivity,'hidden');
+  assert.equal(applied.at(-1).fps,12);
+  controller.dispose();
+});

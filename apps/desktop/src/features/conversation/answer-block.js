@@ -460,15 +460,16 @@ export function syncTraceDisclosures(container, liveTurns) {
 export function replaceTraceBlock(slot, task, live, children, escape, doc = globalThis.document) {
   if (!slot || !doc) return undefined;
   const openKeys = syncAnswerCardDisclosures(slot, live);
+  const html = traceBlockHtml(task, live, children, escape);
+  if (!html) {
+    if (slot.__traceHtml !== '') { slot.replaceChildren?.(); slot.__traceHtml = ''; }
+    return slot;
+  }
+  if (slot.__traceHtml === html) return slot;
   const active = doc.activeElement;
   const inside = Boolean(active && (typeof slot.contains === 'function' ? slot.contains(active) : active.closest?.('[data-trace-for]') === slot));
   const activeDetails = inside ? active.closest?.('details[data-disclosure-key]') : undefined;
   const focusedKey = activeDetails ? (activeDetails.dataset?.disclosureKey ?? activeDetails.getAttribute?.('data-disclosure-key')) : undefined;
-  const html = traceBlockHtml(task, live, children, escape);
-  if (!html) {
-    slot.replaceChildren?.();
-    return slot;
-  }
   const wrap = doc.createElement('div');
   wrap.innerHTML = html;
   const nextBlock = wrap.firstElementChild ?? wrap.children?.[0];
@@ -480,6 +481,7 @@ export function replaceTraceBlock(slot, task, live, children, escape, doc = glob
       details.setAttribute?.('open', '');
     }
   }
+  nextBlock.__traceHtml = html;
   slot.replaceWith(nextBlock);
   if (focusedKey) {
     const targetDetails = [...(nextBlock.querySelectorAll?.('details[data-disclosure-key]') ?? [])].find(
