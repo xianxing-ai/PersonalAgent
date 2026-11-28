@@ -169,7 +169,7 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
     open(){
       if(closed || !owner() || owner().isDestroyed())reject();
       if(current){current.window.show();current.window.focus();return;}
-      const window=new BrowserWindow({parent:owner(),width:760,height:820,title:'远程 MCP 管理',show:false,autoHideMenuBar:true,
+      const window=new BrowserWindow({parent:owner(),width:760,height:820,title:'远程 MCP 管理',show:false,autoHideMenuBar:true,roundedCorners:true,
         webPreferences:{preload:fileURLToPath(new URL('./remote-mcp-preload.cjs',import.meta.url)),contextIsolation:true,sandbox:true,nodeIntegration:false,partition:'remote-mcp-management'}});
       const controller=new AbortController(),origin={window,signal:controller.signal};current=origin;
       const clear=()=>{if(current===origin){current=undefined;controller.abort();origin.draft=undefined;}};

@@ -91,7 +91,7 @@
 .admin .switch-control:has(input:disabled) {cursor:default}
 .admin .admin-bar,.workspace-titlebar {border-bottom:1px solid var(--ui-line)}
 .window-controls .window-button:active {transform:none}
-.window-controls .window-button:focus-visible {outline-offset:-4px}
+.window-controls .window-button:focus-visible {outline-offset:-2px;border-radius:9px}
 
 /* Conversation controls respond immediately; menus open without delaying their action. */
 .panel :is(.hdr-btn,.icon-btn,.model-select):not(:disabled):hover,

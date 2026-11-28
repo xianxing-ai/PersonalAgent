@@ -1,6 +1,7 @@
 :root {
   color-scheme:light dark;
-  font-family:"Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+  font-family:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+  font-variant-numeric:lining-nums tabular-nums;
 }
 body {
   margin:0;

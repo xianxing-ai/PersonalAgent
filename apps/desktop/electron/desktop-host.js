@@ -167,7 +167,7 @@ export function createDesktopHost({onOrbPlacementChanged} = {}) {
   function openSettings() {
     if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.restore(); settingsWindow.show(); settingsWindow.focus(); return; }
     const display = screen.getPrimaryDisplay().workArea;
-    settingsWindow = new BrowserWindow({...restore('desktop-settings', {width: Math.min(780, display.width), height: Math.min(700, display.height)}), title: 'Synstar · 桌面设置', autoHideMenuBar: true,
+    settingsWindow = new BrowserWindow({...restore('desktop-settings', {width: Math.min(780, display.width), height: Math.min(700, display.height)}), title: 'Synstar · 桌面设置', autoHideMenuBar: true, roundedCorners: true,
       webPreferences: {preload: path.join(dir, 'desktop-preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false}});
     attach(settingsWindow, 'desktop-settings');
     settingsWindow.webContents.setWindowOpenHandler(() => ({action: 'deny'}));

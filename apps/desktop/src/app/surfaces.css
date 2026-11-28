@@ -53,7 +53,7 @@
 #profile-dialog {width:min(420px,85vw);border:1px solid var(--glass-border);border-radius:16px;background:var(--glass-bg-strong);color:var(--fg);padding:24px;backdrop-filter:var(--glass-filter)}#profile-dialog::backdrop {background:rgba(0,0,0,.42);backdrop-filter:blur(7px)}#profile-edit-error {color:var(--danger);font-size:12px}
 .workspace {height:100vh;display:grid;grid-template-columns:264px minmax(0,1fr);grid-template-rows:40px minmax(0,1fr);background:var(--glass-scene),var(--glass-bg);backdrop-filter:var(--glass-filter);border:1px solid var(--glass-border);border-radius:12px;overflow:hidden;color:var(--fg)}
 .workspace-titlebar {grid-column:1/-1;display:flex;align-items:center;padding-left:10px;gap:12px;-webkit-app-region:drag}.workspace-titlebar button {-webkit-app-region:no-drag}.workspace-app-title {font-size:12px;color:var(--muted)}
-.window-button {display:grid;place-items:center;width:44px;height:38px;border:0;background:transparent;color:var(--fg-2)}.window-button:hover {background:var(--accent-soft)}.window-close:hover {background:#b42c36;color:white}.window-button svg,.workspace .icon-btn svg {width:16px;height:16px}
+.window-button {display:grid;place-items:center;width:36px;height:32px;border:0;border-radius:9px;background:transparent;color:var(--fg-2)}.window-button:hover {background:var(--accent-soft);color:var(--fg)}.window-close:hover {background:#d93848;color:#ffffff}.window-button svg {width:15px;height:15px}.workspace .icon-btn svg {width:16px;height:16px}
 .workspace-sidebar {display:flex;flex-direction:column;min-height:0;padding:0 10px;border-right:1px solid var(--glass-hairline)}
 .workspace-brand {height:54px;display:flex;align-items:center;gap:8px;padding:0 8px}.workspace-brand strong {font-size:18px;letter-spacing:-.6px}
 .dashboard-page {display:grid;gap:14px;max-width:880px}.dashboard-period {display:flex;align-items:center;gap:10px;font-size:13px}.dashboard-period select {min-width:128px}.dashboard-cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.dashboard-bars {display:flex;align-items:flex-end;gap:4px;height:46px;margin-top:10px}.dashboard-bars i {flex:1;background:var(--accent);border-radius:3px 3px 0 0;opacity:.85}
@@ -143,9 +143,9 @@
 .connector-card p {font-size:12px;color:var(--muted);line-height:1.6;margin:9px 0}
 .connector-card small {display:block;font-size:10px;color:var(--muted);font-weight:400;line-height:1.7}
 .connector-card footer {font-size:9px;color:var(--faint);margin-top:13px}
-.weather-preview {display:flex;align-items:center;gap:18px}.weather-preview>strong {font-size:46px;line-height:1;font-weight:450;letter-spacing:-2px}.weather-preview>strong span {font-size:30px;vertical-align:top}.weather-preview>div {font-size:12px;line-height:1.8}
-.weather-hours {display:flex;justify-content:space-between;margin-top:20px}.weather-hours span {font-size:9px;color:var(--muted);text-align:center}.weather-hours b {display:block;font-size:12px;font-weight:500;margin-top:5px;color:var(--fg-2)}
-.agenda-row {display:flex;gap:12px;align-items:start;margin-top:12px;font-size:12px}.agenda-row time {font-size:10px;color:var(--muted);padding-top:2px}.agenda-row>div {border-left:2px solid #658fc9;padding-left:9px}
+.weather-preview {display:flex;align-items:center;gap:18px}.weather-preview>strong {font-family:var(--font-metric,var(--font-ui));font-size:46px;line-height:1;font-weight:550;letter-spacing:-.03em;font-variant-numeric:lining-nums tabular-nums}.weather-preview>strong span {font-size:26px;vertical-align:top}.weather-preview>div {font-size:12px;line-height:1.8}
+.weather-hours {display:flex;justify-content:space-between;margin-top:20px}.weather-hours span {font-size:9px;color:var(--muted);text-align:center;font-variant-numeric:lining-nums tabular-nums}.weather-hours b {display:block;font-size:12px;font-weight:500;margin-top:5px;color:var(--fg-2);font-variant-numeric:lining-nums tabular-nums}
+.agenda-row {display:flex;gap:12px;align-items:start;margin-top:12px;font-size:12px}.agenda-row time {font-family:var(--font-metric,var(--font-ui));font-size:10.5px;font-weight:550;color:var(--muted);padding-top:2px;font-variant-numeric:lining-nums tabular-nums}.agenda-row>div {border-left:2px solid #658fc9;padding-left:9px}
 .mail-preview {display:flex;gap:8px;align-items:center}.mail-preview strong {font-size:11px;font-weight:500}.mail-avatar {width:28px;height:28px;border-radius:8px;background:var(--surface-2);display:grid;place-items:center;font-size:12px}.mail-preview i {width:5px;height:5px;border-radius:50%;background:#6398dc;margin-left:auto;flex-shrink:0}
 .mail-preview+.mail-preview {margin-top:9px;padding-top:9px;border-top:1px solid var(--glass-hairline)}
 .connector-card .preview-excerpt {font-size:11px;margin-bottom:0}
@@ -556,13 +556,13 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .admin {grid-template-rows:40px minmax(0,1fr)}
 .admin,.workspace {background-color:var(--bg)}
 .admin>.main {min-width:0;min-height:0}
-.admin-bar,.workspace-titlebar {min-width:0;padding:0 0 0 12px;gap:8px}
+.admin-bar,.workspace-titlebar {min-width:0;padding:0 10px 0 12px;gap:8px}
 .admin-title,.workspace-app-title {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .admin-title {padding-left:0}
-.window-controls {display:flex;flex:0 0 auto;align-self:stretch;margin-left:8px;-webkit-app-region:no-drag}
+.window-controls {display:flex;align-items:center;gap:4px;flex:0 0 auto;align-self:center;margin-left:6px;-webkit-app-region:no-drag}
 .admin-bar button,.workspace-titlebar button {-webkit-app-region:no-drag}
-.window-controls .window-button {flex:0 0 44px;width:44px;min-width:44px;height:100%;margin:0;padding:0;border-radius:0}
-.window-controls .window-button:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-4px}
+.window-controls .window-button {flex:0 0 36px;width:36px;min-width:36px;height:32px;min-height:32px;margin:0;padding:0;border-radius:9px}
+.window-controls .window-button:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-2px;border-radius:9px}
 :root[data-window-maximized="true"] :is(.admin,.workspace) {border-radius:0;clip-path:none}
 .admin .side nav {overflow-x:hidden;scrollbar-gutter:stable}
 .admin .side nav button span {flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;text-align:left}
