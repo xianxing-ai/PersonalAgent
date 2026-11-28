@@ -108,6 +108,18 @@ test('createGitHubConversationTools exposes 29 mainstream tools with fail-closed
   assert.ok(host.tools.some(x => x.descriptor.name === 'github.pr.merge'));
   assert.ok(host.tools.some(x => x.descriptor.name === 'github.search.code'));
   assert.ok(!host.tools.some(x => x.descriptor.name === 'github.actions.repair.link'));
+  assert.match(
+    host.competitionToolAvailability.find(x => x.toolName === 'github.pr.comment')?.publicDescription ?? '',
+    /无评论列表读取工具.*请勿在评论成功后调用 github\.issue\.get/,
+  );
+  assert.match(
+    host.competitionToolAvailability.find(x => x.toolName === 'github.issue.get')?.publicDescription ?? '',
+    /对 PR 编号调用会报 INVALID_ARGUMENT/,
+  );
+  assert.match(
+    host.competitionToolAvailability.find(x => x.toolName === 'github.repo.list')?.publicDescription ?? '',
+    /未提供 owner\/repo 时先调用此工具/,
+  );
 
   // Missing binding keeps all tools unavailable and rejects preflight.
   const savedBinding = binding;

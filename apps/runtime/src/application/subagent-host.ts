@@ -459,9 +459,50 @@ export async function resumeRuntimeSubagentTask(options: SubagentHostOptions, ch
   return runOriginalWorker();
 }
 
+const SAFE_REPO_TARGET = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/;
+const SAFE_BRANCH_TARGET = /^[A-Za-z0-9][A-Za-z0-9_./-]{0,120}$/;
+
+function readChildConfirmedWrites(
+  runtime: TaskRuntime,
+  childTaskId: string,
+  fallbackTools?: readonly ToolDescriptor[],
+): string[] {
+  const frozen = runtime.loadCheckpoint(childTaskId, 'subtask-tools-binding') as ToolDescriptor[] | undefined;
+  const descriptors = frozen ?? fallbackTools ?? [];
+  const writeTools = new Set(
+    descriptors
+      .filter(tool => tool.sideEffect === 'external_write' || tool.sideEffect === 'local_write')
+      .map(tool => tool.name),
+  );
+  const loop = runtime.loadCheckpoint(childTaskId, 'competition-loop') as {
+    receipts?: Array<{runId?: string; proposal?: {toolName?: string; arguments?: Record<string, unknown>}}>;
+  } | undefined;
+  const receiptsByRunId = new Map(
+    (loop?.receipts ?? [])
+      .filter(item => typeof item?.runId === 'string')
+      .map(item => [item.runId!, item.proposal?.arguments]),
+  );
+  const summaries: string[] = [];
+  for (const record of runtime.readToolExecutions(childTaskId)) {
+    if (!record.executionStarted || record.state !== 'confirmed') continue;
+    if (!writeTools.has(record.toolName)) continue;
+    const args = receiptsByRunId.get(record.evidenceId);
+    const parts: string[] = [];
+    if (args && typeof args === 'object' && !Array.isArray(args)) {
+      if (typeof args.repo === 'string' && SAFE_REPO_TARGET.test(args.repo)) parts.push(`repo=${args.repo}`);
+      if (typeof args.number === 'number' && Number.isSafeInteger(args.number) && args.number > 0 && args.number < 1_000_000_000) {
+        parts.push(`number=${args.number}`);
+      }
+      if (typeof args.branch === 'string' && SAFE_BRANCH_TARGET.test(args.branch)) parts.push(`branch=${args.branch}`);
+    }
+    summaries.push(parts.length ? `${record.toolName}(${parts.join(', ')})` : record.toolName);
+  }
+  return summaries;
+}
+
 /** Read-only aggregation from persistent children; never reopens a terminal parent. */
 export function readRuntimeSubagentSummary(runtime: TaskRuntime, parentTaskId: string,
-  definitions?: readonly SubtaskDefinition[]): SubtaskExecutionSummary & {summary: string} {
+  definitions?: readonly SubtaskDefinition[], fallbackTools?: readonly ToolDescriptor[]): SubtaskExecutionSummary & {summary: string} {
   const records = runtime.loadCheckpoint(parentTaskId, 'subtask-progress-records') as Record<string, SubtaskProgressRecord> | undefined;
   const subtasks = definitions ?? Object.values(records ?? {}).map(record => {
     try {
@@ -485,9 +526,21 @@ export function readRuntimeSubagentSummary(runtime: TaskRuntime, parentTaskId: s
     const state: SubtaskProgress['state'] = !child ? record?.state ?? 'pending'
       : ['succeeded', 'failed', 'cancelled'].includes(child.state) ? child.state as 'succeeded' | 'failed' | 'cancelled'
         : child.state === 'running' || child.state === 'cancelling' ? 'running' : 'pending';
+    let failureText: string | undefined;
+    if (state === 'failed' || state === 'cancelled') {
+      const baseError = child?.error?.message ?? record?.error ?? 'Subtask execution stopped';
+      const confirmedWrites = child ? readChildConfirmedWrites(runtime, child.taskId, fallbackTools) : [];
+      if (confirmedWrites.length > 0) {
+        const writeNotice = `【重要：该子任务在后续步骤中止前已完成真实写入：${[...new Set(confirmedWrites)].slice(0, 4).join('、')}（状态 confirmed，变更已生效）；报错仅发生在写入后的附加步骤，请勿重派写操作以免重复写入，直接向用户如实汇报已完成写入及后续步骤受阻原因】`;
+        const maxBase = Math.max(0, 1000 - writeNotice.length - 1);
+        failureText = `${baseError.slice(0, maxBase)} ${writeNotice}`.trim();
+      } else {
+        failureText = baseError;
+      }
+    }
     return {subtaskId: subtask.subtaskId, role: subtask.role, roleLabel, state,
       ...(state === 'succeeded' ? {result: child?.resultSummary ?? record?.result ?? ''} : {}),
-      ...(state === 'failed' || state === 'cancelled' ? {error: child?.error?.message ?? record?.error ?? 'Subtask execution stopped'}
+      ...(failureText !== undefined ? {error: failureText}
         : state === 'pending' || state === 'running' ? {error: `Subtask is ${child?.state ?? state}; execution is not complete`} : {}),
     };
   });
@@ -613,11 +666,39 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
         throw new ProtocolError('REVISION_CONFLICT', 'Subtask input changed from the prior dispatch');
       }
     }
+    const fallbackTools = options.getTools?.()?.list();
+    const priorFailedConfirmedWrites: string[] = [];
+    for (const record of Object.values(savedRecords ?? {})) {
+      if (record.state !== 'failed') continue;
+      const priorChild = runtime.findTaskByIdempotencyKey(`subagent-dispatch-${context.taskId}-${record.subtaskId}`);
+      if (priorChild) priorFailedConfirmedWrites.push(...readChildConfirmedWrites(runtime, priorChild.taskId, fallbackTools));
+    }
     const priorFailedCount = Object.values(savedRecords ?? {}).filter(record => record.state === 'failed').length;
     const allFailedOrNew = input.subtasks.every(subtask => {
       const record = savedRecords && Object.hasOwn(savedRecords, subtask.subtaskId) ? savedRecords[subtask.subtaskId] : undefined;
       return !record || record.state === 'failed';
     });
+    const requestsWriteCapableWorker = input.subtasks.some(subtask => subtask.role !== 'researcher');
+    if (priorFailedConfirmedWrites.length > 0 && requestsWriteCapableWorker && allFailedOrNew) {
+      const uniqueWrites = [...new Set(priorFailedConfirmedWrites)].slice(0, 4).join('、');
+      const writeStopNotice = `前序工人在后续步骤报错前已完成真实写入（${uniqueWrites}，状态 confirmed），为防止重复外部写入已拦截本次写工人重派。请直接向用户如实汇报上述写入已生效及后续附加步骤受阻原因；如确需只读核实，仅可派发 role="researcher" 的只读工人。`;
+      const progress: SubtaskProgress[] = input.subtasks.map((subtask: SubtaskDefinition) => ({
+        subtaskId: subtask.subtaskId,
+        role: subtask.role,
+        roleLabel: subtask.roleLabel?.trim() || DEFAULT_ROLE_LABELS[subtask.role as keyof typeof DEFAULT_ROLE_LABELS] || String(subtask.role),
+        state: 'failed',
+        error: writeStopNotice,
+      }));
+      return {
+        total: progress.length,
+        succeeded: 0,
+        failed: progress.length,
+        cancelled: 0,
+        subtasks: progress,
+        aggregatedSummary: writeStopNotice,
+        summary: writeStopNotice,
+      };
+    }
     if (priorFailedCount >= 2 && allFailedOrNew) {
       const stopNotice = '同一轮对话已有多次工人执行失败，已停止继续重复派发。请直接用自然语言向用户说明当前遇到的情况、已完成的部分或建议，不要再次调用 subagent.dispatch 重试。';
       const progress: SubtaskProgress[] = input.subtasks.map((subtask: SubtaskDefinition) => ({
@@ -769,7 +850,7 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
           return child && ['succeeded', 'failed', 'cancelled'].includes(child.state);
         }).length}),
     }, [subtask], executor)));
-    return readRuntimeSubagentSummary(runtime, context.taskId, input.subtasks);
+    return readRuntimeSubagentSummary(runtime, context.taskId, input.subtasks, fallbackTools);
   };
 
   return createSubagentDispatchTool(handler);

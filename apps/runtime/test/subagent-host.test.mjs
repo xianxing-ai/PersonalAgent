@@ -330,3 +330,109 @@ test('after two failed subtasks, reusing a failed subtaskId with modified goal r
   assert.equal(r3.failed, 1);
   assert.match(r3.summary, /同一轮对话已有多次工人执行失败/);
 });
+
+test('failed subtask with prior confirmed external_write preserves write receipt in error and blocks duplicate coder retry while allowing researcher', async () => {
+  const {createRuntimeApplication} = await import('../dist/application.js');
+  const {FakeCoordinationPort} = await import('@personal-agent/coordination/testing');
+  const {toolArgumentsDigest} = await import('@personal-agent/tool-gateway');
+  let commentExecutions = 0;
+  const commentDescriptor = {
+    name: 'github.pr.comment', version: '0.1.0-alpha.1', sideEffect: 'external_write',
+    requiredScopes: ['github:write'], idempotencySupport: false, recoverySupport: false, requiresPresence: false,
+    inputSchema: {type: 'object', required: ['repo', 'number', 'body'], additionalProperties: false, properties: {repo: {type: 'string'}, number: {type: 'integer'}, body: {type: 'string'}}},
+    outputSchema: {type: 'object', required: ['state', 'evidenceRefs'], additionalProperties: false, properties: {state: {type: 'string'}, externalId: {type: 'string'}, url: {type: 'string'}, evidenceRefs: {type: 'array', items: {type: 'string'}}}},
+  };
+  const issueGetDescriptor = {
+    name: 'github.issue.get', version: '0.1.0-alpha.1', sideEffect: 'read',
+    requiredScopes: ['github:read'], idempotencySupport: true, recoverySupport: true, requiresPresence: false,
+    inputSchema: {type: 'object', required: ['repo', 'number'], additionalProperties: false, properties: {repo: {type: 'string'}, number: {type: 'integer'}}},
+    outputSchema: {type: 'object'},
+  };
+  const app = createRuntimeApplication({
+    path: ':memory:',
+    profile: 'huawei_ict_agentarts',
+    tools: [
+      {
+        descriptor: commentDescriptor,
+        execute: async () => {
+          commentExecutions++;
+          return {state: 'confirmed', externalId: '7238391922', url: 'https://github.com/acme/app/pull/736#issuecomment-7238391922', evidenceRefs: []};
+        },
+      },
+      {
+        descriptor: issueGetDescriptor,
+        execute: async () => {
+          throw new ProtocolError('INVALID_ARGUMENT', 'Requested issue is a pull request');
+        },
+      },
+    ],
+    automaticTools: [
+      {toolName: 'github.issue.get', toolVersion: '0.1.0-alpha.1'},
+    ],
+    coordination: new FakeCoordinationPort(() => ({kind: 'text', text: 'unused', verification: 'mock'})),
+  });
+  try {
+    const parent = app.runtime.submitTask({conversationId: 'desktop-panel', goal: '给 PR #736 评论', idempotencyKey: 'dup-write-parent'});
+    const tool = createRuntimeSubagentDispatchTool({
+      competitionOnly: true,
+      getRuntime: () => app.runtime,
+      getTools: () => app.tools,
+      runDefaultWorker: async (subtask, childWorker, childTools) => {
+        if (subtask.role === 'researcher') {
+          return {resultSummary: 'PR #736 只读复核完成', evidenceRefs: []};
+        }
+        const runId = `competition-tool-${childWorker.taskId}-1`;
+        const commentArgs = {repo: 'acme/app', number: 736, body: '实机验收通过'};
+        app.runtime.policy.grant({
+          authorizationRef: runId,
+          taskId: childWorker.taskId,
+          toolName: 'github.pr.comment',
+          scopes: ['github:write'],
+          expiresAt: childWorker.deadline,
+          maxUses: 1,
+          argumentsDigest: toolArgumentsDigest(commentArgs),
+        });
+        const confirmedRes = await childTools.invoke({
+          toolName: 'github.pr.comment', toolVersion: '0.1.0-alpha.1',
+          arguments: commentArgs,
+          taskId: childWorker.taskId, runId, authorizationRef: runId, deadline: childWorker.deadline, signal: childWorker.signal,
+        });
+        assert.equal(confirmedRes.state, 'confirmed');
+        childWorker.saveCheckpoint('competition-loop', {
+          executionEpoch: 0, step: 2, evidenceRefs: [runId],
+          receipts: [{runId, proposal: {toolName: 'github.pr.comment', arguments: {repo: 'acme/app', number: 736, body: '实机验收通过'}}, continuation: {state: 'confirmed'}}],
+        });
+        const runId2 = `competition-tool-${childWorker.taskId}-2`;
+        await childTools.invoke({
+          toolName: 'github.issue.get', toolVersion: '0.1.0-alpha.1',
+          arguments: {repo: 'acme/app', number: 736},
+          taskId: childWorker.taskId, runId: runId2, authorizationRef: runId2, deadline: childWorker.deadline, signal: childWorker.signal,
+        });
+        return {resultSummary: 'unreachable', evidenceRefs: []};
+      },
+    });
+    const ctx = n => ({
+      taskId: parent.taskId, runId: `dup-write-run-${n}`, signal: new AbortController().signal,
+      deadline: new Date(Date.now() + 60_000).toISOString(), authorizationRef: 'auth-dup', scopes: ['agent:delegate'],
+    });
+
+    const first = await tool.execute({subtasks: [{subtaskId: 'pr-comment-1', role: 'coder', goal: '发评论并读回'}]}, ctx(1));
+    assert.equal(first.failed, 1);
+    assert.equal(commentExecutions, 1);
+    assert.match(first.subtasks[0].error, /已完成真实写入：github\.pr\.comment\(repo=acme\/app, number=736\)/);
+    assert.match(first.summary, /请勿重派写操作以免重复写入/);
+
+    // Attempting to retry with another coder worker is blocked immediately without running comment a 2nd time!
+    const retryWrite = await tool.execute({subtasks: [{subtaskId: 'pr-comment-retry', role: 'coder', goal: '重发评论'}]}, ctx(2));
+    assert.equal(retryWrite.failed, 1);
+    assert.equal(commentExecutions, 1);
+    assert.match(retryWrite.summary, /为防止重复外部写入已拦截本次写工人重派/);
+
+    // Dispatching a read-only researcher is still permitted!
+    const readBack = await tool.execute({subtasks: [{subtaskId: 'pr-readonly-check', role: 'researcher', goal: '只读检查 PR'}]}, ctx(3));
+    assert.equal(readBack.succeeded, 1, JSON.stringify(readBack));
+    assert.match(readBack.summary, /只读复核完成/);
+  } finally {
+    app.close();
+  }
+});
